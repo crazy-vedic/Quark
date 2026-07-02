@@ -1,0 +1,257 @@
+name: Tag on PR Merge
+
+on:
+  push:
+    branches: ["main", "master"]
+
+permissions:
+  contents: write
+  pull-requests: read
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main'
+    outputs:
+      version: ${{ steps.extract.outputs.version }}
+      pr_number: ${{ steps.extract.outputs.pr_number }}
+      tag_created: ${{ steps.created.outputs.tag_created }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Find merged PR and extract version
+        id: extract
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Find the PR that introduced this merge commit.
+          # The merge commit message looks like: "Merge pull request #123 from ..."
+          # We search for PRs associated with the current HEAD commit.
+          PR_JSON=$(gh pr list \
+            --repo "${{ github.repository }}" \
+            --json number,title,body,headRefName,mergeCommit \
+            --search "${{ github.sha }}" \
+            --state merged)
+
+          PR_COUNT=$(echo "$PR_JSON" | jq 'length')
+          if [ "$PR_COUNT" -eq 0 ]; then
+            echo "No merged PR found for commit ${{ github.sha }}. Skipping."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Take the first match (most recent PR for this commit)
+          PR_NUMBER=$(echo "$PR_JSON" | jq -r '.[0].number')
+          PR_TITLE=$(echo "$PR_JSON" | jq -r '.[0].title')
+          PR_BODY=$(echo "$PR_JSON" | jq -r '.[0].body')
+
+          echo "Found PR #$PR_NUMBER: $PR_TITLE"
+
+          # Extract version from PR body.
+          # Accepts both "Release: v1.0.0" and "Release: 1.0.0", then normalizes to v-prefixed semver.
+          RAW_VERSION=$(echo "$PR_BODY" | grep -oiP 'release:\s*v?\d+\.\d+\.\d+' | head -1 | sed -E 's/.*release:\s*//I')
+
+          if [ -z "$RAW_VERSION" ]; then
+            echo "No 'Release: vX.Y.Z' or 'Release: X.Y.Z' found in PR #$PR_NUMBER body."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          VERSION="$RAW_VERSION"
+          if [[ "$VERSION" != v* ]]; then
+            VERSION="v$VERSION"
+          fi
+
+          # Validate semver format
+          if ! echo "$VERSION" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "Invalid version format: $VERSION"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+          echo "Found release version: $VERSION"
+
+      - name: Validate version increment
+        id: validate
+        if: steps.extract.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ steps.extract.outputs.version }}"
+
+          # Get the latest RELEASE (not just tag) from GitHub API.
+          # This is the authoritative source — a tag without a release is ignored.
+          LATEST_RELEASE=$(gh api repos/${{ github.repository }}/releases/latest 2>/dev/null | jq -r '.tag_name // empty')
+
+          if [ -z "$LATEST_RELEASE" ]; then
+            echo "No previous releases found on GitHub. First release is allowed."
+            exit 0
+          fi
+
+          echo "Previous release: $LATEST_RELEASE"
+          echo "Proposed release: $VERSION"
+
+          # Parse latest version
+          LATEST_MAJOR=$(echo "$LATEST_RELEASE" | sed 's/^v//' | cut -d. -f1)
+          LATEST_MINOR=$(echo "$LATEST_RELEASE" | sed 's/^v//' | cut -d. -f2)
+          LATEST_PATCH=$(echo "$LATEST_RELEASE" | sed 's/^v//' | cut -d. -f3)
+
+          # Parse proposed version
+          PROP_MAJOR=$(echo "$VERSION" | sed 's/^v//' | cut -d. -f1)
+          PROP_MINOR=$(echo "$VERSION" | sed 's/^v//' | cut -d. -f2)
+          PROP_PATCH=$(echo "$VERSION" | sed 's/^v//' | cut -d. -f3)
+
+          # Validate the increment is exactly +1 in one component
+          # Allowed transitions:
+          #   v1.0.0 -> v1.0.1 (patch +1)
+          #   v1.0.0 -> v1.1.0 (minor +1, patch resets)
+          #   v1.0.0 -> v2.0.0 (major +1, minor+patch reset)
+
+          if [ "$PROP_MAJOR" -eq "$LATEST_MAJOR" ]; then
+            if [ "$PROP_MINOR" -eq "$LATEST_MINOR" ]; then
+              # Patch increment only
+              if [ "$PROP_PATCH" -eq $((LATEST_PATCH + 1)) ]; then
+                echo "Valid: patch increment (+1)"
+                exit 0
+              fi
+            elif [ "$PROP_MINOR" -eq $((LATEST_MINOR + 1)) ]; then
+              # Minor increment, patch must be 0
+              if [ "$PROP_PATCH" -eq 0 ]; then
+                echo "Valid: minor increment (+1), patch reset"
+                exit 0
+              fi
+            fi
+          elif [ "$PROP_MAJOR" -eq $((LATEST_MAJOR + 1)) ]; then
+            # Major increment, minor and patch must be 0
+            if [ "$PROP_MINOR" -eq 0 ] && [ "$PROP_PATCH" -eq 0 ]; then
+              echo "Valid: major increment (+1), minor+patch reset"
+              exit 0
+            fi
+          fi
+
+          # If we reach here, the increment is invalid
+          PR_NUMBER="${{ steps.extract.outputs.pr_number }}"
+
+          echo "::error::VERSION INCREMENT REJECTED — PR #$PR_NUMBER"
+          echo ""
+          echo "Previous release: $LATEST_RELEASE"
+          echo "Proposed release:  $VERSION"
+          echo ""
+          echo "The allowed next release from $LATEST_RELEASE is:"
+          echo "  v${LATEST_MAJOR}.${LATEST_MINOR}.$((LATEST_PATCH + 1))  → patch release (bugfix)"
+          echo "  v${LATEST_MAJOR}.$((LATEST_MINOR + 1)).0             → minor release (feature)"
+          echo "  v$((LATEST_MAJOR + 1)).0.0                           → major release (breaking)"
+          echo ""
+          echo "Rule: Only one component can increase by exactly 1."
+          echo "      Components to the right of the increment must reset to 0."
+          echo ""
+          echo "To fix this PR:"
+          echo "  1. Edit the PR description and change the Release line to one of the allowed versions above."
+          echo "  2. If you need a larger jump, release incrementally (e.g. v1.0.0 → v1.1.0 → v1.2.0)."
+          echo ""
+          echo "skip=true" >> "$GITHUB_OUTPUT"
+          exit 1
+
+      - name: Check if tag already exists
+        id: check
+        if: steps.extract.outputs.skip != 'true' && steps.validate.outputs.skip != 'true'
+        run: |
+          VERSION="${{ steps.extract.outputs.version }}"
+          if git rev-parse "$VERSION" >/dev/null 2>&1; then
+            echo "Tag $VERSION already exists. Skipping."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Tag $VERSION does not exist. Proceeding."
+          fi
+
+      - name: Create and push tag
+        if: steps.extract.outputs.skip != 'true' && steps.validate.outputs.skip != 'true' && steps.check.outputs.skip != 'true'
+        run: |
+          VERSION="${{ steps.extract.outputs.version }}"
+          PR_NUMBER="${{ steps.extract.outputs.pr_number }}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          COMMIT_SHA="${{ github.sha }}"
+          PR_LINK="https://github.com/${{ github.repository }}/pull/${PR_NUMBER}"
+
+          git tag -a "$VERSION" \
+            -m "Release $VERSION" \
+            -m "PR: ${PR_LINK}" \
+            -m "Commit: ${COMMIT_SHA}" \
+            -m "automated-release: tag-on-merge.yml"
+          git push origin "$VERSION"
+
+          echo "Created and pushed tag $VERSION"
+          echo "PR: ${PR_LINK}"
+          echo "Commit: ${COMMIT_SHA}"
+
+      - name: Record tag creation
+        id: created
+        if: steps.extract.outputs.skip != 'true' && steps.validate.outputs.skip != 'true' && steps.check.outputs.skip != 'true'
+        run: |
+          echo "tag_created=true" >> "$GITHUB_OUTPUT"
+
+  release:
+    needs: tag
+    runs-on: ubuntu-latest
+    if: needs.tag.outputs.tag_created == 'true'
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+          cache: true
+
+      - name: Build binaries
+        run: |
+          GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w" -o dist/quark-darwin-amd64 ./cmd/quark
+          GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w" -o dist/quark-darwin-arm64 ./cmd/quark
+          GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o dist/quark-linux-amd64 ./cmd/quark
+          GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o dist/quark-linux-arm64 ./cmd/quark
+          GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o dist/quark-windows-amd64.exe ./cmd/quark
+
+      - name: Copy install scripts
+        run: |
+          cp install.sh dist/install.sh
+          cp install.ps1 dist/install.ps1
+
+      - name: Build release notes
+        id: notes
+        run: |
+          VERSION="${{ needs.tag.outputs.version }}"
+          PR_NUMBER="${{ needs.tag.outputs.pr_number }}"
+          COMMIT_SHA="${{ github.sha }}"
+          PR_LINK="https://github.com/${{ github.repository }}/pull/${PR_NUMBER}"
+
+          # Build the custom release body
+          BODY="**Release: ${VERSION}**
+
+          **PR:** ${PR_LINK}
+          **Commit:** \`${COMMIT_SHA}\`
+          "
+
+          echo "body<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$BODY" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.tag.outputs.version }}
+          files: dist/*
+          body: ${{ steps.notes.outputs.body }}
+          generate_release_notes: true

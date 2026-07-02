@@ -1,0 +1,255 @@
+package postman
+
+import (
+	"encoding/base64"
+	"encoding/json"
+	"fmt"
+	"net/url"
+	"strings"
+
+	"github.com/google/uuid"
+
+	"github.com/crazy-vedic/quark/internal/domain"
+)
+
+// ImportCollection converts a Postman collection into Quark domain requests.
+// It flattens nested folders into request names with "/" separators.
+func ImportCollection(c *Collection) *ImportResult {
+	result := &ImportResult{
+		CollectionName: c.Info.Name,
+	}
+
+	if c.Info.Name == "" {
+		result.CollectionName = "Imported"
+	}
+
+	var idx int
+	var walk func(items []Item, prefix string)
+	walk = func(items []Item, prefix string) {
+		for _, item := range items {
+			if item.Request != nil {
+				req, warnings := mapRequest(item, prefix, idx)
+				if req != nil {
+					result.Requests = append(result.Requests, req)
+					result.Warnings = append(result.Warnings, warnings...)
+					idx++
+				}
+			} else if len(item.Item) > 0 {
+				// Nested folder: recurse with updated prefix
+				newPrefix := prefix
+				if newPrefix != "" {
+					newPrefix += "/"
+				}
+				newPrefix += item.Name
+				walk(item.Item, newPrefix)
+			}
+		}
+	}
+
+	walk(c.Item, "")
+
+	return result
+}
+
+func mapRequest(item Item, prefix string, sortOrder int) (*domain.Request, []string) {
+	if item.Request == nil {
+		return nil, nil
+	}
+
+	req := item.Request
+
+	// Build name: prefix/ItemName or just ItemName
+	name := item.Name
+	if prefix != "" {
+		name = prefix + "/" + name
+	}
+
+	// Extract URL
+	requestURL := req.URL.Raw
+	if requestURL == "" {
+		// Try to reconstruct from host + path
+		requestURL = buildURL(req.URL)
+	}
+
+	// Extract headers as JSON object
+	headersMap := make(map[string]string)
+	for _, h := range req.Header {
+		if h.Key != "" && h.Value != "" {
+			headersMap[h.Key] = h.Value.String()
+		}
+	}
+
+	// Extract authentication as headers
+	warnings := mapAuth(req.Auth, headersMap)
+
+	// Body: only support raw mode for now
+	body := ""
+	if req.Body.Mode == "raw" {
+		body = req.Body.Raw
+		// Auto-set Content-Type from body language if not already present
+		if _, ok := headersMap["Content-Type"]; !ok && req.Body.Options.Raw.Language != "" {
+			ct := contentTypeFromLanguage(req.Body.Options.Raw.Language)
+			if ct != "" {
+				headersMap["Content-Type"] = ct
+			}
+		}
+	} else if req.Body.Mode != "" && req.Body.Mode != "none" {
+		// Unsupported body mode: mark with warning but still import without body
+		warnings = append(
+			warnings,
+			fmt.Sprintf("unsupported body mode %q for request %q", req.Body.Mode, name),
+		)
+	}
+
+	headersJSON := "{}"
+	if len(headersMap) > 0 {
+		b, _ := json.Marshal(headersMap)
+		headersJSON = string(b)
+	}
+
+	return &domain.Request{
+		ID:        uuid.New().String(),
+		Name:      name,
+		Method:    strings.ToUpper(req.Method),
+		URL:       requestURL,
+		Headers:   headersJSON,
+		Body:      body,
+		SortOrder: sortOrder,
+	}, warnings
+}
+
+// buildURL reconstructs a URL from Postman's structured URL fields.
+func buildURL(u URL) string {
+	if u.Raw != "" {
+		return u.Raw
+	}
+
+	var parts []string
+	if len(u.Host) > 0 {
+		parts = append(parts, strings.Join(u.Host, "."))
+	}
+	for _, p := range u.Path {
+		switch v := p.(type) {
+		case string:
+			parts = append(parts, v)
+		case map[string]any:
+			if key, ok := v["key"].(string); ok {
+				parts = append(parts, key)
+			}
+		}
+	}
+
+	scheme := u.Protocol
+	if scheme == "" {
+		scheme = "https"
+	}
+	path := strings.Join(parts, "/")
+	if path == "" {
+		path = "/"
+	}
+
+	// Check if URL already has a scheme
+	if strings.HasPrefix(path, "http://") || strings.HasPrefix(path, "https://") {
+		return path
+	}
+
+	// Add query parameters
+	if len(u.Query) > 0 {
+		q := url.Values{}
+		for _, qp := range u.Query {
+			q.Add(qp.Key, qp.Value.String())
+		}
+		path += "?" + q.Encode()
+	}
+
+	return scheme + "://" + path
+}
+
+// mapAuth converts Postman authentication to Authorization headers.
+// Returns warnings for unsupported auth types.
+func mapAuth(auth *Auth, headers map[string]string) []string {
+	if auth == nil {
+		return nil
+	}
+
+	var warnings []string
+
+	switch auth.Type {
+	case "bearer":
+		var token string
+		for _, p := range auth.Bearer {
+			if p.Key == "token" {
+				token = p.Value.String()
+			}
+		}
+		if token != "" {
+			headers["Authorization"] = "Bearer " + token
+		} else {
+			warnings = append(warnings, "bearer auth token is empty; Authorization header not set")
+		}
+	case "basic":
+		var username, password string
+		for _, p := range auth.Basic {
+			if p.Key == "username" {
+				username = p.Value.String()
+			}
+			if p.Key == "password" {
+				password = p.Value.String()
+			}
+		}
+		if username != "" {
+			// Basic auth: base64-encode per RFC 7617, consistent with curl importer.
+			creds := base64.StdEncoding.EncodeToString([]byte(username + ":" + password))
+			headers["Authorization"] = "Basic " + creds
+		}
+	case "apikey":
+		var keyName, value, in string
+		for _, p := range auth.APIKey {
+			switch p.Key {
+			case "key":
+				keyName = p.Value.String()
+			case "value":
+				value = p.Value.String()
+			case "in":
+				in = p.Value.String()
+			}
+		}
+		switch {
+		case keyName == "":
+			warnings = append(warnings, "apikey auth missing key name; header not set")
+		case in != "header":
+			warnings = append(
+				warnings,
+				fmt.Sprintf("apikey auth location %q not supported; header import only", in),
+			)
+		default:
+			headers[keyName] = value
+		}
+	case "noauth":
+		// No auth, nothing to do
+	case "":
+		// Empty auth type
+	default:
+		warnings = append(warnings, fmt.Sprintf("unsupported auth type %q (skipped)", auth.Type))
+	}
+
+	return warnings
+}
+
+// contentTypeFromLanguage maps Postman body language identifiers to Content-Type headers.
+func contentTypeFromLanguage(lang string) string {
+	switch lang {
+	case "json":
+		return "application/json"
+	case "xml":
+		return "application/xml"
+	case "text":
+		return "text/plain"
+	case "html":
+		return "text/html"
+	case "javascript":
+		return "application/javascript"
+	default:
+		return ""
+	}
+}

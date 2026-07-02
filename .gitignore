@@ -1,0 +1,9 @@
+*.tmp
+*.out
+coverage.out
+/quark
+/.bin/
+/bin/
+/docs/
+.agents/
+.quark/

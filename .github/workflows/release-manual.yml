@@ -1,0 +1,117 @@
+name: Manual Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to release (e.g. v1.1.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify tag exists
+        run: |
+          TAG="${{ inputs.tag }}"
+          if ! git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "ERROR: Tag $TAG does not exist."
+            echo ""
+            echo "Create the tag first:"
+            echo "  git tag -a $TAG -m \"Release $TAG\""
+            echo "  git push origin $TAG"
+            exit 1
+          fi
+          echo "Tag $TAG exists."
+
+      - name: Verify tag was created by automation
+        id: verify
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG_NAME="${{ inputs.tag }}"
+          REPO="${{ github.repository }}"
+
+          # Use GitHub API to get the tag message (more reliable than git cat-file in actions/checkout)
+          # This works for both annotated and lightweight tags
+          TAG_MESSAGE=$(gh api "repos/${REPO}/git/ref/tags/${TAG_NAME}" | jq -r '.object.url' | xargs gh api | jq -r '.message // empty')
+
+          # Check for the automation marker added by tag-on-merge.yml
+          if ! echo "$TAG_MESSAGE" | grep -q "automated-release: tag-on-merge.yml"; then
+            echo "WARNING: Tag $TAG_NAME was not created by the automated release workflow."
+            echo ""
+            echo "Tag annotation:"
+            echo "$TAG_MESSAGE"
+            echo ""
+            echo "Proceeding anyway since this is a manual backfill."
+          fi
+
+          # Extract PR link and commit SHA from the tag annotation
+          PR_LINK=$(echo "$TAG_MESSAGE" | grep -oP 'https://github.com/[^ ]+/pull/\d+' || true)
+          COMMIT_SHA=$(echo "$TAG_MESSAGE" | grep -oP 'Commit: \K[0-9a-f]{40}' || true)
+
+          if [ -z "$COMMIT_SHA" ]; then
+            # Fallback to the tag's target commit
+            COMMIT_SHA=$(git rev-parse "${TAG_NAME}^{commit}")
+          fi
+
+          echo "Tag $TAG_NAME verified."
+          echo "pr_link=${PR_LINK}" >> "$GITHUB_OUTPUT"
+          echo "commit_sha=${COMMIT_SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout tag
+        run: |
+          git checkout "${{ inputs.tag }}"
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+          cache: true
+
+      - name: Build binaries
+        run: |
+          GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w" -o dist/quark-darwin-amd64 ./cmd/quark
+          GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w" -o dist/quark-darwin-arm64 ./cmd/quark
+          GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o dist/quark-linux-amd64 ./cmd/quark
+          GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o dist/quark-linux-arm64 ./cmd/quark
+          GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o dist/quark-windows-amd64.exe ./cmd/quark
+
+      - name: Copy install scripts
+        run: |
+          cp install.sh dist/install.sh
+          cp install.ps1 dist/install.ps1
+
+      - name: Build release notes
+        id: notes
+        run: |
+          PR_LINK="${{ steps.verify.outputs.pr_link }}"
+          COMMIT_SHA="${{ steps.verify.outputs.commit_sha }}"
+          TAG_NAME="${{ inputs.tag }}"
+
+          # Build the custom release body
+          BODY="**Release: ${TAG_NAME}**
+
+          **PR:** ${PR_LINK}
+          **Commit:** \`${COMMIT_SHA}\`
+          "
+
+          echo "body<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$BODY" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag }}
+          files: dist/*
+          body: ${{ steps.notes.outputs.body }}
+          generate_release_notes: true
