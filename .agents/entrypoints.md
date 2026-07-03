@@ -27,8 +27,7 @@ No other `cmd/` packages exist.
 | Flag | Default | Effect |
 |---|---|---|
 | `--debug` | `false` | Enables keystroke debug logging via `cli.DebugLogger` |
-| `--config` | `./.quark` | Directory for `config.toml`, `quark.db`, backups, logs |
-
+| `--config` | `~/.quark` | Directory for `config.toml`, `quark.db`, backups, logs |
 **Caveat:** `--debug` help text says `~/.quark/debug.log` but the actual path is `/tmp/quark_debug_logs/debug.log`. See [caveats.md](caveats.md).
 
 ### Default Action
