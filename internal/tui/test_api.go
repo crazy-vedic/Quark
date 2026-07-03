@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"os"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -90,6 +91,8 @@ const (
 	AuthField    = authField
 )
 
+func (m Model) WithDebugLog(f *os.File) Model { m.debugLog = f; return m }
+
 func (m Model) WithLoading(v bool) Model   { m.loading = v; return m }
 func (m Model) WithCancel(fn func()) Model { m.cancel = fn; return m }
 func (m Model) WithFocus(p paneID) Model   { m.focus = p; return m }
@@ -120,6 +123,22 @@ func (m Model) WithActiveField(f requestField) Model  { m.activeField = f; retur
 func (m Model) WithActiveRequest(r *domain.Request) Model {
 	m.activeRequest = r
 	return m
+}
+
+func (m Model) WithValidationErr(s string) Model {
+	if m.activeRequest != nil && m.activeRequest.ID != "" {
+		m = m.setRequestValidationErr(m.activeRequest.ID, s)
+	}
+	return m
+}
+
+func (m Model) WithRequestValidationErr(requestID, s string) Model {
+	return m.setRequestValidationErr(requestID, s)
+}
+
+// SelectRequest exposes selectRequest for tests outside same-directory access.
+func (m Model) SelectRequest(r *domain.Request) (Model, tea.Cmd) {
+	return m.selectRequest(r)
 }
 
 func (m Model) WithPromptMode(p promptType) Model   { m.promptMode = p; return m }
@@ -164,7 +183,7 @@ func (m Model) Loading() bool                                    { return m.load
 func (m Model) Err() error                                       { return m.err }
 func (m Model) StatusErr() string                                { return m.statusErr }
 func (m Model) StatusSuccess() string                            { return m.statusSuccess }
-func (m Model) ValidationErr() string                            { return m.validationErr }
+func (m Model) ValidationErr() string { return m.activeValidationErr() }
 func (m Model) Response() *exec.ExecuteResult                    { return m.response }
 func (m Model) Executions() []*domain.Execution                  { return m.executions }
 func (m Model) ExecCursor() int                                  { return m.execCursor }
@@ -272,6 +291,24 @@ func (m Model) RequestURLTextClickPosAtColumn(col int) (x, y int, ok bool) {
 func (m Model) URLCursorPosition() int {
 	return m.urlInput.Position()
 }
+
+// HeaderListRowClickPos returns coordinates for clicking a header pair row in
+// the header editor list view (before editing begins).
+func (m Model) HeaderListRowClickPos(rowIndex int) (x, y int, ok bool) {
+	if m.width <= 0 || m.height <= 0 || m.headerEditing {
+		return 0, 0, false
+	}
+	if rowIndex < 0 || rowIndex >= len(m.headerPairs) {
+		return 0, 0, false
+	}
+	layout := normalLayoutFor(m.width, m.height)
+	ll := m.requestPaneLineLayout(layout)
+	content := layout.requestContentRect()
+	return content.left + 4, ll.editorContentY + rowIndex, true
+}
+
+// HeaderCursor returns the currently selected header pair index.
+func (m Model) HeaderCursor() int { return m.headerCursor }
 
 // HeaderKeyInputClickPos returns coordinates for clicking the header key input.
 func (m Model) HeaderKeyInputClickPos() (x, y int, ok bool) {

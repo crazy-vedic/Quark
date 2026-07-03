@@ -165,22 +165,26 @@ func (m Model) View() string {
 	}
 
 	// Overlay modes take precedence.
+	var out string
 	switch m.mode {
 	case helpMode:
-		return m.viewHelp()
+		out = m.viewHelp()
 	case envMode:
-		return m.viewEnvModal()
+		out = m.viewEnvModal()
 	case importMode:
-		return m.viewImportModal()
+		out = m.viewImportModal()
 	case searchMode:
-		return m.viewSearchModal()
+		out = m.viewSearchModal()
 	case collectionPromptMode:
-		return m.viewCollectionPromptModal()
+		out = m.viewCollectionPromptModal()
 	case scheduleMode:
-		return m.viewScheduleModal()
+		out = m.viewScheduleModal()
+	default:
+		return m.viewNormal()
 	}
 
-	return m.viewNormal()
+	m.maybeLogVisualOverflow(out, nil)
+	return out
 }
 
 // Ensure tea.Model is satisfied at compile time.
@@ -197,9 +201,24 @@ func (m Model) viewNormal() string {
 	right := lipgloss.JoinVertical(lipgloss.Left, request, response)
 
 	joined := lipgloss.JoinHorizontal(lipgloss.Top, sidebar, right)
-	statusBar := m.viewStatusBar()
+	statusBar := m.viewStatusBar("")
 
-	return lipgloss.JoinVertical(lipgloss.Left, joined, statusBar)
+	out := lipgloss.JoinVertical(lipgloss.Left, joined, statusBar)
+	renderedH := lipgloss.Height(out)
+	if m.height > 0 && renderedH > m.height {
+		report := &visualOverflowReport{
+			layout:    &paneLayout,
+			sidebar:   sidebar,
+			request:   request,
+			response:  response,
+			joined:    joined,
+			statusBar: statusBar,
+		}
+		m.maybeLogVisualOverflow(out, report)
+		statusBar = m.viewStatusBar(visualOverflowStatus)
+		out = lipgloss.JoinVertical(lipgloss.Left, joined, statusBar)
+	}
+	return out
 }
 
 // --- Sidebar ---
@@ -270,7 +289,7 @@ func (m Model) viewSidebar(w, h int) string {
 	}
 
 	inner := sb.String()
-	return border.Width(w).Height(h).Render(inner)
+	return border.Width(w).Height(h).MaxHeight(h + 2).Render(inner)
 }
 
 // --- Request pane ---
@@ -375,8 +394,8 @@ func (m Model) viewRequestPane(w, h int) string {
 	top = append(top, "")
 
 	// Validation / status errors — strip Go error chain prefix for readability.
-	if m.validationErr != "" {
-		msg := cleanError(m.validationErr)
+	if m.activeValidationErr() != "" {
+		msg := cleanError(m.activeValidationErr())
 		top = append(top, errorStyle.Render("✗ "+truncate(msg, w-4)))
 	}
 
@@ -527,7 +546,7 @@ func (m Model) viewRequestPane(w, h int) string {
 	sb.WriteString(mutedStyle.Render(strings.Repeat("─", w-2)) + "\n")
 	sb.WriteString(mutedStyle.Render(hints))
 
-	return border.Width(w).Height(h).Render(sb.String())
+	return border.Width(w).Height(h).MaxHeight(h + 2).Render(sb.String())
 }
 
 func (m Model) viewAuthEditor() string {
@@ -572,12 +591,10 @@ func (m Model) viewResponsePane(w, h int) string {
 	if currentExec == nil && m.response == nil {
 		sendHint := m.renderHintKeys([]string{keybindings.ActionSendRequest}, true)
 		sb.WriteString("\n" + mutedStyle.Render("  No response yet — press "+sendHint+" to send."))
-		return border.Width(w).Height(h).Render(sb.String())
+		return border.Width(w).Height(h).MaxHeight(h + 2).Render(sb.String())
 	}
 
-	chromeLines := 4
 	if currentExec != nil {
-		chromeLines++
 		sb.WriteString(
 			mutedStyle.Render(
 				fmt.Sprintf(
@@ -597,11 +614,20 @@ func (m Model) viewResponsePane(w, h int) string {
 	tabs := m.viewTabBar()
 	sb.WriteString(tabs + "\n\n")
 
-	// Fixed overhead: title + optional history line + status + tabs + blank line.
-	// Body gets the remaining inner height. Clip to prevent overflow.
-	bodyLines := h - chromeLines
-	if bodyLines < 1 {
-		bodyLines = 1
+	// Body gets whatever inner height remains after chrome. Measure the actual
+	// chrome rows at the pane's inner width (w-2, since the border consumes a
+	// column on each side) so that a wrapped tab bar — or a body line near the
+	// width boundary — can't push the pane one row past its budget and scroll
+	// the whole app off the top. The trailing "\n" delimits the body start, so
+	// it must not be counted as a chrome row.
+	innerWidth := max(1, w-2)
+	chromeRows := visualRows(strings.TrimSuffix(sb.String(), "\n"), innerWidth)
+	// Body may shrink to zero: on very small panes the chrome (status + a
+	// wrapped tab bar) can consume the entire budget, and forcing a minimum of
+	// one body row would push the pane past its height and scroll the app.
+	bodyLines := h - chromeRows
+	if bodyLines < 0 {
+		bodyLines = 0
 	}
 
 	// Tab content — clipped to available lines.
@@ -644,7 +670,7 @@ func (m Model) viewResponsePane(w, h int) string {
 				MaxHeight(bodyLines).
 				Render(limitLines(body, bodyWidth, bodyLines))
 			sb.WriteString(lipgloss.JoinHorizontal(lipgloss.Top, left, "  ", popup))
-			return border.Width(w).Height(h).Render(sb.String())
+			return border.Width(w).Height(h).MaxHeight(h + 2).Render(clipToRows(sb.String(), innerWidth, h))
 		}
 	}
 
@@ -659,9 +685,9 @@ func (m Model) viewResponsePane(w, h int) string {
 		}
 	}
 
-	sb.WriteString(limitLines(body, w, bodyLines))
+	sb.WriteString(limitLines(body, innerWidth, bodyLines))
 
-	return border.Width(w).Height(h).Render(sb.String())
+	return border.Width(w).Height(h).MaxHeight(h + 2).Render(clipToRows(sb.String(), innerWidth, h))
 }
 
 func (m Model) viewTabBar() string {
@@ -1086,7 +1112,7 @@ func headerPriority(key string) int {
 
 // --- Status bar ---
 
-func (m Model) viewStatusBar() string {
+func (m Model) viewStatusBar(statusOverride string) string {
 	items := []hintItem{
 		{Label: "quit", Actions: []string{"quit"}},
 		{Label: "help", Actions: []string{"help"}},
@@ -1114,6 +1140,8 @@ func (m Model) viewStatusBar() string {
 
 	var right string
 	switch {
+	case statusOverride != "":
+		right = errorStyle.Render("  ✗ " + statusOverride)
 	case m.statusSuccess != "":
 		right = goodStyle.Render("  ✓ " + m.statusSuccess)
 	case m.statusErr != "":
@@ -1138,11 +1166,24 @@ func (m Model) viewStatusBar() string {
 		return hints
 	}
 
-	// Right-align the warning only if there's room; otherwise drop it.
+	// Right-align the status message when there's room.
 	gap := m.width - lipgloss.Width(hints) - lipgloss.Width(right)
 	if gap >= 1 {
 		return hints + strings.Repeat(" ", gap) + right
 	}
+
+	// Visual overflow must always be visible — prefer the error over hints when crowded.
+	if statusOverride != "" {
+		if lipgloss.Width(right) >= m.width {
+			return truncate(stripANSI(right), m.width)
+		}
+		avail := m.width - lipgloss.Width(right)
+		if avail < 1 {
+			return right
+		}
+		return truncate(stripANSI(hints), avail) + right
+	}
+
 	return hints
 }
 
@@ -1669,6 +1710,37 @@ func methodBadge(method string) string {
 	return color.Render(method)
 }
 
+// lineVisualRows returns how many terminal rows one logical line occupies when
+// wrapped at contentWidth.
+func lineVisualRows(line string, contentWidth int) int {
+	return lipgloss.Height(softWrap(line, contentWidth))
+}
+
+// truncateLineToVisualRows returns the longest prefix of line that fits within
+// maxVisualRows when wrapped at contentWidth.
+func truncateLineToVisualRows(line string, contentWidth, maxVisualRows int) string {
+	if maxVisualRows <= 0 {
+		return ""
+	}
+	if lineVisualRows(line, contentWidth) <= maxVisualRows {
+		return line
+	}
+	runes := []rune(line)
+	lo, hi := 0, len(runes)
+	for lo < hi {
+		mid := (lo + hi + 1) / 2
+		if lineVisualRows(string(runes[:mid]), contentWidth) <= maxVisualRows {
+			lo = mid
+		} else {
+			hi = mid - 1
+		}
+	}
+	if lo == 0 {
+		return ""
+	}
+	return string(runes[:lo])
+}
+
 // limitLines clips content to fit within maxRows VISUAL rows.
 // It accounts for line wrapping: a logical line wider than contentWidth
 // occupies ceil(lineWidth/contentWidth) visual rows.
@@ -1677,19 +1749,45 @@ func limitLines(s string, contentWidth, maxRows int) string {
 	if contentWidth <= 0 || maxRows <= 0 {
 		return ""
 	}
+	rowsFor := func(line string) int {
+		return lineVisualRows(line, contentWidth)
+	}
+
 	lines := strings.Split(s, "\n")
 	var kept []string
 	used := 0
 	for i, line := range lines {
-		vw := lipgloss.Width(line)
-		rows := 1
-		if vw > contentWidth {
-			rows = (vw + contentWidth - 1) / contentWidth
-		}
+		rows := rowsFor(line)
 		if used+rows > maxRows {
 			hidden := len(lines) - i
+			// The truncation notice occupies rows too, so it must fit within
+			// maxRows. Drop already-kept lines until there's room, otherwise the
+			// pane renders one row taller than its budget and shoves the whole
+			// app up by a line (the top row scrolls off-screen).
+			notice := func() string { return fmt.Sprintf("  … %d more lines", hidden) }
+			for len(kept) > 0 && used+rowsFor(notice()) > maxRows {
+				dropped := kept[len(kept)-1]
+				kept = kept[:len(kept)-1]
+				used -= rowsFor(dropped)
+				hidden++
+			}
 			if hidden > 0 {
-				kept = append(kept, mutedStyle.Render(fmt.Sprintf("  … %d more lines", hidden)))
+				n := notice()
+				// On very small panes even the bare notice can wrap past the
+				// budget; fall back to a single-column marker so we never
+				// overflow maxRows.
+				if used+rowsFor(n) > maxRows {
+					n = "…"
+				}
+				noticeRows := rowsFor(n)
+				lineBudget := maxRows - used - noticeRows
+				if lineBudget > 0 && rows > lineBudget {
+					if partial := truncateLineToVisualRows(line, contentWidth, lineBudget); partial != "" {
+						kept = append(kept, partial)
+						used += rowsFor(partial)
+					}
+				}
+				kept = append(kept, mutedStyle.Render(n))
 			}
 			break
 		}
@@ -1699,21 +1797,42 @@ func limitLines(s string, contentWidth, maxRows int) string {
 	return strings.Join(kept, "\n")
 }
 
+// softWrap re-wraps s exactly the way lipgloss does when rendering with a fixed
+// content width. We must use lipgloss' own wrapping (word-aware, not a simple
+// ceil(width/contentWidth) estimate) so our row math matches what actually gets
+// displayed — a long line containing spaces word-wraps to MORE rows than the
+// naive char-based estimate, which is what caused the response pane to spill one
+// row past its budget and scroll the top of the app off-screen.
+func softWrap(s string, contentWidth int) string {
+	if contentWidth <= 0 {
+		return s
+	}
+	return lipgloss.NewStyle().Width(contentWidth).Render(s)
+}
+
+// clipToRows hard-truncates content to at most maxRows visual rows. It pre-wraps
+// with lipgloss so the returned string is already broken into physical lines no
+// wider than contentWidth; a subsequent border render at >= contentWidth cannot
+// re-wrap it, which guarantees the pane never exceeds maxRows rows. This is the
+// final safety clamp that keeps a huge response body from pushing the whole app
+// past the terminal height.
+func clipToRows(s string, contentWidth, maxRows int) string {
+	if maxRows <= 0 || contentWidth <= 0 {
+		return ""
+	}
+	wrapped := softWrap(s, contentWidth)
+	lines := strings.Split(wrapped, "\n")
+	if len(lines) <= maxRows {
+		return wrapped
+	}
+	return strings.Join(lines[:maxRows], "\n")
+}
+
 func visualRows(s string, contentWidth int) int {
 	if s == "" || contentWidth <= 0 {
 		return 0
 	}
-	lines := strings.Split(s, "\n")
-	rows := 0
-	for _, line := range lines {
-		vw := lipgloss.Width(line)
-		lineRows := 1
-		if vw > contentWidth {
-			lineRows = (vw + contentWidth - 1) / contentWidth
-		}
-		rows += lineRows
-	}
-	return rows
+	return lipgloss.Height(softWrap(s, contentWidth))
 }
 
 func truncate(s string, maxLen int) string {

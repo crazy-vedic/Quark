@@ -514,6 +514,38 @@ func TestE2E_ClickURLWithWideCharactersDoesNotPanic(t *testing.T) {
 	})
 }
 
+func TestE2E_ClickHeaderRowOpensEditor(t *testing.T) {
+	col := &domain.Collection{ID: "col-1", Name: "API"}
+	req := &domain.Request{
+		ID: "req-1", Name: "Create", Method: "POST", URL: "https://example.test",
+		Headers: `{"A-Key":"a","B-Key":"b"}`,
+	}
+	st := setupStore(t, col)
+	seedRequests(t, st, col.ID, req)
+
+	m := newE2EModel(t, st, &mockExecutor{})
+	m = resize(t, m, e2eMouseWidth, e2eMouseHeight)
+	m = callUpdate(t, m, tui.CollectionsLoadedMsg([]*domain.Collection{col}))
+	m = callUpdate(t, m, tui.RequestsLoadedMsg(col.ID, []*domain.Request{req}))
+	m = m.WithActiveRequest(req).WithFocus(tui.RequestPane)
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'h'}})
+	require.Equal(t, tui.HeadersField, m.ActiveField())
+	require.False(t, m.HeaderEditing())
+	require.Len(t, m.HeaderPairs(), 2)
+
+	targetKey := m.HeaderPairs()[1].Key
+	x, y, ok := m.HeaderListRowClickPos(1)
+	require.True(t, ok)
+	m = callUpdate(t, m, click(x, y))
+
+	assert.Equal(t, 1, m.HeaderCursor())
+	assert.True(t, m.HeaderEditing())
+
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	assert.Contains(t, m.ActiveRequest().Headers, targetKey)
+}
+
 func TestE2E_ClickHeaderKeyAndValueInputsFocusCorrectField(t *testing.T) {
 	col := &domain.Collection{ID: "col-1", Name: "API"}
 	req := &domain.Request{

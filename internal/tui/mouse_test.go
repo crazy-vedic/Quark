@@ -308,13 +308,12 @@ func TestUpdate_Mouse_URLClickWideCharactersDoNotPanic(t *testing.T) {
 	})
 }
 
-func TestUpdate_Mouse_HeaderEditClickFocusesInputs(t *testing.T) {
-	t.Parallel()
-
+func headerListMouseModel(t *testing.T, headers string) tui.Model {
+	t.Helper()
 	col := &domain.Collection{ID: "col-1", Name: "API"}
 	req := &domain.Request{
 		ID: "req-1", Name: "Get", Method: "GET", URL: "https://example.test",
-		Headers: `{"X-Test":"old"}`,
+		Headers: headers,
 	}
 	m := tui.New(tui.Deps{
 		Config: defaultConfig(), Executor: &stubExecutor{}, Ctx: context.Background(),
@@ -324,6 +323,56 @@ func TestUpdate_Mouse_HeaderEditClickFocusesInputs(t *testing.T) {
 		WithFocus(tui.RequestPane)
 	m = callUpdate(t, m, tea.WindowSizeMsg{Width: 120, Height: 40})
 	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'h'}})
+	return m
+}
+
+func TestUpdate_Mouse_HeaderListClickSelectsAndEditsRow(t *testing.T) {
+	t.Parallel()
+
+	m := headerListMouseModel(t, `{"A-Key":"a","B-Key":"b","C-Key":"c"}`)
+	require.Equal(t, tui.HeadersField, m.ActiveField())
+	require.False(t, m.HeaderEditing())
+	require.Len(t, m.HeaderPairs(), 3)
+
+	// Determine which pair renders in row index 1 (map order is deterministic
+	// after parse+sort in the editor's slice; assert against that slice).
+	targetKey := m.HeaderPairs()[1].Key
+
+	x, y, ok := m.HeaderListRowClickPos(1)
+	require.True(t, ok)
+	m = callUpdate(t, m, tea.MouseMsg{
+		X: x, Y: y, Action: tea.MouseActionPress, Button: tea.MouseButtonLeft,
+	})
+
+	assert.Equal(t, 1, m.HeaderCursor())
+	assert.True(t, m.HeaderEditing(), "clicking a header row must open it for editing")
+
+	// The edited key input should hold the clicked row's key.
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyEnter}) // confirm pair edit
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyEnter}) // save
+	assert.Contains(t, m.ActiveRequest().Headers, targetKey)
+}
+
+func TestUpdate_Mouse_HeaderListClickOutsideRowsIsNoop(t *testing.T) {
+	t.Parallel()
+
+	m := headerListMouseModel(t, `{"A-Key":"a"}`)
+	require.Len(t, m.HeaderPairs(), 1)
+
+	x, _, ok := m.HeaderListRowClickPos(0)
+	require.True(t, ok)
+
+	// Click well below the single row.
+	got := callUpdate(t, m, tea.MouseMsg{
+		X: x, Y: 30, Action: tea.MouseActionPress, Button: tea.MouseButtonLeft,
+	})
+	assert.False(t, got.HeaderEditing())
+}
+
+func TestUpdate_Mouse_HeaderEditClickFocusesInputs(t *testing.T) {
+	t.Parallel()
+
+	m := headerListMouseModel(t, `{"X-Test":"old"}`)
 	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}})
 	require.True(t, m.HeaderEditing())
 

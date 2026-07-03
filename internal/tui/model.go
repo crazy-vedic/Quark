@@ -232,10 +232,10 @@ type Model struct {
 	loading bool
 
 	// --- Error / success state ---
-	err           error  // unexpected / fatal error
-	validationErr string // Tier 1 — invalid URL etc.
-	statusErr     string // Tier 2 — timeout, retryable
-	statusSuccess string // Tier 3 — body/headers saved, etc.
+	err                   error             // unexpected / fatal error
+	requestValidationErrs map[string]string // request ID → Tier 1 validation error (invalid URL etc.)
+	statusErr             string            // Tier 2 — timeout, retryable
+	statusSuccess         string            // Tier 3 — body/headers saved, etc.
 
 	// --- Search modal ---
 	searchInput   textinput.Model
@@ -409,8 +409,9 @@ func New(deps Deps) Model {
 		bodyTextarea:       bodyTA,
 		headerKeyInput:     headerKeyInput,
 		headerValueInput:   headerValueInput,
-		expanded:           make(map[string]bool),
-		collectionRequests: make(map[string][]*domain.Request),
+		expanded:              make(map[string]bool),
+		collectionRequests:    make(map[string][]*domain.Request),
+		requestValidationErrs: make(map[string]string),
 		reqCursor:          -1, // start on collection, not on a request
 		focus:              sidebarPane,
 		debugLog:           deps.DebugLog,
@@ -539,6 +540,45 @@ func (m Model) status(level, msg string) Model {
 		m.statusErr = ""
 	}
 	return m
+}
+
+// unsavedRequestKey is the validation-error map key used for the request
+// currently in the pane when it has no persisted ID yet (new/unsaved request).
+const unsavedRequestKey = "\x00unsaved"
+
+// activeRequestKey returns the validation-error map key for the active request,
+// falling back to a sentinel when no saved request is selected.
+func (m Model) activeRequestKey() string {
+	if m.activeRequest == nil || m.activeRequest.ID == "" {
+		return unsavedRequestKey
+	}
+	return m.activeRequest.ID
+}
+
+func (m Model) activeValidationErr() string {
+	if m.requestValidationErrs == nil {
+		return ""
+	}
+	return m.requestValidationErrs[m.activeRequestKey()]
+}
+
+func (m Model) setRequestValidationErr(requestID, msg string) Model {
+	if requestID == "" {
+		requestID = unsavedRequestKey
+	}
+	if m.requestValidationErrs == nil {
+		m.requestValidationErrs = make(map[string]string)
+	}
+	if msg == "" {
+		delete(m.requestValidationErrs, requestID)
+	} else {
+		m.requestValidationErrs[requestID] = msg
+	}
+	return m
+}
+
+func (m Model) clearRequestValidationErr(requestID string) Model {
+	return m.setRequestValidationErr(requestID, "")
 }
 
 func searchCmd(ctx context.Context, s RequestSearcher, collectionID, query string) tea.Cmd {
@@ -875,7 +915,9 @@ func (m Model) startRequest(req *domain.Request) (Model, tea.Cmd) {
 	m.loading = true
 	m.err = nil
 	m.statusErr = ""
-	m.validationErr = ""
+	if req != nil {
+		m = m.clearRequestValidationErr(req.ID)
+	}
 	return m, dispatchWithEnvCmd(ctx, m.executor, m.envReader, m.activeEnv, req)
 }
 
@@ -890,7 +932,9 @@ func (m Model) startRawRequest(req *domain.Request) (Model, tea.Cmd) {
 	m.loading = true
 	m.err = nil
 	m.statusErr = ""
-	m.validationErr = ""
+	if req != nil {
+		m = m.clearRequestValidationErr(req.ID)
+	}
 	return m, dispatchCmd(ctx, m.executor, req)
 }
 
@@ -962,6 +1006,7 @@ func (m Model) selectRequest(req *domain.Request) (Model, tea.Cmd) {
 		m.response = nil
 		m.executions = nil
 		m.execCursor = 0
+		m = m.clearStatus()
 	}
 
 	return m, loadExecutionHistoryCmd(m.ctx, m.executionReader, req.ID)
@@ -1022,7 +1067,7 @@ func (m Model) resizeBodyTextarea() Model {
 	if m.activeRequest != nil {
 		fixedLines++ // request name line
 	}
-	if m.validationErr != "" {
+	if m.activeValidationErr() != "" {
 		fixedLines++ // validation error line
 	}
 	if m.loading {

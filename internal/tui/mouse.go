@@ -97,6 +97,7 @@ func (m Model) handleRequestClick(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		if m.headerEditing {
 			return m.handleHeaderEditClick(msg)
 		}
+		return m.handleHeaderListClick(msg)
 	case authField:
 		return m.handleAuthEditClick(msg)
 	case bodyField:
