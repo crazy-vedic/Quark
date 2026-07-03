@@ -2,9 +2,9 @@
 
 ## Config Directory
 
-Controlled by `--config` flag (default: `./.quark`, relative to CWD).
+Controlled by `--config` flag (default: `~/.quark`).
 
-**Important:** README references `~/.quark` but the CLI default is `./.quark`. Production installs typically use `~/.quark` by passing `--config` explicitly or launching from home directory. See [caveats.md](caveats.md).
+Use `--config` to override the config/data directory location. See [caveats.md](caveats.md).
 
 Created with mode `0700` (owner-only) because it holds credentials.
 
