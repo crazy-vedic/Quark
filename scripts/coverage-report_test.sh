@@ -222,6 +222,45 @@ EOF
     rm -rf "$state_dir"
 }
 
+test_prepare_uses_configured_commit_sha_for_report_title() {
+    local repo_dir
+    local state_dir
+    repo_dir="$(mktemp -d)"
+    state_dir="$(mktemp -d)"
+    register_temp_dir "$repo_dir"
+    register_temp_dir "$state_dir"
+
+    setup_repo "$repo_dir"
+
+    cat > "${repo_dir}/app.go" <<'EOF'
+package main
+
+func compute(n int) int {
+	value := n + 2
+	return value
+}
+EOF
+
+    (
+        cd "$repo_dir"
+        COVERAGE_REPORT_STATE_DIR="$state_dir" \
+        COVERAGE_REPORT_BASE_REF=HEAD \
+        COVERAGE_REPORT_COMMIT_SHA="abcdef1234567890" \
+        GITHUB_SERVER_URL="https://github.com" \
+        GITHUB_REPOSITORY="crazy-vedic/Quark" \
+        "${SCRIPT_PATH}" prepare >/dev/null
+    )
+
+    # shellcheck disable=SC1090
+    source "${state_dir}/state.env"
+    assert_eq "${COMMIT_SHA}" "abcde" \
+        "report title should show the configured commit SHA as exactly five chars"
+    assert_eq "${COMMIT_URL}" "https://github.com/crazy-vedic/Quark/commit/abcdef1234567890" \
+        "report title commit link should point at the configured commit SHA"
+
+    cleanup_dirs "$repo_dir" "$state_dir"
+}
+
 test_mcc_counts_unique_modified_lines_not_coverage_blocks() {
     local repo_dir
     local state_dir
@@ -496,6 +535,7 @@ EOF
 main() {
     test_excludes_test_file_changes_and_counts_only_changed_prod_lines
     test_positive_lint_delta_is_signed_for_display
+    test_prepare_uses_configured_commit_sha_for_report_title
     test_mcc_counts_unique_modified_lines_not_coverage_blocks
     test_comment_only_changes_do_not_inflate_mcc
     test_renamed_and_e2e_go_files_are_excluded_from_mcc
