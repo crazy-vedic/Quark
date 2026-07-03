@@ -342,7 +342,8 @@ generate_uncovered_dropdown_from_summary() {
 
         local uncovered_blocks=""
         local block_count="${uncov_count:-0}"
-        while IFS=$'\t' read -r range; do
+        local range
+        for range in "${range1:-}" "${range2:-}" "${range3:-}"; do
             [[ -z "$range" ]] && continue
             local start_line="${range%%:*}"
             local end_line="${range##*:}"
@@ -363,7 +364,7 @@ ${lines_content}
 // ${file}:${start_line} [file not found]
 \`\`\`"
             fi
-        done <<< "$(printf '%s\t%s\t%s' "${range1:-}" "${range2:-}" "${range3:-}")"
+        done
 
         if [[ "$block_count" -gt 0 ]]; then
             temp_details="${temp_details}
@@ -479,6 +480,16 @@ prepare() {
         }
     }' > "$CHANGED_LINES_FILE"
 
+    local commit_full commit_short commit_url
+    commit_full=$(git rev-parse HEAD 2>/dev/null || echo "")
+    commit_short=$(git rev-parse --short HEAD 2>/dev/null || echo "$commit_full")
+    commit_url=""
+    if [[ -n "$commit_full" && -n "${GITHUB_SERVER_URL:-}" && -n "${GITHUB_REPOSITORY:-}" ]]; then
+        commit_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/commit/${commit_full}"
+    fi
+
+    save_state_var "COMMIT_SHA" "$commit_short"
+    save_state_var "COMMIT_URL" "$commit_url"
     save_state_var "STATE_DIR" "$STATE_DIR"
     echo "Prepared coverage report state in $STATE_DIR"
 }
@@ -723,8 +734,17 @@ finalize() {
     tui_uncovered=$(read_text_file "$TUI_UNCOVERED_FILE")
     cli_uncovered=$(read_text_file "$CLI_UNCOVERED_FILE")
 
+    local title="### Coverage Report"
+    if [[ -n "${COMMIT_SHA:-}" ]]; then
+        if [[ -n "${COMMIT_URL:-}" ]]; then
+            title="${title} - \`${COMMIT_SHA}\` [Link to commit](${COMMIT_URL})"
+        else
+            title="${title} - \`${COMMIT_SHA}\`"
+        fi
+    fi
+
     comment=$(cat <<EOF
-### Coverage Report
+${title}
 
 | Check | Value | Delta | MCC |
 |-------|-------|-----------|-----|
