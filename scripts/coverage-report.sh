@@ -145,7 +145,7 @@ file_in_tui_suite_scope() {
 file_in_cli_suite_scope() {
     local file="$1"
     case "$file" in
-        internal/tui/*) return 1 ;;
+        internal/tui/*|internal/tuitest/*) return 1 ;;
         *) return 0 ;;
     esac
 }
@@ -190,7 +190,7 @@ sum_summary_column_for_scope() {
             return path !~ /^internal\/cli\// && path !~ /^cmd\//
         }
         if (scope == "cli") {
-            return path !~ /^internal\/tui\//
+            return path !~ /^internal\/tui\// && path !~ /^internal\/tuitest\//
         }
         return 1
     }

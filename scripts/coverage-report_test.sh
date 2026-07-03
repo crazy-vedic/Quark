@@ -402,7 +402,7 @@ test_e2e_suites_exclude_cross_surface_files() {
 
     setup_repo "$repo_dir"
 
-    mkdir -p "${repo_dir}/internal/tui" "${repo_dir}/internal/cli"
+    mkdir -p "${repo_dir}/internal/tui" "${repo_dir}/internal/cli" "${repo_dir}/internal/tuitest"
     cat > "${repo_dir}/internal/tui/widget.go" <<'EOF'
 package tui
 
@@ -417,8 +417,15 @@ func Command() int {
 	return 1
 }
 EOF
+    cat > "${repo_dir}/internal/tuitest/harness.go" <<'EOF'
+package tuitest
 
-    git -C "$repo_dir" add internal/tui/widget.go internal/cli/command.go
+func Harness() int {
+	return 1
+}
+EOF
+
+    git -C "$repo_dir" add internal/tui/widget.go internal/cli/command.go internal/tuitest/harness.go
     git -C "$repo_dir" commit -m "add tui and cli surfaces" >/dev/null
 
     cat > "${repo_dir}/internal/tui/widget.go" <<'EOF'
@@ -435,23 +442,33 @@ func Command() int {
 	return 20
 }
 EOF
+    cat > "${repo_dir}/internal/tuitest/harness.go" <<'EOF'
+package tuitest
+
+func Harness() int {
+	return 30
+}
+EOF
 
     cat > "${repo_dir}/ut.out" <<EOF
 mode: set
 ${repo_dir}/internal/tui/widget.go:4.1,4.13 1 1
 ${repo_dir}/internal/cli/command.go:4.1,4.13 1 1
+${repo_dir}/internal/tuitest/harness.go:4.1,4.13 1 1
 EOF
 
     cat > "${repo_dir}/tui.out" <<EOF
 mode: set
 ${repo_dir}/internal/tui/widget.go:4.1,4.14 1 1
 ${repo_dir}/internal/cli/command.go:4.1,4.14 1 0
+${repo_dir}/internal/tuitest/harness.go:4.1,4.14 1 1
 EOF
 
     cat > "${repo_dir}/cli.out" <<EOF
 mode: set
 ${repo_dir}/internal/tui/widget.go:4.1,4.14 1 0
 ${repo_dir}/internal/cli/command.go:4.1,4.14 1 1
+${repo_dir}/internal/tuitest/harness.go:4.1,4.14 1 0
 EOF
 
     run_code_change "$repo_dir" "$state_dir" \
@@ -461,8 +478,8 @@ EOF
 
     # shellcheck disable=SC1090
     source "${state_dir}/state.env"
-    assert_eq "${TUI_CODE_COUNT}" "1/1" \
-        "E2E TUI MCC should count only TUI-scoped changed lines"
+    assert_eq "${TUI_CODE_COUNT}" "2/2" \
+        "E2E TUI MCC should count TUI-scoped changed lines including tuitest"
     assert_eq "${CLI_CODE_COUNT}" "1/1" \
         "E2E CLI MCC should count only CLI-scoped changed lines"
 
@@ -470,6 +487,8 @@ EOF
         "E2E TUI uncovered files should exclude CLI-only surface"
     assert_file_not_contains "${state_dir}/cli-uncovered.md" "internal/tui/widget.go" \
         "E2E CLI uncovered files should exclude TUI-only surface"
+    assert_file_not_contains "${state_dir}/cli-uncovered.md" "internal/tuitest/harness.go" \
+        "E2E CLI uncovered files should exclude TUI test harness"
 
     cleanup_dirs "$repo_dir" "$state_dir"
 }
