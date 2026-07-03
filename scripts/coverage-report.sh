@@ -8,6 +8,7 @@
 #   PR_LINT, MASTER_LINT             — lint outputs for PR and master
 #   PR_NUMBER                        — PR number
 #   GITHUB_TOKEN                     — GitHub token for posting comments
+#   COVERAGE_REPORT_COMMIT_SHA       — optional commit SHA to show in title
 #
 # Subcommands:
 #   prepare            — collect shared inputs (changed files, state dir)
@@ -614,10 +615,14 @@ prepare() {
     }' > "$CHANGED_LINES_FILE"
 
     local commit_full commit_short commit_url
-    commit_full=$(git rev-parse HEAD 2>/dev/null || echo "")
-    commit_short=$(git rev-parse --short HEAD 2>/dev/null || echo "$commit_full")
-    commit_url=""
-    if [[ -n "$commit_full" && -n "${GITHUB_SERVER_URL:-}" && -n "${GITHUB_REPOSITORY:-}" ]]; then
+    commit_full="${COVERAGE_REPORT_COMMIT_SHA:-}"
+    if [[ -z "$commit_full" ]]; then
+        commit_full=$(git rev-parse HEAD 2>/dev/null || echo "")
+    fi
+    commit_short="${commit_full:0:5}"
+
+    commit_url="${COVERAGE_REPORT_COMMIT_URL:-}"
+    if [[ -z "$commit_url" && -n "$commit_full" && -n "${GITHUB_SERVER_URL:-}" && -n "${GITHUB_REPOSITORY:-}" ]]; then
         commit_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/commit/${commit_full}"
     fi
 
