@@ -332,12 +332,65 @@ EOF
     cleanup_dirs "$repo_dir" "$state_dir"
 }
 
+test_multiple_uncovered_runs_render_as_separate_blocks() {
+    local repo_dir
+    local state_dir
+    repo_dir="$(mktemp -d)"
+    state_dir="$(mktemp -d)"
+    register_temp_dir "$repo_dir"
+    register_temp_dir "$state_dir"
+
+    setup_repo "$repo_dir"
+
+    cat > "${repo_dir}/app.go" <<'EOF'
+package main
+
+func compute(n int) int {
+	a := n + 1
+	b := a + 1
+	c := b + 1
+	d := c + 1
+	e := d + 1
+	f := e + 1
+	return f
+}
+EOF
+
+    # Alternate uncovered (hits 0) and covered (hits 1) blocks over changed lines
+    # to produce three distinct uncovered runs: {4}, {6-7}, {9-10}.
+    cat > "${repo_dir}/ut.out" <<EOF
+mode: set
+${repo_dir}/app.go:4.1,4.12 1 0
+${repo_dir}/app.go:5.1,5.12 1 1
+${repo_dir}/app.go:6.1,7.12 1 0
+${repo_dir}/app.go:8.1,8.12 1 1
+${repo_dir}/app.go:9.1,10.12 1 0
+EOF
+
+    run_code_change "$repo_dir" "$state_dir" "${repo_dir}/ut.out"
+
+    local block_count
+    block_count=$(grep -c '^```go' "${state_dir}/ut-uncovered.md" || true)
+    assert_eq "$block_count" "3" \
+        "three uncovered runs should render as three separate go code blocks"
+
+    assert_file_contains_exact_line "${state_dir}/ut-uncovered.md" "// app.go:4" \
+        "first uncovered block should start at line 4"
+    assert_file_contains_exact_line "${state_dir}/ut-uncovered.md" "// app.go:6" \
+        "second uncovered block should start at line 6"
+    assert_file_contains_exact_line "${state_dir}/ut-uncovered.md" "// app.go:9" \
+        "third uncovered block should start at line 9"
+
+    cleanup_dirs "$repo_dir" "$state_dir"
+}
+
 main() {
     test_excludes_test_file_changes_and_counts_only_changed_prod_lines
     test_positive_lint_delta_is_signed_for_display
     test_mcc_counts_unique_modified_lines_not_coverage_blocks
     test_comment_only_changes_do_not_inflate_mcc
     test_renamed_and_e2e_go_files_are_excluded_from_mcc
+    test_multiple_uncovered_runs_render_as_separate_blocks
     echo "coverage-report tests passed"
 }
 
