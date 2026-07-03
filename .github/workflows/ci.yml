@@ -335,7 +335,7 @@ jobs:
           key: ${{ steps.go-deps-cache.outputs.cache-primary-key }}
 
   test-e2e-tui:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
