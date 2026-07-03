@@ -6,6 +6,7 @@ package cli
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -142,4 +143,33 @@ func TestCLI_CompletionScriptsAreGenerated(t *testing.T) {
 			assert.Contains(t, out, "quark")
 		})
 	}
+}
+
+func TestCLI_CompletionSetupInstallsWithoutPrintingScript(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	out, stderr, code := runQuarkWithHome(t, home, "completion", "bash", "--setup")
+	require.Equal(t, 0, code, "bash --setup must succeed: %s", stderr)
+	assert.Empty(t, out)
+	assert.Contains(t, stderr, "Enabled bash completions")
+
+	completionFile := filepath.Join(home, ".local", "share", "bash-completion", "completions", "quark")
+	content, err := os.ReadFile(completionFile)
+	require.NoError(t, err)
+	assert.Contains(t, string(content), "quark")
+}
+
+func TestCLI_CompletionSetupSubcommandDetectsShell(t *testing.T) {
+	home := t.TempDir()
+
+	out, stderr, code := runQuarkWithHomeEnv(
+		t,
+		home,
+		[]string{"SHELL=/bin/bash"},
+		"completion", "setup",
+	)
+	require.Equal(t, 0, code, "completion setup must succeed: %s", stderr)
+	assert.Empty(t, out)
+	assert.Contains(t, stderr, "Enabled bash completions")
 }

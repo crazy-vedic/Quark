@@ -67,6 +67,9 @@ func (t *Transaction) DeleteCollection(ctx context.Context, id string) error {
 
 // SaveRequest inserts or updates a request within the transaction.
 func (t *Transaction) SaveRequest(ctx context.Context, req *domain.Request) error {
+	if req.ID == "" {
+		req.ID = uuid.New().String()
+	}
 	headers := req.Headers
 	if headers == "" {
 		headers = "{}"

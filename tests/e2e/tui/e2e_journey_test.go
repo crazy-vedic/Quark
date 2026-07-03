@@ -780,6 +780,102 @@ func TestE2E_CollapseCollectionWithLeftArrow(t *testing.T) {
 	assertViewNotContains(t, m, "First") // request not visible after collapse
 }
 
+// --- E2E: URL editor persistence ---
+
+// TestE2E_URLEditor_PersistsToStore guards against the bug where finishing a
+// URL edit (Enter) only blurred the input without writing the new URL back to
+// the active request or persisting it. Navigating away and back then lost the
+// edited URL because it was never saved.
+func TestE2E_URLEditor_PersistsToStore(t *testing.T) {
+	col := &domain.Collection{ID: "col-1", Name: "API"}
+	st := setupStore(t, col)
+	req := &domain.Request{
+		ID: "req-1", Name: "ewq", Method: "GET", URL: "",
+	}
+	seedRequests(t, st, col.ID, req)
+
+	m := newE2EModel(t, st, &mockExecutor{})
+	m = callUpdate(t, m, tea.WindowSizeMsg{Width: 100, Height: 30})
+	m = callUpdate(t, m, tui.CollectionsLoadedMsg([]*domain.Collection{col}))
+	m = callUpdate(t, m, tui.RequestsLoadedMsg(col.ID, []*domain.Request{req}))
+	m = m.WithActiveRequest(req)
+	m = m.WithFocus(tui.RequestPane)
+
+	// Enter URL editing mode with 'u'.
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'u'}})
+	assert.Equal(t, tui.URLField, m.ActiveField())
+
+	// Type a URL.
+	const newURL = "https://example.com/new"
+	for _, r := range newURL {
+		m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+	}
+	assert.Equal(t, newURL, m.URLValue())
+
+	// Finish editing with Enter — this must persist the URL.
+	var cmd tea.Cmd
+	m, cmd = callUpdateWithCmd(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	assert.Equal(t, tui.NoneField, m.ActiveField())
+
+	// Drain the save command so the store write happens.
+	if cmd != nil {
+		if msg := runCmd(t, cmd); msg != nil {
+			m = callUpdate(t, m, msg)
+		}
+	}
+
+	// The edited URL must be persisted to the store.
+	got, err := st.GetRequest(context.Background(), "req-1")
+	require.NoError(t, err)
+	assert.Equal(t, newURL, got.URL, "edited URL must be persisted to the store")
+
+	// And the in-memory active request must reflect the change.
+	require.NotNil(t, m.ActiveRequest())
+	assert.Equal(t, newURL, m.ActiveRequest().URL, "active request URL must be updated")
+}
+
+// TestE2E_MethodCycle_PersistsToStore guards against the bug where cycling the
+// HTTP method updated the in-memory pane state but never wrote it back to the
+// active request or the store, so the change was lost on navigation.
+func TestE2E_MethodCycle_PersistsToStore(t *testing.T) {
+	col := &domain.Collection{ID: "col-1", Name: "API"}
+	st := setupStore(t, col)
+	req := &domain.Request{
+		ID: "req-1", Name: "ewq", Method: "GET", URL: "https://example.com",
+	}
+	seedRequests(t, st, col.ID, req)
+
+	m := newE2EModel(t, st, &mockExecutor{})
+	m = callUpdate(t, m, tea.WindowSizeMsg{Width: 100, Height: 30})
+	m = callUpdate(t, m, tui.CollectionsLoadedMsg([]*domain.Collection{col}))
+	m = callUpdate(t, m, tui.RequestsLoadedMsg(col.ID, []*domain.Request{req}))
+	m = m.WithActiveRequest(req)
+	m = m.WithMethod("GET")
+	m = m.WithFocus(tui.RequestPane)
+
+	// Cycle the method forward with 'm'.
+	var cmd tea.Cmd
+	m, cmd = callUpdateWithCmd(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'m'}})
+	newMethod := m.Method()
+	assert.NotEqual(t, "GET", newMethod, "method should have cycled")
+
+	// Drain the save command so the store write happens.
+	if cmd != nil {
+		if msg := runCmd(t, cmd); msg != nil {
+			m = callUpdate(t, m, msg)
+		}
+	}
+
+	// The cycled method must be persisted to the store.
+	got, err := st.GetRequest(context.Background(), "req-1")
+	require.NoError(t, err)
+	assert.Equal(t, newMethod, got.Method, "cycled method must be persisted to the store")
+
+	// And the in-memory active request must reflect the change.
+	require.NotNil(t, m.ActiveRequest())
+	assert.Equal(t, newMethod, m.ActiveRequest().Method, "active request method must be updated")
+}
+
 // --- E2E: Body editor ---
 
 func TestE2E_BodyEditor_Save(t *testing.T) {

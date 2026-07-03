@@ -87,24 +87,32 @@ run_code_change() {
     local repo_dir="$1"
     local state_dir="$2"
     local ut_profile="$3"
+    local tui_profile="${4:-}"
+    local cli_profile="${5:-}"
 
-    : > "${repo_dir}/tui.out"
-    : > "${repo_dir}/cli.out"
+    if [[ -z "$tui_profile" ]]; then
+        tui_profile="${repo_dir}/tui.out"
+        : > "$tui_profile"
+    fi
+    if [[ -z "$cli_profile" ]]; then
+        cli_profile="${repo_dir}/cli.out"
+        : > "$cli_profile"
+    fi
 
     (
         cd "$repo_dir"
         COVERAGE_REPORT_STATE_DIR="$state_dir" \
         COVERAGE_REPORT_BASE_REF=HEAD \
         PR_UT="$ut_profile" \
-        PR_TUI="${repo_dir}/tui.out" \
-        PR_CLI="${repo_dir}/cli.out" \
+        PR_TUI="$tui_profile" \
+        PR_CLI="$cli_profile" \
         "${SCRIPT_PATH}" prepare >/dev/null
 
         COVERAGE_REPORT_STATE_DIR="$state_dir" \
         COVERAGE_REPORT_BASE_REF=HEAD \
         PR_UT="$ut_profile" \
-        PR_TUI="${repo_dir}/tui.out" \
-        PR_CLI="${repo_dir}/cli.out" \
+        PR_TUI="$tui_profile" \
+        PR_CLI="$cli_profile" \
         "${SCRIPT_PATH}" code-change >/dev/null
     )
 }
@@ -212,6 +220,45 @@ EOF
 
     rm -f "$pr_lint" "$master_lint"
     rm -rf "$state_dir"
+}
+
+test_prepare_uses_configured_commit_sha_for_report_title() {
+    local repo_dir
+    local state_dir
+    repo_dir="$(mktemp -d)"
+    state_dir="$(mktemp -d)"
+    register_temp_dir "$repo_dir"
+    register_temp_dir "$state_dir"
+
+    setup_repo "$repo_dir"
+
+    cat > "${repo_dir}/app.go" <<'EOF'
+package main
+
+func compute(n int) int {
+	value := n + 2
+	return value
+}
+EOF
+
+    (
+        cd "$repo_dir"
+        COVERAGE_REPORT_STATE_DIR="$state_dir" \
+        COVERAGE_REPORT_BASE_REF=HEAD \
+        COVERAGE_REPORT_COMMIT_SHA="abcdef1234567890" \
+        GITHUB_SERVER_URL="https://github.com" \
+        GITHUB_REPOSITORY="crazy-vedic/Quark" \
+        "${SCRIPT_PATH}" prepare >/dev/null
+    )
+
+    # shellcheck disable=SC1090
+    source "${state_dir}/state.env"
+    assert_eq "${COMMIT_SHA}" "abcde" \
+        "report title should show the configured commit SHA as exactly five chars"
+    assert_eq "${COMMIT_URL}" "https://github.com/crazy-vedic/Quark/commit/abcdef1234567890" \
+        "report title commit link should point at the configured commit SHA"
+
+    cleanup_dirs "$repo_dir" "$state_dir"
 }
 
 test_mcc_counts_unique_modified_lines_not_coverage_blocks() {
@@ -332,12 +379,168 @@ EOF
     cleanup_dirs "$repo_dir" "$state_dir"
 }
 
+test_multiple_uncovered_runs_render_as_separate_blocks() {
+    local repo_dir
+    local state_dir
+    repo_dir="$(mktemp -d)"
+    state_dir="$(mktemp -d)"
+    register_temp_dir "$repo_dir"
+    register_temp_dir "$state_dir"
+
+    setup_repo "$repo_dir"
+
+    cat > "${repo_dir}/app.go" <<'EOF'
+package main
+
+func compute(n int) int {
+	a := n + 1
+	b := a + 1
+	c := b + 1
+	d := c + 1
+	e := d + 1
+	f := e + 1
+	return f
+}
+EOF
+
+    # Alternate uncovered (hits 0) and covered (hits 1) blocks over changed lines
+    # to produce three distinct uncovered runs: {4}, {6-7}, {9-10}.
+    cat > "${repo_dir}/ut.out" <<EOF
+mode: set
+${repo_dir}/app.go:4.1,4.12 1 0
+${repo_dir}/app.go:5.1,5.12 1 1
+${repo_dir}/app.go:6.1,7.12 1 0
+${repo_dir}/app.go:8.1,8.12 1 1
+${repo_dir}/app.go:9.1,10.12 1 0
+EOF
+
+    run_code_change "$repo_dir" "$state_dir" "${repo_dir}/ut.out"
+
+    local block_count
+    block_count=$(grep -c '^```go' "${state_dir}/ut-uncovered.md" || true)
+    assert_eq "$block_count" "3" \
+        "three uncovered runs should render as three separate go code blocks"
+
+    assert_file_contains_exact_line "${state_dir}/ut-uncovered.md" "// app.go:4" \
+        "first uncovered block should start at line 4"
+    assert_file_contains_exact_line "${state_dir}/ut-uncovered.md" "// app.go:6" \
+        "second uncovered block should start at line 6"
+    assert_file_contains_exact_line "${state_dir}/ut-uncovered.md" "// app.go:9" \
+        "third uncovered block should start at line 9"
+
+    cleanup_dirs "$repo_dir" "$state_dir"
+}
+
+test_e2e_suites_exclude_cross_surface_files() {
+    local repo_dir
+    local state_dir
+    repo_dir="$(mktemp -d)"
+    state_dir="$(mktemp -d)"
+    register_temp_dir "$repo_dir"
+    register_temp_dir "$state_dir"
+
+    setup_repo "$repo_dir"
+
+    mkdir -p "${repo_dir}/internal/tui" "${repo_dir}/internal/cli" "${repo_dir}/internal/tuitest"
+    cat > "${repo_dir}/internal/tui/widget.go" <<'EOF'
+package tui
+
+func Widget() int {
+	return 1
+}
+EOF
+    cat > "${repo_dir}/internal/cli/command.go" <<'EOF'
+package cli
+
+func Command() int {
+	return 1
+}
+EOF
+    cat > "${repo_dir}/internal/tuitest/harness.go" <<'EOF'
+package tuitest
+
+func Harness() int {
+	return 1
+}
+EOF
+
+    git -C "$repo_dir" add internal/tui/widget.go internal/cli/command.go internal/tuitest/harness.go
+    git -C "$repo_dir" commit -m "add tui and cli surfaces" >/dev/null
+
+    cat > "${repo_dir}/internal/tui/widget.go" <<'EOF'
+package tui
+
+func Widget() int {
+	return 10
+}
+EOF
+    cat > "${repo_dir}/internal/cli/command.go" <<'EOF'
+package cli
+
+func Command() int {
+	return 20
+}
+EOF
+    cat > "${repo_dir}/internal/tuitest/harness.go" <<'EOF'
+package tuitest
+
+func Harness() int {
+	return 30
+}
+EOF
+
+    cat > "${repo_dir}/ut.out" <<EOF
+mode: set
+${repo_dir}/internal/tui/widget.go:4.1,4.13 1 1
+${repo_dir}/internal/cli/command.go:4.1,4.13 1 1
+${repo_dir}/internal/tuitest/harness.go:4.1,4.13 1 1
+EOF
+
+    cat > "${repo_dir}/tui.out" <<EOF
+mode: set
+${repo_dir}/internal/tui/widget.go:4.1,4.14 1 1
+${repo_dir}/internal/cli/command.go:4.1,4.14 1 0
+${repo_dir}/internal/tuitest/harness.go:4.1,4.14 1 1
+EOF
+
+    cat > "${repo_dir}/cli.out" <<EOF
+mode: set
+${repo_dir}/internal/tui/widget.go:4.1,4.14 1 0
+${repo_dir}/internal/cli/command.go:4.1,4.14 1 1
+${repo_dir}/internal/tuitest/harness.go:4.1,4.14 1 0
+EOF
+
+    run_code_change "$repo_dir" "$state_dir" \
+        "${repo_dir}/ut.out" \
+        "${repo_dir}/tui.out" \
+        "${repo_dir}/cli.out"
+
+    # shellcheck disable=SC1090
+    source "${state_dir}/state.env"
+    assert_eq "${TUI_CODE_COUNT}" "2/2" \
+        "E2E TUI MCC should count TUI-scoped changed lines including tuitest"
+    assert_eq "${CLI_CODE_COUNT}" "1/1" \
+        "E2E CLI MCC should count only CLI-scoped changed lines"
+
+    assert_file_not_contains "${state_dir}/tui-uncovered.md" "internal/cli/command.go" \
+        "E2E TUI uncovered files should exclude CLI-only surface"
+    assert_file_not_contains "${state_dir}/cli-uncovered.md" "internal/tui/widget.go" \
+        "E2E CLI uncovered files should exclude TUI-only surface"
+    assert_file_not_contains "${state_dir}/cli-uncovered.md" "internal/tuitest/harness.go" \
+        "E2E CLI uncovered files should exclude TUI test harness"
+
+    cleanup_dirs "$repo_dir" "$state_dir"
+}
+
 main() {
     test_excludes_test_file_changes_and_counts_only_changed_prod_lines
     test_positive_lint_delta_is_signed_for_display
+    test_prepare_uses_configured_commit_sha_for_report_title
     test_mcc_counts_unique_modified_lines_not_coverage_blocks
     test_comment_only_changes_do_not_inflate_mcc
     test_renamed_and_e2e_go_files_are_excluded_from_mcc
+    test_multiple_uncovered_runs_render_as_separate_blocks
+    test_e2e_suites_exclude_cross_surface_files
     echo "coverage-report tests passed"
 }
 
