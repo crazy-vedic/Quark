@@ -132,6 +132,139 @@ check_threshold() {
     fi
 }
 
+# E2E TUI exercises bubbletea directly; CLI e2e runs the binary. Each suite's
+# profile uses -coverpkg=./..., so cross-surface files appear as uncovered noise.
+file_in_tui_suite_scope() {
+    local file="$1"
+    case "$file" in
+        internal/cli/*|cmd/*) return 1 ;;
+        *) return 0 ;;
+    esac
+}
+
+file_in_cli_suite_scope() {
+    local file="$1"
+    case "$file" in
+        internal/tui/*) return 1 ;;
+        *) return 0 ;;
+    esac
+}
+
+filter_changed_files_for_scope() {
+    local scope="$1"
+    local output_file="$2"
+
+    : > "$output_file"
+    while IFS= read -r file; do
+        [[ -z "$file" ]] && continue
+        case "$scope" in
+            tui)
+                file_in_tui_suite_scope "$file" && printf "%s\n" "$file" >> "$output_file"
+                ;;
+            cli)
+                file_in_cli_suite_scope "$file" && printf "%s\n" "$file" >> "$output_file"
+                ;;
+            *)
+                printf "%s\n" "$file" >> "$output_file"
+                ;;
+        esac
+    done <<< "${CHANGED_FILES:-}"
+}
+
+sum_summary_column_for_scope() {
+    local summary_file="$1"
+    local column="$2"
+    local scope="$3"
+
+    if [[ ! -f "$summary_file" ]] || [[ ! -s "$summary_file" ]]; then
+        echo "0"
+        return
+    fi
+
+    awk -F'\t' -v col="$column" -v scope="$scope" '
+    function in_scope(path) {
+        if (scope == "all") {
+            return 1
+        }
+        if (scope == "tui") {
+            return path !~ /^internal\/cli\// && path !~ /^cmd\//
+        }
+        if (scope == "cli") {
+            return path !~ /^internal\/tui\//
+        }
+        return 1
+    }
+    in_scope($1) {
+        sum += $col
+    }
+    END {
+        print sum + 0
+    }' "$summary_file"
+}
+
+build_effective_changed_files_for_scope() {
+    local scope="$1"
+    local ut_summary_file="$2"
+    local tui_summary_file="$3"
+    local cli_summary_file="$4"
+    local output_file="$5"
+
+    : > "$output_file"
+    while IFS= read -r file; do
+        [[ -z "$file" ]] && continue
+
+        case "$scope" in
+            tui)
+                file_in_tui_suite_scope "$file" || continue
+                ;;
+            cli)
+                file_in_cli_suite_scope "$file" || continue
+                ;;
+        esac
+
+        local file_total=0
+        if [[ -f "$ut_summary_file" ]]; then
+            file_total=$(awk -F'\t' -v target="$file" '$1 == target {print $2; exit}' "$ut_summary_file")
+        fi
+        if [[ -z "$file_total" || "$file_total" == "0" ]] && [[ -f "$tui_summary_file" ]]; then
+            file_total=$(awk -F'\t' -v target="$file" '$1 == target {print $2; exit}' "$tui_summary_file")
+        fi
+        if [[ -z "$file_total" || "$file_total" == "0" ]] && [[ -f "$cli_summary_file" ]]; then
+            file_total=$(awk -F'\t' -v target="$file" '$1 == target {print $2; exit}' "$cli_summary_file")
+        fi
+        if [[ "${file_total:-0}" -gt 0 ]]; then
+            printf "%s\n" "$file" >> "$output_file"
+        fi
+    done <<< "${CHANGED_FILES:-}"
+}
+
+sum_scoped_changed_lines() {
+    local summary_file="$1"
+    local scope="$2"
+    local total=0
+
+    while IFS= read -r file; do
+        [[ -z "$file" ]] && continue
+
+        case "$scope" in
+            tui)
+                file_in_tui_suite_scope "$file" || continue
+                ;;
+            cli)
+                file_in_cli_suite_scope "$file" || continue
+                ;;
+        esac
+
+        local file_total=0
+        if [[ -f "$summary_file" ]] && [[ -s "$summary_file" ]]; then
+            file_total=$(awk -F'\t' -v target="$file" '$1 == target {print $2; exit}' "$summary_file")
+        fi
+        total=$((total + ${file_total:-0}))
+    done <<< "${CHANGED_FILES:-}"
+
+    echo "$total"
+}
+
 build_profile_index() {
     local profile="$1"
     local output_file="$2"
@@ -581,6 +714,8 @@ code_change() {
     local tui_uncovered_file="${work_dir}/tui-uncovered.txt"
     local cli_uncovered_file="${work_dir}/cli-uncovered.txt"
     local effective_changed_files_file="${work_dir}/effective-changed-files.txt"
+    local tui_effective_changed_files_file="${work_dir}/tui-effective-changed-files.txt"
+    local cli_effective_changed_files_file="${work_dir}/cli-effective-changed-files.txt"
     local ut_time_file="${work_dir}/ut-index.ms"
     local tui_time_file="${work_dir}/tui-index.ms"
     local cli_time_file="${work_dir}/cli-index.ms"
@@ -598,6 +733,8 @@ code_change() {
     rm -rf "$work_dir"
     mkdir -p "$work_dir"
     : > "$effective_changed_files_file"
+    : > "$tui_effective_changed_files_file"
+    : > "$cli_effective_changed_files_file"
 
     (
         phase_start=$(now_ms)
@@ -646,12 +783,19 @@ code_change() {
         fi
         total_changed_lines=$((total_changed_lines + ${file_total:-0}))
     done <<< "$CHANGED_FILES"
+
+    build_effective_changed_files_for_scope "tui" "$ut_summary_file" "$tui_summary_file" "$cli_summary_file" "$tui_effective_changed_files_file"
+    build_effective_changed_files_for_scope "cli" "$ut_summary_file" "$tui_summary_file" "$cli_summary_file" "$cli_effective_changed_files_file"
     phase_end=$(now_ms)
     echo $((phase_end - phase_start)) > "$total_lines_time_file"
 
     ut_covered=$(sum_summary_column "$ut_summary_file" 3)
-    tui_covered=$(sum_summary_column "$tui_summary_file" 3)
-    cli_covered=$(sum_summary_column "$cli_summary_file" 3)
+    tui_covered=$(sum_summary_column_for_scope "$tui_summary_file" 3 "tui")
+    cli_covered=$(sum_summary_column_for_scope "$cli_summary_file" 3 "cli")
+
+    local tui_total_changed_lines cli_total_changed_lines
+    tui_total_changed_lines=$(sum_scoped_changed_lines "$tui_summary_file" "tui")
+    cli_total_changed_lines=$(sum_scoped_changed_lines "$cli_summary_file" "cli")
 
     phase_start=$(now_ms)
     generate_uncovered_dropdown_from_summary "$ut_summary_file" "UT" "$effective_changed_files_file" > "$ut_uncovered_file"
@@ -659,12 +803,12 @@ code_change() {
     echo $((phase_end - phase_start)) > "$ut_uncovered_time_file"
 
     phase_start=$(now_ms)
-    generate_uncovered_dropdown_from_summary "$tui_summary_file" "E2E TUI" "$effective_changed_files_file" > "$tui_uncovered_file"
+    generate_uncovered_dropdown_from_summary "$tui_summary_file" "E2E TUI" "$tui_effective_changed_files_file" > "$tui_uncovered_file"
     phase_end=$(now_ms)
     echo $((phase_end - phase_start)) > "$tui_uncovered_time_file"
 
     phase_start=$(now_ms)
-    generate_uncovered_dropdown_from_summary "$cli_summary_file" "E2E CLI" "$effective_changed_files_file" > "$cli_uncovered_file"
+    generate_uncovered_dropdown_from_summary "$cli_summary_file" "E2E CLI" "$cli_effective_changed_files_file" > "$cli_uncovered_file"
     phase_end=$(now_ms)
     echo $((phase_end - phase_start)) > "$cli_uncovered_time_file"
 
@@ -692,10 +836,10 @@ code_change() {
     fi
 
     ut_code_change=$(format_code_change "$ut_covered" "$total_changed_lines")
-    tui_code_change=$(format_code_change "$tui_covered" "$total_changed_lines")
-    cli_code_change=$(format_code_change "$cli_covered" "$total_changed_lines")
+    tui_code_change=$(format_code_change "$tui_covered" "$tui_total_changed_lines")
+    cli_code_change=$(format_code_change "$cli_covered" "$cli_total_changed_lines")
 
-    echo "[coverage-report] code-change: total_changed_lines=${total_changed_lines} lint_threshold=${lint_threshold}"
+    echo "[coverage-report] code-change: total_changed_lines=${total_changed_lines} tui_changed_lines=${tui_total_changed_lines} cli_changed_lines=${cli_total_changed_lines} lint_threshold=${lint_threshold}"
 
     save_state_var "TOTAL_CHANGED_LINES" "$total_changed_lines"
     save_state_var "MCC" "$total_changed_lines"
@@ -737,7 +881,7 @@ finalize() {
     local title="### Coverage Report"
     if [[ -n "${COMMIT_SHA:-}" ]]; then
         if [[ -n "${COMMIT_URL:-}" ]]; then
-            title="${title} - \`${COMMIT_SHA}\` [Link to commit](${COMMIT_URL})"
+            title="${title} - [${COMMIT_SHA}](${COMMIT_URL})"
         else
             title="${title} - \`${COMMIT_SHA}\`"
         fi
