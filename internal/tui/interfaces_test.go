@@ -111,7 +111,7 @@ func TestModel_SearchCancel_CalledBeforeNewSearch(t *testing.T) {
 	m = m.WithSearchCancel(func() { cancelled = true })
 
 	// Dispatch a search keystroke — should cancel the stale search first.
-	update(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")})
+	callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")})
 
 	assert.True(
 		t,
@@ -125,7 +125,7 @@ func TestModel_SearchCancel_CalledBeforeNewSearch(t *testing.T) {
 func TestModel_SearchCancel_SetAfterDispatch(t *testing.T) {
 	m := newModel(defaultConfig()).WithMode(tui.SearchMode)
 
-	updated := update(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")})
+	updated := callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")})
 
 	// searchCancel should now be set since a search was dispatched.
 	assert.NotNil(t, updated.SearchCancel(), "searchCancel must be set after dispatching a search")
