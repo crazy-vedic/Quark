@@ -5,5 +5,5 @@ coverage.out
 /.bin/
 /bin/
 /docs/
-.agents/
 .quark/
+*.db

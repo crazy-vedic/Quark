@@ -664,6 +664,7 @@ jobs:
       MASTER_LINT: /tmp/coverage-master/lint-output.txt
       PR_NUMBER: ${{ github.event.number }}
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      COVERAGE_REPORT_COMMIT_SHA: ${{ github.event.pull_request.head.sha }}
     steps:
       - uses: actions/checkout@v4
         with:

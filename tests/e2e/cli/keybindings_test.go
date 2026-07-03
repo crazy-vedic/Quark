@@ -38,11 +38,16 @@ func runQuark(t *testing.T, args ...string) (string, string, int) {
 }
 
 func runQuarkWithHome(t *testing.T, home string, args ...string) (string, string, int) {
+	return runQuarkWithHomeEnv(t, home, nil, args...)
+}
+
+func runQuarkWithHomeEnv(t *testing.T, home string, extraEnv []string, args ...string) (string, string, int) {
 	t.Helper()
 	cmd := exec.Command(binaryPath, args...)
 	cmd.Dir = home
-	// Redirect HOME so ~/.quark/config.toml is inside the given dir.
-	cmd.Env = append(os.Environ(), "HOME="+home)
+	env := append(os.Environ(), "HOME="+home)
+	env = append(env, extraEnv...)
+	cmd.Env = env
 	var stdoutBuf, stderrBuf bytes.Buffer
 	cmd.Stdout = &stdoutBuf
 	cmd.Stderr = &stderrBuf

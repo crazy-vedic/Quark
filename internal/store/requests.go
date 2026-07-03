@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/google/uuid"
+
 	"github.com/crazy-vedic/quark/internal/domain"
 )
 
@@ -84,6 +86,9 @@ func (s *Store) ListRequests(ctx context.Context, collectionID string) ([]*domai
 
 // SaveRequest inserts or updates a request.
 func (s *Store) SaveRequest(ctx context.Context, req *domain.Request) error {
+	if req.ID == "" {
+		req.ID = uuid.New().String()
+	}
 	headers := req.Headers
 	if headers == "" {
 		headers = "{}"

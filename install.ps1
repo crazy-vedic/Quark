@@ -40,27 +40,7 @@ function Install-QuarkPowerShellCompletion {
         return
     }
 
-    $completionDir = Join-Path $HOME "Documents\PowerShell\Completions"
-    $completionPath = Join-Path $completionDir "quark.ps1"
-    $profilePath = $PROFILE.CurrentUserAllHosts
-    $marker = "# >>> quark completion >>>"
-
-    New-Item -ItemType Directory -Path $completionDir -Force | Out-Null
-    & $BinaryPath completion powershell | Out-File -FilePath $completionPath -Encoding utf8
-
-    $block = @"
-$marker
-if (Test-Path "$completionPath") {
-    . "$completionPath"
-}
-# <<< quark completion <<<
-"@
-
-    if (Add-BlockIfMissing -TargetFile $profilePath -Marker $marker -Block $block) {
-        Write-Host "==> Enabled PowerShell completions in $profilePath" -ForegroundColor Green
-    } else {
-        Write-Host "==> Updated PowerShell completions at $completionPath" -ForegroundColor Green
-    }
+    & $BinaryPath completion powershell --setup
 }
 
 function Prompt-InstallQuarkPowerShellCompletion {

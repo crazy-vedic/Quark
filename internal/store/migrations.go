@@ -152,6 +152,37 @@ DROP INDEX IF EXISTS idx_scheduled_runs_due;
 DROP TABLE IF EXISTS scheduled_runs;
 `,
 	},
+	{
+		version: 7,
+		name:    "repair_empty_request_ids",
+		upSQL: `
+PRAGMA defer_foreign_keys = ON;
+
+CREATE TEMP TABLE request_id_repairs (
+    old_id TEXT PRIMARY KEY,
+    new_id TEXT NOT NULL
+);
+
+INSERT INTO request_id_repairs (old_id, new_id)
+SELECT id, lower(hex(randomblob(16)))
+FROM requests
+WHERE id = '';
+
+UPDATE executions
+SET request_id = (SELECT new_id FROM request_id_repairs WHERE old_id = executions.request_id)
+WHERE request_id IN (SELECT old_id FROM request_id_repairs);
+
+UPDATE scheduled_runs
+SET request_id = (SELECT new_id FROM request_id_repairs WHERE old_id = scheduled_runs.request_id)
+WHERE request_id IN (SELECT old_id FROM request_id_repairs);
+
+UPDATE requests
+SET id = (SELECT new_id FROM request_id_repairs WHERE old_id = requests.id)
+WHERE id IN (SELECT old_id FROM request_id_repairs);
+
+DROP TABLE request_id_repairs;
+`,
+	},
 }
 
 // migrate runs all pending migrations in order.
