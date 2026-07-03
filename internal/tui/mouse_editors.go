@@ -33,7 +33,7 @@ func (m Model) requestPaneLineLayout(layout normalLayout) requestPaneLineLayout 
 	}
 	topLines++ // blank separator line
 
-	if m.validationErr != "" {
+	if m.activeValidationErr() != "" {
 		topLines++
 	}
 	if m.loading {
@@ -100,6 +100,26 @@ func (m Model) handleURLLineClick(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		cmd = textinput.Blink
 	}
 	return m, cmd
+}
+
+// handleHeaderListClick handles clicks on the header pair list (before editing
+// begins). Clicking a row selects it and opens it for inline editing, mirroring
+// the keyboard select-then-edit flow.
+func (m Model) handleHeaderListClick(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	if len(m.headerPairs) == 0 {
+		return m, nil
+	}
+
+	layout := normalLayoutFor(m.width, m.height)
+	ll := m.requestPaneLineLayout(layout)
+
+	idx := msg.Y - ll.editorContentY
+	if idx < 0 || idx >= len(m.headerPairs) {
+		return m, nil
+	}
+
+	m.headerCursor = idx
+	return m.beginHeaderPairEdit(m.headerPairs[idx])
 }
 
 func (m Model) handleHeaderEditClick(msg tea.MouseMsg) (Model, tea.Cmd) {

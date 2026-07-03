@@ -53,6 +53,7 @@ func TestUpdate_ErrTimeout_SetsStatusErr(t *testing.T) {
 
 func TestUpdate_ErrInvalidURL_SetsValidationErr(t *testing.T) {
 	m := newTestModel()
+	m = m.WithActiveRequest(&domain.Request{ID: "req-1", Method: "GET", URL: "://bad"})
 	m = m.WithLoading(true)
 
 	updated := callUpdate(t, m, tui.HttpErrMsg(
@@ -62,6 +63,38 @@ func TestUpdate_ErrInvalidURL_SetsValidationErr(t *testing.T) {
 	assert.False(t, updated.Loading())
 	assert.NotEmpty(t, updated.ValidationErr(), "invalid URL must set validation error")
 	assert.Empty(t, updated.StatusErr())
+}
+
+func TestSelectRequest_SwitchingRequests_ShowsEachRequestsValidationErr(t *testing.T) {
+	reqA := &domain.Request{ID: "a", Method: "GET", URL: "://bad"}
+	reqB := &domain.Request{ID: "b", Method: "GET", URL: "https://example.com"}
+
+	m := newTestModel().
+		WithActiveRequest(reqA).
+		WithRequestValidationErr("a", "invalid URL: ://bad")
+
+	m, _ = m.SelectRequest(reqB)
+
+	assert.Empty(t, m.ValidationErr(),
+		"request B should not show request A's validation error")
+
+	m, _ = m.SelectRequest(reqA)
+
+	assert.Equal(t, "invalid URL: ://bad", m.ValidationErr(),
+		"switching back to request A should restore its validation error")
+}
+
+func TestSelectRequest_SameRequest_KeepsValidationErr(t *testing.T) {
+	reqA := &domain.Request{ID: "a", Method: "GET", URL: "://bad"}
+
+	m := newTestModel().
+		WithActiveRequest(reqA).
+		WithValidationErr("invalid URL: ://bad")
+
+	m, _ = m.SelectRequest(reqA)
+
+	assert.NotEmpty(t, m.ValidationErr(),
+		"validation error must remain when re-selecting the same request")
 }
 
 func TestUpdate_ErrCancelled_NoErrorShown(t *testing.T) {
@@ -1094,6 +1127,7 @@ func TestUpdate_EscFromImportMode_AllowsGlobalKeys(t *testing.T) {
 
 func TestUpdate_InvalidURLError_NoDuplicatePrefix(t *testing.T) {
 	m := newTestModel()
+	m = m.WithActiveRequest(&domain.Request{ID: "req-1", Method: "GET", URL: "bad"})
 	// Executor now wraps once: "exec: build request: <buildHTTPRequest error>".
 	// buildHTTPRequest wraps ErrInvalidURL → "invalid URL: scheme..."
 	// Combined: "exec: build request: invalid URL: scheme..."
