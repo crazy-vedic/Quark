@@ -13,7 +13,7 @@ Quark is **not** a web app, API server, or multi-user system. It is a terminal t
 1. **Wire concrete types only in `cmd/quark/main.go`** — all other packages consume narrow interfaces defined at the consumer side.
 2. **Migrations are append-only** — never reorder or remove entries in `internal/store/migrations.go`; add new migrations at the end.
 3. **HTTP 4xx/5xx are not Go errors** — only network failures, timeouts, and cancellation return errors from `exec.Executor.Execute`.
-4. **Config dir default is `./.quark`** (CWD-relative), not `~/.quark` as README suggests — always respect `--config`.
+4. **Config dir default is `~/.quark`** (home dir) — always respect `--config`.
 5. **Credentials are stored plaintext** in SQLite; security relies on filesystem permissions (`0700` dir, `0600` files).
 
 ## Task Router
