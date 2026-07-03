@@ -35,6 +35,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case tea.MouseMsg:
+		return m.handleMouse(msg)
+
 	case collectionsLoadedMsg:
 		m.collections = msg.collections
 		m.colCursor = 0
@@ -425,11 +428,9 @@ func (m Model) handleRequestAction(action string) (tea.Model, tea.Cmd) {
 	case keybindings.ActionEditURL:
 		return m.beginURLEdit()
 	case keybindings.ActionMethodNext:
-		m.method = nextMethod(m.method)
-		return m, nil
+		return m.cycleMethod(nextMethod)
 	case keybindings.ActionMethodPrev:
-		m.method = prevMethod(m.method)
-		return m, nil
+		return m.cycleMethod(prevMethod)
 	case keybindings.ActionSendRequest:
 		if m.loading || m.executor == nil {
 			return m, nil
@@ -622,8 +623,7 @@ func (m Model) handleRequestKey(_ string, msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m.triggerCurlImport(m.urlInput.Value())
 		}
 		if msg.Type == tea.KeyEnter {
-			m.activeField = noneField
-			m.urlInput.Blur()
+			return m.finishURLEdit()
 		}
 		return m, cmd
 	case bodyField:
@@ -1255,6 +1255,7 @@ func (m Model) handleHTTPResponse(msg httpResponseMsg) (tea.Model, tea.Cmd) {
 	m.cancel = nil
 	m.err = nil
 	m = m.clearStatus()
+	m = m.clearRequestValidationErr(msg.requestID)
 	if m.response != nil {
 		_ = m.response.Cleanup() // release any temp file from previous response
 	}
@@ -1268,9 +1269,12 @@ func (m Model) handleHTTPResponse(msg httpResponseMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleHTTPErr(msg httpErrMsg) (tea.Model, tea.Cmd) {
-	if msg.requestID != "" && m.activeRequest != nil && m.activeRequest.ID != msg.requestID {
+	if msg.requestID != "" && (m.activeRequest == nil || m.activeRequest.ID != msg.requestID) {
 		m.loading = false
 		m.cancel = nil
+		if errors.Is(msg.err, exec.ErrInvalidURL) {
+			m = m.setRequestValidationErr(msg.requestID, msg.err.Error())
+		}
 		return m, nil
 	}
 	m.loading = false
@@ -1282,7 +1286,11 @@ func (m Model) handleHTTPErr(msg httpErrMsg) (tea.Model, tea.Cmd) {
 	}
 
 	if errors.Is(msg.err, exec.ErrInvalidURL) {
-		m.validationErr = msg.err.Error()
+		requestID := msg.requestID
+		if requestID == "" && m.activeRequest != nil {
+			requestID = m.activeRequest.ID
+		}
+		m = m.setRequestValidationErr(requestID, msg.err.Error())
 		return m, historyCmd
 	}
 	if errors.Is(msg.err, exec.ErrRequestCancelled) {

@@ -1,6 +1,6 @@
 //go:build e2e
 
-// Run with: go test -tags e2e ./internal/cli/...
+// Run with: go test -tags e2e ./tests/e2e/cli/...
 package cli
 
 import (
@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	quarkcli "github.com/crazy-vedic/quark/internal/cli"
 	"github.com/crazy-vedic/quark/internal/domain"
 	"github.com/crazy-vedic/quark/internal/exec"
 	"github.com/crazy-vedic/quark/internal/store"
@@ -44,7 +45,7 @@ func (rt *e2eRecordingRoundTripper) RoundTrip(req *http.Request) (*http.Response
 	return rt.response, nil
 }
 
-func TestE2E_RunCommand_UsesPositionalsNamedVarsAndStoredEnvs(t *testing.T) {
+func TestRunCommand_UsesPositionalsNamedVarsAndStoredEnvs(t *testing.T) {
 	st, err := store.New(filepath.Join(t.TempDir(), "cli-e2e.db"), store.WithCacheSize(100))
 	require.NoError(t, err)
 	defer st.Close()
@@ -97,7 +98,7 @@ func TestE2E_RunCommand_UsesPositionalsNamedVarsAndStoredEnvs(t *testing.T) {
 	}
 	executor := exec.New(transport)
 
-	cmd := NewRunCmd(st, executor)
+	cmd := quarkcli.NewRunCmd(st, executor)
 	var out bytes.Buffer
 	cmd.SetOut(&out)
 	cmd.SetErr(&out)
@@ -119,7 +120,7 @@ func TestE2E_RunCommand_UsesPositionalsNamedVarsAndStoredEnvs(t *testing.T) {
 	assert.Contains(t, out.String(), `{"ok":true}`)
 }
 
-func TestE2E_RunCommand_FallbackErrorsWhenNoCandidateResolves(t *testing.T) {
+func TestRunCommand_FallbackErrorsWhenNoCandidateResolves(t *testing.T) {
 	st, err := store.New(filepath.Join(t.TempDir(), "cli-e2e.db"), store.WithCacheSize(100))
 	require.NoError(t, err)
 	defer st.Close()
@@ -148,7 +149,7 @@ func TestE2E_RunCommand_FallbackErrorsWhenNoCandidateResolves(t *testing.T) {
 	}
 	executor := exec.New(transport)
 
-	cmd := NewRunCmd(st, executor)
+	cmd := quarkcli.NewRunCmd(st, executor)
 	cmd.SetArgs([]string{"API/create-item"})
 	cmd.SetContext(ctx)
 
@@ -157,7 +158,7 @@ func TestE2E_RunCommand_FallbackErrorsWhenNoCandidateResolves(t *testing.T) {
 	assert.Contains(t, err.Error(), `1|merchant_id`)
 }
 
-func TestE2E_RunCommand_UsesStructuredAuth(t *testing.T) {
+func TestRunCommand_UsesStructuredAuth(t *testing.T) {
 	st, err := store.New(filepath.Join(t.TempDir(), "cli-auth-e2e.db"), store.WithCacheSize(100))
 	require.NoError(t, err)
 	defer st.Close()
@@ -193,7 +194,7 @@ func TestE2E_RunCommand_UsesStructuredAuth(t *testing.T) {
 	}
 	executor := exec.New(transport)
 
-	cmd := NewRunCmd(st, executor)
+	cmd := quarkcli.NewRunCmd(st, executor)
 	cmd.SetArgs([]string{"API/auth"})
 	cmd.SetContext(ctx)
 

@@ -129,6 +129,8 @@ quark run "Collection Name/Request Name"
 
 ## Development
 
+Agent documentation lives in [`.agents/INDEX.md`](.agents/INDEX.md) — start there when working with AI agents.
+
 ```bash
 make build       # Build
 make run         # Run

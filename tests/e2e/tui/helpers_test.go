@@ -68,6 +68,26 @@ func executeCmdUpdate(t *testing.T, m tui.Model, cmd tea.Cmd) tui.Model {
 	return tuitest.ExecuteCmdUpdate(t, m, cmd)
 }
 
+func click(x, y int) tea.MouseMsg {
+	return tuitest.Click(x, y)
+}
+
+func rightClick(x, y int) tea.MouseMsg {
+	return tuitest.RightClick(x, y)
+}
+
+func wheelUp(x, y int) tea.MouseMsg {
+	return tuitest.WheelUp(x, y)
+}
+
+func wheelDown(x, y int) tea.MouseMsg {
+	return tuitest.WheelDown(x, y)
+}
+
+func resize(t *testing.T, m tui.Model, width, height int) tui.Model {
+	return tuitest.Resize(t, m, width, height)
+}
+
 func assertViewContains(t *testing.T, m tui.Model, want string) {
 	tuitest.AssertViewContains(t, m, want)
 }

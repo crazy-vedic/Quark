@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestContentTypeFromBodyLanguage(t *testing.T) {
+func TestMapper_ContentTypeFromBodyLanguage(t *testing.T) {
 	json := `{
 		"info": {"name": "Test", "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"},
 		"item": [{
@@ -34,7 +34,7 @@ func TestContentTypeFromBodyLanguage(t *testing.T) {
 	assert.Contains(t, result.Requests[0].Headers, `application/json`)
 }
 
-func TestURLProtocolExtracted(t *testing.T) {
+func TestMapper_URLProtocolExtracted(t *testing.T) {
 	json := `{
 		"info": {"name": "Test", "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"},
 		"item": [{
@@ -58,7 +58,7 @@ func TestURLProtocolExtracted(t *testing.T) {
 	assert.Equal(t, "http://example.com/api", result.Requests[0].URL)
 }
 
-func TestURLProtocolFromStructuredURL(t *testing.T) {
+func TestMapper_URLProtocolFromStructuredURL(t *testing.T) {
 	json := `{
 		"info": {"name": "Test", "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"},
 		"item": [{

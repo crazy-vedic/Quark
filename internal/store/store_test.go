@@ -2,6 +2,7 @@ package store_test
 
 import (
 	"context"
+	"database/sql"
 	"path/filepath"
 	"testing"
 	"time"
@@ -184,6 +185,65 @@ func TestStore_SaveRequest_And_GetRequest(t *testing.T) {
 	assert.Equal(t, req.Name, got.Name)
 	assert.Equal(t, req.AuthType, got.AuthType)
 	assert.Equal(t, req.AuthConfig, got.AuthConfig)
+}
+
+// TestStore_SaveRequest_GeneratesIDWhenEmpty guards against the bug where two
+// new requests saved with an empty ID collided on the same primary key ("") and
+// the second overwrote the first via ON CONFLICT(id) DO UPDATE.
+func TestStore_SaveRequest_GeneratesIDWhenEmpty(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	c := &domain.Collection{ID: uuid.New().String(), Name: "Col"}
+	require.NoError(t, s.SaveCollection(ctx, c))
+
+	req1 := &domain.Request{CollectionID: c.ID, Name: "new request", Method: "GET"}
+	require.NoError(t, s.SaveRequest(ctx, req1))
+	assert.NotEmpty(t, req1.ID, "SaveRequest should generate an ID when empty")
+
+	req2 := &domain.Request{CollectionID: c.ID, Name: "new request 2", Method: "GET"}
+	require.NoError(t, s.SaveRequest(ctx, req2))
+	assert.NotEmpty(t, req2.ID)
+	assert.NotEqual(t, req1.ID, req2.ID, "each new request must get a distinct ID")
+
+	reqs, err := s.ListRequests(ctx, c.ID)
+	require.NoError(t, err)
+	assert.Len(t, reqs, 2, "both requests should persist without overwriting")
+}
+
+func TestStore_MigrationRepairsLegacyEmptyRequestIDs(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "test.db")
+	s, err := store.New(path)
+	require.NoError(t, err)
+	require.NoError(t, s.Close())
+
+	db, err := sql.Open("sqlite", path)
+	require.NoError(t, err)
+	_, err = db.ExecContext(ctx, `DELETE FROM schema_versions WHERE version = 7`)
+	require.NoError(t, err)
+	_, err = db.ExecContext(
+		ctx,
+		`INSERT INTO collections (id, name) VALUES ('col-1', 'Col')`,
+	)
+	require.NoError(t, err)
+	_, err = db.ExecContext(
+		ctx,
+		`INSERT INTO requests (id, collection_id, name, method, url, headers, auth_config)
+		 VALUES ('', 'col-1', 'ewq', 'GET', '', '{}', '{}')`,
+	)
+	require.NoError(t, err)
+	require.NoError(t, db.Close())
+
+	s, err = store.New(path)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	reqs, err := s.ListRequests(ctx, "col-1")
+	require.NoError(t, err)
+	require.Len(t, reqs, 1)
+	assert.NotEmpty(t, reqs[0].ID)
+	assert.NotEqual(t, "", reqs[0].ID)
 }
 
 func TestStore_GetRequest_NotFound(t *testing.T) {
