@@ -35,6 +35,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case tea.MouseMsg:
+		return m.handleMouse(msg)
+
 	case collectionsLoadedMsg:
 		m.collections = msg.collections
 		m.colCursor = 0
@@ -425,11 +428,9 @@ func (m Model) handleRequestAction(action string) (tea.Model, tea.Cmd) {
 	case keybindings.ActionEditURL:
 		return m.beginURLEdit()
 	case keybindings.ActionMethodNext:
-		m.method = nextMethod(m.method)
-		return m, nil
+		return m.cycleMethod(nextMethod)
 	case keybindings.ActionMethodPrev:
-		m.method = prevMethod(m.method)
-		return m, nil
+		return m.cycleMethod(prevMethod)
 	case keybindings.ActionSendRequest:
 		if m.loading || m.executor == nil {
 			return m, nil
@@ -622,8 +623,7 @@ func (m Model) handleRequestKey(_ string, msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m.triggerCurlImport(m.urlInput.Value())
 		}
 		if msg.Type == tea.KeyEnter {
-			m.activeField = noneField
-			m.urlInput.Blur()
+			return m.finishURLEdit()
 		}
 		return m, cmd
 	case bodyField:

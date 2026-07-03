@@ -1010,12 +1010,8 @@ func (m Model) sidebarVisible() int {
 // resizeBodyTextarea sets the body textarea to fill the exact remaining space
 // in the request pane. Called on body activation and window resize.
 func (m Model) resizeBodyTextarea() Model {
-	// Compute request pane inner height (same formula as viewNormal).
-	rightInnerTotal := m.height - 5
-	if rightInnerTotal < 2 {
-		rightInnerTotal = 2
-	}
-	requestInnerH := rightInnerTotal / 2
+	layout := normalLayoutFor(m.width, m.height)
+	requestInnerH := layout.requestH
 	if requestInnerH < 1 {
 		requestInnerH = 1
 	}
@@ -1039,16 +1035,7 @@ func (m Model) resizeBodyTextarea() Model {
 	}
 	m.bodyTextarea.SetHeight(avail)
 
-	// Compute request pane inner width (same formula as viewNormal).
-	sidebarW := 26
-	if m.width < 80 {
-		sidebarW = 20
-	}
-	mainW := m.width - sidebarW - 4
-	if mainW < 10 {
-		mainW = 10
-	}
-	innerW := mainW - 2 // subtract border
+	innerW := layout.mainW - 2 // subtract border
 	if innerW < 5 {
 		innerW = 5
 	}
