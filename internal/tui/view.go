@@ -53,9 +53,10 @@ var (
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(muted)
 
-	titleStyle  = lipgloss.NewStyle().Bold(true).Foreground(blue)
-	methodStyle = lipgloss.NewStyle().Bold(true).Foreground(cyan)
-	mutedStyle  = lipgloss.NewStyle().Foreground(muted)
+	titleStyle      = lipgloss.NewStyle().Bold(true).Foreground(blue)
+	methodStyle     = lipgloss.NewStyle().Bold(true).Foreground(cyan)
+	sendButtonStyle = lipgloss.NewStyle().Bold(true).Foreground(green)
+	mutedStyle      = lipgloss.NewStyle().Foreground(muted)
 	errorStyle  = lipgloss.NewStyle().Foreground(red)
 	goodStyle   = lipgloss.NewStyle().Foreground(green)
 	warnStyle   = lipgloss.NewStyle().Foreground(yellow)
@@ -188,47 +189,17 @@ var _ tea.Model = Model{}
 // --- Normal 3-pane layout ---
 
 func (m Model) viewNormal() string {
-	sidebarW := 26
-	if m.width < 80 {
-		sidebarW = 20
-	}
+	paneLayout := normalLayoutFor(m.width, m.height)
 
-	// mainW: full width minus sidebar outer (sidebarW+2) minus right panel outer border (+2).
-	// sidebarW+2 + mainW+2 = m.width  →  mainW = m.width - sidebarW - 4
-	mainW := m.width - sidebarW - 4
-	if mainW < 10 {
-		mainW = 10
-	}
-
-	// Height budget:
-	//   Status bar       = 1 line
-	//   Available        = m.height - 1
-	//   Each bordered panel outer = inner + 2
-	//
-	//   Sidebar: inner = m.height - 3  →  outer = m.height - 1  ✓
-	//   Right two panels: inner_total = m.height - 5
-	//     (request_inner + 2) + (response_inner + 2) = m.height - 1
-	//     request_inner + response_inner = m.height - 5
-	sidebarInnerH := m.height - 3
-	if sidebarInnerH < 1 {
-		sidebarInnerH = 1
-	}
-	rightInnerTotal := m.height - 5
-	if rightInnerTotal < 2 {
-		rightInnerTotal = 2
-	}
-	requestH := rightInnerTotal / 2
-	responseH := rightInnerTotal - requestH
-
-	sidebar := m.viewSidebar(sidebarW, sidebarInnerH)
-	request := m.viewRequestPane(mainW, requestH)
-	response := m.viewResponsePane(mainW, responseH)
+	sidebar := m.viewSidebar(paneLayout.sidebarW, paneLayout.sidebarInnerH)
+	request := m.viewRequestPane(paneLayout.mainW, paneLayout.requestH)
+	response := m.viewResponsePane(paneLayout.mainW, paneLayout.responseH)
 	right := lipgloss.JoinVertical(lipgloss.Left, request, response)
 
-	layout := lipgloss.JoinHorizontal(lipgloss.Top, sidebar, right)
+	joined := lipgloss.JoinHorizontal(lipgloss.Top, sidebar, right)
 	statusBar := m.viewStatusBar()
 
-	return lipgloss.JoinVertical(lipgloss.Left, layout, statusBar)
+	return lipgloss.JoinVertical(lipgloss.Left, joined, statusBar)
 }
 
 // --- Sidebar ---
@@ -304,6 +275,42 @@ func (m Model) viewSidebar(w, h int) string {
 
 // --- Request pane ---
 
+const requestSendButtonLabel = "[ Send ]"
+
+func renderMethodBadge(method string) string {
+	if method == "" {
+		method = "GET"
+	}
+	return methodStyle.Render(fmt.Sprintf(" %s ", method))
+}
+
+func renderSendButton() string {
+	return sendButtonStyle.Render(requestSendButtonLabel)
+}
+
+func methodBadgeWidth(method string) int {
+	return lipgloss.Width(renderMethodBadge(method))
+}
+
+func requestSendButtonWidth() int {
+	return lipgloss.Width(renderSendButton())
+}
+
+func (m Model) renderRequestTitleRightChrome() string {
+	sendBtn := renderSendButton()
+	envName := m.activeEnvName()
+	if envName == "" {
+		return sendBtn
+	}
+	envText := fmt.Sprintf("◀ %s ▶", envName)
+	envStyled := lipgloss.NewStyle().Foreground(yellow).Render(envText)
+	return sendBtn + " " + envStyled
+}
+
+func (m Model) requestTitleRightChromeWidth() int {
+	return lipgloss.Width(m.renderRequestTitleRightChrome())
+}
+
 func (m Model) viewRequestPane(w, h int) string {
 	border := inactiveBorder
 	if m.focus == requestPane {
@@ -312,28 +319,21 @@ func (m Model) viewRequestPane(w, h int) string {
 
 	var top []string
 
-	// Title line with the request label first, then the active request name, and
-	// the env indicator aligned right.
+	// Title line with the request label first, then send/env chrome aligned right.
 	titleLabel := "Request"
 	if m.activeRequest != nil && strings.TrimSpace(m.activeRequest.Name) != "" {
 		titleLabel = "Request " + truncate(m.activeRequest.Name, max(12, w/2))
 	}
 	titleLine := titleStyle.Render(titleLabel)
-	envName := m.activeEnvName()
-	if envName != "" {
-		envText := fmt.Sprintf("◀ %s ▶", envName)
-		envStyled := lipgloss.NewStyle().Foreground(yellow).Render(envText)
-		padding := w - 2 - lipgloss.Width(titleLine) - lipgloss.Width(envStyled)
-		if padding < 0 {
-			padding = 0
-		}
-		top = append(top, titleLine+strings.Repeat(" ", padding)+envStyled)
-	} else {
-		top = append(top, titleLine)
+	rightChrome := m.renderRequestTitleRightChrome()
+	padding := w - 2 - lipgloss.Width(titleLine) - lipgloss.Width(rightChrome)
+	if padding < 0 {
+		padding = 0
 	}
+	top = append(top, titleLine+strings.Repeat(" ", padding)+rightChrome)
 
 	// Method badge + URL on one line — truncate URL to available width.
-	badge := methodStyle.Render(fmt.Sprintf(" %s ", m.method))
+	badge := renderMethodBadge(m.method)
 	badgeW := lipgloss.Width(badge)
 	urlAvail := w - badgeW - 4 // 4: padding + border
 	if urlAvail < 10 {

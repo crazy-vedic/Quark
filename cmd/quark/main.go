@@ -47,17 +47,21 @@ func run() error {
 	// Signal-aware root context: Ctrl+C or SIGTERM cancels in-flight operations.
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-
+	defaultConfigDir, err := defaultConfigDir()
+	if err != nil {
+		return err
+	}
 	root := &cobra.Command{
 		Use:   "quark",
 		Short: "A keyboard-driven TUI HTTP client",
 		Long:  "Quark — local-first, keyboard-driven HTTP client. No cloud dependencies.",
 	}
+	root.CompletionOptions.DisableDefaultCmd = true
 	root.SetContext(ctx)
 	root.PersistentFlags().
 		BoolVar(&debugMode, "debug", false, "Log all keystrokes to ~/.quark/debug.log")
 	root.PersistentFlags().
-		StringVar(&configDir, "config", "./.quark", "Directory for config and data files")
+		StringVar(&configDir, "config", defaultConfigDir, "Directory for config and db")
 
 	var debugLog *os.File
 	defer func() {
@@ -142,6 +146,7 @@ func run() error {
 	root.AddCommand(lazyImportPostmanCmd(runtimeOnce))
 	root.AddCommand(lazyEnvCmd(runtimeOnce))
 	root.AddCommand(lazyKeybindingsCmd())
+	root.AddCommand(cli.NewCompletionCmd(root))
 
 	root.AddCommand(&cobra.Command{
 		Use:   "tui",
@@ -245,12 +250,20 @@ func launchTUI(
 		ConfigDir:       configDir,
 	})
 
-	p := tea.NewProgram(model, tea.WithAltScreen())
+	p := tea.NewProgram(model, tea.WithAltScreen(), tea.WithMouseCellMotion())
 	_, err := p.Run()
 	if err != nil && !errors.Is(err, tea.ErrProgramKilled) {
 		return fmt.Errorf("tui: %w", err)
 	}
 	return nil
+}
+
+func defaultConfigDir() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("resolve home dir: %w", err)
+	}
+	return filepath.Join(home, ".quark"), nil
 }
 
 // pluginPreHooks converts plugin.PreRequestHook → exec.PreRequestHook.

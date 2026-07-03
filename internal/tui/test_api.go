@@ -178,6 +178,186 @@ func (m Model) CollectionRequests() map[string][]*domain.Request { return m.coll
 func (m Model) IsExpanded(colID string) bool                     { return m.expanded[colID] }
 func (m Model) ColCursor() int                                   { return m.colCursor }
 func (m Model) ReqCursor() int                                   { return m.reqCursor }
+func (m Model) SidebarOffset() int                               { return m.sidebarOffset }
+
+// SidebarCollectionClickPos returns terminal coordinates for clicking a collection
+// row's name area (not the disclosure icon).
+func (m Model) SidebarCollectionClickPos(colIndex int) (x, y int, ok bool) {
+	rowIndex, ok := m.sidebarRowIndexForCollection(colIndex)
+	if !ok {
+		return 0, 0, false
+	}
+	return m.sidebarTreeRowScreenPos(rowIndex)
+}
+
+// SidebarCollectionDisclosurePos returns terminal coordinates for clicking a
+// collection row's expand/collapse icon.
+func (m Model) SidebarCollectionDisclosurePos(colIndex int) (x, y int, ok bool) {
+	rowIndex, ok := m.sidebarRowIndexForCollection(colIndex)
+	if !ok {
+		return 0, 0, false
+	}
+	x, y, ok = m.sidebarTreeRowScreenPos(rowIndex)
+	if !ok {
+		return 0, 0, false
+	}
+	layout := normalLayoutFor(m.width, m.height)
+	content := m.sidebarContentRect(layout)
+	x = content.left + sidebarDisclosureStartX
+	return x, y, true
+}
+
+// SidebarRequestClickPos returns terminal coordinates for clicking a request row.
+func (m Model) SidebarRequestClickPos(colIndex, reqIndex int) (x, y int, ok bool) {
+	rowIndex, ok := m.sidebarRowIndexForRequest(colIndex, reqIndex)
+	if !ok {
+		return 0, 0, false
+	}
+	return m.sidebarTreeRowScreenPos(rowIndex)
+}
+
+// SidebarMoreBelowPos returns terminal coordinates for the "more below" indicator.
+func (m Model) SidebarMoreBelowPos() (x, y int, ok bool) {
+	rows, start, end := m.sidebarListWindow()
+	if end >= len(rows) {
+		return 0, 0, false
+	}
+	layout := normalLayoutFor(m.width, m.height)
+	content := m.sidebarContentRect(layout)
+	listLine := end - start
+	if start > 0 {
+		listLine++
+	}
+	y = content.top + 1 + listLine
+	x = content.left + 3
+	return x, y, true
+}
+
+// RequestMethodBadgeClickPos returns terminal coordinates for clicking the method badge.
+func (m Model) RequestMethodBadgeClickPos() (x, y int, ok bool) {
+	if m.width <= 0 || m.height <= 0 {
+		return 0, 0, false
+	}
+	layout := normalLayoutFor(m.width, m.height)
+	chrome := m.requestPaneChromeRects(layout)
+	return chrome.methodBadge.left, chrome.methodBadge.top, true
+}
+
+// RequestURLLineClickPos returns terminal coordinates for clicking the URL line.
+func (m Model) RequestURLLineClickPos() (x, y int, ok bool) {
+	if m.width <= 0 || m.height <= 0 {
+		return 0, 0, false
+	}
+	layout := normalLayoutFor(m.width, m.height)
+	chrome := m.requestPaneChromeRects(layout)
+	return chrome.urlLine.left + 2, chrome.urlLine.top, true
+}
+
+// RequestURLTextClickPosAtColumn returns coordinates for clicking the URL text at
+// the given display column offset from the start of the URL text region.
+func (m Model) RequestURLTextClickPosAtColumn(col int) (x, y int, ok bool) {
+	if m.width <= 0 || m.height <= 0 {
+		return 0, 0, false
+	}
+	layout := normalLayoutFor(m.width, m.height)
+	chrome := m.requestPaneChromeRects(layout)
+	x = chrome.urlLine.left + col
+	if x > chrome.urlLine.right {
+		x = chrome.urlLine.right
+	}
+	return x, chrome.urlLine.top, true
+}
+
+// URLCursorPosition returns the current URL textinput cursor byte offset.
+func (m Model) URLCursorPosition() int {
+	return m.urlInput.Position()
+}
+
+// HeaderKeyInputClickPos returns coordinates for clicking the header key input.
+func (m Model) HeaderKeyInputClickPos() (x, y int, ok bool) {
+	if m.width <= 0 || m.height <= 0 || !m.headerEditing {
+		return 0, 0, false
+	}
+	layout := normalLayoutFor(m.width, m.height)
+	ll := m.requestPaneLineLayout(layout)
+	content := layout.requestContentRect()
+	return content.left + 2, ll.headerKeyInputY, true
+}
+
+// HeaderValueInputClickPos returns coordinates for clicking the header value input.
+func (m Model) HeaderValueInputClickPos() (x, y int, ok bool) {
+	return m.HeaderValueInputClickPosAtColumn(2)
+}
+
+// HeaderValueInputClickPosAtColumn returns coordinates for clicking the header
+// value input at the given display column.
+func (m Model) HeaderValueInputClickPosAtColumn(col int) (x, y int, ok bool) {
+	if m.width <= 0 || m.height <= 0 || !m.headerEditing {
+		return 0, 0, false
+	}
+	layout := normalLayoutFor(m.width, m.height)
+	ll := m.requestPaneLineLayout(layout)
+	content := layout.requestContentRect()
+	return content.left + col, ll.headerValInputY, true
+}
+
+// AuthRowClickPos returns coordinates for clicking an auth editor row.
+func (m Model) AuthRowClickPos(rowIndex int) (x, y int, ok bool) {
+	if m.width <= 0 || m.height <= 0 || m.activeField != authField {
+		return 0, 0, false
+	}
+	rows := m.authEditor.rows()
+	if rowIndex < 0 || rowIndex >= len(rows) {
+		return 0, 0, false
+	}
+	layout := normalLayoutFor(m.width, m.height)
+	ll := m.requestPaneLineLayout(layout)
+	content := layout.requestContentRect()
+	x = authRowTextLeft(content.left, rows[rowIndex]) + 2
+	y = ll.editorContentY + 3 + rowIndex
+	return x, y, true
+}
+
+// BodyTextareaClickPos returns coordinates for clicking a body editor line/column.
+func (m Model) BodyTextareaClickPos(displayLine, col int) (x, y int, ok bool) {
+	if m.width <= 0 || m.height <= 0 || m.activeField != bodyField {
+		return 0, 0, false
+	}
+	layout := normalLayoutFor(m.width, m.height)
+	ll := m.requestPaneLineLayout(layout)
+	if displayLine < 0 || displayLine >= m.bodyTextarea.Height() {
+		return 0, 0, false
+	}
+	return m.bodyTextareaTextLeft(layout) + col, ll.editorContentY + displayLine, true
+}
+
+// RequestSendButtonClickPos returns terminal coordinates for clicking the send button.
+func (m Model) RequestSendButtonClickPos() (x, y int, ok bool) {
+	if m.width <= 0 || m.height <= 0 {
+		return 0, 0, false
+	}
+	layout := normalLayoutFor(m.width, m.height)
+	chrome := m.requestPaneChromeRects(layout)
+	center := chrome.sendButton.left + (chrome.sendButton.right-chrome.sendButton.left)/2
+	return center, chrome.sendButton.top, true
+}
+
+// RequestPaneContentClickPos returns coordinates inside the request pane body area.
+func (m Model) RequestPaneContentClickPos() (x, y int, ok bool) {
+	if m.width <= 0 || m.height <= 0 {
+		return 0, 0, false
+	}
+	layout := normalLayoutFor(m.width, m.height)
+	content := layout.requestContentRect()
+	// Below chrome lines (title, method/url, optional auth, blank).
+	y = content.top + 5
+	if y > content.bottom-2 {
+		y = content.bottom - 2
+	}
+	x = content.left + 4
+	return x, y, true
+}
+
 func (m Model) Method() string                                   { return m.method }
 func (m Model) URLValue() string                                 { return m.urlInput.Value() }
 func (m Model) ResponseTab() responseTabID                       { return m.responseTab }

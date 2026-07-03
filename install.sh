@@ -62,68 +62,8 @@ install_shell_completion() {
     shell_name="$(basename "${SHELL:-}")"
 
     case "$shell_name" in
-        zsh)
-            local completion_dir rc_file completion_file marker block
-            completion_dir="${ZDOTDIR:-$HOME}/.zsh/completions"
-            rc_file="${ZDOTDIR:-$HOME}/.zshrc"
-            completion_file="${completion_dir}/_${BINARY}"
-            marker="# >>> quark completion >>>"
-            mkdir -p "$completion_dir"
-            "$INSTALL_PATH" completion zsh > "$completion_file"
-            rm -f "${ZDOTDIR:-$HOME}"/.zcompdump* 2>/dev/null || true
-            block=$(cat <<EOF
-$marker
-if [ -d "$completion_dir" ]; then
-  fpath=("$completion_dir" \$fpath)
-fi
-autoload -Uz compinit
-compinit
-if [ -f "$completion_file" ]; then
-  if (( \${+functions[_quark]} )); then
-    unfunction _quark
-  fi
-  compdef -d "$BINARY" 2>/dev/null || true
-  . "$completion_file"
-  compdef _quark "$BINARY" 2>/dev/null || true
-fi
-# <<< quark completion <<<
-EOF
-)
-            if append_block_if_missing "$rc_file" "$marker" "$block"; then
-                echo "==> Enabled zsh completions in ${rc_file}"
-            else
-                echo "==> Updated zsh completions at ${completion_file}"
-            fi
-            ;;
-        bash)
-            local completion_dir rc_file completion_file marker block
-            completion_dir="${XDG_DATA_HOME:-$HOME/.local/share}/bash-completion/completions"
-            rc_file="${HOME}/.bashrc"
-            completion_file="${completion_dir}/${BINARY}"
-            marker="# >>> quark completion >>>"
-            mkdir -p "$completion_dir"
-            "$INSTALL_PATH" completion bash > "$completion_file"
-            block=$(cat <<EOF
-$marker
-if [ -f "$completion_file" ]; then
-  . "$completion_file"
-fi
-# <<< quark completion <<<
-EOF
-)
-            if append_block_if_missing "$rc_file" "$marker" "$block"; then
-                echo "==> Enabled bash completions in ${rc_file}"
-            else
-                echo "==> Updated bash completions at ${completion_file}"
-            fi
-            ;;
-        fish)
-            local completion_dir completion_file
-            completion_dir="${XDG_CONFIG_HOME:-$HOME/.config}/fish/completions"
-            completion_file="${completion_dir}/${BINARY}.fish"
-            mkdir -p "$completion_dir"
-            "$INSTALL_PATH" completion fish > "$completion_file"
-            echo "==> Installed fish completions to ${completion_file}"
+        zsh|bash|fish)
+            "$INSTALL_PATH" completion "$shell_name" --setup
             ;;
         *)
             echo "==> Skipping shell completion setup (unsupported shell: ${shell_name:-unknown})"

@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"strings"
+
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -93,6 +95,30 @@ func (m Model) cancelActiveFieldEdit() Model {
 		m.headerValueInput.Blur()
 	}
 	return m
+}
+
+// cycleMethod advances the HTTP method using the provided cycler and persists
+// the change to the active request. Returns a save command when there is a
+// saved active request to update.
+func (m Model) cycleMethod(cycle func(string) string) (Model, tea.Cmd) {
+	m.method = cycle(m.method)
+	if m.activeRequest == nil {
+		return m, nil
+	}
+	m.activeRequest.Method = m.method
+	return m, saveRequestCmd(m.ctx, m.writer, m.reader, m.activeRequest)
+}
+
+// finishURLEdit commits the edited URL to the active request and persists it.
+// Returns a save command when there is a saved active request to update.
+func (m Model) finishURLEdit() (Model, tea.Cmd) {
+	m.activeField = noneField
+	m.urlInput.Blur()
+	if m.activeRequest == nil {
+		return m, nil
+	}
+	m.activeRequest.URL = strings.TrimSpace(m.urlInput.Value())
+	return m, saveRequestCmd(m.ctx, m.writer, m.reader, m.activeRequest)
 }
 
 func (m Model) finishBodyEdit() Model {
