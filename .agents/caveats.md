@@ -9,10 +9,10 @@ Consolidated gotchas agents must not rediscover. Read this before making changes
 | Source | Says |
 |---|---|
 | README | `~/.quark/quark.db` |
-| `--config` flag default | `./.quark` (CWD-relative) |
+| `--config` flag default | `~/.quark` (home dir) |
 | `config.Load` | Uses whatever `--config` points to |
 
-Running `quark` from different directories creates different databases. For a stable home-dir DB, use `--config ~/.quark` or always launch from the same directory.
+Default is stable across directories; use `--config` to override.
 
 ### Debug log path
 
