@@ -25,7 +25,7 @@ To print a script for manual installation:
 		},
 	}
 	cmd.AddCommand(newCompletionSetupCmd(root))
-	for _, shell := range []string{"bash", "zsh", "fish", "powershell"} {
+	for _, shell := range []string{shellBash, shellZsh, shellFish, shellPowerShell} {
 		cmd.AddCommand(newShellCompletionCmd(root, shell))
 	}
 	return cmd
@@ -82,7 +82,7 @@ func newShellCompletionCmd(root *cobra.Command, shell string) *cobra.Command {
 
 func shellCompletionLong(binary, shell string) string {
 	switch shell {
-	case "bash":
+	case shellBash:
 		return fmt.Sprintf(`Generate or install the autocompletion script for bash.
 
 Without --setup, prints the completion script to stdout.
@@ -91,7 +91,7 @@ With --setup, writes the script and updates ~/.bashrc automatically.
 
 Manual install:
   source <(%s completion bash)`, binary)
-	case "zsh":
+	case shellZsh:
 		return fmt.Sprintf(`Generate or install the autocompletion script for zsh.
 
 Without --setup, prints the completion script to stdout.
@@ -100,7 +100,7 @@ With --setup, writes the script and updates ~/.zshrc automatically.
 
 Manual install:
   source <(%s completion zsh)`, binary)
-	case "fish":
+	case shellFish:
 		return fmt.Sprintf(`Generate or install the autocompletion script for fish.
 
 Without --setup, prints the completion script to stdout.
@@ -109,7 +109,7 @@ With --setup, writes the script to ~/.config/fish/completions/.
 
 Manual install:
   %s completion fish | source`, binary)
-	case "powershell":
+	case shellPowerShell:
 		return fmt.Sprintf(`Generate or install the autocompletion script for PowerShell.
 
 Without --setup, prints the completion script to stdout.

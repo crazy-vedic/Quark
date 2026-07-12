@@ -135,7 +135,11 @@ func (m Model) responsePaneTabRects(layout normalLayout) responsePaneTabRects {
 		set    func(*responsePaneTabRects, layoutRect)
 	}{
 		{"tab_body", "Body", func(r *responsePaneTabRects, rect layoutRect) { r.body = rect }},
-		{"tab_headers", "Headers", func(r *responsePaneTabRects, rect layoutRect) { r.headers = rect }},
+		{
+			"tab_headers",
+			"Headers",
+			func(r *responsePaneTabRects, rect layoutRect) { r.headers = rect },
+		},
 		{"tab_raw", "Raw", func(r *responsePaneTabRects, rect layoutRect) { r.raw = rect }},
 	}
 

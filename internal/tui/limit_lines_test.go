@@ -26,7 +26,7 @@ func TestLimitLines_NeverExceedsMaxRows(t *testing.T) {
 					if i%3 == 0 {
 						sb.WriteString(strings.Repeat("x", contentWidth*2+3))
 					} else {
-						sb.WriteString(fmt.Sprintf("line %d", i))
+						fmt.Fprintf(&sb, "line %d", i)
 					}
 					if i != n-1 {
 						sb.WriteString("\n")
@@ -38,7 +38,11 @@ func TestLimitLines_NeverExceedsMaxRows(t *testing.T) {
 				if got > maxRows {
 					t.Errorf(
 						"limitLines(width=%d, maxRows=%d, lines=%d) used %d visual rows, want <= %d",
-						contentWidth, maxRows, n, got, maxRows,
+						contentWidth,
+						maxRows,
+						n,
+						got,
+						maxRows,
 					)
 				}
 			}
@@ -52,7 +56,7 @@ func TestLimitLines_ShowsTruncationNotice(t *testing.T) {
 
 	var sb strings.Builder
 	for i := 0; i < 50; i++ {
-		sb.WriteString(fmt.Sprintf("line %d\n", i))
+		fmt.Fprintf(&sb, "line %d\n", i)
 	}
 
 	out := limitLines(sb.String(), 40, 5)

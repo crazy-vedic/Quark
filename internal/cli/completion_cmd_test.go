@@ -78,7 +78,14 @@ func TestInstallShellCompletionBash(t *testing.T) {
 	var status bytes.Buffer
 	require.NoError(t, installShellCompletion(root, "bash", &status))
 
-	completionFile := filepath.Join(home, ".local", "share", "bash-completion", "completions", "quark")
+	completionFile := filepath.Join(
+		home,
+		".local",
+		"share",
+		"bash-completion",
+		"completions",
+		"quark",
+	)
 	content, err := os.ReadFile(completionFile)
 	require.NoError(t, err)
 	assert.Contains(t, string(content), "quark")
@@ -126,6 +133,7 @@ func TestInstallShellCompletionBashSkipsExtraRegistrationWhenOnPath(t *testing.T
 func TestBinaryOnPathPointsToSelf(t *testing.T) {
 	dir := t.TempDir()
 	target := filepath.Join(dir, "quark-bin")
+	//nolint:gosec // G306: test fixture must be executable for LookPath
 	require.NoError(t, os.WriteFile(target, []byte{}, 0o755))
 
 	binDir := filepath.Join(dir, "bin")
@@ -145,6 +153,7 @@ func TestExtraPathRegistrationBlockBash(t *testing.T) {
 
 	dir := t.TempDir()
 	target := filepath.Join(dir, "quark-bin")
+	//nolint:gosec // G306: test fixture must be executable for LookPath
 	require.NoError(t, os.WriteFile(target, []byte{}, 0o755))
 	binDir := filepath.Join(dir, "bin")
 	require.NoError(t, os.MkdirAll(binDir, 0o755))
@@ -211,5 +220,11 @@ func TestCompletionPathsBashUsesXDGDataHome(t *testing.T) {
 	home := t.TempDir()
 	paths, err := completionPaths("bash", home, "quark")
 	require.NoError(t, err)
-	assert.True(t, strings.HasSuffix(paths.completionFile, filepath.Join("bash-completion", "completions", "quark")))
+	assert.True(
+		t,
+		strings.HasSuffix(
+			paths.completionFile,
+			filepath.Join("bash-completion", "completions", "quark"),
+		),
+	)
 }

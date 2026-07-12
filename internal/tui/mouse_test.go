@@ -53,9 +53,27 @@ func TestUpdate_Mouse_ResponseWheelCyclesHistory(t *testing.T) {
 	t.Parallel()
 
 	execs := []*domain.Execution{
-		{ID: "ex-0", RequestID: "req-1", StatusCode: 200, ResponseBody: "newest", ResponseHeaders: `{}`},
-		{ID: "ex-1", RequestID: "req-1", StatusCode: 200, ResponseBody: "older", ResponseHeaders: `{}`},
-		{ID: "ex-2", RequestID: "req-1", StatusCode: 200, ResponseBody: "oldest", ResponseHeaders: `{}`},
+		{
+			ID:              "ex-0",
+			RequestID:       "req-1",
+			StatusCode:      200,
+			ResponseBody:    "newest",
+			ResponseHeaders: `{}`,
+		},
+		{
+			ID:              "ex-1",
+			RequestID:       "req-1",
+			StatusCode:      200,
+			ResponseBody:    "older",
+			ResponseHeaders: `{}`,
+		},
+		{
+			ID:              "ex-2",
+			RequestID:       "req-1",
+			StatusCode:      200,
+			ResponseBody:    "oldest",
+			ResponseHeaders: `{}`,
+		},
 	}
 	m := resizedMouseUnitModel(t).
 		WithExecutions(execs).
@@ -146,8 +164,11 @@ func TestUpdate_Mouse_IgnoresUnsupportedInput(t *testing.T) {
 func TestUpdate_Mouse_IgnoredInOverlayModes(t *testing.T) {
 	t.Parallel()
 
-	m := callUpdate(t, newModel(defaultConfig()).WithMode(tui.SearchMode).WithFocus(tui.RequestPane),
-		tea.WindowSizeMsg{Width: 120, Height: 40})
+	m := callUpdate(
+		t,
+		newModel(defaultConfig()).WithMode(tui.SearchMode).WithFocus(tui.RequestPane),
+		tea.WindowSizeMsg{Width: 120, Height: 40},
+	)
 
 	got := callUpdate(t, m, tea.MouseMsg{
 		X: 5, Y: 5, Action: tea.MouseActionPress, Button: tea.MouseButtonLeft,

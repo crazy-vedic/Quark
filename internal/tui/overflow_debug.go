@@ -55,13 +55,22 @@ func (m Model) logVisualOverflow(r *visualOverflowReport) {
 
 	if r.layout != nil {
 		l := r.layout
-		fmt.Fprintf(m.debugLog,
+		fmt.Fprintf(
+			m.debugLog,
 			"  layout: sidebarW=%d mainW=%d sidebarInnerH=%d rightInnerTotal=%d requestH=%d responseH=%d\n",
-			l.sidebarW, l.mainW, l.sidebarInnerH, l.rightInnerTotal, l.requestH, l.responseH)
+			l.sidebarW,
+			l.mainW,
+			l.sidebarInnerH,
+			l.rightInnerTotal,
+			l.requestH,
+			l.responseH,
+		)
 	}
 
 	if r.sidebar != "" || r.request != "" || r.response != "" {
-		fmt.Fprintf(m.debugLog, "  component heights: sidebar=%d request=%d response=%d joined=%d statusBar=%d\n",
+		fmt.Fprintf(
+			m.debugLog,
+			"  component heights: sidebar=%d request=%d response=%d joined=%d statusBar=%d\n",
 			lipgloss.Height(r.sidebar),
 			lipgloss.Height(r.request),
 			lipgloss.Height(r.response),

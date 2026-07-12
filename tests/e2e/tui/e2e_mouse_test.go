@@ -49,8 +49,20 @@ func TestE2E_ClickResponseTabSwitchesView(t *testing.T) {
 
 func TestE2E_ResponseWheelCyclesHistory(t *testing.T) {
 	execs := []*domain.Execution{
-		{ID: "ex-0", RequestID: "req-1", StatusCode: 200, ResponseBody: "newest", ResponseHeaders: `{}`},
-		{ID: "ex-1", RequestID: "req-1", StatusCode: 200, ResponseBody: "older", ResponseHeaders: `{}`},
+		{
+			ID:              "ex-0",
+			RequestID:       "req-1",
+			StatusCode:      200,
+			ResponseBody:    "newest",
+			ResponseHeaders: `{}`,
+		},
+		{
+			ID:              "ex-1",
+			RequestID:       "req-1",
+			StatusCode:      200,
+			ResponseBody:    "older",
+			ResponseHeaders: `{}`,
+		},
 	}
 	m := resizedMouseModel(t).
 		WithExecutions(execs).
@@ -168,8 +180,16 @@ func TestE2E_ClickCollectionDisclosureExpandsAndLoadsRequests(t *testing.T) {
 	col1 := &domain.Collection{ID: "col-1", Name: "Alpha"}
 	col2 := &domain.Collection{ID: "col-2", Name: "Beta"}
 	st := setupStore(t, col1, col2)
-	seedRequests(t, st, col2.ID,
-		&domain.Request{ID: "req-1", Name: "Get Item", Method: "GET", URL: "https://example.test/item"},
+	seedRequests(
+		t,
+		st,
+		col2.ID,
+		&domain.Request{
+			ID:     "req-1",
+			Name:   "Get Item",
+			Method: "GET",
+			URL:    "https://example.test/item",
+		},
 	)
 
 	m := newE2EModel(t, st, &mockExecutor{})
@@ -192,8 +212,16 @@ func TestE2E_ClickCollectionDisclosureExpandsAndLoadsRequests(t *testing.T) {
 func TestE2E_ClickCollectionDisclosureCollapses(t *testing.T) {
 	col := &domain.Collection{ID: "col-1", Name: "Alpha"}
 	st := setupStore(t, col)
-	seedRequests(t, st, col.ID,
-		&domain.Request{ID: "req-1", Name: "Get Item", Method: "GET", URL: "https://example.test/item"},
+	seedRequests(
+		t,
+		st,
+		col.ID,
+		&domain.Request{
+			ID:     "req-1",
+			Name:   "Get Item",
+			Method: "GET",
+			URL:    "https://example.test/item",
+		},
 	)
 
 	m := newE2EModel(t, st, &mockExecutor{})
@@ -217,8 +245,16 @@ func TestE2E_ClickCollectionDisclosureCollapses(t *testing.T) {
 func TestE2E_ClickSelectedCollectionRowTogglesExpand(t *testing.T) {
 	col := &domain.Collection{ID: "col-1", Name: "Alpha"}
 	st := setupStore(t, col)
-	seedRequests(t, st, col.ID,
-		&domain.Request{ID: "req-1", Name: "Get Item", Method: "GET", URL: "https://example.test/item"},
+	seedRequests(
+		t,
+		st,
+		col.ID,
+		&domain.Request{
+			ID:     "req-1",
+			Name:   "Get Item",
+			Method: "GET",
+			URL:    "https://example.test/item",
+		},
 	)
 
 	m := newE2EModel(t, st, &mockExecutor{})

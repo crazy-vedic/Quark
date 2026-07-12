@@ -16,14 +16,20 @@ import (
 const (
 	completionMarkerStart = "# >>> quark completion >>>"
 	completionMarkerEnd   = "# <<< quark completion <<<"
+
+	shellBash       = "bash"
+	shellZsh        = "zsh"
+	shellFish       = "fish"
+	shellPowerShell = "powershell"
+	shellPwsh       = "pwsh"
 )
 
 func detectShell() (string, error) {
 	if os.Getenv("FISH_VERSION") != "" {
-		return "fish", nil
+		return shellFish, nil
 	}
 	if os.Getenv("ZSH_VERSION") != "" {
-		return "zsh", nil
+		return shellZsh, nil
 	}
 	shell := os.Getenv("SHELL")
 	if shell == "" {
@@ -32,10 +38,10 @@ func detectShell() (string, error) {
 		)
 	}
 	switch filepath.Base(shell) {
-	case "bash", "zsh", "fish", "powershell", "pwsh":
+	case shellBash, shellZsh, shellFish, shellPowerShell, shellPwsh:
 		name := filepath.Base(shell)
-		if name == "pwsh" {
-			return "powershell", nil
+		if name == shellPwsh {
+			return shellPowerShell, nil
 		}
 		return name, nil
 	default:
@@ -48,16 +54,16 @@ func detectShell() (string, error) {
 
 func writeCompletionScript(root *cobra.Command, shell string, w io.Writer, noDesc bool) error {
 	switch shell {
-	case "bash":
+	case shellBash:
 		return root.GenBashCompletionV2(w, !noDesc)
-	case "zsh":
+	case shellZsh:
 		if noDesc {
 			return root.GenZshCompletionNoDesc(w)
 		}
 		return root.GenZshCompletion(w)
-	case "fish":
+	case shellFish:
 		return root.GenFishCompletion(w, !noDesc)
-	case "powershell":
+	case shellPowerShell:
 		if noDesc {
 			return root.GenPowerShellCompletion(w)
 		}
@@ -87,11 +93,12 @@ func installShellCompletion(root *cobra.Command, shell string, status io.Writer)
 	if err := writeCompletionScript(root, shell, &script, false); err != nil {
 		return err
 	}
+	//nolint:gosec // G306: shell completion scripts must be world-readable
 	if err := os.WriteFile(paths.completionFile, script.Bytes(), 0o644); err != nil {
 		return fmt.Errorf("write completion script: %w", err)
 	}
 
-	if shell == "zsh" {
+	if shell == shellZsh {
 		clearZshCompdump(home)
 	}
 
@@ -141,7 +148,7 @@ type completionInstallPaths struct {
 
 func completionPaths(shell, home, binary string) (completionInstallPaths, error) {
 	switch shell {
-	case "bash":
+	case shellBash:
 		dataHome := os.Getenv("XDG_DATA_HOME")
 		if dataHome == "" {
 			dataHome = filepath.Join(home, ".local", "share")
@@ -159,7 +166,7 @@ fi
 			rcFile:         rcFile,
 			rcBlock:        block,
 		}, nil
-	case "zsh":
+	case shellZsh:
 		zdotdir := os.Getenv("ZDOTDIR")
 		if zdotdir == "" {
 			zdotdir = home
@@ -196,20 +203,17 @@ fi
 			rcFile:         rcFile,
 			rcBlock:        block,
 		}, nil
-	case "fish":
+	case shellFish:
 		configHome := os.Getenv("XDG_CONFIG_HOME")
 		if configHome == "" {
 			configHome = filepath.Join(home, ".config")
 		}
 		completionFile := filepath.Join(configHome, "fish", "completions", binary+".fish")
 		return completionInstallPaths{completionFile: completionFile}, nil
-	case "powershell":
+	case shellPowerShell:
 		completionDir := filepath.Join(home, "Documents", "PowerShell", "Completions")
 		completionFile := filepath.Join(completionDir, binary+".ps1")
-		profileFile, err := powershellProfilePath(home)
-		if err != nil {
-			return completionInstallPaths{}, err
-		}
+		profileFile := powershellProfilePath(home)
 		block := fmt.Sprintf(`%s
 if (Test-Path %q) {
     . %q
@@ -254,12 +258,12 @@ func extraPathRegistrationBlock(shell, setupBin, binary string) string {
 		return ""
 	}
 	switch shell {
-	case "bash":
+	case shellBash:
 		return fmt.Sprintf(`if [ -x %q ]; then
   complete -o default -F __start_%s %q 2>/dev/null || \
   complete -o default -o nospace -F __start_%s %q 2>/dev/null
 fi`, setupBin, binary, setupBin, binary, setupBin)
-	case "zsh":
+	case shellZsh:
 		return fmt.Sprintf(`if [ -x %q ]; then
   compdef _%s %q 2>/dev/null || true
 fi`, setupBin, binary, setupBin)
@@ -276,11 +280,11 @@ func injectBeforeEndMarker(block, extra string) string {
 	return block + "\n" + extra
 }
 
-func powershellProfilePath(home string) (string, error) {
+func powershellProfilePath(home string) string {
 	if runtime.GOOS == "windows" {
-		return filepath.Join(home, "Documents", "PowerShell", "profile.ps1"), nil
+		return filepath.Join(home, "Documents", "PowerShell", "profile.ps1")
 	}
-	return filepath.Join(home, ".config", "powershell", "Microsoft.PowerShell_profile.ps1"), nil
+	return filepath.Join(home, ".config", "powershell", "Microsoft.PowerShell_profile.ps1")
 }
 
 func clearZshCompdump(home string) {
@@ -293,7 +297,8 @@ func clearZshCompdump(home string) {
 		return
 	}
 	for _, match := range matches {
-		_ = os.Remove(match)
+		//nolint:gosec // G703: paths from Glob under known ZDOTDIR/home
+		_ = os.Remove(filepath.Clean(match))
 	}
 }
 
@@ -322,6 +327,7 @@ func appendOrUpdateBlock(targetFile, marker, block string) (bool, error) {
 		}
 		builder.WriteString(block)
 		builder.WriteByte('\n')
+		//nolint:gosec // G306: shell rc/profile files are user-owned and must remain readable
 		if err := os.WriteFile(targetFile, []byte(builder.String()), 0o644); err != nil {
 			return false, fmt.Errorf("write %s: %w", targetFile, err)
 		}
@@ -351,6 +357,7 @@ func appendOrUpdateBlock(targetFile, marker, block string) (bool, error) {
 	if !strings.HasSuffix(updated, "\n") {
 		updated += "\n"
 	}
+	//nolint:gosec // G306: shell rc/profile files are user-owned and must remain readable
 	if err := os.WriteFile(targetFile, []byte(updated), 0o644); err != nil {
 		return false, fmt.Errorf("write %s: %w", targetFile, err)
 	}
