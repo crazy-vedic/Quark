@@ -25,7 +25,7 @@ jobs:
   # Stage 1: Build — compile once, share binary with all downstream jobs
   # ---------------------------------------------------------------------------
   build:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
@@ -62,7 +62,7 @@ jobs:
   # Stage 1: Lint — parallel with build, no artifacts needed
   # ---------------------------------------------------------------------------
   lint:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
@@ -101,7 +101,7 @@ jobs:
   # Stage 2: Test — all suites run in parallel, each downloads the binary
   # ---------------------------------------------------------------------------
   test-unit:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
