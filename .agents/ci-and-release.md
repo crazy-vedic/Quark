@@ -4,7 +4,7 @@
 
 Workflow: [`.github/workflows/ci.yml`](.github/workflows/ci.yml)
 
-Triggers: pull requests and pushes to `main`/`master`.
+Triggers: PR `opened` / `reopened` / `synchronize`, and pushes to `main`/`master`. Does **not** run on PR body/title edits.
 
 Most jobs run on **self-hosted** runners; e2e-tui uses `ubuntu-latest`.
 
@@ -12,7 +12,6 @@ Most jobs run on **self-hosted** runners; e2e-tui uses `ubuntu-latest`.
 
 ```mermaid
 flowchart LR
-  validateRelease[validate-release]
   build[build]
   lint[lint]
   testUnit[test-unit]
@@ -32,7 +31,6 @@ flowchart LR
 
 | Job | Purpose |
 |---|---|
-| `validate-release` | Parse `Release: vX.Y.Z` from PR body; validate semver; publish GitHub check |
 | `build` | Compile the binary |
 | `lint` | golangci-lint (`make lint-ci`) |
 | `test-unit` | Unit tests with gotestsum, `-race` |
@@ -41,6 +39,16 @@ flowchart LR
 | `persist-baseline` | Gate after all test+lint jobs pass |
 | `coverage-master` | Coverage baseline on main |
 | `coverage-report` | Coverage diff reporting via `scripts/coverage-report.sh` |
+
+## Release Validation (PR body)
+
+Workflow: [`.github/workflows/release-validation.yml`](.github/workflows/release-validation.yml)
+
+Triggers: PR `opened` / `reopened` / `synchronize` / `edited` (body/title edits). Uses its own concurrency group so edits do not cancel CI.
+
+| Job | Purpose |
+|---|---|
+| `validate-release` | Parse `Release: vX.Y.Z` from PR body; validate semver; publish GitHub check |
 
 ## Linting
 
