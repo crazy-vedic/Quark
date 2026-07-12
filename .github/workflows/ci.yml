@@ -18,7 +18,8 @@ permissions:
 
 env:
   GOTESTSUM_VERSION: v1.13.0
-  GO_DEPS_CACHE_VERSION: v2
+  # Bump when cache path layout changes. v3: store under runner.temp instead of ~/go.
+  GO_DEPS_CACHE_VERSION: v3
 
 jobs:
   # ---------------------------------------------------------------------------
@@ -27,12 +28,12 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: '1.26'
           check-latest: true
@@ -45,14 +46,14 @@ jobs:
         run: make build-cover
 
       - name: Upload binary
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: bin-quark
           path: bin/quark
           retention-days: 1
 
       - name: Upload coverage binary
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: bin-quark-cover
           path: bin/quark-cover
@@ -64,12 +65,12 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: '1.26'
           check-latest: true
@@ -77,7 +78,7 @@ jobs:
 
       - name: Cache golangci-lint binary
         id: golangci-lint-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/go/bin/golangci-lint
           key: ${{ runner.os }}-golangci-lint-v2.12.2
@@ -91,7 +92,7 @@ jobs:
 
       - name: Upload lint output
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: lint-pr
           path: lint-output.txt
@@ -103,20 +104,26 @@ jobs:
   test-unit:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
         with:
           go-version: '1.26'
           check-latest: true
           cache: false
 
+      - name: Configure Go module/build cache dirs
+        run: |
+          echo "GOMODCACHE=${{ runner.temp }}/go-mod-cache" >> "$GITHUB_ENV"
+          echo "GOCACHE=${{ runner.temp }}/go-build-cache" >> "$GITHUB_ENV"
+          mkdir -p "${{ runner.temp }}/go-mod-cache" "${{ runner.temp }}/go-build-cache"
+
       - name: Restore Go dependency caches
         id: go-deps-cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: |
-            ~/go/pkg/mod
-            ~/.cache/go-build
+            ${{ runner.temp }}/go-mod-cache
+            ${{ runner.temp }}/go-build-cache
           key: ${{ runner.os }}-go-deps-${{ env.GO_DEPS_CACHE_VERSION }}-unit-${{ hashFiles('**/go.sum') }}
           restore-keys: |
             ${{ runner.os }}-go-deps-${{ env.GO_DEPS_CACHE_VERSION }}-unit-
@@ -129,7 +136,7 @@ jobs:
 
       - name: Cache gotestsum binary
         id: gotestsum-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/go/bin/gotestsum
           key: ${{ runner.os }}-gotestsum-${{ env.GOTESTSUM_VERSION }}
@@ -151,38 +158,46 @@ jobs:
 
       - name: Upload coverage
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: coverage-ut-pr
           path: ut.out
           retention-days: 1
 
+      # continue-on-error: another concurrent job may have already saved this key.
       - name: Save Go dependency caches
         if: always() && steps.go-deps-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
+        continue-on-error: true
+        uses: actions/cache/save@v5
         with:
           path: |
-            ~/go/pkg/mod
-            ~/.cache/go-build
+            ${{ runner.temp }}/go-mod-cache
+            ${{ runner.temp }}/go-build-cache
           key: ${{ steps.go-deps-cache.outputs.cache-primary-key }}
 
   test-e2e-tui:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
         with:
           go-version: '1.26'
           check-latest: true
           cache: false
 
+      - name: Configure Go module/build cache dirs
+        run: |
+          echo "GOMODCACHE=${{ runner.temp }}/go-mod-cache" >> "$GITHUB_ENV"
+          echo "GOCACHE=${{ runner.temp }}/go-build-cache" >> "$GITHUB_ENV"
+          mkdir -p "${{ runner.temp }}/go-mod-cache" "${{ runner.temp }}/go-build-cache"
+
       - name: Restore Go dependency caches
         id: go-deps-cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: |
-            ~/go/pkg/mod
-            ~/.cache/go-build
+            ${{ runner.temp }}/go-mod-cache
+            ${{ runner.temp }}/go-build-cache
           key: ${{ runner.os }}-go-deps-${{ env.GO_DEPS_CACHE_VERSION }}-tui-${{ hashFiles('**/go.sum') }}
           restore-keys: |
             ${{ runner.os }}-go-deps-${{ env.GO_DEPS_CACHE_VERSION }}-tui-
@@ -195,7 +210,7 @@ jobs:
 
       - name: Cache gotestsum binary
         id: gotestsum-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/go/bin/gotestsum
           key: ${{ runner.os }}-gotestsum-${{ env.GOTESTSUM_VERSION }}
@@ -217,39 +232,47 @@ jobs:
 
       - name: Upload coverage
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: coverage-tui-pr
           path: tui.out
           retention-days: 1
 
+      # continue-on-error: another concurrent job may have already saved this key.
       - name: Save Go dependency caches
         if: always() && steps.go-deps-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
+        continue-on-error: true
+        uses: actions/cache/save@v5
         with:
           path: |
-            ~/go/pkg/mod
-            ~/.cache/go-build
+            ${{ runner.temp }}/go-mod-cache
+            ${{ runner.temp }}/go-build-cache
           key: ${{ steps.go-deps-cache.outputs.cache-primary-key }}
 
   test-e2e-cli:
     runs-on: self-hosted
     needs: build
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
         with:
           go-version: '1.26'
           check-latest: true
           cache: false
 
+      - name: Configure Go module/build cache dirs
+        run: |
+          echo "GOMODCACHE=${{ runner.temp }}/go-mod-cache" >> "$GITHUB_ENV"
+          echo "GOCACHE=${{ runner.temp }}/go-build-cache" >> "$GITHUB_ENV"
+          mkdir -p "${{ runner.temp }}/go-mod-cache" "${{ runner.temp }}/go-build-cache"
+
       - name: Restore Go dependency caches
         id: go-deps-cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: |
-            ~/go/pkg/mod
-            ~/.cache/go-build
+            ${{ runner.temp }}/go-mod-cache
+            ${{ runner.temp }}/go-build-cache
           key: ${{ runner.os }}-go-deps-${{ env.GO_DEPS_CACHE_VERSION }}-cli-${{ hashFiles('**/go.sum') }}
           restore-keys: |
             ${{ runner.os }}-go-deps-${{ env.GO_DEPS_CACHE_VERSION }}-cli-
@@ -262,7 +285,7 @@ jobs:
 
       - name: Cache gotestsum binary
         id: gotestsum-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/go/bin/gotestsum
           key: ${{ runner.os }}-gotestsum-${{ env.GOTESTSUM_VERSION }}
@@ -272,7 +295,7 @@ jobs:
         run: go install gotest.tools/gotestsum@${{ env.GOTESTSUM_VERSION }}
 
       - name: Download coverage binary
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: bin-quark-cover
           path: bin
@@ -290,19 +313,21 @@ jobs:
 
       - name: Upload coverage
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: coverage-cli-pr
           path: bin/cover-cli.out
           retention-days: 1
 
+      # continue-on-error: another concurrent job may have already saved this key.
       - name: Save Go dependency caches
         if: always() && steps.go-deps-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
+        continue-on-error: true
+        uses: actions/cache/save@v5
         with:
           path: |
-            ~/go/pkg/mod
-            ~/.cache/go-build
+            ${{ runner.temp }}/go-mod-cache
+            ${{ runner.temp }}/go-build-cache
           key: ${{ steps.go-deps-cache.outputs.cache-primary-key }}
 
   # ---------------------------------------------------------------------------
@@ -315,13 +340,13 @@ jobs:
     if: github.event_name == 'push'
     steps:
       - name: Download coverage artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           path: /tmp/baseline-raw
           pattern: coverage-*-pr
 
       - name: Download lint artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: lint-pr
           path: /tmp/baseline-raw/lint-pr
@@ -338,7 +363,8 @@ jobs:
           cp /tmp/baseline-raw/lint-pr/lint-output.txt /tmp/baseline/lint-output.txt
 
       - name: Save baseline cache
-        uses: actions/cache/save@v4
+        continue-on-error: true
+        uses: actions/cache/save@v5
         with:
           path: /tmp/baseline
           key: coverage-master-${{ github.sha }}
@@ -356,7 +382,7 @@ jobs:
     steps:
       - name: Restore baseline cache
         id: cache-baseline
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: /tmp/baseline
           key: coverage-master-${{ github.event.pull_request.base.sha }}
@@ -372,26 +398,33 @@ jobs:
             echo "found=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         if: steps.check-baseline.outputs.found != 'true'
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         if: steps.check-baseline.outputs.found != 'true'
         with:
           go-version: '1.26'
           check-latest: true
           cache: false
 
+      - name: Configure Go module/build cache dirs
+        if: steps.check-baseline.outputs.found != 'true'
+        run: |
+          echo "GOMODCACHE=${{ runner.temp }}/go-mod-cache" >> "$GITHUB_ENV"
+          echo "GOCACHE=${{ runner.temp }}/go-build-cache" >> "$GITHUB_ENV"
+          mkdir -p "${{ runner.temp }}/go-mod-cache" "${{ runner.temp }}/go-build-cache"
+
       - name: Restore Go dependency caches
         if: steps.check-baseline.outputs.found != 'true'
         id: go-deps-cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: |
-            ~/go/pkg/mod
-            ~/.cache/go-build
+            ${{ runner.temp }}/go-mod-cache
+            ${{ runner.temp }}/go-build-cache
           key: ${{ runner.os }}-go-deps-${{ env.GO_DEPS_CACHE_VERSION }}-baseline-${{ hashFiles('**/go.sum') }}
           restore-keys: |
             ${{ runner.os }}-go-deps-${{ env.GO_DEPS_CACHE_VERSION }}-baseline-
@@ -406,7 +439,7 @@ jobs:
       - name: Cache gotestsum binary
         if: steps.check-baseline.outputs.found != 'true'
         id: gotestsum-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/go/bin/gotestsum
           key: ${{ runner.os }}-gotestsum-${{ env.GOTESTSUM_VERSION }}
@@ -451,23 +484,26 @@ jobs:
 
       - name: Save generated baseline to cache
         if: steps.check-baseline.outputs.found != 'true'
-        uses: actions/cache/save@v4
+        continue-on-error: true
+        uses: actions/cache/save@v5
         with:
           path: /tmp/baseline
           key: coverage-master-${{ github.event.pull_request.base.sha }}
 
+      # continue-on-error: another concurrent job may have already saved this key.
       - name: Save Go dependency caches
         if: always() && steps.check-baseline.outputs.found != 'true' && steps.go-deps-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
+        continue-on-error: true
+        uses: actions/cache/save@v5
         with:
           path: |
-            ~/go/pkg/mod
-            ~/.cache/go-build
+            ${{ runner.temp }}/go-mod-cache
+            ${{ runner.temp }}/go-build-cache
           key: ${{ steps.go-deps-cache.outputs.cache-primary-key }}
 
       - name: Upload baseline artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: coverage-master
           path: /tmp/baseline
@@ -494,33 +530,33 @@ jobs:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       COVERAGE_REPORT_COMMIT_SHA: ${{ github.event.pull_request.head.sha }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: '1.26'
           check-latest: true
           cache: true
 
       - name: Download PR coverage artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         continue-on-error: true
         with:
           path: /tmp/coverage-pr
           pattern: coverage-*-pr
 
       - name: Download PR lint artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         continue-on-error: true
         with:
           name: lint-pr
           path: /tmp/lint-pr
 
       - name: Download master coverage artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         continue-on-error: true
         with:
           name: coverage-master
@@ -544,7 +580,7 @@ jobs:
 
       - name: Minimize old coverage comments
         if: always()
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             const owner = context.repo.owner;
