@@ -54,8 +54,6 @@ type preHooksOption struct{ hooks []PreRequestHook }
 func (o preHooksOption) apply(opts *options) { opts.preRequestHooks = o.hooks }
 
 // WithPreRequestHooks registers hooks to run before each HTTP dispatch.
-// Any type satisfying exec.PreRequestHook (including plugin.PreRequestHook values)
-// can be passed; Go structural typing handles the conversion at the call site.
 func WithPreRequestHooks(hooks []PreRequestHook) preHooksOption { return preHooksOption{hooks} }
 
 type postHooksOption struct{ hooks []PostResponseHook }

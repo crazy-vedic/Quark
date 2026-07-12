@@ -25,7 +25,6 @@ import (
 	"github.com/crazy-vedic/quark/internal/domain"
 	"github.com/crazy-vedic/quark/internal/exec"
 	"github.com/crazy-vedic/quark/internal/keybindings"
-	"github.com/crazy-vedic/quark/internal/plugin"
 	"github.com/crazy-vedic/quark/internal/search"
 	"github.com/crazy-vedic/quark/internal/store"
 	"github.com/crazy-vedic/quark/internal/tui"
@@ -59,7 +58,7 @@ func run() error {
 	root.CompletionOptions.DisableDefaultCmd = true
 	root.SetContext(ctx)
 	root.PersistentFlags().
-		BoolVar(&debugMode, "debug", false, "Log all keystrokes to ~/.quark/debug.log")
+		BoolVar(&debugMode, "debug", false, "Log keystrokes and diagnostics to /tmp/quark_debug_logs/debug.log")
 	root.PersistentFlags().
 		StringVar(&configDir, "config", defaultConfigDir, "Directory for config and db")
 
@@ -110,7 +109,6 @@ func run() error {
 			return nil, fmt.Errorf("open store: %w", err)
 		}
 
-		registry := plugin.NewRegistry()
 		transport := &http.Transport{
 			ResponseHeaderTimeout: cfg.Timeout(),
 		}
@@ -118,8 +116,6 @@ func run() error {
 			exec.WithTimeout(cfg.Timeout()),
 			exec.WithVariableResolver(makeVariableResolver(st)),
 			exec.WithExecutionWriter(st),
-			exec.WithPreRequestHooks(pluginPreHooks(registry)),
-			exec.WithPostResponseHooks(pluginPostHooks(registry)),
 		)
 		importer := curl.NewImporter()
 		searcher := search.New(st)
@@ -264,16 +260,6 @@ func defaultConfigDir() (string, error) {
 		return "", fmt.Errorf("resolve home dir: %w", err)
 	}
 	return filepath.Join(home, ".quark"), nil
-}
-
-// pluginPreHooks converts plugin.PreRequestHook → exec.PreRequestHook.
-func pluginPreHooks(r *plugin.Registry) []exec.PreRequestHook {
-	src := r.PreRequestHooks()
-	out := make([]exec.PreRequestHook, len(src))
-	for i, h := range src {
-		out[i] = h
-	}
-	return out
 }
 
 // lazy wrapper functions create cobra commands that lazily initialise the runtime.
@@ -612,16 +598,6 @@ func lazyKeybindingsCmd() *cobra.Command {
 		},
 	})
 	return cmd
-}
-
-// pluginPostHooks converts plugin.PostResponseHook → exec.PostResponseHook.
-func pluginPostHooks(r *plugin.Registry) []exec.PostResponseHook {
-	src := r.PostResponseHooks()
-	out := make([]exec.PostResponseHook, len(src))
-	for i, h := range src {
-		out[i] = h
-	}
-	return out
 }
 
 // makeVariableResolver returns a VariableResolver that looks up environments

@@ -16,12 +16,9 @@ Default is stable across directories; use `--config` to override.
 
 ### Debug log path
 
-| Source | Says |
-|---|---|
-| `--debug` help text | `~/.quark/debug.log` |
-| Actual implementation (`openDebugLog`) | `/tmp/quark_debug_logs/debug.log` |
-
-Fixing help text or implementation should align these — check both when changing.
+`--debug` writes keystroke and diagnostic logs to `/tmp/quark_debug_logs/debug.log`
+(existing files are archived as `debug_<epoch>.log` in the same directory).
+Help text and implementation both use this path.
 
 ## Security
 
@@ -39,7 +36,14 @@ Do not add features that log or transmit credentials. Do not weaken directory pe
 
 ### Response temp files
 
-Large HTTP response bodies stream to `/tmp/quark_*` temp files. Must call `ExecuteResult.Cleanup()`. TUI cleans up on new response (BUG-007) but crashes may leave orphans.
+Large HTTP response bodies stream to `/tmp/quark_*` temp files for in-process
+display/memory offload. Must call `ExecuteResult.Cleanup()` when finished rendering.
+TUI cleans up on new response (BUG-007). Orphan temp files after crashes are harmless.
+
+**SQLite persistence is independent of temp files.** For saved requests (`req.ID != ""`),
+`Executor.Execute` writes the full response to the `executions` table synchronously
+*before* returning to CLI/TUI (re-reading the temp path when streamed). Mid-download
+crashes cannot produce a history row. Unsaved TUI sends (`req.ID == ""`) skip history.
 
 ## Scheduling
 
@@ -56,22 +60,17 @@ Design implication: do not assume background scheduling exists in CLI-only deplo
 
 `db.SetMaxOpenConns(1)` — all DB access serialized within one process. Required to preserve SQLite PRAGMA settings across queries.
 
-Multiple concurrent `quark` processes on the same `quark.db` can cause `database is locked` errors. WAL mode mitigates but does not eliminate this.
+`PRAGMA busy_timeout = 5000` waits up to 5 seconds on `SQLITE_BUSY` when another
+process holds the lock. WAL + busy_timeout mitigate multi-process contention but
+do not eliminate `database is locked` under heavy concurrent writers.
 
 ### Migrations are append-only
 
 Never reorder or remove entries in `internal/store/migrations.go`. Add new migrations at the end with incrementing version numbers. Existing user DBs depend on version ordering.
 
-## Plugin System
-
-- Hook interfaces frozen at v1.0 — adding methods is breaking
-- Registry constructed in `main.go` but **no plugins registered**
-- Lua "V2" runtime mentioned in docs but not implemented
-- Do not assume hooks exist when testing default behavior
-
 ## Environment / CLI Gaps
 
-- `quark env active` prints that it applies to TUI — verify actual persistence behavior before changing
+- `quark env active` persists the active collection environment for TUI and `quark run`
 - CLI `run` resolves env vars via store chain, not OS environment
 - Global env (`env set-global`) works from CLI; collection env vars require collection ID
 
@@ -99,19 +98,26 @@ Never reorder or remove entries in `internal/store/migrations.go`. Add new migra
 
 ## TUI BUG-NNN Registry
 
-Regression tests in `internal/tui/bugfix_test.go`. Do not reintroduce these:
+Regression tests live mainly in `internal/tui/update_test.go` (overflow in `view_height_test.go`).
+Do not reintroduce these:
 
 | ID | Summary | Key file |
 |---|---|---|
-| BUG-001 | Clear `editingURL` on import modal Escape | `bugfix_test.go` |
-| BUG-002 | Never render binary content raw in terminal | `view.go:778` |
-| BUG-003 | No double "invalid URL:" error prefix | `executor.go:99` |
-| BUG-004 | Stub keys must give user feedback | `bugfix_test.go` |
-| BUG-007 | Clean up old streamed response temp file | `view.go`, `bugfix_test.go` |
+| BUG-001 | Clear `editingURL` on import modal Escape | `update_test.go` |
+| BUG-002 | Never render binary content raw in terminal | `view.go` |
+| BUG-003 | No double "invalid URL:" error prefix | `executor.go` |
+| BUG-004 | Stub keys must give user feedback | `update_test.go` |
+| BUG-007 | Clean up old streamed response temp file | `view.go`, `update_test.go` |
 | BUG-008 | Distinguish "not searched" vs "no results"; Esc cancels search | `update.go`, `view.go` |
-| BUG-009 | `q` in help mode closes help, not app | `bugfix_test.go` |
-| BUG-010 | Brief tmux/screen Ctrl+w warning on startup | `model.go:432` |
-| BUG-011 | Sidebar scroll offset for long collection lists | `model.go:211` |
+| BUG-009 | `q` in help mode closes help, not app | `update_test.go` |
+| BUG-010 | Brief tmux/screen Ctrl+w warning on startup | `model.go` |
+| BUG-011 | Sidebar scroll offset for long collection lists | `model.go` |
+
+### Visual overflow
+
+If the TUI status bar shows `Visual Overflow; Please check --debug logs`, capture
+`/tmp/quark_debug_logs/debug.log` (run with `--debug`) and report it. Detection is
+intentional; realtime auto-layout fix is not attempted on every frame.
 
 ## Terminal Requirements
 

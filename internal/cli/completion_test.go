@@ -135,6 +135,14 @@ func (s *completionTestStore) GetEnvironmentByName(
 	return nil, nil
 }
 
+func (s *completionTestStore) SetActiveEnvironment(context.Context, string, string) error {
+	return nil
+}
+
+func (s *completionTestStore) GetActiveEnvironment(context.Context, string) (string, error) {
+	return "", nil
+}
+
 func TestCompleteRequestPathsSuggestsCollectionsFirst(t *testing.T) {
 	st := newCompletionTestStore()
 	completion := CompleteRequestPaths(st.ListCollections, st.ListRequests)
