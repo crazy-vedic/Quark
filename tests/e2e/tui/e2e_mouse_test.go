@@ -29,6 +29,42 @@ func resizedMouseModel(t *testing.T) tui.Model {
 	return resize(t, m, e2eMouseWidth, e2eMouseHeight)
 }
 
+func TestE2E_ClickResponseTabSwitchesView(t *testing.T) {
+	ex := &domain.Execution{
+		ID: "ex-1", RequestID: "req-1", StatusCode: 200,
+		ResponseBody: `{"ok":true}`, ResponseHeaders: `{"X-Test":["1"]}`,
+	}
+	m := resizedMouseModel(t).
+		WithExecutions([]*domain.Execution{ex}).
+		WithExecCursor(0).
+		WithResponseTab(tui.BodyTab)
+
+	x, y, ok := m.ResponseTabClickPos(tui.HeadersTab)
+	require.True(t, ok)
+	m = callUpdate(t, m, click(x, y))
+	assert.Equal(t, tui.ResponsePane, m.Focus())
+	assert.Equal(t, tui.HeadersTab, m.ResponseTab())
+	assertViewContains(t, m, "X-Test")
+}
+
+func TestE2E_ResponseWheelCyclesHistory(t *testing.T) {
+	execs := []*domain.Execution{
+		{ID: "ex-0", RequestID: "req-1", StatusCode: 200, ResponseBody: "newest", ResponseHeaders: `{}`},
+		{ID: "ex-1", RequestID: "req-1", StatusCode: 200, ResponseBody: "older", ResponseHeaders: `{}`},
+	}
+	m := resizedMouseModel(t).
+		WithExecutions(execs).
+		WithExecCursor(0).
+		WithFocus(tui.ResponsePane)
+
+	x, y, ok := m.ResponsePaneWheelPos()
+	require.True(t, ok)
+	m = callUpdate(t, m, wheelDown(x, y))
+	assert.Equal(t, 1, m.ExecCursor())
+	m = callUpdate(t, m, wheelUp(x, y))
+	assert.Equal(t, 0, m.ExecCursor())
+}
+
 func TestE2E_ClickFocusesSidebarPane(t *testing.T) {
 	m := resizedMouseModel(t).WithFocus(tui.RequestPane)
 

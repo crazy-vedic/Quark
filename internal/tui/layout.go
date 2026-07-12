@@ -1,5 +1,7 @@
 package tui
 
+import "github.com/crazy-vedic/quark/internal/keybindings"
+
 // normalLayout mirrors the dimension math in viewNormal() so mouse hit-testing
 // and resize logic stay aligned with rendered pane geometry.
 type normalLayout struct {
@@ -99,6 +101,58 @@ func (l normalLayout) requestContentRect() layoutRect {
 		right:  r.right - 1,
 		bottom: r.bottom - 1,
 	}
+}
+
+func (l normalLayout) responseContentRect() layoutRect {
+	r := l.responseRect()
+	return layoutRect{
+		left:   r.left + 1,
+		top:    r.top + 1,
+		right:  r.right - 1,
+		bottom: r.bottom - 1,
+	}
+}
+
+type responsePaneTabRects struct {
+	body, headers, raw layoutRect
+	tabBarY            int
+}
+
+// responsePaneTabRects returns hit targets for the Body/Headers/Raw tab labels.
+// Coordinates match the plain-text layout of viewTabBar (ANSI styling ignored).
+func (m Model) responsePaneTabRects(layout normalLayout) responsePaneTabRects {
+	content := layout.responseContentRect()
+	y := content.top + 1 // skip title row
+	if m.selectedExecution() != nil {
+		y += 2 // Run N/M line + status
+	} else if m.response != nil {
+		y++ // live status
+	}
+
+	tabs := []struct {
+		action string
+		label  string
+		set    func(*responsePaneTabRects, layoutRect)
+	}{
+		{"tab_body", "Body", func(r *responsePaneTabRects, rect layoutRect) { r.body = rect }},
+		{"tab_headers", "Headers", func(r *responsePaneTabRects, rect layoutRect) { r.headers = rect }},
+		{"tab_raw", "Raw", func(r *responsePaneTabRects, rect layoutRect) { r.raw = rect }},
+	}
+
+	out := responsePaneTabRects{tabBarY: y}
+	x := content.left + 2 // leading indent in viewTabBar
+	for i, t := range tabs {
+		if i > 0 {
+			x += 2 // join separator
+		}
+		key := keybindings.FormatKey(keybindings.GetAction(m.cfg.Keybindings, t.action))
+		plain := "[" + key + "] " + t.label
+		w := len(plain)
+		rect := layoutRect{left: x, top: y, right: x + w - 1, bottom: y}
+		t.set(&out, rect)
+		x += w
+	}
+	return out
 }
 
 type requestPaneChromeRects struct {

@@ -59,6 +59,15 @@ func TestStore_WALMode(t *testing.T) {
 	assert.Equal(t, "wal", mode)
 }
 
+func TestStore_BusyTimeout(t *testing.T) {
+	s := newTestStore(t)
+
+	var timeout int
+	row := s.DB().QueryRow("PRAGMA busy_timeout")
+	require.NoError(t, row.Scan(&timeout))
+	assert.Equal(t, 5000, timeout)
+}
+
 // --- WithCacheSize option ---
 
 func TestWithCacheSize_Zero_Rejected(t *testing.T) {

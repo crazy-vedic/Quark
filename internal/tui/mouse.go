@@ -2,6 +2,7 @@ package tui
 
 import (
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
 	"github.com/crazy-vedic/quark/internal/keybindings"
 )
@@ -52,6 +53,8 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 					return m, cmd
 				}
 			}
+		case responsePane:
+			return m.handleResponseWheel(msg)
 		}
 		return m, nil
 	}
@@ -71,10 +74,103 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	case requestPane:
 		return m.handleRequestClick(msg)
 	case responsePane:
-		m.focus = responsePane
-		m.activeField = noneField
+		return m.handleResponseClick(msg)
 	}
 	return m, nil
+}
+
+func (m Model) handleResponseClick(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	layout := normalLayoutFor(m.width, m.height)
+	m.focus = responsePane
+	m.activeField = noneField
+
+	if m.selectedExecution() == nil && m.response == nil {
+		return m, nil
+	}
+
+	tabs := m.responsePaneTabRects(layout)
+	switch {
+	case tabs.body.contains(msg.X, msg.Y):
+		return m.handleResponseAction("tab_body")
+	case tabs.headers.contains(msg.X, msg.Y):
+		return m.handleResponseAction("tab_headers")
+	case tabs.raw.contains(msg.X, msg.Y):
+		return m.handleResponseAction("tab_raw")
+	}
+
+	if idx, ok := m.responseHistoryHitAt(msg.X, msg.Y, layout); ok {
+		m.execCursor = idx
+		return m, nil
+	}
+	return m, nil
+}
+
+func (m Model) handleResponseWheel(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	m.focus = responsePane
+	m.activeField = noneField
+	if len(m.executions) <= 1 {
+		return m, nil
+	}
+	switch msg.Button {
+	case tea.MouseButtonWheelDown:
+		return m.handleResponseAction("history_next")
+	case tea.MouseButtonWheelUp:
+		return m.handleResponseAction("history_prev")
+	default:
+		return m, nil
+	}
+}
+
+// responseHistoryHitAt returns the execution index under (x,y) when the history
+// popup is visible on the right side of the response pane.
+func (m Model) responseHistoryHitAt(x, y int, layout normalLayout) (int, bool) {
+	if !m.viewingHistoricalExecution() {
+		return 0, false
+	}
+	content := layout.responseContentRect()
+	innerW := max(1, content.right-content.left+1)
+	if innerW < 64 {
+		return 0, false
+	}
+
+	tabs := m.responsePaneTabRects(layout)
+	// Body region starts two rows after the tab bar (tab line + blank line).
+	bodyTop := tabs.tabBarY + 2
+	bodyBottom := content.bottom
+	bodyLines := bodyBottom - bodyTop + 1
+	if bodyLines < 6 {
+		return 0, false
+	}
+
+	popup := m.viewExecutionHistoryPopup(innerW, bodyLines)
+	if popup == "" {
+		return 0, false
+	}
+	popupW := lipgloss.Width(popup)
+	bodyWidth := innerW - popupW - 4
+	if bodyWidth < 18 {
+		return 0, false
+	}
+
+	popupLeft := content.left + bodyWidth + 2 // gap between body and popup
+	popupRight := popupLeft + popupW - 1
+	if x < popupLeft || x > popupRight || y < bodyTop {
+		return 0, false
+	}
+
+	maxVisible := min(historyPopupVisibleRows, bodyLines-3)
+	if maxVisible < 3 {
+		return 0, false
+	}
+	indices, _, _ := m.visibleExecutionHistoryWindow(maxVisible)
+	// Popup chrome: title row, then "more above"/blank row, then history lines.
+	// Border adds 1 row/col of padding around the inner content.
+	innerY := y - bodyTop - 1 // account for top border
+	row := innerY - 2         // skip title + spacer
+	if row < 0 || row >= len(indices) {
+		return 0, false
+	}
+	return indices[row], true
 }
 
 func (m Model) handleRequestClick(msg tea.MouseMsg) (tea.Model, tea.Cmd) {

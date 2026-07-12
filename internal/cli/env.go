@@ -13,12 +13,14 @@ import (
 )
 
 const cliDefaultEnvironmentName = "default"
+const cliGlobalEnvironmentName = "global"
 
 // EnvStore is the minimum interface required by the env CLI.
 type EnvStore interface {
 	store.CollectionLister
 	store.EnvironmentReader
 	store.EnvironmentWriter
+	store.ActiveEnvironmentStore
 	GetEnvironmentByName(
 		ctx context.Context,
 		collectionID, name string,
@@ -105,15 +107,10 @@ func NewEnvCmd(st EnvStore) *cobra.Command {
 
 	activeCmd := &cobra.Command{
 		Use:   "active <collection-id> <env-name>",
-		Short: "Set the active environment for a collection (TUI only)",
+		Short: "Set the active environment for a collection (used by TUI and quark run)",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			fmt.Fprintf(cmd.OutOrStdout(), "Active environment set for %s: %s\n", args[0], args[1])
-			fmt.Fprintln(
-				cmd.OutOrStdout(),
-				"Note: This applies to the TUI. Use the TUI or set env vars directly for CLI runs.",
-			)
-			return nil
+			return envActive(cmd.Context(), st, args[0], args[1], cmd.OutOrStdout())
 		},
 	}
 	if st != nil {
@@ -249,5 +246,25 @@ func envDelete(ctx context.Context, st EnvStore, collectionID, envName string) e
 		return fmt.Errorf("delete env: %w", err)
 	}
 	fmt.Printf("Deleted environment %q from collection %s\n", envName, collectionID)
+	return nil
+}
+
+func envActive(
+	ctx context.Context,
+	st EnvStore,
+	collectionID, envName string,
+	w io.Writer,
+) error {
+	if envName == cliGlobalEnvironmentName {
+		return fmt.Errorf("cannot set global as a collection active environment")
+	}
+	env, err := st.GetEnvironmentByName(ctx, collectionID, envName)
+	if err != nil {
+		return fmt.Errorf("get env: %w", err)
+	}
+	if err := st.SetActiveEnvironment(ctx, collectionID, env.ID); err != nil {
+		return fmt.Errorf("set active env: %w", err)
+	}
+	fmt.Fprintf(w, "Active environment set for %s: %s\n", collectionID, envName)
 	return nil
 }

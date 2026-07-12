@@ -26,9 +26,8 @@ No other `cmd/` packages exist.
 
 | Flag | Default | Effect |
 |---|---|---|
-| `--debug` | `false` | Enables keystroke debug logging via `cli.DebugLogger` |
+| `--debug` | `false` | Enables keystroke/diagnostic logging to `/tmp/quark_debug_logs/debug.log` via `cli.DebugLogger` |
 | `--config` | `~/.quark` | Directory for `config.toml`, `quark.db`, backups, logs |
-**Caveat:** `--debug` help text says `~/.quark/debug.log` but the actual path is `/tmp/quark_debug_logs/debug.log`. See [caveats.md](caveats.md).
 
 ### Default Action
 
@@ -114,15 +113,6 @@ func makeVariableResolver(st *store.Store) exec.VariableResolver {
     }
 }
 ```
-
-## Plugin Hook Adapters
-
-```go
-pluginPreHooks(r *plugin.Registry) []exec.PreRequestHook
-pluginPostHooks(r *plugin.Registry) []exec.PostResponseHook
-```
-
-Convert `plugin.*Hook` slices to `exec.*Hook` slices. Registry is empty in production today.
 
 ## Subcommand Registration
 

@@ -14,8 +14,9 @@ import (
 
 type envTestStore struct {
 	store.Store
-	envs []*domain.Environment
-	cols []*domain.Collection
+	envs      []*domain.Environment
+	cols      []*domain.Collection
+	activeEnv map[string]string
 }
 
 func (s *envTestStore) GetEnvironment(ctx context.Context, id string) (*domain.Environment, error) {
@@ -111,6 +112,21 @@ func (s *envTestStore) ListAllEnvironments(ctx context.Context) ([]*domain.Envir
 
 func (s *envTestStore) ListCollections(ctx context.Context) ([]*domain.Collection, error) {
 	return s.cols, nil
+}
+
+func (s *envTestStore) SetActiveEnvironment(ctx context.Context, collectionID, envID string) error {
+	if s.activeEnv == nil {
+		s.activeEnv = make(map[string]string)
+	}
+	s.activeEnv[collectionID] = envID
+	return nil
+}
+
+func (s *envTestStore) GetActiveEnvironment(ctx context.Context, collectionID string) (string, error) {
+	if s.activeEnv == nil {
+		return "", nil
+	}
+	return s.activeEnv[collectionID], nil
 }
 
 func TestEnvList(t *testing.T) {
@@ -219,4 +235,44 @@ func TestEnvCreate(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "dev", env.Name)
 	assert.Equal(t, "col1", env.CollectionID)
+}
+
+func TestEnvActive(t *testing.T) {
+	s := &envTestStore{
+		envs: []*domain.Environment{
+			{ID: "c2", CollectionID: "col1", Name: "dev", Data: `{}`},
+		},
+	}
+
+	var buf bytes.Buffer
+	err := envActive(context.Background(), s, "col1", "dev", &buf)
+	require.NoError(t, err)
+	assert.Contains(t, buf.String(), "dev")
+
+	activeID, err := s.GetActiveEnvironment(context.Background(), "col1")
+	require.NoError(t, err)
+	assert.Equal(t, "c2", activeID)
+}
+
+func TestEnvActive_InvalidEnv(t *testing.T) {
+	s := &envTestStore{
+		envs: []*domain.Environment{
+			{ID: "c1", CollectionID: "col1", Name: "default", Data: `{}`},
+		},
+	}
+
+	err := envActive(context.Background(), s, "col1", "missing", &bytes.Buffer{})
+	assert.Error(t, err)
+}
+
+func TestEnvActive_RejectsGlobal(t *testing.T) {
+	s := &envTestStore{
+		envs: []*domain.Environment{
+			{ID: "g1", Name: "global", Data: `{}`},
+		},
+	}
+
+	err := envActive(context.Background(), s, "col1", "global", &bytes.Buffer{})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "global")
 }

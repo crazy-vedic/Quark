@@ -99,6 +99,10 @@ func (s *Store) init() error {
 	if _, err := s.db.Exec("PRAGMA journal_mode=WAL"); err != nil {
 		return fmt.Errorf("store: enable WAL: %w", err)
 	}
+	// Wait up to 5s on SQLITE_BUSY when another process holds the lock.
+	if _, err := s.db.Exec("PRAGMA busy_timeout = 5000"); err != nil {
+		return fmt.Errorf("store: set busy_timeout: %w", err)
+	}
 	// Negative value = number of KiB; positive = number of pages.
 	// We use pages (positive) as set by WithCacheSize.
 	if _, err := s.db.Exec(fmt.Sprintf("PRAGMA cache_size = %d", s.cacheSize)); err != nil {
