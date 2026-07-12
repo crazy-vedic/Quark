@@ -15,6 +15,20 @@ The interactive terminal UI is built with bubbletea (Elm architecture: Model / U
 | `list_viewport.go` | Scrollable list component |
 | `interfaces.go` | Narrow interfaces for executor, searcher, importer |
 | `test_api.go` | Test-only helpers exported for harness |
+| `mouse.go` | Normal-mode mouse hit-testing and handlers |
+| `layout.go` | Shared pane geometry for view + mouse |
+| `overflow_debug.go` | Visual overflow detection + `--debug` logging |
+
+## Mouse Support
+
+Enabled via `tea.WithMouseCellMotion()` in `launchTUI`. Mouse is active only in
+**normal mode** (overlay modes stay keyboard-only).
+
+| Area | Mouse behavior |
+|---|---|
+| Sidebar | Click select/expand; wheel scroll |
+| Request pane | Method badge, URL, send, editors, body wheel |
+| Response pane | Tab bar clicks (Body/Headers/Raw); wheel cycles execution history; history popup row clicks when viewing older runs |
 
 ## Model Structure
 
@@ -112,28 +126,36 @@ Used by `tests/e2e/tui/` for model-level tests:
 
 Production TUI code stays in `internal/tui/`; harness is separate to keep production package focused.
 
-## Regression Tests (`bugfix_test.go`)
+## Regression Tests (BUG-NNN)
 
-Known UX bugs tracked as **BUG-NNN** IDs (not literal TODO/FIXME comments):
+Known UX bugs tracked as **BUG-NNN** IDs (not literal TODO/FIXME comments).
+Most live in `internal/tui/update_test.go`; overflow height checks are in `view_height_test.go`.
 
 | ID | Issue | Source ref |
 |---|---|---|
-| BUG-001 | `editingURL` not cleared on import modal Escape | `bugfix_test.go` |
-| BUG-002 | Binary content must not render raw | `view.go:778` |
-| BUG-003 | Double "invalid URL:" prefix | `executor.go:99` |
-| BUG-004 | Stub keys showed no feedback | `bugfix_test.go` |
-| BUG-007 | Old streamed temp file not cleaned up | `view.go`, `bugfix_test.go` |
-| BUG-008 | "No results" before search; search cancel on Esc | `update.go`, `view.go` |
-| BUG-009 | `q` in help mode closes help (not quit) | `bugfix_test.go` |
-| BUG-010 | tmux/GNU screen Ctrl+w warning on startup | `model.go:432`, `view.go` |
-| BUG-011 | Sidebar scroll offset for long lists | `model.go:211` |
+| BUG-001 | `editingURL` not cleared on import modal Escape | `update_test.go` |
+| BUG-002 | Binary content must not render raw | `view.go` |
+| BUG-003 | Double "invalid URL:" prefix | `executor.go`, `update_test.go` |
+| BUG-004 | Stub keys showed no feedback | `update_test.go` |
+| BUG-007 | Old streamed temp file not cleaned up | `view.go`, `update_test.go` |
+| BUG-008 | "No results" before search; search cancel on Esc | `update.go`, `view.go`, `update_test.go` |
+| BUG-009 | `q` in help mode closes help (not quit) | `update_test.go` |
+| BUG-010 | tmux/GNU screen Ctrl+w warning on startup | `model.go`, `view.go` |
+| BUG-011 | Sidebar scroll offset for long lists | `model.go` |
 
-When fixing TUI bugs, add/update tests in `bugfix_test.go` with the BUG-NNN reference.
+When fixing TUI bugs, add/update tests with the BUG-NNN reference (prefer `update_test.go`).
+
+## Visual Overflow Reporting
+
+If a normal-mode render still exceeds terminal height after clipping, the status bar shows
+`Visual Overflow; Please check --debug logs` and a detailed `VISUAL OVERFLOW` block is
+written to `/tmp/quark_debug_logs/debug.log` (when `--debug` is set). There is no automatic
+layout rewrite — report occurrences with the debug log attached.
 
 ## TUI vs CLI Gaps
 
 - Postman import: CLI only (`import-postman`)
 - Keybinding changes: CLI only (`keybindings set`)
-- `env active`: CLI prints note that it applies to TUI
+- `env active`: CLI persists active env used by both TUI and `quark run`
 
 See also: [cli-commands.md](cli-commands.md), [http-execution.md](http-execution.md), [testing.md](testing.md), [caveats.md](caveats.md).

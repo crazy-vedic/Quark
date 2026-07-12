@@ -86,7 +86,8 @@ Test files follow `e2e_*_test.go` naming:
 
 ### TUI Regression Tests
 
-`internal/tui/bugfix_test.go` — BUG-NNN regression tests (not e2e tag, run with unit tests).
+`internal/tui/update_test.go` — BUG-NNN regression tests (not e2e tag, run with unit tests).
+Overflow height coverage is in `internal/tui/view_height_test.go`.
 
 ## E2E CLI Tests
 

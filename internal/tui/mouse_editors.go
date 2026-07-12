@@ -237,20 +237,20 @@ func (e *authEditor) assignInput(row authRowID, in textinput.Model) {
 	}
 }
 
-func (m Model) handleBodyTextareaClick(msg tea.MouseMsg) (Model, tea.Cmd) {
+func (m Model) handleBodyTextareaClick(msg tea.MouseMsg) Model {
 	layout := normalLayoutFor(m.width, m.height)
 	ll := m.requestPaneLineLayout(layout)
 
 	relY := msg.Y - ll.editorContentY
 	relX := msg.X - m.bodyTextareaTextLeft(layout)
 	if relY < 0 || relY >= m.bodyTextarea.Height() || relX < 0 {
-		return m, nil
+		return m
 	}
 
 	if !m.positionBodyCursorAtDisplayLine(relY, relX) {
-		return m, nil
+		return m
 	}
-	return m, nil
+	return m
 }
 
 func (m *Model) positionBodyCursorAtDisplayLine(displayLine, relX int) bool {

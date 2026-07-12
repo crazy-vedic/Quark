@@ -75,7 +75,11 @@ func wrapRunes(runes []rune, width int) [][]rune {
 		}
 
 		if spaces > 0 {
-			if uniseg.StringWidth(string(lines[row]))+uniseg.StringWidth(string(word))+spaces > width {
+			if uniseg.StringWidth(
+				string(lines[row]),
+			)+uniseg.StringWidth(
+				string(word),
+			)+spaces > width {
 				row++
 				lines = append(lines, []rune{})
 				lines[row] = append(lines[row], word...)

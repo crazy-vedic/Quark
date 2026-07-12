@@ -7,204 +7,33 @@ concurrency:
 on:
   pull_request:
     branches: ["master", "main"]
-    types: ["opened", "reopened", "synchronize", "edited"]
+    types: ["opened", "reopened", "synchronize"]
   push:
     branches: ["master", "main"]
   workflow_dispatch:
 
 permissions:
-  checks: write
   contents: read
   pull-requests: write
 
 env:
   GOTESTSUM_VERSION: v1.13.0
-  GO_DEPS_CACHE_VERSION: v2
+  # Bump when cache path layout changes. v3: store under runner.temp instead of ~/go.
+  GO_DEPS_CACHE_VERSION: v3
 
 jobs:
-  validate-release:
-    runs-on: self-hosted
-    if: github.event_name == 'pull_request'
-    steps:
-      - name: Validate requested release version
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_BODY: ${{ github.event.pull_request.body }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: |
-          write_failure_summary() {
-            local reason="$1"
-            {
-              echo "## Release validation failed"
-              echo
-              echo "$reason"
-              if [ -n "${SUGGESTED_RELEASE:-}" ]; then
-                echo
-                echo "**Suggested release:** \`${SUGGESTED_RELEASE}\`"
-              fi
-            } >> "$GITHUB_STEP_SUMMARY"
-          }
-
-          publish_check() {
-            local conclusion="$1"
-            local title="$2"
-            local summary="$3"
-            local text="$4"
-
-            jq -n \
-              --arg name "release-validation" \
-              --arg head_sha "$HEAD_SHA" \
-              --arg details_url "$RUN_URL" \
-              --arg conclusion "$conclusion" \
-              --arg title "$title" \
-              --arg summary "$summary" \
-              --arg text "$text" \
-              '{
-                name: $name,
-                head_sha: $head_sha,
-                status: "completed",
-                conclusion: $conclusion,
-                details_url: $details_url,
-                output: {
-                  title: $title,
-                  summary: $summary,
-                  text: $text
-                }
-              }' | gh api \
-                --method POST \
-                -H "Accept: application/vnd.github+json" \
-                "repos/${{ github.repository }}/check-runs" \
-                --input -
-          }
-
-          PR_BODY="${PR_BODY:-}"
-          RAW_VERSION=$(echo "$PR_BODY" | grep -oiP 'release:\s*v?\d+\.\d+\.\d+' | head -1 | sed -E 's/.*release:\s*//I')
-
-          LATEST_RELEASE=$(gh api repos/${{ github.repository }}/releases/latest 2>/dev/null | jq -r '.tag_name // empty')
-          SUGGESTED_RELEASE=""
-          if [ -n "$LATEST_RELEASE" ]; then
-            LATEST_MAJOR=$(echo "$LATEST_RELEASE" | sed 's/^v//' | cut -d. -f1)
-            LATEST_MINOR=$(echo "$LATEST_RELEASE" | sed 's/^v//' | cut -d. -f2)
-            LATEST_PATCH=$(echo "$LATEST_RELEASE" | sed 's/^v//' | cut -d. -f3)
-            SUGGESTED_RELEASE="v${LATEST_MAJOR}.${LATEST_MINOR}.$((LATEST_PATCH + 1))"
-          fi
-          CHECK_LINK="[Open validation workflow run]($RUN_URL)"
-
-          if [ -z "$RAW_VERSION" ]; then
-            echo "No release version requested in PR body. Skipping validation."
-            RELEASE_HINT="Add \`Release: vX.Y.Z\` to the PR body when you want this PR to create a release on merge."
-            CHECK_TITLE="No release requested"
-            if [ -n "$SUGGESTED_RELEASE" ]; then
-              RELEASE_HINT="Add \`Release: ${SUGGESTED_RELEASE}\` to the PR body when you want this PR to create a release on merge."
-              CHECK_TITLE="No release requested. Add Release: ${SUGGESTED_RELEASE} if you want to create a release on merge"
-            fi
-            publish_check \
-              "neutral" \
-              "$CHECK_TITLE" \
-              "$RELEASE_HINT" \
-              "$RELEASE_HINT\n\n$CHECK_LINK"
-            exit 0
-          fi
-
-          VERSION="$RAW_VERSION"
-          if [[ "$VERSION" != v* ]]; then
-            VERSION="v$VERSION"
-          fi
-
-          if ! echo "$VERSION" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
-            echo "::error title=Release validation failed::Invalid release version format: $RAW_VERSION"
-            echo "Use 'Release: vX.Y.Z' or 'Release: X.Y.Z' in the PR body."
-            if [ -n "$SUGGESTED_RELEASE" ]; then
-              echo "::error title=Suggested release::Suggested release is $SUGGESTED_RELEASE"
-            fi
-            publish_check \
-              "failure" \
-              "Suggested release is ${SUGGESTED_RELEASE:-unavailable}" \
-              "Invalid release version format: \`$RAW_VERSION\`." \
-              "Use \`Release: vX.Y.Z\` or \`Release: X.Y.Z\` in the PR body.\n\n$CHECK_LINK"
-            write_failure_summary "Invalid release version format: \`$RAW_VERSION\`"
-            exit 0
-          fi
-
-          if [ -z "$LATEST_RELEASE" ]; then
-            echo "No previous releases found on GitHub. First release is allowed."
-            publish_check \
-              "success" \
-              "Release version valid" \
-              "First GitHub release detected." \
-              "Requested release \`$VERSION\` is allowed because no previous releases exist.\n\n$CHECK_LINK"
-            exit 0
-          fi
-
-          echo "Previous release: $LATEST_RELEASE"
-          echo "Proposed release: $VERSION"
-
-          LATEST_MAJOR=$(echo "$LATEST_RELEASE" | sed 's/^v//' | cut -d. -f1)
-          LATEST_MINOR=$(echo "$LATEST_RELEASE" | sed 's/^v//' | cut -d. -f2)
-          LATEST_PATCH=$(echo "$LATEST_RELEASE" | sed 's/^v//' | cut -d. -f3)
-
-          PROP_MAJOR=$(echo "$VERSION" | sed 's/^v//' | cut -d. -f1)
-          PROP_MINOR=$(echo "$VERSION" | sed 's/^v//' | cut -d. -f2)
-          PROP_PATCH=$(echo "$VERSION" | sed 's/^v//' | cut -d. -f3)
-
-          if [ "$PROP_MAJOR" -eq "$LATEST_MAJOR" ]; then
-            if [ "$PROP_MINOR" -eq "$LATEST_MINOR" ] && [ "$PROP_PATCH" -eq $((LATEST_PATCH + 1)) ]; then
-              echo "Valid: patch increment (+1)"
-              publish_check \
-                "success" \
-                "Release version valid" \
-                "Requested release \`$VERSION\` is a valid patch increment from \`$LATEST_RELEASE\`." \
-                "Validated patch increment.\n\n$CHECK_LINK"
-              exit 0
-            fi
-            if [ "$PROP_MINOR" -eq $((LATEST_MINOR + 1)) ] && [ "$PROP_PATCH" -eq 0 ]; then
-              echo "Valid: minor increment (+1), patch reset"
-              publish_check \
-                "success" \
-                "Release version valid" \
-                "Requested release \`$VERSION\` is a valid minor increment from \`$LATEST_RELEASE\`." \
-                "Validated minor increment with patch reset.\n\n$CHECK_LINK"
-              exit 0
-            fi
-          elif [ "$PROP_MAJOR" -eq $((LATEST_MAJOR + 1)) ] && [ "$PROP_MINOR" -eq 0 ] && [ "$PROP_PATCH" -eq 0 ]; then
-            echo "Valid: major increment (+1), minor+patch reset"
-            publish_check \
-              "success" \
-              "Release version valid" \
-              "Requested release \`$VERSION\` is a valid major increment from \`$LATEST_RELEASE\`." \
-              "Validated major increment with minor and patch reset.\n\n$CHECK_LINK"
-            exit 0
-          fi
-
-          echo "::error title=Release validation failed::VERSION INCREMENT REJECTED"
-          echo "Previous release: $LATEST_RELEASE"
-          echo "Proposed release:  $VERSION"
-          echo "::error title=Suggested release::Suggested release is $SUGGESTED_RELEASE"
-          echo "Allowed next release values:"
-          echo "  v${LATEST_MAJOR}.${LATEST_MINOR}.$((LATEST_PATCH + 1))"
-          echo "  v${LATEST_MAJOR}.$((LATEST_MINOR + 1)).0"
-          echo "  v$((LATEST_MAJOR + 1)).0.0"
-          publish_check \
-            "failure" \
-            "Suggested release is $SUGGESTED_RELEASE" \
-            "Proposed release \`$VERSION\` is not a valid next increment from \`$LATEST_RELEASE\`." \
-            "Allowed next release values:\n- \`v${LATEST_MAJOR}.${LATEST_MINOR}.$((LATEST_PATCH + 1))\`\n- \`v${LATEST_MAJOR}.$((LATEST_MINOR + 1)).0\`\n- \`v$((LATEST_MAJOR + 1)).0.0\`\n\n$CHECK_LINK"
-          write_failure_summary "Proposed release \`${VERSION}\` is not a valid next increment from \`${LATEST_RELEASE}\`."
-          exit 0
-
   # ---------------------------------------------------------------------------
   # Stage 1: Build — compile once, share binary with all downstream jobs
   # ---------------------------------------------------------------------------
   build:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: '1.26'
           check-latest: true
@@ -217,14 +46,14 @@ jobs:
         run: make build-cover
 
       - name: Upload binary
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: bin-quark
           path: bin/quark
           retention-days: 1
 
       - name: Upload coverage binary
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: bin-quark-cover
           path: bin/quark-cover
@@ -234,14 +63,14 @@ jobs:
   # Stage 1: Lint — parallel with build, no artifacts needed
   # ---------------------------------------------------------------------------
   lint:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: '1.26'
           check-latest: true
@@ -249,7 +78,7 @@ jobs:
 
       - name: Cache golangci-lint binary
         id: golangci-lint-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/go/bin/golangci-lint
           key: ${{ runner.os }}-golangci-lint-v2.12.2
@@ -262,8 +91,8 @@ jobs:
         run: make lint-ci 2>&1 | tee lint-output.txt || true
 
       - name: Upload lint output
-        if: always()
-        uses: actions/upload-artifact@v4
+        if: always() && !cancelled()
+        uses: actions/upload-artifact@v6
         with:
           name: lint-pr
           path: lint-output.txt
@@ -273,22 +102,28 @@ jobs:
   # Stage 2: Test — all suites run in parallel, each downloads the binary
   # ---------------------------------------------------------------------------
   test-unit:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
         with:
           go-version: '1.26'
           check-latest: true
           cache: false
 
+      - name: Configure Go module/build cache dirs
+        run: |
+          echo "GOMODCACHE=${{ runner.temp }}/go-mod-cache" >> "$GITHUB_ENV"
+          echo "GOCACHE=${{ runner.temp }}/go-build-cache" >> "$GITHUB_ENV"
+          mkdir -p "${{ runner.temp }}/go-mod-cache" "${{ runner.temp }}/go-build-cache"
+
       - name: Restore Go dependency caches
         id: go-deps-cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: |
-            ~/go/pkg/mod
-            ~/.cache/go-build
+            ${{ runner.temp }}/go-mod-cache
+            ${{ runner.temp }}/go-build-cache
           key: ${{ runner.os }}-go-deps-${{ env.GO_DEPS_CACHE_VERSION }}-unit-${{ hashFiles('**/go.sum') }}
           restore-keys: |
             ${{ runner.os }}-go-deps-${{ env.GO_DEPS_CACHE_VERSION }}-unit-
@@ -301,7 +136,7 @@ jobs:
 
       - name: Cache gotestsum binary
         id: gotestsum-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/go/bin/gotestsum
           key: ${{ runner.os }}-gotestsum-${{ env.GOTESTSUM_VERSION }}
@@ -314,47 +149,55 @@ jobs:
         run: make ut ARGS="-coverprofile=ut.out"
 
       - name: Per-package timing
-        if: always()
+        if: always() && !cancelled()
         run: make show-slow
 
       - name: Ensure coverage file exists
-        if: always()
+        if: always() && !cancelled()
         run: touch ut.out
 
       - name: Upload coverage
-        if: always()
-        uses: actions/upload-artifact@v4
+        if: always() && !cancelled()
+        uses: actions/upload-artifact@v6
         with:
           name: coverage-ut-pr
           path: ut.out
           retention-days: 1
 
+      # continue-on-error: another concurrent job may have already saved this key.
       - name: Save Go dependency caches
-        if: always() && steps.go-deps-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
+        if: always() && !cancelled() && steps.go-deps-cache.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@v5
         with:
           path: |
-            ~/go/pkg/mod
-            ~/.cache/go-build
+            ${{ runner.temp }}/go-mod-cache
+            ${{ runner.temp }}/go-build-cache
           key: ${{ steps.go-deps-cache.outputs.cache-primary-key }}
 
   test-e2e-tui:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
         with:
           go-version: '1.26'
           check-latest: true
           cache: false
 
+      - name: Configure Go module/build cache dirs
+        run: |
+          echo "GOMODCACHE=${{ runner.temp }}/go-mod-cache" >> "$GITHUB_ENV"
+          echo "GOCACHE=${{ runner.temp }}/go-build-cache" >> "$GITHUB_ENV"
+          mkdir -p "${{ runner.temp }}/go-mod-cache" "${{ runner.temp }}/go-build-cache"
+
       - name: Restore Go dependency caches
         id: go-deps-cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: |
-            ~/go/pkg/mod
-            ~/.cache/go-build
+            ${{ runner.temp }}/go-mod-cache
+            ${{ runner.temp }}/go-build-cache
           key: ${{ runner.os }}-go-deps-${{ env.GO_DEPS_CACHE_VERSION }}-tui-${{ hashFiles('**/go.sum') }}
           restore-keys: |
             ${{ runner.os }}-go-deps-${{ env.GO_DEPS_CACHE_VERSION }}-tui-
@@ -367,7 +210,7 @@ jobs:
 
       - name: Cache gotestsum binary
         id: gotestsum-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/go/bin/gotestsum
           key: ${{ runner.os }}-gotestsum-${{ env.GOTESTSUM_VERSION }}
@@ -380,48 +223,56 @@ jobs:
         run: make e2e-tui ARGS="-coverprofile=tui.out"
 
       - name: Per-package timing
-        if: always()
+        if: always() && !cancelled()
         run: make show-slow
 
       - name: Ensure coverage file exists
-        if: always()
+        if: always() && !cancelled()
         run: touch tui.out
 
       - name: Upload coverage
-        if: always()
-        uses: actions/upload-artifact@v4
+        if: always() && !cancelled()
+        uses: actions/upload-artifact@v6
         with:
           name: coverage-tui-pr
           path: tui.out
           retention-days: 1
 
+      # continue-on-error: another concurrent job may have already saved this key.
       - name: Save Go dependency caches
-        if: always() && steps.go-deps-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
+        if: always() && !cancelled() && steps.go-deps-cache.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@v5
         with:
           path: |
-            ~/go/pkg/mod
-            ~/.cache/go-build
+            ${{ runner.temp }}/go-mod-cache
+            ${{ runner.temp }}/go-build-cache
           key: ${{ steps.go-deps-cache.outputs.cache-primary-key }}
 
   test-e2e-cli:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     needs: build
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
         with:
           go-version: '1.26'
           check-latest: true
           cache: false
 
+      - name: Configure Go module/build cache dirs
+        run: |
+          echo "GOMODCACHE=${{ runner.temp }}/go-mod-cache" >> "$GITHUB_ENV"
+          echo "GOCACHE=${{ runner.temp }}/go-build-cache" >> "$GITHUB_ENV"
+          mkdir -p "${{ runner.temp }}/go-mod-cache" "${{ runner.temp }}/go-build-cache"
+
       - name: Restore Go dependency caches
         id: go-deps-cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: |
-            ~/go/pkg/mod
-            ~/.cache/go-build
+            ${{ runner.temp }}/go-mod-cache
+            ${{ runner.temp }}/go-build-cache
           key: ${{ runner.os }}-go-deps-${{ env.GO_DEPS_CACHE_VERSION }}-cli-${{ hashFiles('**/go.sum') }}
           restore-keys: |
             ${{ runner.os }}-go-deps-${{ env.GO_DEPS_CACHE_VERSION }}-cli-
@@ -434,7 +285,7 @@ jobs:
 
       - name: Cache gotestsum binary
         id: gotestsum-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/go/bin/gotestsum
           key: ${{ runner.os }}-gotestsum-${{ env.GOTESTSUM_VERSION }}
@@ -444,7 +295,7 @@ jobs:
         run: go install gotest.tools/gotestsum@${{ env.GOTESTSUM_VERSION }}
 
       - name: Download coverage binary
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: bin-quark-cover
           path: bin
@@ -453,28 +304,30 @@ jobs:
         run: make e2e-cli-run
 
       - name: Per-package timing
-        if: always()
+        if: always() && !cancelled()
         run: make show-slow
 
       - name: Ensure coverage file exists
-        if: always()
+        if: always() && !cancelled()
         run: touch bin/cover-cli.out
 
       - name: Upload coverage
-        if: always()
-        uses: actions/upload-artifact@v4
+        if: always() && !cancelled()
+        uses: actions/upload-artifact@v6
         with:
           name: coverage-cli-pr
           path: bin/cover-cli.out
           retention-days: 1
 
+      # continue-on-error: another concurrent job may have already saved this key.
       - name: Save Go dependency caches
-        if: always() && steps.go-deps-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
+        if: always() && !cancelled() && steps.go-deps-cache.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@v5
         with:
           path: |
-            ~/go/pkg/mod
-            ~/.cache/go-build
+            ${{ runner.temp }}/go-mod-cache
+            ${{ runner.temp }}/go-build-cache
           key: ${{ steps.go-deps-cache.outputs.cache-primary-key }}
 
   # ---------------------------------------------------------------------------
@@ -487,13 +340,13 @@ jobs:
     if: github.event_name == 'push'
     steps:
       - name: Download coverage artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           path: /tmp/baseline-raw
           pattern: coverage-*-pr
 
       - name: Download lint artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: lint-pr
           path: /tmp/baseline-raw/lint-pr
@@ -510,7 +363,8 @@ jobs:
           cp /tmp/baseline-raw/lint-pr/lint-output.txt /tmp/baseline/lint-output.txt
 
       - name: Save baseline cache
-        uses: actions/cache/save@v4
+        continue-on-error: true
+        uses: actions/cache/save@v5
         with:
           path: /tmp/baseline
           key: coverage-master-${{ github.sha }}
@@ -528,7 +382,7 @@ jobs:
     steps:
       - name: Restore baseline cache
         id: cache-baseline
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: /tmp/baseline
           key: coverage-master-${{ github.event.pull_request.base.sha }}
@@ -544,26 +398,33 @@ jobs:
             echo "found=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         if: steps.check-baseline.outputs.found != 'true'
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         if: steps.check-baseline.outputs.found != 'true'
         with:
           go-version: '1.26'
           check-latest: true
           cache: false
 
+      - name: Configure Go module/build cache dirs
+        if: steps.check-baseline.outputs.found != 'true'
+        run: |
+          echo "GOMODCACHE=${{ runner.temp }}/go-mod-cache" >> "$GITHUB_ENV"
+          echo "GOCACHE=${{ runner.temp }}/go-build-cache" >> "$GITHUB_ENV"
+          mkdir -p "${{ runner.temp }}/go-mod-cache" "${{ runner.temp }}/go-build-cache"
+
       - name: Restore Go dependency caches
         if: steps.check-baseline.outputs.found != 'true'
         id: go-deps-cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: |
-            ~/go/pkg/mod
-            ~/.cache/go-build
+            ${{ runner.temp }}/go-mod-cache
+            ${{ runner.temp }}/go-build-cache
           key: ${{ runner.os }}-go-deps-${{ env.GO_DEPS_CACHE_VERSION }}-baseline-${{ hashFiles('**/go.sum') }}
           restore-keys: |
             ${{ runner.os }}-go-deps-${{ env.GO_DEPS_CACHE_VERSION }}-baseline-
@@ -578,7 +439,7 @@ jobs:
       - name: Cache gotestsum binary
         if: steps.check-baseline.outputs.found != 'true'
         id: gotestsum-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/go/bin/gotestsum
           key: ${{ runner.os }}-gotestsum-${{ env.GOTESTSUM_VERSION }}
@@ -623,23 +484,26 @@ jobs:
 
       - name: Save generated baseline to cache
         if: steps.check-baseline.outputs.found != 'true'
-        uses: actions/cache/save@v4
+        continue-on-error: true
+        uses: actions/cache/save@v5
         with:
           path: /tmp/baseline
           key: coverage-master-${{ github.event.pull_request.base.sha }}
 
+      # continue-on-error: another concurrent job may have already saved this key.
       - name: Save Go dependency caches
-        if: always() && steps.check-baseline.outputs.found != 'true' && steps.go-deps-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
+        if: always() && !cancelled() && steps.check-baseline.outputs.found != 'true' && steps.go-deps-cache.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@v5
         with:
           path: |
-            ~/go/pkg/mod
-            ~/.cache/go-build
+            ${{ runner.temp }}/go-mod-cache
+            ${{ runner.temp }}/go-build-cache
           key: ${{ steps.go-deps-cache.outputs.cache-primary-key }}
 
       - name: Upload baseline artifact
-        if: always()
-        uses: actions/upload-artifact@v4
+        if: always() && !cancelled()
+        uses: actions/upload-artifact@v6
         with:
           name: coverage-master
           path: /tmp/baseline
@@ -648,11 +512,15 @@ jobs:
   # Stage 4: Report — aggregate coverage, compare to master, post PR comment
   # Only runs on PRs when all tests + baseline succeed. Fails the workflow if
   # coverage drops > 5% or code-change coverage < 50%.
+  #
+  # always() keeps the report running when a suite fails; !cancelled() is
+  # required so cancel-in-progress (new PR push) does not still queue this
+  # job after its dependencies are cancelled.
   # ---------------------------------------------------------------------------
   coverage-report:
     runs-on: self-hosted
     needs: [test-unit, test-e2e-tui, test-e2e-cli, coverage-master, lint]
-    if: github.event_name == 'pull_request' && always()
+    if: github.event_name == 'pull_request' && always() && !cancelled()
     env:
       PR_UT: /tmp/coverage-pr/coverage-ut-pr/ut.out
       PR_TUI: /tmp/coverage-pr/coverage-tui-pr/tui.out
@@ -666,33 +534,33 @@ jobs:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       COVERAGE_REPORT_COMMIT_SHA: ${{ github.event.pull_request.head.sha }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: '1.26'
           check-latest: true
           cache: true
 
       - name: Download PR coverage artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         continue-on-error: true
         with:
           path: /tmp/coverage-pr
           pattern: coverage-*-pr
 
       - name: Download PR lint artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         continue-on-error: true
         with:
           name: lint-pr
           path: /tmp/lint-pr
 
       - name: Download master coverage artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         continue-on-error: true
         with:
           name: coverage-master
@@ -715,8 +583,8 @@ jobs:
         run: ./scripts/coverage-report.sh finalize
 
       - name: Minimize old coverage comments
-        if: always()
-        uses: actions/github-script@v7
+        if: always() && !cancelled()
+        uses: actions/github-script@v8
         with:
           script: |
             const owner = context.repo.owner;

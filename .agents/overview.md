@@ -46,7 +46,6 @@ quark/
 │   ├── search/          # Fuzzy search
 │   ├── keybindings/     # Dynamic keybinding resolution
 │   ├── config/          # config.toml loading
-│   ├── plugin/          # Pre/post request hook interfaces
 │   ├── highlight/       # Chroma ANSI highlighting
 │   ├── schedule/        # Schedule time parsing
 │   └── tuitest/         # TUI test harness (used by e2e)

@@ -158,9 +158,79 @@ func TestCLI_Env_Delete_InvalidEnv(t *testing.T) {
 	assert.NotEqual(t, 0, code, "env delete with nonexistent env name must fail")
 }
 
-// --- env active (not implemented as a separate CLI subcommand) ---
+// --- env active ---
 
-// Skipping: the active command is TUI-only; there is no CLI subcommand for it.
+func TestCLI_Env_Active(t *testing.T) {
+	home, colID := setupHomeWithCollection(t)
+
+	out, _, code := runQuarkWithHome(t, home, "env", "active", colID, "dev")
+	require.Equal(t, 0, code, "env active must succeed: %s", out)
+	assert.Contains(t, out, "dev")
+
+	quarkDir := filepath.Join(home, ".quark")
+	dbPath := filepath.Join(quarkDir, "quark.db")
+	st, err := store.New(dbPath, store.WithCacheSize(100))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = st.Close() })
+
+	activeID, err := st.GetActiveEnvironment(context.Background(), colID)
+	require.NoError(t, err)
+	assert.Equal(t, "env-dev", activeID)
+}
+
+func TestCLI_Env_Active_InvalidEnv(t *testing.T) {
+	home, colID := setupHomeWithCollection(t)
+
+	_, _, code := runQuarkWithHome(t, home, "env", "active", colID, "nonexistent")
+	assert.NotEqual(t, 0, code, "env active with nonexistent env must fail")
+}
+
+func TestCLI_Env_Active_RejectsGlobal(t *testing.T) {
+	home, colID := setupHomeWithCollection(t)
+
+	_, _, code := runQuarkWithHome(t, home, "env", "active", colID, "global")
+	assert.NotEqual(t, 0, code, "env active with global must fail")
+}
+
+func TestCLI_Env_Active_UsedByRun(t *testing.T) {
+	home, colID := setupHomeWithCollection(t)
+
+	// Point default at a distinct URL and make "dev" active via CLI.
+	_, _, code := runQuarkWithHome(
+		t, home, "env", "set", colID, "default", "base_url", "http://default.local",
+	)
+	require.Equal(t, 0, code)
+	_, _, code = runQuarkWithHome(t, home, "env", "active", colID, "dev")
+	require.Equal(t, 0, code)
+
+	quarkDir := filepath.Join(home, ".quark")
+	dbPath := filepath.Join(quarkDir, "quark.db")
+	st, err := store.New(dbPath, store.WithCacheSize(100))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = st.Close() })
+
+	ctx := context.Background()
+	req := &domain.Request{
+		ID:           "req-active-env",
+		CollectionID: colID,
+		Name:         "Ping",
+		Method:       "GET",
+		URL:          "{{base_url}}/ping",
+	}
+	require.NoError(t, st.SaveRequest(ctx, req))
+	require.NoError(t, st.Close())
+
+	// Verify active env is what run will read (dev → http://dev.local).
+	st2, err := store.New(dbPath, store.WithCacheSize(100))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = st2.Close() })
+	activeID, err := st2.GetActiveEnvironment(ctx, colID)
+	require.NoError(t, err)
+	assert.Equal(t, "env-dev", activeID)
+	env, err := st2.GetEnvironment(ctx, activeID)
+	require.NoError(t, err)
+	assert.Equal(t, "http://dev.local", env.Vars()["base_url"])
+}
 
 // --- env create ---
 

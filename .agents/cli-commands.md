@@ -141,9 +141,9 @@ See [imports.md](imports.md) for mapping limits.
 | `set` | `<collection-id> <env-name> <key> <value>` | Set key in collection environment |
 | `set-global` | `<key> <value>` | Set key in global environment |
 | `delete` | `<collection-id> <env-name>` | Delete environment |
-| `active` | `<collection-id> <env-name>` | Set active environment (**TUI only**) |
+| `active` | `<collection-id> <env-name>` | Set active environment (persists for TUI and `quark run`) |
 
-**Caveat:** `env active` prints a note that it applies to the TUI. CLI `run` uses the env resolution chain (active env → `default` → first env) via `makeVariableResolver`, but `env active` currently only prints confirmation — verify behavior if changing this command.
+**Note:** `env active` writes to `collection_active_env`. CLI `run` and the TUI both resolve variables via the active env → `default` → first env chain.
 
 Every collection gets a `default` environment on store init. A `global` environment always exists.
 

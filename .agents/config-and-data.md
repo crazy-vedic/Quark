@@ -15,10 +15,11 @@ Created with mode `0700` (owner-only) because it holds credentials.
 ├── config.toml       # Optional user configuration
 ├── quark.db          # SQLite database (WAL mode)
 ├── quark.log         # Application log (default path)
-├── backup/           # Auto-backup copies of quark.db
-│   └── quark.db.YYYY-MM-DD-NNN
-└── debug.log         # (NOT used — debug goes to /tmp; see below)
+└── backup/           # Auto-backup copies of quark.db
+    └── quark.db.YYYY-MM-DD-NNN
 ```
+
+Debug keystroke logs go to `/tmp/quark_debug_logs/` (not under the config dir). See below.
 
 ## config.toml (`internal/config/config.go`)
 
@@ -87,11 +88,10 @@ No other env vars configure runtime behavior. HTTP env vars for requests come fr
 
 ## Debug Logging
 
-`--debug` flag enables keystroke logging:
+`--debug` flag enables keystroke and diagnostic logging:
 
-- **Actual path:** `/tmp/quark_debug_logs/debug.log`
-- Archives previous log as `debug_<epoch>.log`
-- **Help text says:** `~/.quark/debug.log` (incorrect)
+- **Path:** `/tmp/quark_debug_logs/debug.log` (matches `--debug` help text)
+- Archives previous log as `debug_<epoch>.log` in the same directory
 
 Debug logging is best-effort — failures silently disable logging.
 
@@ -119,7 +119,7 @@ Only `http://` and `https://` URLs are allowed for execution. Prevents SSRF-styl
 
 ### Single DB Connection
 
-`SetMaxOpenConns(1)` serializes DB access within one process. Multiple concurrent `quark` processes on the same DB file can contend (WAL helps but doesn't eliminate conflicts).
+`SetMaxOpenConns(1)` serializes DB access within one process. `PRAGMA busy_timeout = 5000` waits up to 5s on lock contention. Multiple concurrent `quark` processes on the same DB file can still contend (WAL + busy_timeout mitigate but don't eliminate conflicts).
 
 ## Data Lifecycle
 

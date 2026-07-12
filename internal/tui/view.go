@@ -57,9 +57,9 @@ var (
 	methodStyle     = lipgloss.NewStyle().Bold(true).Foreground(cyan)
 	sendButtonStyle = lipgloss.NewStyle().Bold(true).Foreground(green)
 	mutedStyle      = lipgloss.NewStyle().Foreground(muted)
-	errorStyle  = lipgloss.NewStyle().Foreground(red)
-	goodStyle   = lipgloss.NewStyle().Foreground(green)
-	warnStyle   = lipgloss.NewStyle().Foreground(yellow)
+	errorStyle      = lipgloss.NewStyle().Foreground(red)
+	goodStyle       = lipgloss.NewStyle().Foreground(green)
+	warnStyle       = lipgloss.NewStyle().Foreground(yellow)
 
 	// Status bar base style.
 	statusStyle = lipgloss.NewStyle().Foreground(muted)
@@ -670,7 +670,10 @@ func (m Model) viewResponsePane(w, h int) string {
 				MaxHeight(bodyLines).
 				Render(limitLines(body, bodyWidth, bodyLines))
 			sb.WriteString(lipgloss.JoinHorizontal(lipgloss.Top, left, "  ", popup))
-			return border.Width(w).Height(h).MaxHeight(h + 2).Render(clipToRows(sb.String(), innerWidth, h))
+			return border.Width(w).
+				Height(h).
+				MaxHeight(h + 2).
+				Render(clipToRows(sb.String(), innerWidth, h))
 		}
 	}
 
@@ -1782,9 +1785,12 @@ func limitLines(s string, contentWidth, maxRows int) string {
 				noticeRows := rowsFor(n)
 				lineBudget := maxRows - used - noticeRows
 				if lineBudget > 0 && rows > lineBudget {
-					if partial := truncateLineToVisualRows(line, contentWidth, lineBudget); partial != "" {
+					if partial := truncateLineToVisualRows(
+						line,
+						contentWidth,
+						lineBudget,
+					); partial != "" {
 						kept = append(kept, partial)
-						used += rowsFor(partial)
 					}
 				}
 				kept = append(kept, mutedStyle.Render(n))
