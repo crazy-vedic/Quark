@@ -7,13 +7,12 @@ concurrency:
 on:
   pull_request:
     branches: ["master", "main"]
-    types: ["opened", "reopened", "synchronize", "edited"]
+    types: ["opened", "reopened", "synchronize"]
   push:
     branches: ["master", "main"]
   workflow_dispatch:
 
 permissions:
-  checks: write
   contents: read
   pull-requests: write
 
@@ -22,177 +21,6 @@ env:
   GO_DEPS_CACHE_VERSION: v2
 
 jobs:
-  validate-release:
-    runs-on: self-hosted
-    if: github.event_name == 'pull_request'
-    steps:
-      - name: Validate requested release version
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_BODY: ${{ github.event.pull_request.body }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: |
-          write_failure_summary() {
-            local reason="$1"
-            {
-              echo "## Release validation failed"
-              echo
-              echo "$reason"
-              if [ -n "${SUGGESTED_RELEASE:-}" ]; then
-                echo
-                echo "**Suggested release:** \`${SUGGESTED_RELEASE}\`"
-              fi
-            } >> "$GITHUB_STEP_SUMMARY"
-          }
-
-          publish_check() {
-            local conclusion="$1"
-            local title="$2"
-            local summary="$3"
-            local text="$4"
-
-            jq -n \
-              --arg name "release-validation" \
-              --arg head_sha "$HEAD_SHA" \
-              --arg details_url "$RUN_URL" \
-              --arg conclusion "$conclusion" \
-              --arg title "$title" \
-              --arg summary "$summary" \
-              --arg text "$text" \
-              '{
-                name: $name,
-                head_sha: $head_sha,
-                status: "completed",
-                conclusion: $conclusion,
-                details_url: $details_url,
-                output: {
-                  title: $title,
-                  summary: $summary,
-                  text: $text
-                }
-              }' | gh api \
-                --method POST \
-                -H "Accept: application/vnd.github+json" \
-                "repos/${{ github.repository }}/check-runs" \
-                --input -
-          }
-
-          PR_BODY="${PR_BODY:-}"
-          RAW_VERSION=$(echo "$PR_BODY" | grep -oiP 'release:\s*v?\d+\.\d+\.\d+' | head -1 | sed -E 's/.*release:\s*//I')
-
-          LATEST_RELEASE=$(gh api repos/${{ github.repository }}/releases/latest 2>/dev/null | jq -r '.tag_name // empty')
-          SUGGESTED_RELEASE=""
-          if [ -n "$LATEST_RELEASE" ]; then
-            LATEST_MAJOR=$(echo "$LATEST_RELEASE" | sed 's/^v//' | cut -d. -f1)
-            LATEST_MINOR=$(echo "$LATEST_RELEASE" | sed 's/^v//' | cut -d. -f2)
-            LATEST_PATCH=$(echo "$LATEST_RELEASE" | sed 's/^v//' | cut -d. -f3)
-            SUGGESTED_RELEASE="v${LATEST_MAJOR}.${LATEST_MINOR}.$((LATEST_PATCH + 1))"
-          fi
-          CHECK_LINK="[Open validation workflow run]($RUN_URL)"
-
-          if [ -z "$RAW_VERSION" ]; then
-            echo "No release version requested in PR body. Skipping validation."
-            RELEASE_HINT="Add \`Release: vX.Y.Z\` to the PR body when you want this PR to create a release on merge."
-            CHECK_TITLE="No release requested"
-            if [ -n "$SUGGESTED_RELEASE" ]; then
-              RELEASE_HINT="Add \`Release: ${SUGGESTED_RELEASE}\` to the PR body when you want this PR to create a release on merge."
-              CHECK_TITLE="No release requested. Add Release: ${SUGGESTED_RELEASE} if you want to create a release on merge"
-            fi
-            publish_check \
-              "neutral" \
-              "$CHECK_TITLE" \
-              "$RELEASE_HINT" \
-              "$RELEASE_HINT\n\n$CHECK_LINK"
-            exit 0
-          fi
-
-          VERSION="$RAW_VERSION"
-          if [[ "$VERSION" != v* ]]; then
-            VERSION="v$VERSION"
-          fi
-
-          if ! echo "$VERSION" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
-            echo "::error title=Release validation failed::Invalid release version format: $RAW_VERSION"
-            echo "Use 'Release: vX.Y.Z' or 'Release: X.Y.Z' in the PR body."
-            if [ -n "$SUGGESTED_RELEASE" ]; then
-              echo "::error title=Suggested release::Suggested release is $SUGGESTED_RELEASE"
-            fi
-            publish_check \
-              "failure" \
-              "Suggested release is ${SUGGESTED_RELEASE:-unavailable}" \
-              "Invalid release version format: \`$RAW_VERSION\`." \
-              "Use \`Release: vX.Y.Z\` or \`Release: X.Y.Z\` in the PR body.\n\n$CHECK_LINK"
-            write_failure_summary "Invalid release version format: \`$RAW_VERSION\`"
-            exit 0
-          fi
-
-          if [ -z "$LATEST_RELEASE" ]; then
-            echo "No previous releases found on GitHub. First release is allowed."
-            publish_check \
-              "success" \
-              "Release version valid" \
-              "First GitHub release detected." \
-              "Requested release \`$VERSION\` is allowed because no previous releases exist.\n\n$CHECK_LINK"
-            exit 0
-          fi
-
-          echo "Previous release: $LATEST_RELEASE"
-          echo "Proposed release: $VERSION"
-
-          LATEST_MAJOR=$(echo "$LATEST_RELEASE" | sed 's/^v//' | cut -d. -f1)
-          LATEST_MINOR=$(echo "$LATEST_RELEASE" | sed 's/^v//' | cut -d. -f2)
-          LATEST_PATCH=$(echo "$LATEST_RELEASE" | sed 's/^v//' | cut -d. -f3)
-
-          PROP_MAJOR=$(echo "$VERSION" | sed 's/^v//' | cut -d. -f1)
-          PROP_MINOR=$(echo "$VERSION" | sed 's/^v//' | cut -d. -f2)
-          PROP_PATCH=$(echo "$VERSION" | sed 's/^v//' | cut -d. -f3)
-
-          if [ "$PROP_MAJOR" -eq "$LATEST_MAJOR" ]; then
-            if [ "$PROP_MINOR" -eq "$LATEST_MINOR" ] && [ "$PROP_PATCH" -eq $((LATEST_PATCH + 1)) ]; then
-              echo "Valid: patch increment (+1)"
-              publish_check \
-                "success" \
-                "Release version valid" \
-                "Requested release \`$VERSION\` is a valid patch increment from \`$LATEST_RELEASE\`." \
-                "Validated patch increment.\n\n$CHECK_LINK"
-              exit 0
-            fi
-            if [ "$PROP_MINOR" -eq $((LATEST_MINOR + 1)) ] && [ "$PROP_PATCH" -eq 0 ]; then
-              echo "Valid: minor increment (+1), patch reset"
-              publish_check \
-                "success" \
-                "Release version valid" \
-                "Requested release \`$VERSION\` is a valid minor increment from \`$LATEST_RELEASE\`." \
-                "Validated minor increment with patch reset.\n\n$CHECK_LINK"
-              exit 0
-            fi
-          elif [ "$PROP_MAJOR" -eq $((LATEST_MAJOR + 1)) ] && [ "$PROP_MINOR" -eq 0 ] && [ "$PROP_PATCH" -eq 0 ]; then
-            echo "Valid: major increment (+1), minor+patch reset"
-            publish_check \
-              "success" \
-              "Release version valid" \
-              "Requested release \`$VERSION\` is a valid major increment from \`$LATEST_RELEASE\`." \
-              "Validated major increment with minor and patch reset.\n\n$CHECK_LINK"
-            exit 0
-          fi
-
-          echo "::error title=Release validation failed::VERSION INCREMENT REJECTED"
-          echo "Previous release: $LATEST_RELEASE"
-          echo "Proposed release:  $VERSION"
-          echo "::error title=Suggested release::Suggested release is $SUGGESTED_RELEASE"
-          echo "Allowed next release values:"
-          echo "  v${LATEST_MAJOR}.${LATEST_MINOR}.$((LATEST_PATCH + 1))"
-          echo "  v${LATEST_MAJOR}.$((LATEST_MINOR + 1)).0"
-          echo "  v$((LATEST_MAJOR + 1)).0.0"
-          publish_check \
-            "failure" \
-            "Suggested release is $SUGGESTED_RELEASE" \
-            "Proposed release \`$VERSION\` is not a valid next increment from \`$LATEST_RELEASE\`." \
-            "Allowed next release values:\n- \`v${LATEST_MAJOR}.${LATEST_MINOR}.$((LATEST_PATCH + 1))\`\n- \`v${LATEST_MAJOR}.$((LATEST_MINOR + 1)).0\`\n- \`v$((LATEST_MAJOR + 1)).0.0\`\n\n$CHECK_LINK"
-          write_failure_summary "Proposed release \`${VERSION}\` is not a valid next increment from \`${LATEST_RELEASE}\`."
-          exit 0
-
   # ---------------------------------------------------------------------------
   # Stage 1: Build — compile once, share binary with all downstream jobs
   # ---------------------------------------------------------------------------
