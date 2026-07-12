@@ -84,13 +84,39 @@ save_state_text() {
     printf "%s" "$value" > "$target"
 }
 
+# Statement coverage % from a cover profile. Parsed directly so master
+# baselines still work when the PR deleted packages those profiles reference
+# (go tool cover requires those packages to exist in the current module).
+#
+# go test ./... -coverpkg=./... merges per-package profiles by appending the
+# same block many times. Deduplicate by block key (like go tool cover -func)
+# or totals are massively inflated and % collapses (~5% instead of ~60%).
 extract_total() {
     local file="$1"
     if [[ ! -f "$file" ]] || [[ ! -s "$file" ]]; then
         echo "0.0"
         return
     fi
-    go tool cover -func="$file" | awk '/^total:/{gsub(/%/, "", $NF); print $NF}'
+    awk '
+    /^mode:/ { next }
+    NF >= 3 {
+        key = $1
+        stmts[key] = $2 + 0
+        hits[key] += $3 + 0
+    }
+    END {
+        for (key in stmts) {
+            total += stmts[key]
+            if (hits[key] > 0) {
+                covered += stmts[key]
+            }
+        }
+        if (total == 0) {
+            printf "0.0\n"
+        } else {
+            printf "%.1f\n", (covered * 100) / total
+        }
+    }' "$file"
 }
 
 round() {
@@ -619,7 +645,7 @@ prepare() {
     if [[ -z "$commit_full" ]]; then
         commit_full=$(git rev-parse HEAD 2>/dev/null || echo "")
     fi
-    commit_short="${commit_full:0:5}"
+    commit_short="${commit_full:0:7}"
 
     commit_url="${COVERAGE_REPORT_COMMIT_URL:-}"
     if [[ -z "$commit_url" && -n "$commit_full" && -n "${GITHUB_SERVER_URL:-}" && -n "${GITHUB_REPOSITORY:-}" ]]; then

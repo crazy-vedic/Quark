@@ -1,6 +1,6 @@
 # HTTP Execution
 
-The execution engine lives in `internal/exec/`. It dispatches HTTP requests, handles variable interpolation, applies auth, runs plugin hooks, streams large responses, and records execution history.
+The execution engine lives in `internal/exec/`. It dispatches HTTP requests, handles variable interpolation, applies auth, optional pre/post hooks, streams large responses, and records execution history.
 
 ## Executor
 
@@ -61,6 +61,8 @@ Errors returned only for:
 
 `recordExecution` uses `context.WithoutCancel(ctx)` so history is written even when the request context is cancelled. Stores full request snapshot + response metadata.
 
+For saved requests (`req.ID != ""`), history is written **synchronously inside `Execute()` before it returns** — including streamed large bodies (temp file is re-read into `response_body`). Mid-download crashes produce no history row. Unsaved TUI sends (`req.ID == ""`) skip history. Temp files are display offload only, not a crash-recovery journal.
+
 ## URL Validation
 
 `buildHTTPRequest` rejects non-HTTP schemes:
@@ -79,8 +81,9 @@ Large bodies (over `maxResponseSize`):
 
 - Streamed to temp file in `/tmp` (chmod `0600`)
 - `ExecuteResult.TempPath` set
+- Full body still persisted to SQLite via `executionBody()` before `Execute` returns
 - Caller **must** call `ExecuteResult.Cleanup()` to remove temp file
-- TUI cleans up old temp files on new response (BUG-007)
+- TUI cleans up old temp files on new response (BUG-007); orphans after crashes are harmless
 
 ## Variable Interpolation (`variables.go`)
 
@@ -122,18 +125,19 @@ Applied after variable interpolation, before dispatch:
 
 Auth config stored as JSON in `Request.AuthConfig`.
 
-## Plugin Hooks (`hooks.go`)
+## Exec Hooks (`hooks.go`)
 
 ```go
 type PreRequestHook interface {
     BeforeRequest(ctx context.Context, req *domain.Request) (*domain.Request, error)
 }
 type PostResponseHook interface {
-    AfterResponse(ctx context.Context, req *domain.Request, result *ExecuteResult) (*ExecuteResult, error)
+    AfterResponse(ctx context.Context, req *domain.Request, result *ExecuteResult) error
 }
 ```
 
-Adapted from `internal/plugin` registry in `main.go`. Registry is empty today.
+Optional extension point via `WithPreRequestHooks` / `WithPostResponseHooks`. Production
+`main.go` does not register hooks today.
 
 ## ExecuteResult (`result.go`)
 

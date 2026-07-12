@@ -41,7 +41,12 @@ func runQuarkWithHome(t *testing.T, home string, args ...string) (string, string
 	return runQuarkWithHomeEnv(t, home, nil, args...)
 }
 
-func runQuarkWithHomeEnv(t *testing.T, home string, extraEnv []string, args ...string) (string, string, int) {
+func runQuarkWithHomeEnv(
+	t *testing.T,
+	home string,
+	extraEnv []string,
+	args ...string,
+) (string, string, int) {
 	t.Helper()
 	cmd := exec.Command(binaryPath, args...)
 	cmd.Dir = home
