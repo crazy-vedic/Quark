@@ -199,7 +199,7 @@ func (m Model) handleRequestClick(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	case bodyField:
 		ll := m.requestPaneLineLayout(layout)
 		if msg.Y >= ll.editorContentY && msg.Y < ll.editorContentY+m.bodyTextarea.Height() {
-			return m.handleBodyTextareaClick(msg)
+			return m.handleBodyTextareaClick(msg), nil
 		}
 	}
 
@@ -250,7 +250,7 @@ func (m Model) handleSidebarClick(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		if m.colCursor == hit.row.colIndex && m.reqCursor == -1 {
 			return m.toggleSidebarCollectionExpand(hit.row.colIndex)
 		}
-		return m.selectSidebarCollection(hit.row.colIndex)
+		return m.selectSidebarCollection(hit.row.colIndex), nil
 	case sidebarListHitCollectionDisclosure:
 		return m.toggleSidebarCollectionExpand(hit.row.colIndex)
 	case sidebarListHitRequest:
@@ -260,9 +260,9 @@ func (m Model) handleSidebarClick(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	}
 }
 
-func (m Model) selectSidebarCollection(colIndex int) (Model, tea.Cmd) {
+func (m Model) selectSidebarCollection(colIndex int) Model {
 	if colIndex < 0 || colIndex >= len(m.collections) {
-		return m, nil
+		return m
 	}
 	m.colCursor = colIndex
 	m.reqCursor = -1
@@ -270,7 +270,7 @@ func (m Model) selectSidebarCollection(colIndex int) (Model, tea.Cmd) {
 	if colID := m.collections[colIndex].ID; m.expanded[colID] {
 		m.requests = m.collectionRequests[colID]
 	}
-	return m, nil
+	return m
 }
 
 func (m Model) toggleSidebarCollectionExpand(colIndex int) (Model, tea.Cmd) {

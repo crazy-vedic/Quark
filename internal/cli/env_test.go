@@ -122,7 +122,10 @@ func (s *envTestStore) SetActiveEnvironment(ctx context.Context, collectionID, e
 	return nil
 }
 
-func (s *envTestStore) GetActiveEnvironment(ctx context.Context, collectionID string) (string, error) {
+func (s *envTestStore) GetActiveEnvironment(
+	ctx context.Context,
+	collectionID string,
+) (string, error) {
 	if s.activeEnv == nil {
 		return "", nil
 	}

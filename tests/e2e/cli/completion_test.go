@@ -154,7 +154,14 @@ func TestCLI_CompletionSetupInstallsWithoutPrintingScript(t *testing.T) {
 	assert.Empty(t, out)
 	assert.Contains(t, stderr, "Enabled bash completions")
 
-	completionFile := filepath.Join(home, ".local", "share", "bash-completion", "completions", "quark")
+	completionFile := filepath.Join(
+		home,
+		".local",
+		"share",
+		"bash-completion",
+		"completions",
+		"quark",
+	)
 	content, err := os.ReadFile(completionFile)
 	require.NoError(t, err)
 	assert.Contains(t, string(content), "quark")
