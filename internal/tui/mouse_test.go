@@ -2,6 +2,7 @@ package tui_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -19,35 +20,100 @@ func resizedMouseUnitModel(t *testing.T) tui.Model {
 	return callUpdate(t, m, tea.WindowSizeMsg{Width: 120, Height: 40})
 }
 
-func TestUpdate_Mouse_FocusesPanes(t *testing.T) {
+func TestUpdate_Mouse_ResponseTabClick(t *testing.T) {
 	t.Parallel()
 
-	m := resizedMouseUnitModel(t)
-
-	tests := []struct {
-		name  string
-		x, y  int
-		want  interface{}
-		field interface{}
-	}{
-		{name: "sidebar", x: 5, y: 1, want: tui.SidebarPane, field: tui.NoneField},
-		{name: "request", x: 50, y: 5, want: tui.RequestPane, field: tui.URLField},
-		{name: "response", x: 50, y: 25, want: tui.ResponsePane, field: tui.NoneField},
+	ex := &domain.Execution{
+		ID: "ex-1", RequestID: "req-1", StatusCode: 200,
+		ResponseBody: `{"ok":true}`, ResponseHeaders: `{}`,
 	}
+	m := resizedMouseUnitModel(t).
+		WithExecutions([]*domain.Execution{ex}).
+		WithExecCursor(0).
+		WithResponseTab(tui.BodyTab).
+		WithFocus(tui.SidebarPane)
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			got := callUpdate(t, m, tea.MouseMsg{
-				X:      tt.x,
-				Y:      tt.y,
-				Action: tea.MouseActionPress,
-				Button: tea.MouseButtonLeft,
-			})
-			assert.Equal(t, tt.want, got.Focus())
-			assert.Equal(t, tt.field, got.ActiveField())
+	x, y, ok := m.ResponseTabClickPos(tui.HeadersTab)
+	require.True(t, ok)
+	m = callUpdate(t, m, tea.MouseMsg{
+		X: x, Y: y, Action: tea.MouseActionPress, Button: tea.MouseButtonLeft,
+	})
+	assert.Equal(t, tui.ResponsePane, m.Focus())
+	assert.Equal(t, tui.HeadersTab, m.ResponseTab())
+
+	x, y, ok = m.ResponseTabClickPos(tui.RawTab)
+	require.True(t, ok)
+	m = callUpdate(t, m, tea.MouseMsg{
+		X: x, Y: y, Action: tea.MouseActionPress, Button: tea.MouseButtonLeft,
+	})
+	assert.Equal(t, tui.RawTab, m.ResponseTab())
+}
+
+func TestUpdate_Mouse_ResponseWheelCyclesHistory(t *testing.T) {
+	t.Parallel()
+
+	execs := []*domain.Execution{
+		{
+			ID:              "ex-0",
+			RequestID:       "req-1",
+			StatusCode:      200,
+			ResponseBody:    "newest",
+			ResponseHeaders: `{}`,
+		},
+		{
+			ID:              "ex-1",
+			RequestID:       "req-1",
+			StatusCode:      200,
+			ResponseBody:    "older",
+			ResponseHeaders: `{}`,
+		},
+		{
+			ID:              "ex-2",
+			RequestID:       "req-1",
+			StatusCode:      200,
+			ResponseBody:    "oldest",
+			ResponseHeaders: `{}`,
+		},
+	}
+	m := resizedMouseUnitModel(t).
+		WithExecutions(execs).
+		WithExecCursor(0).
+		WithFocus(tui.ResponsePane)
+
+	x, y, ok := m.ResponsePaneWheelPos()
+	require.True(t, ok)
+	m = callUpdate(t, m, tea.MouseMsg{
+		X: x, Y: y, Action: tea.MouseActionPress, Button: tea.MouseButtonWheelDown,
+	})
+	assert.Equal(t, 1, m.ExecCursor())
+
+	m = callUpdate(t, m, tea.MouseMsg{
+		X: x, Y: y, Action: tea.MouseActionPress, Button: tea.MouseButtonWheelUp,
+	})
+	assert.Equal(t, 0, m.ExecCursor())
+}
+
+func TestUpdate_Mouse_ResponseHistoryPopupClick(t *testing.T) {
+	t.Parallel()
+
+	execs := make([]*domain.Execution, 0, 4)
+	for i := 0; i < 4; i++ {
+		execs = append(execs, &domain.Execution{
+			ID: fmt.Sprintf("ex-%d", i), RequestID: "req-1", StatusCode: 200,
+			ResponseBody: fmt.Sprintf("body-%d", i), ResponseHeaders: `{}`,
 		})
 	}
+	m := resizedMouseUnitModel(t).
+		WithExecutions(execs).
+		WithExecCursor(2). // historical view shows popup
+		WithFocus(tui.ResponsePane)
+
+	x, y, ok := m.ResponseHistoryRowClickPos(0)
+	require.True(t, ok, "history popup row should be clickable")
+	m = callUpdate(t, m, tea.MouseMsg{
+		X: x, Y: y, Action: tea.MouseActionPress, Button: tea.MouseButtonLeft,
+	})
+	assert.Equal(t, 0, m.ExecCursor(), "clicking first visible history row selects index 0")
 }
 
 func TestUpdate_Mouse_IgnoresUnsupportedInput(t *testing.T) {
@@ -98,8 +164,11 @@ func TestUpdate_Mouse_IgnoresUnsupportedInput(t *testing.T) {
 func TestUpdate_Mouse_IgnoredInOverlayModes(t *testing.T) {
 	t.Parallel()
 
-	m := callUpdate(t, newModel(defaultConfig()).WithMode(tui.SearchMode).WithFocus(tui.RequestPane),
-		tea.WindowSizeMsg{Width: 120, Height: 40})
+	m := callUpdate(
+		t,
+		newModel(defaultConfig()).WithMode(tui.SearchMode).WithFocus(tui.RequestPane),
+		tea.WindowSizeMsg{Width: 120, Height: 40},
+	)
 
 	got := callUpdate(t, m, tea.MouseMsg{
 		X: 5, Y: 5, Action: tea.MouseActionPress, Button: tea.MouseButtonLeft,
@@ -245,7 +314,8 @@ func TestUpdate_Mouse_RequestSendButtonDispatches(t *testing.T) {
 	got, cmd := m.Update(tea.MouseMsg{
 		X: x, Y: y, Action: tea.MouseActionPress, Button: tea.MouseButtonLeft,
 	})
-	gotModel := got.(tui.Model)
+	gotModel, ok := got.(tui.Model)
+	require.True(t, ok)
 	assert.True(t, gotModel.Loading())
 	require.NotNil(t, cmd)
 }

@@ -29,6 +29,54 @@ func resizedMouseModel(t *testing.T) tui.Model {
 	return resize(t, m, e2eMouseWidth, e2eMouseHeight)
 }
 
+func TestE2E_ClickResponseTabSwitchesView(t *testing.T) {
+	ex := &domain.Execution{
+		ID: "ex-1", RequestID: "req-1", StatusCode: 200,
+		ResponseBody: `{"ok":true}`, ResponseHeaders: `{"X-Test":["1"]}`,
+	}
+	m := resizedMouseModel(t).
+		WithExecutions([]*domain.Execution{ex}).
+		WithExecCursor(0).
+		WithResponseTab(tui.BodyTab)
+
+	x, y, ok := m.ResponseTabClickPos(tui.HeadersTab)
+	require.True(t, ok)
+	m = callUpdate(t, m, click(x, y))
+	assert.Equal(t, tui.ResponsePane, m.Focus())
+	assert.Equal(t, tui.HeadersTab, m.ResponseTab())
+	assertViewContains(t, m, "X-Test")
+}
+
+func TestE2E_ResponseWheelCyclesHistory(t *testing.T) {
+	execs := []*domain.Execution{
+		{
+			ID:              "ex-0",
+			RequestID:       "req-1",
+			StatusCode:      200,
+			ResponseBody:    "newest",
+			ResponseHeaders: `{}`,
+		},
+		{
+			ID:              "ex-1",
+			RequestID:       "req-1",
+			StatusCode:      200,
+			ResponseBody:    "older",
+			ResponseHeaders: `{}`,
+		},
+	}
+	m := resizedMouseModel(t).
+		WithExecutions(execs).
+		WithExecCursor(0).
+		WithFocus(tui.ResponsePane)
+
+	x, y, ok := m.ResponsePaneWheelPos()
+	require.True(t, ok)
+	m = callUpdate(t, m, wheelDown(x, y))
+	assert.Equal(t, 1, m.ExecCursor())
+	m = callUpdate(t, m, wheelUp(x, y))
+	assert.Equal(t, 0, m.ExecCursor())
+}
+
 func TestE2E_ClickFocusesSidebarPane(t *testing.T) {
 	m := resizedMouseModel(t).WithFocus(tui.RequestPane)
 
@@ -132,8 +180,16 @@ func TestE2E_ClickCollectionDisclosureExpandsAndLoadsRequests(t *testing.T) {
 	col1 := &domain.Collection{ID: "col-1", Name: "Alpha"}
 	col2 := &domain.Collection{ID: "col-2", Name: "Beta"}
 	st := setupStore(t, col1, col2)
-	seedRequests(t, st, col2.ID,
-		&domain.Request{ID: "req-1", Name: "Get Item", Method: "GET", URL: "https://example.test/item"},
+	seedRequests(
+		t,
+		st,
+		col2.ID,
+		&domain.Request{
+			ID:     "req-1",
+			Name:   "Get Item",
+			Method: "GET",
+			URL:    "https://example.test/item",
+		},
 	)
 
 	m := newE2EModel(t, st, &mockExecutor{})
@@ -156,8 +212,16 @@ func TestE2E_ClickCollectionDisclosureExpandsAndLoadsRequests(t *testing.T) {
 func TestE2E_ClickCollectionDisclosureCollapses(t *testing.T) {
 	col := &domain.Collection{ID: "col-1", Name: "Alpha"}
 	st := setupStore(t, col)
-	seedRequests(t, st, col.ID,
-		&domain.Request{ID: "req-1", Name: "Get Item", Method: "GET", URL: "https://example.test/item"},
+	seedRequests(
+		t,
+		st,
+		col.ID,
+		&domain.Request{
+			ID:     "req-1",
+			Name:   "Get Item",
+			Method: "GET",
+			URL:    "https://example.test/item",
+		},
 	)
 
 	m := newE2EModel(t, st, &mockExecutor{})
@@ -181,8 +245,16 @@ func TestE2E_ClickCollectionDisclosureCollapses(t *testing.T) {
 func TestE2E_ClickSelectedCollectionRowTogglesExpand(t *testing.T) {
 	col := &domain.Collection{ID: "col-1", Name: "Alpha"}
 	st := setupStore(t, col)
-	seedRequests(t, st, col.ID,
-		&domain.Request{ID: "req-1", Name: "Get Item", Method: "GET", URL: "https://example.test/item"},
+	seedRequests(
+		t,
+		st,
+		col.ID,
+		&domain.Request{
+			ID:     "req-1",
+			Name:   "Get Item",
+			Method: "GET",
+			URL:    "https://example.test/item",
+		},
 	)
 
 	m := newE2EModel(t, st, &mockExecutor{})

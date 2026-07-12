@@ -55,8 +55,8 @@ quark collection list         # List all collections
 - **Response preview** — Syntax-highlighted JSON, streaming for large bodies
 - **Fuzzy search** — `s` to search across everything
 - **Auto-backup** — Last 10 backups in `~/.quark/backup/`
-- **Plugin hooks** — Pre/post request hooks
 - **Signal-aware** — SIGINT cancels in-flight, restores terminal
+- **Scheduling** — Persist due times with `quark schedule add`; Quark is **not** a background daemon. Runs fire when you invoke `quark schedule run-due` (cron/systemd/CI) or while the TUI is open (in-app timer)
 
 ---
 

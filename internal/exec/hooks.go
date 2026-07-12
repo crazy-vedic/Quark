@@ -6,17 +6,14 @@ import (
 	"github.com/crazy-vedic/quark/internal/domain"
 )
 
-// PreRequestHook is the exec-local mirror of plugin.PreRequestHook.
-// Any type that implements plugin.PreRequestHook automatically satisfies
-// this interface (Go structural typing — identical method signature).
-// Defined here to avoid an exec→plugin import cycle.
+// PreRequestHook runs before an HTTP request is dispatched.
+// Hooks can mutate or replace the request; returning an error aborts Execute.
 type PreRequestHook interface {
 	BeforeRequest(ctx context.Context, req *domain.Request) (*domain.Request, error)
 }
 
-// PostResponseHook is the exec-local mirror of plugin.PostResponseHook.
-// AfterResponse takes *ExecuteResult (defined in this package), so the
-// signatures are identical to plugin.PostResponseHook which uses *exec.ExecuteResult.
+// PostResponseHook runs after a response is received (and after body read).
+// Errors are logged and do not fail Execute.
 type PostResponseHook interface {
 	AfterResponse(ctx context.Context, req *domain.Request, res *ExecuteResult) error
 }

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
 	"github.com/crazy-vedic/quark/internal/curl"
 	"github.com/crazy-vedic/quark/internal/domain"
@@ -183,7 +184,7 @@ func (m Model) Loading() bool                                    { return m.load
 func (m Model) Err() error                                       { return m.err }
 func (m Model) StatusErr() string                                { return m.statusErr }
 func (m Model) StatusSuccess() string                            { return m.statusSuccess }
-func (m Model) ValidationErr() string { return m.activeValidationErr() }
+func (m Model) ValidationErr() string                            { return m.activeValidationErr() }
 func (m Model) Response() *exec.ExecuteResult                    { return m.response }
 func (m Model) Executions() []*domain.Execution                  { return m.executions }
 func (m Model) ExecCursor() int                                  { return m.execCursor }
@@ -216,7 +217,7 @@ func (m Model) SidebarCollectionDisclosurePos(colIndex int) (x, y int, ok bool) 
 	if !ok {
 		return 0, 0, false
 	}
-	x, y, ok = m.sidebarTreeRowScreenPos(rowIndex)
+	_, y, ok = m.sidebarTreeRowScreenPos(rowIndex)
 	if !ok {
 		return 0, 0, false
 	}
@@ -395,28 +396,103 @@ func (m Model) RequestPaneContentClickPos() (x, y int, ok bool) {
 	return x, y, true
 }
 
-func (m Model) Method() string                                   { return m.method }
-func (m Model) URLValue() string                                 { return m.urlInput.Value() }
-func (m Model) ResponseTab() responseTabID                       { return m.responseTab }
-func (m Model) SearchResults() []*search.SearchHit               { return m.searchResults }
-func (m Model) SearchInputValue() string                         { return m.searchInput.Value() }
-func (m Model) ScheduleTimerSeq() int                            { return m.scheduleTimerSeq }
-func (m Model) ScheduleInputValue() string                       { return m.scheduleInput.Value() }
-func (m Model) ImportPreview() interface{}                       { return m.importPreview }
-func (m Model) TmuxDetected() bool                               { return m.tmuxDetected }
-func (m Model) TmuxWarning() string                              { return m.tmuxWarning }
-func (m Model) ActiveField() requestField                        { return m.activeField }
-func (m Model) ActiveRequest() *domain.Request                   { return m.activeRequest }
-func (m Model) BodyValue() string                                { return m.bodyTextarea.Value() }
-func (m Model) HeaderPairs() []headerPair                        { return m.headerPairs }
-func (m Model) HeaderEditing() bool                              { return m.headerEditing }
-func (m Model) AuthEditor() authEditor                           { return m.authEditor }
-func (m Model) Searched() bool                                   { return m.searched }
-func (m Model) PromptMode() promptType                           { return m.promptMode }
-func (m Model) HelpScrollOffset() int                            { return m.helpScrollOffset }
-func (m Model) CommandResults() []commandPaletteItem             { return m.commands }
-func (m Model) SearchCancel() context.CancelFunc                 { return m.searchCancel }
-func (m Model) ModelCtx() context.Context                        { return m.ctx }
+func (m Model) Method() string                     { return m.method }
+func (m Model) URLValue() string                   { return m.urlInput.Value() }
+func (m Model) ResponseTab() responseTabID         { return m.responseTab }
+func (m Model) SearchResults() []*search.SearchHit { return m.searchResults }
+
+// ResponseTabClickPos returns coordinates for clicking a response tab label.
+// tab must be BodyTab, HeadersTab, or RawTab.
+func (m Model) ResponseTabClickPos(tab responseTabID) (x, y int, ok bool) {
+	if m.width <= 0 || m.height <= 0 {
+		return 0, 0, false
+	}
+	layout := normalLayoutFor(m.width, m.height)
+	tabs := m.responsePaneTabRects(layout)
+	var r layoutRect
+	switch tab {
+	case bodyTab:
+		r = tabs.body
+	case headersTab:
+		r = tabs.headers
+	case rawTab:
+		r = tabs.raw
+	default:
+		return 0, 0, false
+	}
+	if r.right < r.left {
+		return 0, 0, false
+	}
+	return r.left, r.top, true
+}
+
+// ResponsePaneWheelPos returns a point inside the response pane for wheel events.
+func (m Model) ResponsePaneWheelPos() (x, y int, ok bool) {
+	if m.width <= 0 || m.height <= 0 {
+		return 0, 0, false
+	}
+	layout := normalLayoutFor(m.width, m.height)
+	r := layout.responseContentRect()
+	return r.left + 2, r.top + 2, true
+}
+
+// ResponseHistoryRowClickPos returns coordinates for clicking a history popup row
+// when historical execution view is active. rowIndex is an index into the current
+// visible history window (0 = first visible row).
+func (m Model) ResponseHistoryRowClickPos(rowIndex int) (x, y int, ok bool) {
+	if m.width <= 0 || m.height <= 0 || !m.viewingHistoricalExecution() {
+		return 0, 0, false
+	}
+	layout := normalLayoutFor(m.width, m.height)
+	content := layout.responseContentRect()
+	innerW := max(1, content.right-content.left+1)
+	if innerW < 64 {
+		return 0, 0, false
+	}
+	tabs := m.responsePaneTabRects(layout)
+	bodyTop := tabs.tabBarY + 2
+	bodyLines := content.bottom - bodyTop + 1
+	if bodyLines < 6 {
+		return 0, 0, false
+	}
+	popup := m.viewExecutionHistoryPopup(innerW, bodyLines)
+	if popup == "" {
+		return 0, 0, false
+	}
+	popupW := lipgloss.Width(popup)
+	bodyWidth := innerW - popupW - 4
+	if bodyWidth < 18 {
+		return 0, 0, false
+	}
+	maxVisible := min(historyPopupVisibleRows, bodyLines-3)
+	indices, _, _ := m.visibleExecutionHistoryWindow(maxVisible)
+	if rowIndex < 0 || rowIndex >= len(indices) {
+		return 0, 0, false
+	}
+	popupLeft := content.left + bodyWidth + 2
+	// +1 border, +1 title, +1 spacer, then row
+	y = bodyTop + 1 + 2 + rowIndex
+	x = popupLeft + 3
+	return x, y, true
+}
+func (m Model) SearchInputValue() string             { return m.searchInput.Value() }
+func (m Model) ScheduleTimerSeq() int                { return m.scheduleTimerSeq }
+func (m Model) ScheduleInputValue() string           { return m.scheduleInput.Value() }
+func (m Model) ImportPreview() interface{}           { return m.importPreview }
+func (m Model) TmuxDetected() bool                   { return m.tmuxDetected }
+func (m Model) TmuxWarning() string                  { return m.tmuxWarning }
+func (m Model) ActiveField() requestField            { return m.activeField }
+func (m Model) ActiveRequest() *domain.Request       { return m.activeRequest }
+func (m Model) BodyValue() string                    { return m.bodyTextarea.Value() }
+func (m Model) HeaderPairs() []headerPair            { return m.headerPairs }
+func (m Model) HeaderEditing() bool                  { return m.headerEditing }
+func (m Model) AuthEditor() authEditor               { return m.authEditor }
+func (m Model) Searched() bool                       { return m.searched }
+func (m Model) PromptMode() promptType               { return m.promptMode }
+func (m Model) HelpScrollOffset() int                { return m.helpScrollOffset }
+func (m Model) CommandResults() []commandPaletteItem { return m.commands }
+func (m Model) SearchCancel() context.CancelFunc     { return m.searchCancel }
+func (m Model) ModelCtx() context.Context            { return m.ctx }
 func ScheduleWakeAfterCmd(ctx context.Context, delay time.Duration, seq int) tea.Cmd {
 	return scheduleWakeAfterCmd(ctx, delay, seq)
 }

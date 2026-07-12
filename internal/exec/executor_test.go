@@ -417,6 +417,33 @@ func TestExecutor_LargeResponse_StreamedToTempFile(t *testing.T) {
 	assert.Equal(t, int64(len(bigBody)), result.Size)
 }
 
+func TestExecutor_LargeResponse_PersistedToHistory(t *testing.T) {
+	// Streamed bodies must still land in execution history before Execute returns.
+	bigBody := strings.Repeat("y", 600*1024)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(200)
+		fmt.Fprint(w, bigBody)
+	}))
+	defer srv.Close()
+
+	transport := &http.Transport{}
+	defer transport.CloseIdleConnections()
+
+	writer := &recordingExecutionWriter{}
+	e := newTestExecutor(transport,
+		exec.WithMaxResponseSize(512*1024),
+		exec.WithExecutionWriter(writer),
+	)
+	result, err := e.Execute(context.Background(), newTestRequest("GET", srv.URL, ""))
+
+	require.NoError(t, err)
+	assert.NotEmpty(t, result.TempPath)
+	require.Len(t, writer.executions, 1)
+	assert.Equal(t, 200, writer.executions[0].StatusCode)
+	assert.Equal(t, bigBody, writer.executions[0].ResponseBody)
+	assert.Equal(t, "test-req", writer.executions[0].RequestID)
+}
+
 func TestExecutor_HeadersCaseInsensitiveAccess(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Simulate a server returning a non-canonical header key

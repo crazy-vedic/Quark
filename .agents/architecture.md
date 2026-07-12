@@ -18,8 +18,7 @@ cmd/quark/main.go
     ├── internal/config       (config.toml)
     ├── internal/curl         (cURL import)
     ├── internal/search       (fuzzy search)
-    ├── internal/keybindings  (TUI key resolution)
-    └── internal/plugin       (hook registry — currently empty)
+    └── internal/keybindings  (TUI key resolution)
 ```
 
 Both TUI and CLI depend on `store` and `exec`. Import and search are CLI/TUI-adjacent adapters.
@@ -43,9 +42,8 @@ Wiring steps inside `runtimeOnce()`:
 1. `config.Load(configDir)` — defaults on missing/invalid file
 2. `os.MkdirAll(configDir, 0700)`
 3. `store.New(dbPath, storeOpts...)` — optional auto-backup
-4. `plugin.NewRegistry()` — empty registry
-5. `exec.New(transport, opts...)` — timeout, variable resolver, execution writer, plugin hooks
-6. `curl.NewImporter()`, `search.New(st)`
+4. `exec.New(transport, opts...)` — timeout, variable resolver, execution writer
+5. `curl.NewImporter()`, `search.New(st)`
 
 `launchTUI()` passes `st` as multiple interface types via `tui.Deps`:
 
@@ -110,19 +108,15 @@ If `*Store` stops implementing any interface, **this file fails to compile**.
 | `search` | Fuzzy search over requests | `domain`, store interface |
 | `keybindings` | Defaults, resolver, action→key mapping, hints | — |
 | `config` | Load/merge/save `config.toml` | `keybindings` |
-| `plugin` | Frozen v1.0 hook interfaces + registry | `domain`, `exec` result types |
 | `highlight` | Chroma-based ANSI syntax highlighting | — |
 | `schedule` | Parse schedule time expressions | — |
 | `tuitest` | Model-level TUI test harness | `tui`, `store`, `exec` |
 
-## Plugin System
+## Exec Hooks
 
-`internal/plugin/plugin.go` defines frozen v1.0 interfaces:
-
-- `PreRequestHook.BeforeRequest(ctx, req) (*Request, error)` — errors abort the request
-- `PostResponseHook.AfterResponse(ctx, req, result) (*ExecuteResult, error)` — errors are logged, chain continues
-
-Adding methods is a breaking change. The registry in `main.go` is constructed but **no plugins are registered**. Lua "V2" runtime is aspirational (mentioned in package docs).
+`internal/exec` defines optional `PreRequestHook` / `PostResponseHook` interfaces and
+`WithPreRequestHooks` / `WithPostResponseHooks` options. Production `main.go` does not
+register any hooks today; the extension point remains for future wiring in the DI seam.
 
 ## Transactions
 
