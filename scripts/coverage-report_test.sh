@@ -582,6 +582,50 @@ EOF
     rm -rf "$state_dir"
 }
 
+test_coverage_metrics_dedupe_repeated_blocks_from_merged_profiles() {
+    local state_dir
+    local pr_ut
+    local master_ut
+    state_dir="$(mktemp -d)"
+    pr_ut="$(mktemp)"
+    master_ut="$(mktemp)"
+    register_temp_dir "$state_dir"
+
+    # Simulate go test ./... -coverpkg=./... merging: the same block appears
+    # once per package under test. Without dedupe this looks like ~20% covered.
+    cat > "$pr_ut" <<'EOF'
+mode: atomic
+github.com/crazy-vedic/quark/internal/cli/root.go:1.1,2.2 5 0
+github.com/crazy-vedic/quark/internal/cli/root.go:1.1,2.2 5 0
+github.com/crazy-vedic/quark/internal/cli/root.go:1.1,2.2 5 0
+github.com/crazy-vedic/quark/internal/cli/root.go:1.1,2.2 5 0
+github.com/crazy-vedic/quark/internal/cli/root.go:1.1,2.2 5 1
+github.com/crazy-vedic/quark/internal/store/store.go:3.1,4.2 5 0
+github.com/crazy-vedic/quark/internal/store/store.go:3.1,4.2 5 0
+github.com/crazy-vedic/quark/internal/store/store.go:3.1,4.2 5 0
+github.com/crazy-vedic/quark/internal/store/store.go:3.1,4.2 5 0
+github.com/crazy-vedic/quark/internal/store/store.go:3.1,4.2 5 0
+EOF
+
+    cat > "$master_ut" <<'EOF'
+mode: set
+github.com/crazy-vedic/quark/internal/cli/root.go:1.1,2.2 5 1
+github.com/crazy-vedic/quark/internal/store/store.go:3.1,4.2 5 1
+EOF
+
+    run_coverage_metrics "$state_dir" "$pr_ut" "$master_ut"
+
+    # shellcheck disable=SC1090
+    source "${state_dir}/state.env"
+    assert_eq "${PR_UT_PCT}" "50.0" \
+        "merged duplicate blocks must be deduped like go tool cover -func"
+    assert_eq "${MASTER_UT_PCT}" "100.0" \
+        "non-duplicated master profile should remain unchanged"
+
+    rm -f "$pr_ut" "$master_ut"
+    rm -rf "$state_dir"
+}
+
 main() {
     test_excludes_test_file_changes_and_counts_only_changed_prod_lines
     test_positive_lint_delta_is_signed_for_display
@@ -592,6 +636,7 @@ main() {
     test_multiple_uncovered_runs_render_as_separate_blocks
     test_e2e_suites_exclude_cross_surface_files
     test_coverage_metrics_tolerate_deleted_packages_in_master_profile
+    test_coverage_metrics_dedupe_repeated_blocks_from_merged_profiles
     echo "coverage-report tests passed"
 }
 
