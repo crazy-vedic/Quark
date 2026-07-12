@@ -84,13 +84,32 @@ save_state_text() {
     printf "%s" "$value" > "$target"
 }
 
+# Statement coverage % from a cover profile. Parsed directly so master
+# baselines still work when the PR deleted packages those profiles reference
+# (go tool cover requires those packages to exist in the current module).
 extract_total() {
     local file="$1"
     if [[ ! -f "$file" ]] || [[ ! -s "$file" ]]; then
         echo "0.0"
         return
     fi
-    go tool cover -func="$file" | awk '/^total:/{gsub(/%/, "", $NF); print $NF}'
+    awk '
+    /^mode:/ { next }
+    NF >= 3 {
+        stmts = $2 + 0
+        hits = $3 + 0
+        total += stmts
+        if (hits > 0) {
+            covered += stmts
+        }
+    }
+    END {
+        if (total == 0) {
+            printf "0.0\n"
+        } else {
+            printf "%.1f\n", (covered * 100) / total
+        }
+    }' "$file"
 }
 
 round() {
