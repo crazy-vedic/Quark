@@ -91,7 +91,7 @@ jobs:
         run: make lint-ci 2>&1 | tee lint-output.txt || true
 
       - name: Upload lint output
-        if: always()
+        if: always() && !cancelled()
         uses: actions/upload-artifact@v6
         with:
           name: lint-pr
@@ -149,15 +149,15 @@ jobs:
         run: make ut ARGS="-coverprofile=ut.out"
 
       - name: Per-package timing
-        if: always()
+        if: always() && !cancelled()
         run: make show-slow
 
       - name: Ensure coverage file exists
-        if: always()
+        if: always() && !cancelled()
         run: touch ut.out
 
       - name: Upload coverage
-        if: always()
+        if: always() && !cancelled()
         uses: actions/upload-artifact@v6
         with:
           name: coverage-ut-pr
@@ -166,7 +166,7 @@ jobs:
 
       # continue-on-error: another concurrent job may have already saved this key.
       - name: Save Go dependency caches
-        if: always() && steps.go-deps-cache.outputs.cache-hit != 'true'
+        if: always() && !cancelled() && steps.go-deps-cache.outputs.cache-hit != 'true'
         continue-on-error: true
         uses: actions/cache/save@v5
         with:
@@ -223,15 +223,15 @@ jobs:
         run: make e2e-tui ARGS="-coverprofile=tui.out"
 
       - name: Per-package timing
-        if: always()
+        if: always() && !cancelled()
         run: make show-slow
 
       - name: Ensure coverage file exists
-        if: always()
+        if: always() && !cancelled()
         run: touch tui.out
 
       - name: Upload coverage
-        if: always()
+        if: always() && !cancelled()
         uses: actions/upload-artifact@v6
         with:
           name: coverage-tui-pr
@@ -240,7 +240,7 @@ jobs:
 
       # continue-on-error: another concurrent job may have already saved this key.
       - name: Save Go dependency caches
-        if: always() && steps.go-deps-cache.outputs.cache-hit != 'true'
+        if: always() && !cancelled() && steps.go-deps-cache.outputs.cache-hit != 'true'
         continue-on-error: true
         uses: actions/cache/save@v5
         with:
@@ -304,15 +304,15 @@ jobs:
         run: make e2e-cli-run
 
       - name: Per-package timing
-        if: always()
+        if: always() && !cancelled()
         run: make show-slow
 
       - name: Ensure coverage file exists
-        if: always()
+        if: always() && !cancelled()
         run: touch bin/cover-cli.out
 
       - name: Upload coverage
-        if: always()
+        if: always() && !cancelled()
         uses: actions/upload-artifact@v6
         with:
           name: coverage-cli-pr
@@ -321,7 +321,7 @@ jobs:
 
       # continue-on-error: another concurrent job may have already saved this key.
       - name: Save Go dependency caches
-        if: always() && steps.go-deps-cache.outputs.cache-hit != 'true'
+        if: always() && !cancelled() && steps.go-deps-cache.outputs.cache-hit != 'true'
         continue-on-error: true
         uses: actions/cache/save@v5
         with:
@@ -492,7 +492,7 @@ jobs:
 
       # continue-on-error: another concurrent job may have already saved this key.
       - name: Save Go dependency caches
-        if: always() && steps.check-baseline.outputs.found != 'true' && steps.go-deps-cache.outputs.cache-hit != 'true'
+        if: always() && !cancelled() && steps.check-baseline.outputs.found != 'true' && steps.go-deps-cache.outputs.cache-hit != 'true'
         continue-on-error: true
         uses: actions/cache/save@v5
         with:
@@ -502,7 +502,7 @@ jobs:
           key: ${{ steps.go-deps-cache.outputs.cache-primary-key }}
 
       - name: Upload baseline artifact
-        if: always()
+        if: always() && !cancelled()
         uses: actions/upload-artifact@v6
         with:
           name: coverage-master
@@ -512,11 +512,15 @@ jobs:
   # Stage 4: Report — aggregate coverage, compare to master, post PR comment
   # Only runs on PRs when all tests + baseline succeed. Fails the workflow if
   # coverage drops > 5% or code-change coverage < 50%.
+  #
+  # always() keeps the report running when a suite fails; !cancelled() is
+  # required so cancel-in-progress (new PR push) does not still queue this
+  # job after its dependencies are cancelled.
   # ---------------------------------------------------------------------------
   coverage-report:
     runs-on: self-hosted
     needs: [test-unit, test-e2e-tui, test-e2e-cli, coverage-master, lint]
-    if: github.event_name == 'pull_request' && always()
+    if: github.event_name == 'pull_request' && always() && !cancelled()
     env:
       PR_UT: /tmp/coverage-pr/coverage-ut-pr/ut.out
       PR_TUI: /tmp/coverage-pr/coverage-tui-pr/tui.out
@@ -579,7 +583,7 @@ jobs:
         run: ./scripts/coverage-report.sh finalize
 
       - name: Minimize old coverage comments
-        if: always()
+        if: always() && !cancelled()
         uses: actions/github-script@v8
         with:
           script: |
