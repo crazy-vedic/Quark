@@ -163,6 +163,9 @@ func (m Model) View() string {
 	if m.width == 0 {
 		return "Loading..."
 	}
+	if m.effectiveDim() == DimAbsurd {
+		return m.viewTooSmall()
+	}
 
 	// Overlay modes take precedence.
 	var out string
@@ -180,20 +183,65 @@ func (m Model) View() string {
 	case scheduleMode:
 		out = m.viewScheduleModal()
 	default:
-		return m.viewNormal()
+		return m.viewByDim()
 	}
 
 	m.maybeLogVisualOverflow(out, nil)
 	return out
 }
 
+// viewByDim renders the normal-mode frame for the active density tier.
+func (m Model) viewByDim() string {
+	switch m.effectiveDim() {
+	case DimNarrow:
+		return m.viewStacked()
+	case DimTiny:
+		return m.viewSinglePane()
+	default:
+		return m.viewWide()
+	}
+}
+
+// viewTooSmall renders a centered message when the terminal is absurdly small
+// (or --dim=absurd is forced).
+func (m Model) viewTooSmall() string {
+	msg := fmt.Sprintf(
+		"Terminal too small (%dx%d).\nResize to at least %dx%d.",
+		m.width,
+		m.height,
+		MinTerminalWidth,
+		MinTerminalHeight,
+	)
+	if m.forceDim == DimAbsurd {
+		msg = fmt.Sprintf(
+			"Forced --dim=absurd (%dx%d).\nUnset --dim or pass another tier.",
+			m.width,
+			m.height,
+		)
+	}
+	boxW := max(1, m.width-2)
+	box := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(yellow).
+		Padding(0, 1).
+		Width(max(1, boxW-2)).
+		MaxWidth(boxW).
+		Render(warnStyle.Render(msg))
+	if m.width > 0 && m.height > 0 {
+		placed := lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box)
+		// Hard-clamp in case Place still expands on tiny terminals.
+		return clipToRows(placed, m.width, m.height)
+	}
+	return box
+}
+
 // Ensure tea.Model is satisfied at compile time.
 var _ tea.Model = Model{}
 
-// --- Normal 3-pane layout ---
+// --- Density layouts ---
 
-func (m Model) viewNormal() string {
-	paneLayout := normalLayoutFor(m.width, m.height)
+func (m Model) viewWide() string {
+	paneLayout := m.currentLayout()
 
 	sidebar := m.viewSidebar(paneLayout.sidebarW, paneLayout.sidebarInnerH)
 	request := m.viewRequestPane(paneLayout.mainW, paneLayout.requestH)
@@ -204,8 +252,7 @@ func (m Model) viewNormal() string {
 	statusBar := m.viewStatusBar("")
 
 	out := lipgloss.JoinVertical(lipgloss.Left, joined, statusBar)
-	renderedH := lipgloss.Height(out)
-	if m.height > 0 && renderedH > m.height {
+	if frameOverflows(out, m.width, m.height) {
 		report := &visualOverflowReport{
 			layout:    &paneLayout,
 			sidebar:   sidebar,
@@ -217,6 +264,57 @@ func (m Model) viewNormal() string {
 		m.maybeLogVisualOverflow(out, report)
 		statusBar = m.viewStatusBar(visualOverflowStatus)
 		out = lipgloss.JoinVertical(lipgloss.Left, joined, statusBar)
+	}
+	return out
+}
+
+func (m Model) viewStacked() string {
+	paneLayout := m.currentLayout()
+
+	sidebar := m.viewSidebar(paneLayout.sidebarW, paneLayout.sidebarInnerH)
+	request := m.viewRequestPane(paneLayout.mainW, paneLayout.requestH)
+	response := m.viewResponsePane(paneLayout.mainW, paneLayout.responseH)
+	statusBar := m.viewStatusBar("")
+
+	joined := lipgloss.JoinVertical(lipgloss.Left, sidebar, request, response)
+	out := lipgloss.JoinVertical(lipgloss.Left, joined, statusBar)
+	if frameOverflows(out, m.width, m.height) {
+		report := &visualOverflowReport{
+			layout:    &paneLayout,
+			sidebar:   sidebar,
+			request:   request,
+			response:  response,
+			joined:    joined,
+			statusBar: statusBar,
+		}
+		m.maybeLogVisualOverflow(out, report)
+		statusBar = m.viewStatusBar(visualOverflowStatus)
+		out = lipgloss.JoinVertical(lipgloss.Left, joined, statusBar)
+	}
+	return out
+}
+
+func (m Model) viewSinglePane() string {
+	paneLayout := m.currentLayout()
+	var pane string
+	switch m.focus {
+	case requestPane:
+		pane = m.viewRequestPane(paneLayout.mainW, paneLayout.requestH)
+	case responsePane:
+		pane = m.viewResponsePane(paneLayout.mainW, paneLayout.responseH)
+	default:
+		pane = m.viewSidebar(paneLayout.sidebarW, paneLayout.sidebarInnerH)
+	}
+	statusBar := m.viewStatusBar("")
+	out := lipgloss.JoinVertical(lipgloss.Left, pane, statusBar)
+	if frameOverflows(out, m.width, m.height) {
+		report := &visualOverflowReport{
+			layout:    &paneLayout,
+			statusBar: statusBar,
+		}
+		m.maybeLogVisualOverflow(out, report)
+		statusBar = m.viewStatusBar(visualOverflowStatus)
+		out = lipgloss.JoinVertical(lipgloss.Left, pane, statusBar)
 	}
 	return out
 }
@@ -354,9 +452,9 @@ func (m Model) viewRequestPane(w, h int) string {
 	// Method badge + URL on one line — truncate URL to available width.
 	badge := renderMethodBadge(m.method)
 	badgeW := lipgloss.Width(badge)
-	urlAvail := w - badgeW - 4 // 4: padding + border
-	if urlAvail < 10 {
-		urlAvail = 10
+	urlAvail := w - badgeW - 4 // padding around badge/url
+	if urlAvail < 1 {
+		urlAvail = 1
 	}
 	var urlDisplay string
 	if m.activeField == urlField {
@@ -380,12 +478,14 @@ func (m Model) viewRequestPane(w, h int) string {
 	top = append(top, badge+"  "+urlDisplay)
 
 	if m.activeRequest != nil {
-		authSummary := newAuthEditor(m.activeRequest).summary()
+		authLabel := mutedStyle.Render("  Auth: ")
+		authSummary := truncate(
+			newAuthEditor(m.activeRequest).summary(),
+			max(1, w-2-lipgloss.Width("  Auth: ")),
+		)
 		top = append(
 			top,
-			"  "+mutedStyle.Render(
-				"Auth: ",
-			)+lipgloss.NewStyle().
+			authLabel+lipgloss.NewStyle().
 				Foreground(lipgloss.Color("#c0caf5")).
 				Render(authSummary),
 		)
@@ -434,11 +534,12 @@ func (m Model) viewRequestPane(w, h int) string {
 					if i == m.headerCursor {
 						cursor = "▸ "
 					}
-					key := lipgloss.NewStyle().Foreground(cyan).Render(p.Key)
-					val := lipgloss.NewStyle().Foreground(lipgloss.Color("#c0caf5")).Render(p.Value)
-					line := cursor + key + ": " + val
+					plain := truncate(cursor+p.Key+": "+p.Value, w-4)
+					line := plain
 					if i == m.headerCursor {
-						line = lipgloss.NewStyle().Bold(true).Render(line)
+						line = lipgloss.NewStyle().Bold(true).Render(plain)
+					} else {
+						line = lipgloss.NewStyle().Foreground(cyan).Render(plain)
 					}
 					preview.WriteString(line + "\n")
 				}
@@ -457,19 +558,21 @@ func (m Model) viewRequestPane(w, h int) string {
 			if err := json.Unmarshal([]byte(m.activeRequest.Headers), &hdrs); err == nil {
 				for _, k := range sortedStringMapKeys(hdrs) {
 					v := hdrs[k]
-					key := lipgloss.NewStyle().Foreground(cyan).Render(k)
-					preview.WriteString("  " + key + ": " + v + "\n")
+					plain := "  " + k + ": " + v
+					preview.WriteString(lipgloss.NewStyle().Foreground(cyan).Render(truncate(plain, w-4)) + "\n")
 				}
 			}
 		}
 		content = preview.String()
 	}
 
-	// Responsive key hints — shorten at narrow terminals.
-	var hints string
+	// Responsive key hints — shorten at narrow terminals, then hard-clamp to one
+	// row so long bindings never wrap onto a second line inside the pane.
+	innerWidth := max(1, w-2)
+	var hintsPlain string
 	switch {
 	case w < 55:
-		hints = m.renderHints([]hintItem{
+		hintsPlain = m.renderHints([]hintItem{
 			{Label: "url", Actions: []string{keybindings.ActionEditURL}},
 			{
 				Label:   "cycle method",
@@ -478,7 +581,7 @@ func (m Model) viewRequestPane(w, h int) string {
 			{Label: "send", Actions: []string{keybindings.ActionSendRequest}, IncludeAliases: true},
 		})
 	case w < 90:
-		hints = m.renderHints([]hintItem{
+		hintsPlain = m.renderHints([]hintItem{
 			{Label: "url", Actions: []string{keybindings.ActionEditURL}},
 			{
 				Label:   "cycle method",
@@ -490,7 +593,7 @@ func (m Model) viewRequestPane(w, h int) string {
 			{Label: "env", Actions: []string{keybindings.ActionEnvOpen}},
 		})
 	case w < 110:
-		hints = m.renderHints([]hintItem{
+		hintsPlain = m.renderHints([]hintItem{
 			{Label: "url", Actions: []string{keybindings.ActionEditURL}},
 			{
 				Label:   "cycle method",
@@ -503,7 +606,7 @@ func (m Model) viewRequestPane(w, h int) string {
 			{Label: "cycle env", Actions: []string{"env_prev", "env_next"}},
 		})
 	default:
-		hints = m.renderHints([]hintItem{
+		hintsPlain = m.renderHints([]hintItem{
 			{Label: "url", Actions: []string{keybindings.ActionEditURL}},
 			{
 				Label:   "cycle method",
@@ -517,21 +620,26 @@ func (m Model) viewRequestPane(w, h int) string {
 			{Label: "cycle env", Actions: []string{"env_prev", "env_next"}},
 		})
 	}
+	hints := mutedStyle.Render(truncate(hintsPlain, innerWidth))
 
-	chromeLines := len(top) + 2 // separator + hints
-	contentWidth := max(1, w-2)
-	contentLines := h - chromeLines
-	if contentLines < 1 {
-		contentLines = 1
+	// Measure chrome (title/url/auth + separator/hints) in visual rows so wrapped
+	// lines cannot steal body budget unnoticed — same approach as the response pane.
+	chromeTop := strings.Join(top, "\n")
+	sepAndHints := mutedStyle.Render(strings.Repeat("─", innerWidth)) + "\n" + hints
+	chromeRows := visualRows(chromeTop, innerWidth) + visualRows(sepAndHints, innerWidth)
+	contentLines := h - chromeRows
+	if contentLines < 0 {
+		contentLines = 0
 	}
-	renderedContent := limitLines(content, contentWidth, contentLines)
-	paddingLines := contentLines - visualRows(renderedContent, contentWidth)
+	renderedContent := limitLines(content, innerWidth, contentLines)
+	paddingLines := contentLines - visualRows(renderedContent, innerWidth)
 	if paddingLines < 0 {
 		paddingLines = 0
 	}
 
 	var sb strings.Builder
-	sb.WriteString(strings.Join(top, "\n"))
+	sb.WriteString(chromeTop)
+	sb.WriteString("\n")
 	if renderedContent != "" {
 		sb.WriteString(renderedContent)
 		if !strings.HasSuffix(renderedContent, "\n") {
@@ -541,12 +649,9 @@ func (m Model) viewRequestPane(w, h int) string {
 	if paddingLines > 0 {
 		sb.WriteString(strings.Repeat("\n", paddingLines))
 	}
+	sb.WriteString(sepAndHints)
 
-	// Separator + key hints at bottom.
-	sb.WriteString(mutedStyle.Render(strings.Repeat("─", w-2)) + "\n")
-	sb.WriteString(mutedStyle.Render(hints))
-
-	return border.Width(w).Height(h).MaxHeight(h + 2).Render(sb.String())
+	return border.Width(w).Height(h).MaxHeight(h + 2).Render(clipToRows(sb.String(), innerWidth, h))
 }
 
 func (m Model) viewAuthEditor() string {
@@ -610,10 +715,6 @@ func (m Model) viewResponsePane(w, h int) string {
 		sb.WriteString(m.viewLiveResponseStatus() + "\n")
 	}
 
-	// Tab bar.
-	tabs := m.viewTabBar()
-	sb.WriteString(tabs + "\n\n")
-
 	// Body gets whatever inner height remains after chrome. Measure the actual
 	// chrome rows at the pane's inner width (w-2, since the border consumes a
 	// column on each side) so that a wrapped tab bar — or a body line near the
@@ -621,6 +722,10 @@ func (m Model) viewResponsePane(w, h int) string {
 	// the whole app off the top. The trailing "\n" delimits the body start, so
 	// it must not be counted as a chrome row.
 	innerWidth := max(1, w-2)
+
+	// Tab bar — clamp helper hints so the bar stays a single row.
+	tabs := m.viewTabBar(innerWidth)
+	sb.WriteString(tabs + "\n\n")
 	chromeRows := visualRows(strings.TrimSuffix(sb.String(), "\n"), innerWidth)
 	// Body may shrink to zero: on very small panes the chrome (status + a
 	// wrapped tab bar) can consume the entire budget, and forcing a minimum of
@@ -693,7 +798,7 @@ func (m Model) viewResponsePane(w, h int) string {
 	return border.Width(w).Height(h).MaxHeight(h + 2).Render(clipToRows(sb.String(), innerWidth, h))
 }
 
-func (m Model) viewTabBar() string {
+func (m Model) viewTabBar(maxWidth int) string {
 	tabs := []struct {
 		label string
 		id    responseTabID
@@ -724,19 +829,38 @@ func (m Model) viewTabBar() string {
 			parts = append(parts, mutedStyle.Render(label))
 		}
 	}
-	line := "  " + strings.Join(parts, "  ")
-	line += "    " + mutedStyle.Render(m.renderHints([]hintItem{
+	tabPart := "  " + strings.Join(parts, "  ")
+
+	hintItems := []hintItem{
 		{Label: "view", Actions: []string{"tab_prev", "tab_next"}},
 		{Label: "retry", Actions: []string{"response_retry"}},
-	}))
-	if len(m.executions) > 1 {
-		line += "    " + mutedStyle.Render(
-			m.renderHints(
-				[]hintItem{{Label: "history", Actions: []string{"response_up", "response_down"}}},
-			),
-		)
 	}
-	return line
+	if len(m.executions) > 1 {
+		hintItems = append(hintItems, hintItem{
+			Label:   "history",
+			Actions: []string{"response_up", "response_down"},
+		})
+	}
+	hintsPlain := m.renderHints(hintItems)
+	if hintsPlain == "" {
+		if maxWidth > 0 && lipgloss.Width(tabPart) > maxWidth {
+			return mutedStyle.Render(truncate(stripANSI(tabPart), maxWidth))
+		}
+		return tabPart
+	}
+
+	const gap = "    "
+	if maxWidth <= 0 {
+		return tabPart + gap + mutedStyle.Render(hintsPlain)
+	}
+	avail := maxWidth - lipgloss.Width(tabPart) - lipgloss.Width(gap)
+	if avail < 1 {
+		if lipgloss.Width(tabPart) > maxWidth {
+			return mutedStyle.Render(truncate(stripANSI(tabPart), maxWidth))
+		}
+		return tabPart
+	}
+	return tabPart + gap + mutedStyle.Render(truncate(hintsPlain, avail))
 }
 
 func (m Model) selectedExecution() *domain.Execution {
@@ -1129,7 +1253,8 @@ func (m Model) viewStatusBar(statusOverride string) string {
 	if !m.tmuxDetected {
 		items = append(items, hintItem{Label: "cycle", Actions: []string{"pane_next", "pane_prev"}})
 	}
-	if m.mode == normalMode && m.focus == sidebarPane && m.width >= 120 {
+	dim := m.effectiveDim()
+	if m.mode == normalMode && m.focus == sidebarPane && m.width >= 120 && dim == DimWide {
 		items = append(items,
 			hintItem{Label: "nav", Actions: []string{"sidebar_up", "sidebar_down"}},
 			hintItem{Label: "tree", Actions: []string{"sidebar_collapse", "sidebar_expand"}},
@@ -1139,73 +1264,93 @@ func (m Model) viewStatusBar(statusOverride string) string {
 			hintItem{Label: "delete", Actions: []string{"sidebar_delete"}},
 		)
 	}
-	hints := statusStyle.Render(m.renderHints(items))
-
-	var right string
-	switch {
-	case statusOverride != "":
-		right = errorStyle.Render("  ✗ " + statusOverride)
-	case m.statusSuccess != "":
-		right = goodStyle.Render("  ✓ " + m.statusSuccess)
-	case m.statusErr != "":
-		right = errorStyle.Render("  ✗ " + m.statusErr)
-	case m.err != nil:
-		right = errorStyle.Render("  ✗ " + m.err.Error())
-	case m.tmuxDetected && m.showTmuxWarning:
-		// BUG-010: only show tmux warning briefly (first N renders), not permanently.
-		right = warnStyle.Render(
-			"  ⚠ tmux: Ctrl+w intercepted — use " + m.renderHintKeys(
-				[]string{
-					keybindings.ActionFocusSidebar,
-					keybindings.ActionFocusRequest,
-					keybindings.ActionFocusResponse,
-				},
-				false,
-			) + " for panes",
-		)
+	// Build plain text first, then style after any truncation. Truncating
+	// already-styled strings via stripANSI drops the muted color and falls
+	// back to the terminal default foreground when the width changes.
+	hintsPlain := m.renderHints(items)
+	if dim != DimWide || m.forceDim != DimAuto {
+		tag := "[" + dim.String() + "]"
+		if m.forceDim != DimAuto {
+			tag = "[dim:" + dim.String() + "]"
+		}
+		hintsPlain = tag + " " + hintsPlain
 	}
 
-	if right == "" {
-		return hints
+	var rightPlain string
+	var rightStyle lipgloss.Style
+	switch {
+	// User-facing action feedback takes priority over layout/debug overrides
+	// (e.g. visual overflow), so keys like 'a' still surface "Select a
+	// collection first" in the status bar.
+	case m.statusSuccess != "":
+		rightPlain = "  ✓ " + m.statusSuccess
+		rightStyle = goodStyle
+	case m.statusErr != "":
+		rightPlain = "  ✗ " + m.statusErr
+		rightStyle = errorStyle
+	case statusOverride != "":
+		rightPlain = "  ✗ " + statusOverride
+		rightStyle = errorStyle
+	case m.err != nil:
+		rightPlain = "  ✗ " + m.err.Error()
+		rightStyle = errorStyle
+	case m.tmuxDetected && m.showTmuxWarning:
+		// BUG-010: only show tmux warning briefly (first N renders), not permanently.
+		rightPlain = "  ⚠ tmux: Ctrl+w intercepted — use " + m.renderHintKeys(
+			[]string{
+				keybindings.ActionFocusSidebar,
+				keybindings.ActionFocusRequest,
+				keybindings.ActionFocusResponse,
+			},
+			false,
+		) + " for panes"
+		rightStyle = warnStyle
+	}
+
+	if rightPlain == "" {
+		if m.width <= 0 {
+			return statusStyle.Render(hintsPlain)
+		}
+		return statusStyle.Render(truncate(hintsPlain, m.width))
+	}
+
+	if m.width <= 0 {
+		return statusStyle.Render(hintsPlain) + " " + rightStyle.Render(rightPlain)
+	}
+
+	rightW := lipgloss.Width(rightPlain)
+	// Prefer the status/error message over hints when crowded.
+	if rightW >= m.width {
+		return rightStyle.Render(truncate(rightPlain, m.width))
 	}
 
 	// Right-align the status message when there's room.
-	gap := m.width - lipgloss.Width(hints) - lipgloss.Width(right)
+	gap := m.width - lipgloss.Width(hintsPlain) - rightW
 	if gap >= 1 {
-		return hints + strings.Repeat(" ", gap) + right
+		return statusStyle.Render(hintsPlain) + strings.Repeat(" ", gap) + rightStyle.Render(rightPlain)
 	}
 
-	// Visual overflow must always be visible — prefer the error over hints when crowded.
-	if statusOverride != "" {
-		if lipgloss.Width(right) >= m.width {
-			return truncate(stripANSI(right), m.width)
-		}
-		avail := m.width - lipgloss.Width(right)
-		if avail < 1 {
-			return right
-		}
-		return truncate(stripANSI(hints), avail) + right
+	avail := m.width - rightW
+	if avail < 1 {
+		return rightStyle.Render(rightPlain)
 	}
-
-	return hints
+	return statusStyle.Render(truncate(hintsPlain, avail)) + rightStyle.Render(rightPlain)
 }
 
 // --- Search modal ---
 
 func (m Model) searchModalHeight() int {
-	boxHeight := m.height - 4
-	if boxHeight < 10 {
-		boxHeight = 10
-	}
-	return boxHeight
+	// Never exceed the terminal: lipgloss.Place will grow the frame if the
+	// child is taller than the target area.
+	return max(1, m.height-4)
 }
 
 func (m Model) searchVisibleRows() int {
 	// title+blank, input+blank, scroll indicators, bottom hint, border+padding
 	overhead := 2 + 2 + 2 + 2 + 4
 	visible := m.searchModalHeight() - overhead
-	if visible < 3 {
-		visible = 3
+	if visible < 1 {
+		visible = 1
 	}
 	return visible
 }
@@ -1221,7 +1366,23 @@ func (m Model) ensureSearchCursorVisible() Model {
 }
 
 func (m Model) searchModalWidth() int {
-	return m.width * 2 / 3
+	return m.fractionalModalWidth(2, 3)
+}
+
+// fractionalModalWidth returns (numer/denom)*width capped at modalMaxWidth.
+func (m Model) fractionalModalWidth(numer, denom int) int {
+	if denom <= 0 {
+		return m.modalMaxWidth()
+	}
+	w := m.width * numer / denom
+	maxW := m.modalMaxWidth()
+	if w > maxW {
+		w = maxW
+	}
+	if w < 1 {
+		w = 1
+	}
+	return w
 }
 
 func (m Model) viewSearchModal() string {
@@ -1321,7 +1482,7 @@ func (m Model) viewScheduleModal() string {
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(blue).
 		Padding(1, 2).
-		Width(m.width * 2 / 3).
+		Width(m.fractionalModalWidth(2, 3)).
 		Height(10).
 		Render(sb.String())
 
@@ -1438,9 +1599,10 @@ func (m Model) viewHelp() string {
 	// maxLines is the number of content lines (entries + group headers) the
 	// for-loop is allowed to render.
 	boxHeight := m.height - 4 // 2-row margin top + bottom
-	if boxHeight < 8 {
-		boxHeight = 8
+	if boxHeight < 1 {
+		boxHeight = 1
 	}
+	// Do not force a minimum taller than the terminal — Place would overflow.
 	// Everything except the entry-list content:
 	overhead := 2 /*title+blank*/ + 2 /*indicators*/ + 2 /*bottom hint*/ + 4 /*border+padding*/
 	if m.helpEditState == helpRecording {
@@ -1496,7 +1658,7 @@ func (m Model) viewHelp() string {
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(blue).
 			Padding(1, 2).
-			Width(m.width * 2 / 3).
+			Width(m.fractionalModalWidth(2, 3)).
 			Height(boxHeight).
 			Render(sb.String())
 
@@ -1572,7 +1734,7 @@ func (m Model) viewHelp() string {
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(blue).
 		Padding(1, 2).
-		Width(m.width * 2 / 3).
+		Width(m.fractionalModalWidth(2, 3)).
 		Height(boxHeight).
 		Render(sb.String())
 
@@ -1597,11 +1759,12 @@ func (m Model) viewImportModal() string {
 
 	var sb strings.Builder
 	sb.WriteString(titleStyle.Render("Import curl command") + "\n\n")
+	innerW := max(1, min(m.width-4, 70)-4)
 	fmt.Fprintf(&sb, "Method:   %s\n", methodStyle.Render(p.Method))
 	fmt.Fprintf(
 		&sb,
 		"URL:      %s\n",
-		lipgloss.NewStyle().Foreground(lipgloss.Color("#c0caf5")).Render(p.URL),
+		lipgloss.NewStyle().Foreground(lipgloss.Color("#c0caf5")).Render(truncate(p.URL, max(1, innerW-10))),
 	)
 	if len(p.Headers) > 0 {
 		sb.WriteString("Headers:\n")
@@ -1610,7 +1773,7 @@ func (m Model) viewImportModal() string {
 			if isCredentialHeader(k) {
 				v = "[REDACTED]"
 			}
-			fmt.Fprintf(&sb, "  %s: %s\n", mutedStyle.Render(k), v)
+			fmt.Fprintf(&sb, "  %s\n", truncate(k+": "+v, innerW))
 		}
 	}
 	fmt.Fprintf(&sb, "Security: %s\n", secColor.Render(p.Security.String()))
@@ -1841,14 +2004,43 @@ func visualRows(s string, contentWidth int) int {
 	return lipgloss.Height(softWrap(s, contentWidth))
 }
 
-func truncate(s string, maxLen int) string {
-	if maxLen <= 0 || len(s) <= maxLen {
+// truncate shortens s to at most maxCols terminal display columns, appending
+// "…" when clipped. Uses lipgloss.Width so double-width runes (CJK, emoji)
+// count correctly — unlike a byte-length cut.
+func truncate(s string, maxCols int) string {
+	if maxCols <= 0 {
+		return ""
+	}
+	if lipgloss.Width(s) <= maxCols {
 		return s
 	}
-	if maxLen <= 3 {
-		return s[:maxLen]
+	if maxCols <= 3 {
+		var b strings.Builder
+		width := 0
+		for _, r := range s {
+			rw := lipgloss.Width(string(r))
+			if width+rw > maxCols {
+				break
+			}
+			b.WriteRune(r)
+			width += rw
+		}
+		return b.String()
 	}
-	return s[:maxLen-3] + "…"
+
+	budget := maxCols - lipgloss.Width("…")
+	var b strings.Builder
+	width := 0
+	for _, r := range s {
+		rw := lipgloss.Width(string(r))
+		if width+rw > budget {
+			break
+		}
+		b.WriteRune(r)
+		width += rw
+	}
+	b.WriteString("…")
+	return b.String()
 }
 
 // cleanError strips verbose Go error-chain prefixes so only the human-readable
@@ -1879,24 +2071,27 @@ func isCredentialHeader(key string) bool {
 // --- Env modal ---
 
 func (m Model) envModalHeight() int {
-	boxHeight := m.height - 4
-	if boxHeight < 12 {
-		boxHeight = 12
-	}
+	boxHeight := max(1, m.height-4)
 	return boxHeight
 }
 
+// modalMaxWidth is the largest modal width that still fits in the terminal
+// (accounting for a small margin). Never forces a width larger than the screen.
+func (m Model) modalMaxWidth() int {
+	return max(1, m.width-4)
+}
+
 func (m Model) envModalWidth() int {
-	maxWidth := m.width - 4
-	if maxWidth < 40 {
-		maxWidth = 40
-	}
+	maxWidth := m.modalMaxWidth()
 	width := m.width * 4 / 5
-	if width < 70 {
+	if width < 70 && maxWidth >= 70 {
 		width = 70
 	}
 	if width > maxWidth {
 		width = maxWidth
+	}
+	if width < 1 {
+		width = 1
 	}
 	return width
 }
@@ -1911,8 +2106,8 @@ func (m Model) envVisibleRows() int {
 		overhead += 2
 	}
 	visible := m.envModalHeight() - overhead
-	if visible < 3 {
-		visible = 3
+	if visible < 1 {
+		visible = 1
 	}
 	return visible
 }
@@ -1959,15 +2154,16 @@ func (m Model) viewEnvModal() string {
 			if i == selectedRow {
 				cursor = "▸ "
 			}
-			unsavedIndicator := ""
+			unsaved := ""
 			if !v.Saved {
-				unsavedIndicator = lipgloss.NewStyle().Foreground(red).Render("*")
+				unsaved = "*"
 			}
-			key := lipgloss.NewStyle().Foreground(cyan).Render(v.Key) + unsavedIndicator
-			val := lipgloss.NewStyle().Foreground(lipgloss.Color("#c0caf5")).Render(v.Value)
-			line := cursor + key + " = " + val
+			plain := truncate(cursor+v.Key+unsaved+" = "+v.Value, max(1, m.envModalWidth()-4))
+			line := plain
 			if i == selectedRow {
-				line = lipgloss.NewStyle().Bold(true).Render(line)
+				line = lipgloss.NewStyle().Bold(true).Render(plain)
+			} else {
+				line = lipgloss.NewStyle().Foreground(cyan).Render(plain)
 			}
 			sb.WriteString(line + "\n")
 		}

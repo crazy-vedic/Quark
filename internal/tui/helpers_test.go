@@ -8,13 +8,13 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 
 	"github.com/crazy-vedic/quark/internal/config"
 	"github.com/crazy-vedic/quark/internal/domain"
 	"github.com/crazy-vedic/quark/internal/exec"
 	"github.com/crazy-vedic/quark/internal/tui"
+	"github.com/crazy-vedic/quark/internal/tuitest"
 )
 
 const col1 = "col-1"
@@ -41,10 +41,7 @@ func defaultConfig() config.Config {
 
 func callUpdate(t *testing.T, m tui.Model, msg tea.Msg) tui.Model {
 	t.Helper()
-	updated, _ := m.Update(msg)
-	model, ok := updated.(tui.Model)
-	require.True(t, ok, "Update must return tui.Model")
-	return model
+	return tuitest.Update(t, m, msg)
 }
 
 type captureExecutor struct {

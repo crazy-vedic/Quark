@@ -129,7 +129,7 @@ Production TUI code stays in `internal/tui/`; harness is separate to keep produc
 ## Regression Tests (BUG-NNN)
 
 Known UX bugs tracked as **BUG-NNN** IDs (not literal TODO/FIXME comments).
-Most live in `internal/tui/update_test.go`; overflow height checks are in `view_height_test.go`.
+Most live in `internal/tui/update_test.go`; overflow height checks are in `view_test.go`.
 
 | ID | Issue | Source ref |
 |---|---|---|
@@ -147,10 +147,20 @@ When fixing TUI bugs, add/update tests with the BUG-NNN reference (prefer `updat
 
 ## Visual Overflow Reporting
 
-If a normal-mode render still exceeds terminal height after clipping, the status bar shows
-`Visual Overflow; Please check --debug logs` and a detailed `VISUAL OVERFLOW` block is
-written to `/tmp/quark_debug_logs/debug.log` (when `--debug` is set). There is no automatic
-layout rewrite — report occurrences with the debug log attached.
+If a normal-mode render still exceeds the terminal **height or width** after clipping,
+the status bar shows `Visual Overflow; Please check --debug logs` and a detailed
+`VISUAL OVERFLOW` block is written to `/tmp/quark_debug_logs/debug.log` (when `--debug`
+is set). There is no automatic layout rewrite — report occurrences with the debug log
+attached.
+
+Layout notes: density tiers auto-select from terminal size (or `--dim`):
+- **wide** (≥80×18): side-by-side 3 panes; sidebar shrinks 26→20→14→10
+- **narrow**: vertical stack of sidebar → request → response
+- **tiny**: single focused pane (`1`/`2`/`3` switch); status shows `[tiny]`
+- **absurd** (&lt;24×8): “Terminal too small” screen
+
+`truncate` uses display columns (`lipgloss.Width`), not byte length. Force a tier
+with `quark --dim wide|narrow|tiny|absurd` (ignores size for mode selection).
 
 ## TUI vs CLI Gaps
 

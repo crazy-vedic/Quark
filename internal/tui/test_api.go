@@ -82,7 +82,22 @@ const (
 	BodyTab    = bodyTab
 	HeadersTab = headersTab
 	RawTab     = rawTab
+
+	VisualOverflowStatus = visualOverflowStatus
+
+	// Dim mode exports for tests.
+	DimModeAuto   = DimAuto
+	DimModeWide   = DimWide
+	DimModeNarrow = DimNarrow
+	DimModeTiny   = DimTiny
+	DimModeAbsurd = DimAbsurd
 )
+
+// ForceLogVisualOverflowForTest exercises maybeLogVisualOverflow with a tall
+// frame string (used when the too-small gate prevents structural overflow).
+func ForceLogVisualOverflowForTest(m Model, tallFrame string) {
+	m.maybeLogVisualOverflow(tallFrame, nil)
+}
 
 const (
 	NoneField    = noneField
@@ -184,6 +199,9 @@ func (m Model) Loading() bool                                    { return m.load
 func (m Model) Err() error                                       { return m.err }
 func (m Model) StatusErr() string                                { return m.statusErr }
 func (m Model) StatusSuccess() string                            { return m.statusSuccess }
+func (m Model) ViewStatusBarForTest(override string) string      { return m.viewStatusBar(override) }
+func (m Model) ViewRequestPaneForTest(w, h int) string            { return m.viewRequestPane(w, h) }
+func (m Model) ViewTabBarForTest(maxWidth int) string             { return m.viewTabBar(maxWidth) }
 func (m Model) ValidationErr() string                            { return m.activeValidationErr() }
 func (m Model) Response() *exec.ExecuteResult                    { return m.response }
 func (m Model) Executions() []*domain.Execution                  { return m.executions }
@@ -192,6 +210,9 @@ func (m Model) Width() int                                       { return m.widt
 func (m Model) Height() int                                      { return m.height }
 func (m Model) Focus() paneID                                    { return m.focus }
 func (m Model) Mode() modeID                                     { return m.mode }
+func (m Model) ForceDim() DimMode                                { return m.forceDim }
+func (m Model) EffectiveDim() DimMode                            { return m.effectiveDim() }
+func (m Model) WithForceDim(d DimMode) Model                     { m.forceDim = d; return m }
 func (m Model) Collections() []*domain.Collection                { return m.collections }
 func (m Model) Requests() []*domain.Request                      { return m.requests }
 func (m Model) CollectionRequests() map[string][]*domain.Request { return m.collectionRequests }
@@ -221,7 +242,7 @@ func (m Model) SidebarCollectionDisclosurePos(colIndex int) (x, y int, ok bool) 
 	if !ok {
 		return 0, 0, false
 	}
-	layout := normalLayoutFor(m.width, m.height)
+	layout := m.currentLayout()
 	content := m.sidebarContentRect(layout)
 	x = content.left + sidebarDisclosureStartX
 	return x, y, true
@@ -242,7 +263,7 @@ func (m Model) SidebarMoreBelowPos() (x, y int, ok bool) {
 	if end >= len(rows) {
 		return 0, 0, false
 	}
-	layout := normalLayoutFor(m.width, m.height)
+	layout := m.currentLayout()
 	content := m.sidebarContentRect(layout)
 	listLine := end - start
 	if start > 0 {
@@ -258,7 +279,7 @@ func (m Model) RequestMethodBadgeClickPos() (x, y int, ok bool) {
 	if m.width <= 0 || m.height <= 0 {
 		return 0, 0, false
 	}
-	layout := normalLayoutFor(m.width, m.height)
+	layout := m.currentLayout()
 	chrome := m.requestPaneChromeRects(layout)
 	return chrome.methodBadge.left, chrome.methodBadge.top, true
 }
@@ -268,7 +289,7 @@ func (m Model) RequestURLLineClickPos() (x, y int, ok bool) {
 	if m.width <= 0 || m.height <= 0 {
 		return 0, 0, false
 	}
-	layout := normalLayoutFor(m.width, m.height)
+	layout := m.currentLayout()
 	chrome := m.requestPaneChromeRects(layout)
 	return chrome.urlLine.left + 2, chrome.urlLine.top, true
 }
@@ -279,7 +300,7 @@ func (m Model) RequestURLTextClickPosAtColumn(col int) (x, y int, ok bool) {
 	if m.width <= 0 || m.height <= 0 {
 		return 0, 0, false
 	}
-	layout := normalLayoutFor(m.width, m.height)
+	layout := m.currentLayout()
 	chrome := m.requestPaneChromeRects(layout)
 	x = chrome.urlLine.left + col
 	if x > chrome.urlLine.right {
@@ -302,7 +323,7 @@ func (m Model) HeaderListRowClickPos(rowIndex int) (x, y int, ok bool) {
 	if rowIndex < 0 || rowIndex >= len(m.headerPairs) {
 		return 0, 0, false
 	}
-	layout := normalLayoutFor(m.width, m.height)
+	layout := m.currentLayout()
 	ll := m.requestPaneLineLayout(layout)
 	content := layout.requestContentRect()
 	return content.left + 4, ll.editorContentY + rowIndex, true
@@ -316,7 +337,7 @@ func (m Model) HeaderKeyInputClickPos() (x, y int, ok bool) {
 	if m.width <= 0 || m.height <= 0 || !m.headerEditing {
 		return 0, 0, false
 	}
-	layout := normalLayoutFor(m.width, m.height)
+	layout := m.currentLayout()
 	ll := m.requestPaneLineLayout(layout)
 	content := layout.requestContentRect()
 	return content.left + 2, ll.headerKeyInputY, true
@@ -333,7 +354,7 @@ func (m Model) HeaderValueInputClickPosAtColumn(col int) (x, y int, ok bool) {
 	if m.width <= 0 || m.height <= 0 || !m.headerEditing {
 		return 0, 0, false
 	}
-	layout := normalLayoutFor(m.width, m.height)
+	layout := m.currentLayout()
 	ll := m.requestPaneLineLayout(layout)
 	content := layout.requestContentRect()
 	return content.left + col, ll.headerValInputY, true
@@ -348,7 +369,7 @@ func (m Model) AuthRowClickPos(rowIndex int) (x, y int, ok bool) {
 	if rowIndex < 0 || rowIndex >= len(rows) {
 		return 0, 0, false
 	}
-	layout := normalLayoutFor(m.width, m.height)
+	layout := m.currentLayout()
 	ll := m.requestPaneLineLayout(layout)
 	content := layout.requestContentRect()
 	x = authRowTextLeft(content.left, rows[rowIndex]) + 2
@@ -361,7 +382,7 @@ func (m Model) BodyTextareaClickPos(displayLine, col int) (x, y int, ok bool) {
 	if m.width <= 0 || m.height <= 0 || m.activeField != bodyField {
 		return 0, 0, false
 	}
-	layout := normalLayoutFor(m.width, m.height)
+	layout := m.currentLayout()
 	ll := m.requestPaneLineLayout(layout)
 	if displayLine < 0 || displayLine >= m.bodyTextarea.Height() {
 		return 0, 0, false
@@ -374,7 +395,7 @@ func (m Model) RequestSendButtonClickPos() (x, y int, ok bool) {
 	if m.width <= 0 || m.height <= 0 {
 		return 0, 0, false
 	}
-	layout := normalLayoutFor(m.width, m.height)
+	layout := m.currentLayout()
 	chrome := m.requestPaneChromeRects(layout)
 	center := chrome.sendButton.left + (chrome.sendButton.right-chrome.sendButton.left)/2
 	return center, chrome.sendButton.top, true
@@ -385,7 +406,7 @@ func (m Model) RequestPaneContentClickPos() (x, y int, ok bool) {
 	if m.width <= 0 || m.height <= 0 {
 		return 0, 0, false
 	}
-	layout := normalLayoutFor(m.width, m.height)
+	layout := m.currentLayout()
 	content := layout.requestContentRect()
 	// Below chrome lines (title, method/url, optional auth, blank).
 	y = content.top + 5
@@ -407,7 +428,7 @@ func (m Model) ResponseTabClickPos(tab responseTabID) (x, y int, ok bool) {
 	if m.width <= 0 || m.height <= 0 {
 		return 0, 0, false
 	}
-	layout := normalLayoutFor(m.width, m.height)
+	layout := m.currentLayout()
 	tabs := m.responsePaneTabRects(layout)
 	var r layoutRect
 	switch tab {
@@ -431,7 +452,7 @@ func (m Model) ResponsePaneWheelPos() (x, y int, ok bool) {
 	if m.width <= 0 || m.height <= 0 {
 		return 0, 0, false
 	}
-	layout := normalLayoutFor(m.width, m.height)
+	layout := m.currentLayout()
 	r := layout.responseContentRect()
 	return r.left + 2, r.top + 2, true
 }
@@ -443,7 +464,7 @@ func (m Model) ResponseHistoryRowClickPos(rowIndex int) (x, y int, ok bool) {
 	if m.width <= 0 || m.height <= 0 || !m.viewingHistoricalExecution() {
 		return 0, 0, false
 	}
-	layout := normalLayoutFor(m.width, m.height)
+	layout := m.currentLayout()
 	content := layout.responseContentRect()
 	innerW := max(1, content.right-content.left+1)
 	if innerW < 64 {
@@ -516,3 +537,10 @@ func (m Model) EnvEditor() envEditor { return m.envEditor }
 func (m Model) WithEnvReader(r store.EnvironmentReader) Model { m.envReader = r; return m }
 func (m Model) WithEnvWriter(w store.EnvironmentWriter) Model { m.envWriter = w; return m }
 func (m Model) WithColWriter(w store.CollectionWriter) Model  { m.colWriter = w; return m }
+
+// Truncate / LimitLines / VisualRows expose view helpers for external tests.
+func Truncate(s string, maxCols int) string { return truncate(s, maxCols) }
+func LimitLines(s string, contentWidth, maxRows int) string {
+	return limitLines(s, contentWidth, maxRows)
+}
+func VisualRows(s string, contentWidth int) int { return visualRows(s, contentWidth) }

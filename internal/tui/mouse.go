@@ -33,8 +33,11 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	if m.mode != normalMode {
 		return m, nil
 	}
+	if m.effectiveDim() == DimAbsurd {
+		return m, nil
+	}
 
-	layout := normalLayoutFor(m.width, m.height)
+	layout := m.currentLayout()
 
 	if isMouseWheel(msg) {
 		pane, ok := layout.paneAt(msg.X, msg.Y)
@@ -80,7 +83,7 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleResponseClick(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
-	layout := normalLayoutFor(m.width, m.height)
+	layout := m.currentLayout()
 	m.focus = responsePane
 	m.activeField = noneField
 
@@ -174,7 +177,7 @@ func (m Model) responseHistoryHitAt(x, y int, layout normalLayout) (int, bool) {
 }
 
 func (m Model) handleRequestClick(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
-	layout := normalLayoutFor(m.width, m.height)
+	layout := m.currentLayout()
 	chrome := m.requestPaneChromeRects(layout)
 
 	m.focus = requestPane
@@ -218,7 +221,7 @@ func (m Model) handleSidebarWheel(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleSidebarClick(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
-	layout := normalLayoutFor(m.width, m.height)
+	layout := m.currentLayout()
 	if !layout.sidebarRect().contains(msg.X, msg.Y) {
 		return m, nil
 	}
@@ -336,7 +339,7 @@ func (m Model) sidebarListHitAt(x, y int) (sidebarListHit, bool) {
 		return sidebarListHit{}, false
 	}
 
-	layout := normalLayoutFor(m.width, m.height)
+	layout := m.currentLayout()
 	content := m.sidebarContentRect(layout)
 	if !content.contains(x, y) {
 		return sidebarListHit{}, false
@@ -389,7 +392,7 @@ func (m Model) sidebarTreeRowScreenPos(rowIndex int) (x, y int, ok bool) {
 		return 0, 0, false
 	}
 
-	layout := normalLayoutFor(m.width, m.height)
+	layout := m.currentLayout()
 	content := m.sidebarContentRect(layout)
 
 	listLine := rowIndex - start

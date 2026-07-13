@@ -577,6 +577,45 @@ func TestUpdate_WindowSize_Stored(t *testing.T) {
 	assert.Equal(t, 50, m.Height())
 }
 
+func TestUpdate_CollectionPrompt_AddRequest_RequiresSelection(t *testing.T) {
+	m := newTestModel()
+	m = m.WithFocus(tui.SidebarPane)
+	m = callUpdate(t, m, tea.WindowSizeMsg{Width: 120, Height: 40})
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
+
+	assert.Equal(
+		t,
+		tui.NormalMode,
+		m.Mode(),
+		"pressing 'a' with no collection selected must not enter prompt mode",
+	)
+	assert.Equal(t, "Select a collection first", m.StatusErr())
+	assert.Contains(
+		t,
+		m.View(),
+		"Select a collection first",
+		"error must appear in the status bar",
+	)
+}
+
+func TestUpdate_CollectionPrompt_Add_ClearsStaleStatusFromAddRequest(t *testing.T) {
+	m := newTestModel()
+	m = m.WithFocus(tui.SidebarPane)
+	m = callUpdate(t, m, tea.WindowSizeMsg{Width: 120, Height: 40})
+
+	// 'a' with no collection sets a status error.
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
+	require.Equal(t, "Select a collection first", m.StatusErr())
+
+	// 'A' must open the add-collection prompt without carrying that error over.
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'A'}})
+	assert.Equal(t, tui.CollectionPromptMode, m.Mode())
+	assert.Equal(t, tui.PromptAdd, m.PromptMode())
+	assert.Empty(t, m.StatusErr(), "stale 'a' error must not appear in the new prompt")
+	assert.NotContains(t, m.View(), "Select a collection first")
+	assert.Contains(t, m.View(), "New Collection")
+}
+
 func TestUpdate_CollectionPrompt_Add_EntersPromptMode(t *testing.T) {
 	m := newTestModel()
 	m = m.WithFocus(tui.SidebarPane)
