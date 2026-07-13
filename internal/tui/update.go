@@ -1528,6 +1528,10 @@ func (m Model) enterCollectionPrompt(pt promptType, targetID string) (tea.Model,
 	m.promptMode = pt
 	m.promptTargetID = targetID
 	m.promptInput.SetValue("")
+	// Clear stale status from prior actions (e.g. 'a' with no collection) so it
+	// does not appear inside the new prompt overlay.
+	m.statusErr = ""
+	m.statusSuccess = ""
 
 	switch pt {
 	case promptAdd:

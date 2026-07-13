@@ -98,7 +98,7 @@ Never reorder or remove entries in `internal/store/migrations.go`. Add new migra
 
 ## TUI BUG-NNN Registry
 
-Regression tests live mainly in `internal/tui/update_test.go` (overflow in `view_height_test.go`).
+Regression tests live mainly in `internal/tui/update_test.go` (overflow in `view_test.go`).
 Do not reintroduce these:
 
 | ID | Summary | Key file |
@@ -116,8 +116,16 @@ Do not reintroduce these:
 ### Visual overflow
 
 If the TUI status bar shows `Visual Overflow; Please check --debug logs`, capture
-`/tmp/quark_debug_logs/debug.log` (run with `--debug`) and report it. Detection is
-intentional; realtime auto-layout fix is not attempted on every frame.
+`/tmp/quark_debug_logs/debug.log` (run with `--debug`) and report it. Detection
+covers both height and width (`lipgloss.Height` / `lipgloss.Width` vs the
+terminal). Realtime auto-layout fix is not attempted on every frame; prevention
+(truncate, clip, density tiers, absurd-size screen) is preferred.
+
+Density tiers (auto from size, or force with `--dim`):
+- **wide** (≥80×18): side-by-side; sidebar shrink ladder
+- **narrow**: stacked panes
+- **tiny**: single focused pane
+- **absurd** (&lt;24×8): “Terminal too small” (or forced `--dim=absurd`)
 
 ## Terminal Requirements
 
