@@ -50,13 +50,15 @@ func TestResizeCoalescer_HardOnGrow(t *testing.T) {
 func TestUpdate_ApplyDimStickyOnResize(t *testing.T) {
 	m := Model{width: 120, height: 40, stickyDim: DimWide}
 	next, _ := m.Update(tea.WindowSizeMsg{Width: 79, Height: 40})
-	got := next.(Model)
+	got, ok := next.(Model)
+	require.True(t, ok)
 	assert.Equal(t, 79, got.width)
 	assert.Equal(t, DimWide, got.stickyDim, "79 is inside hysteresis; stay wide")
 	assert.Equal(t, DimWide, got.effectiveDim())
 
 	next, _ = got.Update(tea.WindowSizeMsg{Width: 75, Height: 40})
-	got = next.(Model)
+	got, ok = next.(Model)
+	require.True(t, ok)
 	assert.Equal(t, DimNarrow, got.stickyDim)
 	assert.Equal(t, DimNarrow, got.effectiveDim())
 }
