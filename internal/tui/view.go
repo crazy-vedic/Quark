@@ -535,7 +535,7 @@ func (m Model) viewRequestPane(w, h int) string {
 						cursor = "▸ "
 					}
 					plain := truncate(cursor+p.Key+": "+p.Value, w-4)
-					line := plain
+					var line string
 					if i == m.headerCursor {
 						line = lipgloss.NewStyle().Bold(true).Render(plain)
 					} else {
@@ -559,7 +559,9 @@ func (m Model) viewRequestPane(w, h int) string {
 				for _, k := range sortedStringMapKeys(hdrs) {
 					v := hdrs[k]
 					plain := "  " + k + ": " + v
-					preview.WriteString(lipgloss.NewStyle().Foreground(cyan).Render(truncate(plain, w-4)) + "\n")
+					preview.WriteString(
+						lipgloss.NewStyle().Foreground(cyan).Render(truncate(plain, w-4)) + "\n",
+					)
 				}
 			}
 		}
@@ -1327,7 +1329,14 @@ func (m Model) viewStatusBar(statusOverride string) string {
 	// Right-align the status message when there's room.
 	gap := m.width - lipgloss.Width(hintsPlain) - rightW
 	if gap >= 1 {
-		return statusStyle.Render(hintsPlain) + strings.Repeat(" ", gap) + rightStyle.Render(rightPlain)
+		return statusStyle.Render(
+			hintsPlain,
+		) + strings.Repeat(
+			" ",
+			gap,
+		) + rightStyle.Render(
+			rightPlain,
+		)
 	}
 
 	avail := m.width - rightW
@@ -1366,15 +1375,12 @@ func (m Model) ensureSearchCursorVisible() Model {
 }
 
 func (m Model) searchModalWidth() int {
-	return m.fractionalModalWidth(2, 3)
+	return m.twoThirdsModalWidth()
 }
 
-// fractionalModalWidth returns (numer/denom)*width capped at modalMaxWidth.
-func (m Model) fractionalModalWidth(numer, denom int) int {
-	if denom <= 0 {
-		return m.modalMaxWidth()
-	}
-	w := m.width * numer / denom
+// twoThirdsModalWidth returns (2/3)*width capped at modalMaxWidth.
+func (m Model) twoThirdsModalWidth() int {
+	w := m.width * 2 / 3
 	maxW := m.modalMaxWidth()
 	if w > maxW {
 		w = maxW
@@ -1482,7 +1488,7 @@ func (m Model) viewScheduleModal() string {
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(blue).
 		Padding(1, 2).
-		Width(m.fractionalModalWidth(2, 3)).
+		Width(m.twoThirdsModalWidth()).
 		Height(10).
 		Render(sb.String())
 
@@ -1658,7 +1664,7 @@ func (m Model) viewHelp() string {
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(blue).
 			Padding(1, 2).
-			Width(m.fractionalModalWidth(2, 3)).
+			Width(m.twoThirdsModalWidth()).
 			Height(boxHeight).
 			Render(sb.String())
 
@@ -1734,7 +1740,7 @@ func (m Model) viewHelp() string {
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(blue).
 		Padding(1, 2).
-		Width(m.fractionalModalWidth(2, 3)).
+		Width(m.twoThirdsModalWidth()).
 		Height(boxHeight).
 		Render(sb.String())
 
@@ -1764,7 +1770,9 @@ func (m Model) viewImportModal() string {
 	fmt.Fprintf(
 		&sb,
 		"URL:      %s\n",
-		lipgloss.NewStyle().Foreground(lipgloss.Color("#c0caf5")).Render(truncate(p.URL, max(1, innerW-10))),
+		lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#c0caf5")).
+			Render(truncate(p.URL, max(1, innerW-10))),
 	)
 	if len(p.Headers) > 0 {
 		sb.WriteString("Headers:\n")
@@ -2159,7 +2167,7 @@ func (m Model) viewEnvModal() string {
 				unsaved = "*"
 			}
 			plain := truncate(cursor+v.Key+unsaved+" = "+v.Value, max(1, m.envModalWidth()-4))
-			line := plain
+			var line string
 			if i == selectedRow {
 				line = lipgloss.NewStyle().Bold(true).Render(plain)
 			} else {

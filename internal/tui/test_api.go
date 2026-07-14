@@ -195,13 +195,18 @@ func (m Model) HistoryPopupView(width, rows int) string {
 	return m.viewExecutionHistoryPopup(width, rows)
 }
 
-func (m Model) Loading() bool                                    { return m.loading }
-func (m Model) Err() error                                       { return m.err }
-func (m Model) StatusErr() string                                { return m.statusErr }
-func (m Model) StatusSuccess() string                            { return m.statusSuccess }
-func (m Model) ViewStatusBarForTest(override string) string      { return m.viewStatusBar(override) }
-func (m Model) ViewRequestPaneForTest(w, h int) string            { return m.viewRequestPane(w, h) }
-func (m Model) ViewTabBarForTest(maxWidth int) string             { return m.viewTabBar(maxWidth) }
+func (m Model) Loading() bool         { return m.loading }
+func (m Model) Err() error            { return m.err }
+func (m Model) StatusErr() string     { return m.statusErr }
+func (m Model) StatusSuccess() string { return m.statusSuccess }
+
+func (m Model) ViewStatusBarForTest(
+	override string,
+) string {
+	return m.viewStatusBar(override)
+}
+func (m Model) ViewRequestPaneForTest(w, h int) string           { return m.viewRequestPane(w, h) }
+func (m Model) ViewTabBarForTest(maxWidth int) string            { return m.viewTabBar(maxWidth) }
 func (m Model) ValidationErr() string                            { return m.activeValidationErr() }
 func (m Model) Response() *exec.ExecuteResult                    { return m.response }
 func (m Model) Executions() []*domain.Execution                  { return m.executions }
