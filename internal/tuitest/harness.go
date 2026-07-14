@@ -3,15 +3,18 @@ package tuitest
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -25,6 +28,49 @@ import (
 	"github.com/crazy-vedic/quark/internal/store"
 	"github.com/crazy-vedic/quark/internal/tui"
 )
+
+// allowFrameOverflow tracks tests that intentionally exercise overflow.
+var allowFrameOverflow sync.Map // map[string]struct{}
+
+// AllowFrameOverflow marks the current test as allowed to render a frame that
+// exceeds the terminal (or show the Visual Overflow status). Call once at the
+// start of intentional overflow tests.
+func AllowFrameOverflow(t *testing.T) {
+	t.Helper()
+	name := t.Name()
+	allowFrameOverflow.Store(name, struct{}{})
+	t.Cleanup(func() { allowFrameOverflow.Delete(name) })
+}
+
+func frameOverflowAllowed(t *testing.T) bool {
+	_, ok := allowFrameOverflow.Load(t.Name())
+	return ok
+}
+
+// AssertNoFrameOverflow fails if the model's View exceeds its terminal size
+// (or shows the Visual Overflow banner), unless AllowFrameOverflow was called.
+func AssertNoFrameOverflow(t *testing.T, m tui.Model) {
+	t.Helper()
+	if frameOverflowAllowed(t) {
+		return
+	}
+	if !m.HasFrameOverflow() {
+		return
+	}
+	view := m.View()
+	excerpt := view
+	if len(excerpt) > 400 {
+		excerpt = excerpt[:400] + "…"
+	}
+	require.Fail(t, fmt.Sprintf(
+		"TUI frame overflow: terminal=%dx%d rendered=%dx%d\nview excerpt:\n%s",
+		m.Width(),
+		m.Height(),
+		lipgloss.Width(view),
+		lipgloss.Height(view),
+		excerpt,
+	))
+}
 
 func SetupStore(t *testing.T, collections ...*domain.Collection) *store.Store {
 	t.Helper()
@@ -187,6 +233,7 @@ func Update(t *testing.T, m tui.Model, msg tea.Msg) tui.Model {
 	updated, _ := m.Update(msg)
 	model, ok := updated.(tui.Model)
 	require.True(t, ok)
+	AssertNoFrameOverflow(t, model)
 	return model
 }
 
@@ -200,6 +247,7 @@ func UpdateWithCmd(t *testing.T, m tui.Model, msg tea.Msg) (tui.Model, tea.Cmd) 
 	updated, cmd := m.Update(msg)
 	model, ok := updated.(tui.Model)
 	require.True(t, ok)
+	AssertNoFrameOverflow(t, model)
 	return model, cmd
 }
 
@@ -266,11 +314,13 @@ func ExecuteCmdUpdate(t *testing.T, m tui.Model, cmd tea.Cmd) tui.Model {
 
 func AssertViewContains(t *testing.T, m tui.Model, want string) {
 	t.Helper()
+	AssertNoFrameOverflow(t, m)
 	assert.Contains(t, m.View(), want, "rendered view must contain %q", want)
 }
 
 func AssertViewNotContains(t *testing.T, m tui.Model, want string) {
 	t.Helper()
+	AssertNoFrameOverflow(t, m)
 	assert.NotContains(t, m.View(), want, "rendered view must NOT contain %q", want)
 }
 

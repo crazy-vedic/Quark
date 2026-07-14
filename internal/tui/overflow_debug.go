@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
@@ -12,6 +13,8 @@ const visualOverflowStatus = "Visual Overflow; Please check --debug logs"
 type visualOverflowReport struct {
 	renderedH int
 	budgetH   int
+	renderedW int
+	budgetW   int
 	layout    *normalLayout
 	sidebar   string
 	request   string
@@ -20,23 +23,48 @@ type visualOverflowReport struct {
 	statusBar string
 }
 
-func (m Model) maybeLogVisualOverflow(out string, report *visualOverflowReport) {
-	if m.height <= 0 {
-		return
+// frameOverflows reports whether the rendered frame exceeds the terminal
+// on either axis.
+func frameOverflows(out string, width, height int) bool {
+	if height > 0 && lipgloss.Height(out) > height {
+		return true
 	}
-	renderedH := lipgloss.Height(out)
-	if renderedH <= m.height {
+	if width > 0 && lipgloss.Width(out) > width {
+		return true
+	}
+	return false
+}
+
+// HasFrameOverflow reports whether the current View exceeds the model's
+// terminal size, or whether the visual-overflow status banner is showing.
+// Returns false before a WindowSizeMsg (width/height still 0).
+func (m Model) HasFrameOverflow() bool {
+	if m.width <= 0 || m.height <= 0 {
+		return false
+	}
+	out := m.View()
+	if frameOverflows(out, m.width, m.height) {
+		return true
+	}
+	return strings.Contains(out, visualOverflowStatus)
+}
+
+func (m Model) maybeLogVisualOverflow(out string, report *visualOverflowReport) {
+	if !frameOverflows(out, m.width, m.height) {
 		return
 	}
 	if m.debugLog == nil {
 		return
 	}
+	renderedH := lipgloss.Height(out)
+	renderedW := lipgloss.Width(out)
 	if report == nil {
-		report = &visualOverflowReport{renderedH: renderedH, budgetH: m.height}
-	} else {
-		report.renderedH = renderedH
-		report.budgetH = m.height
+		report = &visualOverflowReport{}
 	}
+	report.renderedH = renderedH
+	report.budgetH = m.height
+	report.renderedW = renderedW
+	report.budgetW = m.width
 	m.logVisualOverflow(report)
 }
 
@@ -45,11 +73,12 @@ func (m Model) logVisualOverflow(r *visualOverflowReport) {
 		return
 	}
 
-	excess := r.renderedH - r.budgetH
+	excessH := r.renderedH - r.budgetH
+	excessW := r.renderedW - r.budgetW
 	fmt.Fprintf(m.debugLog, "[%s] VISUAL OVERFLOW\n",
 		time.Now().Format("2006-01-02 15:04:05.000"))
-	fmt.Fprintf(m.debugLog, "  terminal=%dx%d rendered=%d excess=%d\n",
-		m.width, r.budgetH, r.renderedH, excess)
+	fmt.Fprintf(m.debugLog, "  terminal=%dx%d rendered=%dx%d excessH=%d excessW=%d\n",
+		r.budgetW, r.budgetH, r.renderedW, r.renderedH, excessH, excessW)
 	fmt.Fprintf(m.debugLog, "  mode=%d focus=%d responseTab=%d activeField=%d\n",
 		m.mode, m.focus, m.responseTab, m.activeField)
 
@@ -76,6 +105,15 @@ func (m Model) logVisualOverflow(r *visualOverflowReport) {
 			lipgloss.Height(r.response),
 			lipgloss.Height(r.joined),
 			lipgloss.Height(r.statusBar),
+		)
+		fmt.Fprintf(
+			m.debugLog,
+			"  component widths: sidebar=%d request=%d response=%d joined=%d statusBar=%d\n",
+			lipgloss.Width(r.sidebar),
+			lipgloss.Width(r.request),
+			lipgloss.Width(r.response),
+			lipgloss.Width(r.joined),
+			lipgloss.Width(r.statusBar),
 		)
 	}
 

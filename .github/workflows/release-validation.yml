@@ -16,7 +16,7 @@ permissions:
 
 jobs:
   validate-release:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     steps:
       - name: Validate requested release version
         env:

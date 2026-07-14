@@ -37,6 +37,7 @@ Uses `gotestsum` if installed, else plain `go test`.
 ## Unit Tests
 
 - Colocated with source: `internal/*/**_test.go`
+- Naming: one `{file}_test.go` per source file (e.g. `view.go` → `view_test.go`). Do not split by helper/feature into `view_height_test.go`, `truncate_test.go`, etc.
 - Race detector enabled (`-race`)
 - Parallelism: `-p $(nproc)`
 - Coverage: `-coverpkg=./...`
@@ -77,6 +78,10 @@ go test -tags e2e ./tests/e2e/tui/...
 - Model construction with sensible defaults
 - Key/message driving helpers (`SendKey`, `SendMsg`)
 - Rendered view assertions (check lipgloss output)
+- **Frame overflow guard** — after every `Update` / `UpdateWithCmd` / `AssertView*`,
+  the harness fails if `View()` is wider or taller than the terminal, or if the
+  `Visual Overflow` status banner is showing. Opt out only for intentional
+  overflow tests with `tuitest.AllowFrameOverflow(t)`.
 
 Test files follow `e2e_*_test.go` naming:
 
@@ -87,7 +92,8 @@ Test files follow `e2e_*_test.go` naming:
 ### TUI Regression Tests
 
 `internal/tui/update_test.go` — BUG-NNN regression tests (not e2e tag, run with unit tests).
-Overflow height coverage is in `internal/tui/view_height_test.go`.
+Overflow height coverage is in `internal/tui/view_test.go`.
+Unit tests use the same overflow guard via `callUpdate` → `tuitest.Update`.
 
 ## E2E CLI Tests
 

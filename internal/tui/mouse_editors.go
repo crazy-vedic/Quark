@@ -80,7 +80,7 @@ func (m Model) urlCursorPosFromClick(relX int, layout normalLayout) int {
 
 func (m Model) handleURLLineClick(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	m.focus = requestPane
-	layout := normalLayoutFor(m.width, m.height)
+	layout := m.currentLayout()
 	chrome := m.requestPaneChromeRects(layout)
 
 	relX := msg.X - chrome.urlLine.left
@@ -110,7 +110,7 @@ func (m Model) handleHeaderListClick(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	layout := normalLayoutFor(m.width, m.height)
+	layout := m.currentLayout()
 	ll := m.requestPaneLineLayout(layout)
 
 	idx := msg.Y - ll.editorContentY
@@ -127,7 +127,7 @@ func (m Model) handleHeaderEditClick(msg tea.MouseMsg) (Model, tea.Cmd) {
 		return m, nil
 	}
 
-	layout := normalLayoutFor(m.width, m.height)
+	layout := m.currentLayout()
 	ll := m.requestPaneLineLayout(layout)
 	content := layout.requestContentRect()
 
@@ -156,7 +156,7 @@ func (m Model) handleHeaderEditClick(msg tea.MouseMsg) (Model, tea.Cmd) {
 }
 
 func (m Model) handleAuthEditClick(msg tea.MouseMsg) (Model, tea.Cmd) {
-	layout := normalLayoutFor(m.width, m.height)
+	layout := m.currentLayout()
 	ll := m.requestPaneLineLayout(layout)
 	content := layout.requestContentRect()
 
@@ -238,7 +238,7 @@ func (e *authEditor) assignInput(row authRowID, in textinput.Model) {
 }
 
 func (m Model) handleBodyTextareaClick(msg tea.MouseMsg) Model {
-	layout := normalLayoutFor(m.width, m.height)
+	layout := m.currentLayout()
 	ll := m.requestPaneLineLayout(layout)
 
 	relY := msg.Y - ll.editorContentY

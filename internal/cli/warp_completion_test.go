@@ -30,6 +30,7 @@ func TestWarpCompletionPluginGeneratedFromCobraFlags(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Contains(t, plugin, `"name": "--config"`)
+	assert.Contains(t, plugin, `"name": "--dim"`)
 	assert.Contains(t, plugin, `"name": "--collection"`)
 	assert.Contains(t, plugin, `"name": "--at"`)
 	assert.Contains(t, plugin, `"-h"`)
@@ -88,6 +89,7 @@ func newWarpCompletionTestRoot() *cobra.Command {
 	}
 	root.PersistentFlags().String("config", "./.quark", "Directory for config and data files")
 	root.PersistentFlags().Bool("debug", false, "Log all keystrokes")
+	root.PersistentFlags().String("dim", "", "Force TUI density: wide|narrow|tiny|absurd")
 
 	collection := &cobra.Command{Use: "collection", Short: "Manage collections"}
 	collection.AddCommand(&cobra.Command{
