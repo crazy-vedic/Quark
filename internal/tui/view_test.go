@@ -916,9 +916,12 @@ func TestView_FrameFitsTerminal_AcrossSizes(t *testing.T) {
 
 	body := strings.Repeat(strings.Repeat("x", 200)+"\n", 80)
 	ex := &domain.Execution{
-		StatusCode:      200,
-		ResponseBody:    body,
-		ResponseHeaders: `{"Content-Type":["application/json"],"X-Long":["` + strings.Repeat("h", 200) + `"]}`,
+		StatusCode:   200,
+		ResponseBody: body,
+		ResponseHeaders: `{"Content-Type":["application/json"],"X-Long":["` + strings.Repeat(
+			"h",
+			200,
+		) + `"]}`,
 	}
 	req := &domain.Request{
 		ID:      "r1",
