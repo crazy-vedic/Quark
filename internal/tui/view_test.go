@@ -199,16 +199,16 @@ func TestView_RequestHints_UseConfiguredBindingsAndAliasPolicy(t *testing.T) {
 	cfg.Keybindings.EnvNext = "ctrl+right"
 
 	m := newModel(cfg).WithFocus(tui.RequestPane)
-	m = callUpdate(t, m, tea.WindowSizeMsg{Width: 120, Height: 40})
-
-	view := m.View()
-	assert.Contains(t, view, "[U] url")
-	assert.Contains(t, view, "[n/p] cycle method")
-	assert.Contains(t, view, "[Ctrl+S/⌘+Enter] send")
-	assert.Contains(t, view, "[B] body")
-	assert.Contains(t, view, "[H] headers")
-	assert.Contains(t, view, "[E] env")
-	assert.Contains(t, view, "[Ctrl+←/Ctrl+→] cycle env")
+	// Render the request pane wide enough that responsive hint truncation does not
+	// clip the configured bindings under test (full View at 120px still truncates).
+	pane := m.ViewRequestPaneForTest(140, 20)
+	assert.Contains(t, pane, "[U] url")
+	assert.Contains(t, pane, "[n/p] cycle method")
+	assert.Contains(t, pane, "[Ctrl+S/⌘+Enter] send")
+	assert.Contains(t, pane, "[B] body")
+	assert.Contains(t, pane, "[H] headers")
+	assert.Contains(t, pane, "[E] env")
+	assert.Contains(t, pane, "[Ctrl+←/Ctrl+→] cycle env")
 }
 
 func TestView_RequestPane_HintsStayOnOneLine(t *testing.T) {

@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   tag:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main'
     outputs:
       version: ${{ steps.extract.outputs.version }}
@@ -201,7 +201,7 @@ jobs:
 
   release:
     needs: tag
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     if: needs.tag.outputs.tag_created == 'true'
     permissions:
       contents: write

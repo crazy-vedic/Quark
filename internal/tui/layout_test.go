@@ -65,6 +65,40 @@ func TestDimFromSize(t *testing.T) {
 	}
 }
 
+func TestDimWithHysteresis_WideNarrowBand(t *testing.T) {
+	t.Parallel()
+
+	// From wide: stay wide through the raw narrow band until exit threshold (<76).
+	assert.Equal(t, DimWide, dimWithHysteresis(79, 40, DimWide))
+	assert.Equal(t, DimWide, dimWithHysteresis(76, 40, DimWide))
+	assert.Equal(t, DimNarrow, dimWithHysteresis(75, 40, DimWide))
+
+	// From narrow: stay narrow until enter wide band (>=84).
+	assert.Equal(t, DimNarrow, dimWithHysteresis(80, 40, DimNarrow))
+	assert.Equal(t, DimNarrow, dimWithHysteresis(83, 40, DimNarrow))
+	assert.Equal(t, DimWide, dimWithHysteresis(84, 40, DimNarrow))
+}
+
+func TestDimWithHysteresis_OscillationAround80(t *testing.T) {
+	t.Parallel()
+
+	dim := DimWide
+	// Oscillate 78↔82: must not flip.
+	for _, w := range []int{82, 80, 78, 80, 82, 79, 81} {
+		dim = dimWithHysteresis(w, 40, dim)
+		assert.Equal(t, DimWide, dim, "w=%d", w)
+	}
+	// Commit to narrow only past exit band.
+	dim = dimWithHysteresis(75, 40, dim)
+	assert.Equal(t, DimNarrow, dim)
+	for _, w := range []int{78, 80, 82, 83} {
+		dim = dimWithHysteresis(w, 40, dim)
+		assert.Equal(t, DimNarrow, dim, "w=%d", w)
+	}
+	dim = dimWithHysteresis(84, 40, dim)
+	assert.Equal(t, DimWide, dim)
+}
+
 func TestTerminalTooSmall_MatchesAbsurd(t *testing.T) {
 	t.Parallel()
 

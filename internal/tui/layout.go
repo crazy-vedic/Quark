@@ -21,6 +21,11 @@ const (
 	dimNarrowMinH = 14
 	dimTinyMinW   = 24
 	dimTinyMinH   = 8
+
+	// Hysteresis band around breakpoints so fast drags near an edge do not
+	// thrash wide↔narrow↔tiny (full layout morph = heavy flicker).
+	dimHysteresisW = 4
+	dimHysteresisH = 2
 )
 
 // DimMode is the TUI density / layout tier.
@@ -69,7 +74,7 @@ func ParseDimMode(s string) (DimMode, error) {
 	}
 }
 
-// dimFromSize picks the layout tier from terminal dimensions.
+// dimFromSize picks the layout tier from terminal dimensions (no hysteresis).
 func dimFromSize(width, height int) DimMode {
 	if width < dimTinyMinW || height < dimTinyMinH {
 		return DimAbsurd
@@ -81,6 +86,73 @@ func dimFromSize(width, height int) DimMode {
 		return DimNarrow
 	}
 	return DimWide
+}
+
+func dimRank(d DimMode) int {
+	switch d {
+	case DimAbsurd:
+		return 4
+	case DimTiny:
+		return 3
+	case DimNarrow:
+		return 2
+	case DimWide:
+		return 1
+	default:
+		return 0
+	}
+}
+
+// clearlyLeftTier reports whether size has moved past the exit band for tier.
+func clearlyLeftTier(w, h int, tier DimMode) bool {
+	switch tier {
+	case DimWide:
+		return w < dimWideMinW-dimHysteresisW || h < dimWideMinH-dimHysteresisH
+	case DimNarrow:
+		return w < dimNarrowMinW-dimHysteresisW || h < dimNarrowMinH-dimHysteresisH
+	case DimTiny:
+		return w < dimTinyMinW || h < dimTinyMinH
+	default:
+		return true
+	}
+}
+
+// clearlyEnteredTier reports whether size clearly meets the enter band for tier.
+func clearlyEnteredTier(w, h int, tier DimMode) bool {
+	switch tier {
+	case DimWide:
+		return w >= dimWideMinW+dimHysteresisW && h >= dimWideMinH+dimHysteresisH
+	case DimNarrow:
+		return w >= dimNarrowMinW+dimHysteresisW && h >= dimNarrowMinH+dimHysteresisH
+	case DimTiny:
+		return w >= dimTinyMinW && h >= dimTinyMinH
+	default:
+		return true
+	}
+}
+
+// dimWithHysteresis picks a density tier with sticky Schmitt-trigger bands so
+// oscillating around 80×18 (etc.) does not flip the whole layout every frame.
+func dimWithHysteresis(width, height int, prev DimMode) DimMode {
+	raw := dimFromSize(width, height)
+	if prev == DimAuto {
+		return raw
+	}
+	if raw == prev {
+		return prev
+	}
+	if dimRank(raw) > dimRank(prev) {
+		// Denser: only leave the current tier once past its exit threshold.
+		if clearlyLeftTier(width, height, prev) {
+			return raw
+		}
+		return prev
+	}
+	// Roomier: only enter the new tier once past its enter threshold.
+	if clearlyEnteredTier(width, height, raw) {
+		return raw
+	}
+	return prev
 }
 
 // terminalTooSmall reports whether the terminal is in the absurd tier (auto).

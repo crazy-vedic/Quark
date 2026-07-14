@@ -30,6 +30,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		m = m.applyDimSticky()
+		if m.activeField == bodyField {
+			m = m.resizeBodyTextarea()
+		}
+		return m, nil
+
+	case softWindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
+		m = m.applyDimSticky()
 		if m.activeField == bodyField {
 			m = m.resizeBodyTextarea()
 		}

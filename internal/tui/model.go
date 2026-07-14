@@ -195,6 +195,7 @@ type Model struct {
 	focus         paneID
 	mode          modeID
 	forceDim      DimMode // DimAuto = choose from size; otherwise force that tier
+	stickyDim     DimMode // last auto-selected tier (DimAuto = unset); hysteresis sticky
 
 	// --- Help overlay editor state ---
 	helpCursor       int
@@ -1064,12 +1065,22 @@ func (m Model) sidebarVisible() int {
 	return v
 }
 
-// effectiveDim returns the forced dim mode, or auto-selected from size.
+// effectiveDim returns the forced dim mode, or auto-selected from size with
+// hysteresis so breakpoint edges do not thrash layouts during fast resize.
 func (m Model) effectiveDim() DimMode {
 	if m.forceDim != DimAuto {
 		return m.forceDim
 	}
-	return dimFromSize(m.width, m.height)
+	return dimWithHysteresis(m.width, m.height, m.stickyDim)
+}
+
+// applyDimSticky refreshes stickyDim after width/height change (auto mode only).
+func (m Model) applyDimSticky() Model {
+	if m.forceDim != DimAuto {
+		return m
+	}
+	m.stickyDim = dimWithHysteresis(m.width, m.height, m.stickyDim)
+	return m
 }
 
 // currentLayout returns pane geometry for the active dim mode and focus.
