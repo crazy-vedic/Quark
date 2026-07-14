@@ -258,7 +258,16 @@ func launchTUI(
 		ForceDim:        forceDim,
 	})
 
-	p := tea.NewProgram(model, tea.WithAltScreen(), tea.WithMouseCellMotion())
+	// Coalesce WindowSizeMsg bursts: Bubble Tea's renderer force-repaints the
+	// entire screen on every resize event, which flickers under rapid SIGWINCH.
+	resize := tui.NewResizeCoalescer()
+	p := tea.NewProgram(
+		model,
+		tea.WithAltScreen(),
+		tea.WithMouseCellMotion(),
+		tea.WithFilter(resize.Filter),
+	)
+	resize.Bind(p.Send)
 	_, err := p.Run()
 	if err != nil && !errors.Is(err, tea.ErrProgramKilled) {
 		return fmt.Errorf("tui: %w", err)
