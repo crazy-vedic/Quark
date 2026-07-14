@@ -194,6 +194,8 @@ type Model struct {
 	width, height int
 	focus         paneID
 	mode          modeID
+	forceDim      DimMode // DimAuto = choose from size; otherwise force that tier
+	stickyDim     DimMode // last auto-selected tier (DimAuto = unset); hysteresis sticky
 
 	// --- Help overlay editor state ---
 	helpCursor       int
@@ -346,6 +348,9 @@ type Deps struct {
 	// ConfigDir is the directory where config.toml and the DB are stored.
 	// Used when persisting keybinding changes.
 	ConfigDir string
+	// ForceDim permanently forces a density tier (wide|narrow|tiny|absurd).
+	// DimAuto (zero) selects the tier from the terminal size.
+	ForceDim DimMode
 }
 
 // New constructs the root TUI model and detects multiplexer conflicts.
@@ -416,6 +421,7 @@ func New(deps Deps) Model {
 		focus:                 sidebarPane,
 		debugLog:              deps.DebugLog,
 		configDir:             deps.ConfigDir,
+		forceDim:              deps.ForceDim,
 		resolver:              resolverOrDefault(deps.Resolver, deps.Config),
 		envReader:             deps.EnvReader,
 		envWriter:             deps.EnvWriter,
@@ -538,6 +544,9 @@ func (m Model) status(level, msg string) Model {
 	case "success":
 		m.statusSuccess = msg
 		m.statusErr = ""
+	default:
+		m.statusErr = ""
+		m.statusSuccess = ""
 	}
 	return m
 }
@@ -1045,17 +1054,44 @@ func (m Model) selectedCollection() *domain.Collection {
 // sidebarVisible returns the approximate number of visible collection rows
 // based on terminal height. Used for scroll offset calculations (BUG-011).
 func (m Model) sidebarVisible() int {
-	v := m.height - 5 // header + borders + status bar
+	layout := m.currentLayout()
+	v := layout.sidebarInnerH
+	if m.effectiveDim() == DimWide {
+		v = m.height - 5 // header + borders + status bar (legacy wide budget)
+	}
 	if v < 1 {
 		return 1
 	}
 	return v
 }
 
+// effectiveDim returns the forced dim mode, or auto-selected from size with
+// hysteresis so breakpoint edges do not thrash layouts during fast resize.
+func (m Model) effectiveDim() DimMode {
+	if m.forceDim != DimAuto {
+		return m.forceDim
+	}
+	return dimWithHysteresis(m.width, m.height, m.stickyDim)
+}
+
+// applyDimSticky refreshes stickyDim after width/height change (auto mode only).
+func (m Model) applyDimSticky() Model {
+	if m.forceDim != DimAuto {
+		return m
+	}
+	m.stickyDim = dimWithHysteresis(m.width, m.height, m.stickyDim)
+	return m
+}
+
+// currentLayout returns pane geometry for the active dim mode and focus.
+func (m Model) currentLayout() normalLayout {
+	return layoutFor(m.width, m.height, m.effectiveDim(), m.focus)
+}
+
 // resizeBodyTextarea sets the body textarea to fill the exact remaining space
 // in the request pane. Called on body activation and window resize.
 func (m Model) resizeBodyTextarea() Model {
-	layout := normalLayoutFor(m.width, m.height)
+	layout := m.currentLayout()
 	requestInnerH := layout.requestH
 	if requestInnerH < 1 {
 		requestInnerH = 1

@@ -289,7 +289,12 @@ func TestE2E_CollectionMgmt_NoSelection(t *testing.T) {
 	m = callUpdate(t, m, tea.WindowSizeMsg{Width: 100, Height: 30})
 	m = callUpdate(t, m, tui.CollectionsLoadedMsg(nil))
 
-	// Rename and Delete with no collections should show error in status.
+	// Rename, Delete, and Add-request with no collections should show error in status.
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
+	assert.Equal(t, tui.NormalMode, m.Mode(), "must stay in normal mode")
+	assert.Equal(t, "Select a collection first", m.StatusErr())
+	assertViewContains(t, m, "Select a collection first")
+
 	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'r'}})
 	assert.Equal(t, tui.NormalMode, m.Mode(), "must stay in normal mode")
 	assert.NotEmpty(t, m.StatusErr(), "must show error when no collection selected")
@@ -297,6 +302,12 @@ func TestE2E_CollectionMgmt_NoSelection(t *testing.T) {
 	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
 	assert.Equal(t, tui.NormalMode, m.Mode(), "must stay in normal mode")
 	assert.NotEmpty(t, m.StatusErr(), "must show error when no collection selected")
+
+	// 'A' (new collection) must clear the stale error from 'a'.
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'A'}})
+	assert.Equal(t, tui.CollectionPromptMode, m.Mode())
+	assert.Empty(t, m.StatusErr(), "new-collection prompt must not show stale select-collection error")
+	assert.NotContains(t, m.View(), "Select a collection first")
 }
 
 // --- E2E: Add empty name shows error ---

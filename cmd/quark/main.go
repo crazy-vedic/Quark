@@ -33,6 +33,7 @@ import (
 var (
 	debugMode bool
 	configDir string
+	dimFlag   string
 )
 
 func main() {
@@ -61,6 +62,8 @@ func run() error {
 		BoolVar(&debugMode, "debug", false, "Log keystrokes and diagnostics to /tmp/quark_debug_logs/debug.log")
 	root.PersistentFlags().
 		StringVar(&configDir, "config", defaultConfigDir, "Directory for config and db")
+	root.PersistentFlags().
+		StringVar(&dimFlag, "dim", "", "Force TUI density: wide|narrow|tiny|absurd (default: auto from terminal size)")
 
 	var debugLog *os.File
 	defer func() {
@@ -226,6 +229,14 @@ func launchTUI(
 	debugLog *os.File,
 	configDir string,
 ) error {
+	forceDim := tui.DimAuto
+	if dimFlag != "" {
+		parsed, err := tui.ParseDimMode(dimFlag)
+		if err != nil {
+			return err
+		}
+		forceDim = parsed
+	}
 	model := tui.New(tui.Deps{
 		Lister:          st,
 		Reader:          st,
@@ -244,9 +255,19 @@ func launchTUI(
 		Ctx:             ctx, // signal-aware context: TUI goroutines cancel on SIGINT/SIGTERM
 		DebugLog:        debugLog,
 		ConfigDir:       configDir,
+		ForceDim:        forceDim,
 	})
 
-	p := tea.NewProgram(model, tea.WithAltScreen(), tea.WithMouseCellMotion())
+	// Coalesce WindowSizeMsg bursts: Bubble Tea's renderer force-repaints the
+	// entire screen on every resize event, which flickers under rapid SIGWINCH.
+	resize := tui.NewResizeCoalescer()
+	p := tea.NewProgram(
+		model,
+		tea.WithAltScreen(),
+		tea.WithMouseCellMotion(),
+		tea.WithFilter(resize.Filter),
+	)
+	resize.Bind(p.Send)
 	_, err := p.Run()
 	if err != nil && !errors.Is(err, tea.ErrProgramKilled) {
 		return fmt.Errorf("tui: %w", err)

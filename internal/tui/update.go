@@ -30,6 +30,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		m = m.applyDimSticky()
+		if m.activeField == bodyField {
+			m = m.resizeBodyTextarea()
+		}
+		return m, nil
+
+	case softWindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
+		m = m.applyDimSticky()
 		if m.activeField == bodyField {
 			m = m.resizeBodyTextarea()
 		}
@@ -1528,6 +1538,10 @@ func (m Model) enterCollectionPrompt(pt promptType, targetID string) (tea.Model,
 	m.promptMode = pt
 	m.promptTargetID = targetID
 	m.promptInput.SetValue("")
+	// Clear stale status from prior actions (e.g. 'a' with no collection) so it
+	// does not appear inside the new prompt overlay.
+	m.statusErr = ""
+	m.statusSuccess = ""
 
 	switch pt {
 	case promptAdd:

@@ -6,7 +6,7 @@ Workflow: [`.github/workflows/ci.yml`](.github/workflows/ci.yml)
 
 Triggers: PR `opened` / `reopened` / `synchronize`, and pushes to `main`/`master`. Does **not** run on PR body/title edits.
 
-Most jobs run on **self-hosted** runners; e2e-tui uses `ubuntu-latest`.
+All jobs run on GitHub-hosted **`ubuntu-latest`** runners.
 
 ### Job Order
 
