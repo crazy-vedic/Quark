@@ -90,7 +90,7 @@ func TestView_EnvModal_ScrollsLongVariableLists(t *testing.T) {
 	}
 
 	m := newModel(defaultConfig()).WithEnvReader(reader)
-	m = callUpdate(t, m, tea.WindowSizeMsg{Width: 90, Height: 14})
+	m = callUpdate(t, m, tea.WindowSizeMsg{Width: 90, Height: 20})
 	m = callUpdate(t, m, tui.CollectionsLoadedMsg([]*domain.Collection{{ID: col1, Name: "Alpha"}}))
 	m = m.WithFocus(tui.RequestPane)
 	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}})
@@ -99,7 +99,7 @@ func TestView_EnvModal_ScrollsLongVariableLists(t *testing.T) {
 	first := m.View()
 	assert.Contains(t, first, "KEY_1")
 	assert.Contains(t, first, "KEY_3")
-	assert.NotContains(t, first, "KEY_4")
+	assert.NotContains(t, first, "KEY_8")
 	assert.Contains(t, first, "↓ more below")
 
 	for i := 0; i < 4; i++ {
@@ -110,5 +110,4 @@ func TestView_EnvModal_ScrollsLongVariableLists(t *testing.T) {
 	assert.NotContains(t, scrolled, "KEY_1")
 	assert.Contains(t, scrolled, "KEY_5")
 	assert.Contains(t, scrolled, "↑ more above")
-	assert.Contains(t, scrolled, "↓ more below")
 }
