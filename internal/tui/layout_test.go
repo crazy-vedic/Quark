@@ -154,7 +154,15 @@ func TestLayoutWide_WidthInvariant(t *testing.T) {
 	for w := 40; w <= 200; w++ {
 		layout := layoutFor(w, 30, DimWide, sidebarPane)
 		total := layout.sidebarW + layout.mainW + paneBorderPad
-		assert.LessOrEqual(t, total, w, "width=%d sidebar=%d main=%d", w, layout.sidebarW, layout.mainW)
+		assert.LessOrEqual(
+			t,
+			total,
+			w,
+			"width=%d sidebar=%d main=%d",
+			w,
+			layout.sidebarW,
+			layout.mainW,
+		)
 		assert.GreaterOrEqual(t, layout.mainW, 1, "width=%d", w)
 	}
 }
