@@ -74,7 +74,7 @@ Install from source requires Go 1.26+ and a 256-color terminal.
 One-liner install (macOS/Linux/Git Bash):
 
 ```bash
-curl -sL https://raw.githubusercontent.com/crazy-vedic/Quark/main/install.sh | bash
+curl -sL https://github.com/crazy-vedic/Quark/releases/latest/download/install.sh | bash
 ```
 
 Private repos: set `GITHUB_TOKEN` or `GITHUB_ACCESS_TOKEN` for the install script.
