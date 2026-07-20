@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Quark install script
-# Usage: curl -sL https://raw.githubusercontent.com/crazy-vedic/Quark/main/install.sh | bash
+# Usage: curl -sL https://github.com/crazy-vedic/Quark/releases/latest/download/install.sh | bash
 # Or: curl -sL ... | bash -s -- --version v1.0.0 --platform linux-amd64
 
 REPO="crazy-vedic/Quark"
@@ -197,7 +197,7 @@ while [[ $# -gt 0 ]]; do
       echo "Quark install script"
       echo ""
       echo "Usage:"
-      echo "  curl -sL https://raw.githubusercontent.com/crazy-vedic/Quark/main/install.sh | bash"
+      echo "  curl -sL https://github.com/crazy-vedic/Quark/releases/latest/download/install.sh | bash"
       echo ""
       echo "Options (pass as arguments):"
       echo "  --version <version>   Install specific version (default: latest)"
@@ -290,7 +290,7 @@ if [[ "$PLATFORM" == windows-* ]]; then
     else
         # Native Windows (PowerShell should use install.ps1 instead)
         echo "For native Windows installation, use PowerShell:"
-        echo "  Invoke-RestMethod -Uri https://raw.githubusercontent.com/crazy-vedic/Quark/main/install.ps1 | Invoke-Expression"
+        echo "  Invoke-RestMethod -Uri https://github.com/crazy-vedic/Quark/releases/latest/download/install.ps1 | Invoke-Expression"
         exit 1
     fi
     INSTALL_PATH="${INSTALL_DIR}/${BINARY}.exe"
