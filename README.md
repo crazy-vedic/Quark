@@ -16,12 +16,12 @@ Quark is a terminal-native TUI that keeps everything in a local SQLite database,
 
 **macOS / Linux / Git Bash:**
 ```bash
-curl -sL https://raw.githubusercontent.com/crazy-vedic/Quark/main/install.sh | bash
+curl -sL https://github.com/crazy-vedic/Quark/releases/latest/download/install.sh | bash
 ```
 
 **Specific version or platform:**
 ```bash
-curl -sL https://raw.githubusercontent.com/crazy-vedic/Quark/main/install.sh | bash -s -- --version v1.0.0 --platform linux-amd64
+curl -sL https://raw.githubusercontent.com/crazy-vedic/Quark/master/install.sh | bash -s -- --version v1.0.0 --platform linux-amd64
 ```
 
 Private repos: set `GITHUB_TOKEN` or `GITHUB_ACCESS_TOKEN` — auth headers forwarded automatically.

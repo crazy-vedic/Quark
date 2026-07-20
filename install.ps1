@@ -1,5 +1,5 @@
 # Quark install script for Windows (PowerShell)
-# Usage: Invoke-RestMethod -Uri https://raw.githubusercontent.com/crazy-vedic/Quark/main/install.ps1 | Invoke-Expression
+# Usage: Invoke-RestMethod -Uri https://github.com/crazy-vedic/Quark/releases/latest/download/install.ps1 | Invoke-Expression
 # Or with specific version: $env:QUARK_VERSION = "v1.0.0"; Invoke-RestMethod ...
 
 $ErrorActionPreference = "Stop"
