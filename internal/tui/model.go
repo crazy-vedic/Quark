@@ -224,10 +224,11 @@ type Model struct {
 	preEditBody   string       // Body value saved when editing starts; restored on Esc
 
 	// --- Response state ---
-	response    *exec.ExecuteResult
-	responseTab responseTabID
-	executions  []*domain.Execution
-	execCursor  int
+	response     *exec.ExecuteResult
+	responseTab  responseTabID
+	responseText scrollableText
+	executions   []*domain.Execution
+	execCursor   int
 
 	// --- In-flight request ---
 	cancel  context.CancelFunc
@@ -264,6 +265,7 @@ type Model struct {
 
 	// --- Body / Header inline editor ---
 	bodyTextarea     textarea.Model
+	requestText      scrollableText
 	headerPairs      []headerPair
 	headerCursor     int
 	headerEditing    bool

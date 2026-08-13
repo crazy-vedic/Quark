@@ -48,13 +48,25 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		case sidebarPane:
 			return m.handleSidebarWheel(msg)
 		case requestPane:
-			if m.activeField == bodyField {
-				ll := m.requestPaneLineLayout(layout)
-				if msg.Y >= ll.editorContentY && msg.Y < ll.editorContentY+m.bodyTextarea.Height() {
-					var cmd tea.Cmd
-					m.bodyTextarea, cmd = m.bodyTextarea.Update(msg)
-					return m, cmd
+			if m.activeField == bodyField && m.requestBodyTextRect(layout).contains(msg.X, msg.Y) {
+				var cmd tea.Cmd
+				m.bodyTextarea, cmd = m.bodyTextarea.Update(msg)
+				return m, cmd
+			}
+			if m.activeField == noneField && m.requestBodyPreviewRect(layout).contains(msg.X, msg.Y) {
+				m.requestText.SetContent(m.requestBodyPreviewContent())
+				r := m.requestBodyPreviewRect(layout)
+				delta := 0
+				switch msg.Button {
+				case tea.MouseButtonWheelDown:
+					delta = 3
+				case tea.MouseButtonWheelUp:
+					delta = -3
 				}
+				if delta != 0 {
+					m.requestText.Scroll(delta, max(1, r.right-r.left+1), max(1, r.bottom-r.top+1))
+				}
+				return m, nil
 			}
 		case responsePane:
 			return m.handleResponseWheel(msg)
@@ -80,6 +92,29 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		return m.handleResponseClick(msg)
 	}
 	return m, nil
+}
+
+func (m Model) requestBodyTextRect(layout normalLayout) layoutRect {
+	if m.activeField != bodyField {
+		return layoutRect{left: 1, top: 1, right: 0, bottom: 0}
+	}
+	ll := m.requestPaneLineLayout(layout)
+	left := m.bodyTextareaTextLeft(layout)
+	return layoutRect{
+		left:   left,
+		top:    ll.editorContentY,
+		right:  left + max(1, m.bodyTextarea.Width()) - 1,
+		bottom: ll.editorContentY + max(1, m.bodyTextarea.Height()) - 1,
+	}
+}
+
+func (m Model) requestBodyPreviewRect(layout normalLayout) layoutRect {
+	if m.activeField != noneField || m.activeRequest == nil {
+		return layoutRect{left: 1, top: 1, right: 0, bottom: 0}
+	}
+	ll := m.requestPaneLineLayout(layout)
+	content := layout.requestContentRect()
+	return layoutRect{left: content.left, top: ll.editorContentY, right: content.right, bottom: ll.contentBottom}
 }
 
 func (m Model) handleResponseClick(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
@@ -111,17 +146,69 @@ func (m Model) handleResponseClick(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 func (m Model) handleResponseWheel(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	m.focus = responsePane
 	m.activeField = noneField
-	if len(m.executions) <= 1 {
+	layout := m.currentLayout()
+	textRect := m.responseTextRect(layout)
+	if !textRect.contains(msg.X, msg.Y) && len(m.executions) > 1 {
+		if msg.Button == tea.MouseButtonWheelDown {
+			return m.handleResponseAction("history_next")
+		}
+		if msg.Button == tea.MouseButtonWheelUp {
+			return m.handleResponseAction("history_prev")
+		}
+	}
+	if !textRect.contains(msg.X, msg.Y) {
 		return m, nil
 	}
+	m.responseText.SetContent(m.responseTextContent())
+	width := max(1, textRect.right-textRect.left+1)
+	height := max(1, textRect.bottom-textRect.top+1)
 	switch msg.Button {
 	case tea.MouseButtonWheelDown:
-		return m.handleResponseAction("history_next")
+		m.responseText.Scroll(3, width, height)
 	case tea.MouseButtonWheelUp:
-		return m.handleResponseAction("history_prev")
-	default:
-		return m, nil
+		m.responseText.Scroll(-3, width, height)
 	}
+	return m, nil
+}
+
+// responseTextRect mirrors the response pane's body placement. The text
+// component is intentionally passive: mouse ownership is decided here so
+// scrolling over the surrounding pane can remain a history gesture.
+func (m Model) responseTextRect(layout normalLayout) layoutRect {
+	if m.selectedExecution() == nil && m.response == nil {
+		return layoutRect{left: 1, top: 1, right: 0, bottom: 0}
+	}
+
+	content := layout.responseContentRect()
+	tabs := m.responsePaneTabRects(layout)
+	top := tabs.tabBarY + 2
+	bottom := content.bottom
+	bodyLines := bottom - top + 1
+	if bodyLines <= 0 {
+		return layoutRect{left: 1, top: 1, right: 0, bottom: 0}
+	}
+
+	// In historical view the popup is rendered beside the text when there is
+	// enough room, or below it when the pane is narrow. Keep both regions out
+	// of the scrollable text hit target.
+	popup := m.viewExecutionHistoryPopup(content.right-content.left+1, bodyLines)
+	if popup != "" {
+		popupWidth := lipgloss.Width(popup)
+		bodyWidth := content.right - content.left + 1 - popupWidth - 4
+		if bodyWidth >= 18 {
+			return layoutRect{left: content.left, top: top, right: content.left + bodyWidth - 1, bottom: bottom}
+		}
+		popupRows := lipgloss.Height(popup)
+		if popupRows < bodyLines {
+			bodyLines -= popupRows + 1
+			if bodyLines < 1 {
+				return layoutRect{left: 1, top: 1, right: 0, bottom: 0}
+			}
+			bottom = top + bodyLines - 1
+		}
+	}
+
+	return layoutRect{left: content.left, top: top, right: content.right, bottom: bottom}
 }
 
 // responseHistoryHitAt returns the execution index under (x,y) when the history

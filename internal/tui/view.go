@@ -491,6 +491,11 @@ func (m Model) viewRequestPane(w, h int) string {
 				Foreground(lipgloss.Color("#c0caf5")).
 				Render(authSummary),
 		)
+		if m.activeField == urlField {
+			if warning := singleLineInputWarning(m.urlInput.Value()); warning != "" {
+				top = append(top, warning)
+			}
+		}
 	}
 
 	top = append(top, "")
@@ -520,6 +525,13 @@ func (m Model) viewRequestPane(w, h int) string {
 			preview.WriteString(m.headerKeyInput.View() + "\n\n")
 			preview.WriteString("Value:\n")
 			preview.WriteString(m.headerValueInput.View() + "\n")
+			if m.headerKeyInput.Focused() {
+				if warning := singleLineInputWarning(m.headerKeyInput.Value()); warning != "" {
+					preview.WriteString(warning + "\n")
+				}
+			} else if warning := singleLineInputWarning(m.headerValueInput.Value()); warning != "" {
+				preview.WriteString(warning + "\n")
+			}
 		} else {
 			if len(m.headerPairs) == 0 {
 				preview.WriteString(
@@ -549,25 +561,7 @@ func (m Model) viewRequestPane(w, h int) string {
 		}
 		content = preview.String()
 	case m.activeRequest != nil:
-		var preview strings.Builder
-		// Default: show body as read-only preview.
-		if m.activeRequest.Body != "" {
-			for _, line := range strings.Split(m.activeRequest.Body, "\n") {
-				preview.WriteString("  " + truncate(line, w-4) + "\n")
-			}
-		} else if m.activeRequest.Headers != "" && m.activeRequest.Headers != "{}" {
-			var hdrs map[string]string
-			if err := json.Unmarshal([]byte(m.activeRequest.Headers), &hdrs); err == nil {
-				for _, k := range sortedStringMapKeys(hdrs) {
-					v := hdrs[k]
-					plain := "  " + k + ": " + v
-					preview.WriteString(
-						lipgloss.NewStyle().Foreground(cyan).Render(truncate(plain, w-4)) + "\n",
-					)
-				}
-			}
-		}
-		content = preview.String()
+		content = m.requestBodyPreviewContent()
 	}
 
 	// Responsive key hints — shorten at narrow terminals, then hard-clamp to one
@@ -635,7 +629,13 @@ func (m Model) viewRequestPane(w, h int) string {
 	if contentLines < 0 {
 		contentLines = 0
 	}
-	renderedContent := limitLines(content, innerWidth, contentLines)
+	var renderedContent string
+	if m.activeField == noneField && m.activeRequest != nil {
+		m.requestText.SetContent(content)
+		renderedContent = m.requestText.View(innerWidth, contentLines)
+	} else {
+		renderedContent = limitLines(content, innerWidth, contentLines)
+	}
 	paddingLines := contentLines - visualRows(renderedContent, innerWidth)
 	if paddingLines < 0 {
 		paddingLines = 0
@@ -658,6 +658,32 @@ func (m Model) viewRequestPane(w, h int) string {
 	return border.Width(w).Height(h).MaxHeight(h + 2).Render(clipToRows(sb.String(), innerWidth, h))
 }
 
+func (m Model) requestBodyPreviewContent() string {
+	if m.activeRequest == nil {
+		return ""
+	}
+	if m.activeRequest.Body != "" {
+		lines := strings.Split(m.activeRequest.Body, "\n")
+		for i := range lines {
+			lines[i] = "  " + lines[i]
+		}
+		return strings.Join(lines, "\n")
+	}
+	if m.activeRequest.Headers == "" || m.activeRequest.Headers == "{}" {
+		return ""
+	}
+	var hdrs map[string]string
+	if err := json.Unmarshal([]byte(m.activeRequest.Headers), &hdrs); err != nil {
+		return ""
+	}
+	keys := sortedStringMapKeys(hdrs)
+	lines := make([]string, 0, len(keys))
+	for _, k := range keys {
+		lines = append(lines, "  "+k+": "+hdrs[k])
+	}
+	return strings.Join(lines, "\n")
+}
+
 func (m Model) viewAuthEditor() string {
 	var sb strings.Builder
 	sb.WriteString(titleStyle.Render("Auth") + "\n")
@@ -674,6 +700,11 @@ func (m Model) viewAuthEditor() string {
 			line = lipgloss.NewStyle().Bold(true).Render(line)
 		}
 		sb.WriteString(line + "\n")
+		if idx == m.authEditor.cursor && m.authEditor.editing {
+			if warning := singleLineInputWarning(m.authEditor.singleLineValue(row)); warning != "" {
+				sb.WriteString(warning + "\n")
+			}
+		}
 	}
 	sb.WriteString("\n")
 	sb.WriteString(mutedStyle.Render(m.renderHints([]hintItem{
@@ -768,16 +799,18 @@ func (m Model) viewResponsePane(w, h int) string {
 			}
 		}
 	}
+	// Body/Raw content is owned by a scrollable text component. Keep the
+	// response history popup as a separate column, but let wheel and arrows
+	// move through the body instead of changing history.
+	m.responseText.SetContent(body)
 
 	popup := m.viewExecutionHistoryPopup(w, bodyLines)
 	if popup != "" && w >= 64 {
 		popupWidth := lipgloss.Width(popup)
 		bodyWidth := w - popupWidth - 4
 		if bodyWidth >= 18 {
-			left := lipgloss.NewStyle().
-				Width(bodyWidth).
-				MaxHeight(bodyLines).
-				Render(limitLines(body, bodyWidth, bodyLines))
+			left := lipgloss.NewStyle().Width(bodyWidth).MaxHeight(bodyLines).
+				Render(m.responseText.View(bodyWidth, bodyLines))
 			sb.WriteString(lipgloss.JoinHorizontal(lipgloss.Top, left, "  ", popup))
 			return border.Width(w).
 				Height(h).
@@ -797,9 +830,44 @@ func (m Model) viewResponsePane(w, h int) string {
 		}
 	}
 
-	sb.WriteString(limitLines(body, innerWidth, bodyLines))
+	sb.WriteString(m.responseText.View(innerWidth, bodyLines))
 
 	return border.Width(w).Height(h).MaxHeight(h + 2).Render(clipToRows(sb.String(), innerWidth, h))
+}
+
+// responseTextContent is shared by input handling and rendering. View has a
+// value receiver, so scrolling handlers refresh the component before changing
+// its persistent offset.
+func (m Model) responseTextContent() string {
+	currentExec := m.selectedExecution()
+	if currentExec != nil {
+		switch m.responseTab {
+		case bodyTab:
+			return m.viewExecutionBody(currentExec)
+		case headersTab:
+			return m.viewExecutionHeaders(currentExec)
+		case rawTab:
+			if currentExec.ResponseBody == "" {
+				return mutedStyle.Render("  (empty body)")
+			}
+			return stripANSI(currentExec.ResponseBody)
+		}
+	} else if r := m.response; r != nil {
+		switch m.responseTab {
+		case bodyTab:
+			return m.viewResponseBody()
+		case headersTab:
+			return m.viewResponseHeaders()
+		case rawTab:
+			if r.Body != nil {
+				return stripANSI(string(r.Body))
+			}
+			if r.TempPath != "" {
+				return mutedStyle.Render(fmt.Sprintf("[streamed â†’ %s]", r.TempPath))
+			}
+		}
+	}
+	return ""
 }
 
 func (m Model) viewTabBar(maxWidth int) string {

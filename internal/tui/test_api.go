@@ -395,6 +395,26 @@ func (m Model) BodyTextareaClickPos(displayLine, col int) (x, y int, ok bool) {
 	return m.bodyTextareaTextLeft(layout) + col, ll.editorContentY + displayLine, true
 }
 
+// BodyTextareaWheelPos returns a point inside the editable request body.
+func (m Model) BodyTextareaWheelPos() (x, y int, ok bool) {
+	if m.width <= 0 || m.height <= 0 || m.activeField != bodyField {
+		return 0, 0, false
+	}
+	r := m.requestBodyTextRect(m.currentLayout())
+	return r.left, r.top, r.right >= r.left && r.bottom >= r.top
+}
+
+// RequestBodyPreviewWheelPos returns a point inside the read-only body preview.
+func (m Model) RequestBodyPreviewWheelPos() (x, y int, ok bool) {
+	if m.width <= 0 || m.height <= 0 {
+		return 0, 0, false
+	}
+	r := m.requestBodyPreviewRect(m.currentLayout())
+	return r.left, r.top, r.right >= r.left && r.bottom >= r.top
+}
+
+func (m Model) RequestTextOffset() int { return m.requestText.offset }
+
 // RequestSendButtonClickPos returns terminal coordinates for clicking the send button.
 func (m Model) RequestSendButtonClickPos() (x, y int, ok bool) {
 	if m.width <= 0 || m.height <= 0 {
@@ -461,6 +481,21 @@ func (m Model) ResponsePaneWheelPos() (x, y int, ok bool) {
 	r := layout.responseContentRect()
 	return r.left + 2, r.top + 2, true
 }
+
+// ResponseTextWheelPos returns a point inside the response text component.
+func (m Model) ResponseTextWheelPos() (x, y int, ok bool) {
+	if m.width <= 0 || m.height <= 0 {
+		return 0, 0, false
+	}
+	r := m.responseTextRect(m.currentLayout())
+	if r.right < r.left || r.bottom < r.top {
+		return 0, 0, false
+	}
+	return r.left, r.top, true
+}
+
+// ResponseTextOffset exposes the passive text component's viewport for tests.
+func (m Model) ResponseTextOffset() int { return m.responseText.offset }
 
 // ResponseHistoryRowClickPos returns coordinates for clicking a history popup row
 // when historical execution view is active. rowIndex is an index into the current
