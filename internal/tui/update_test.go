@@ -377,6 +377,33 @@ func TestUpdate_SidebarJ_ScrollsExpandedCollection(t *testing.T) {
 	assert.Equal(t, 2, m.SidebarOffset(), "moving down must keep the selected request visible")
 }
 
+func TestUpdate_SidebarJ_100RequestsHidesFirstRowAfter99Moves(t *testing.T) {
+	reqs := make([]*domain.Request, 100)
+	for i := range reqs {
+		reqs[i] = &domain.Request{
+			ID:     fmt.Sprintf("r-%03d", i+1),
+			Name:   fmt.Sprintf("Request %03d", i+1),
+			Method: "GET",
+		}
+	}
+	m := newModel(defaultConfig()).
+		WithCollections([]*domain.Collection{{ID: col1, Name: "Collection 1"}}).
+		WithCollectionRequests(map[string][]*domain.Request{col1: reqs}).
+		WithFocus(tui.SidebarPane)
+	m = callUpdate(t, m, tea.WindowSizeMsg{Width: 120, Height: 30})
+
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("l")})
+	for range 100 {
+		m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
+	}
+
+	assert.Equal(t, 99, m.ReqCursor())
+	assert.Greater(t, m.SidebarOffset(), 0)
+	view := m.View()
+	assert.NotContains(t, view, "Request 001", "the first request should scroll out of view")
+	assert.Contains(t, view, "Request 100", "the last request should remain visible")
+}
+
 func TestUpdate_SidebarK_ScrollsExpandedCollectionUp(t *testing.T) {
 	reqs := []*domain.Request{
 		{ID: "r1", Name: "First", Method: "GET"},
