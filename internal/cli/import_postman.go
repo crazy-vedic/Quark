@@ -312,9 +312,9 @@ func importSingleFile(
 	}
 
 	requestsToSave := result.Requests
+	existingNames := make(map[string]bool)
 	if action == actionMerge {
 		existingReqs, _ := st.ListRequests(ctx, col.ID)
-		existingNames := make(map[string]bool)
 		for _, r := range existingReqs {
 			existingNames[r.Name] = true
 		}
@@ -332,6 +332,7 @@ func importSingleFile(
 			len(filtered),
 		)
 	}
+	deduplicateImportedRequestNames(requestsToSave, existingNames)
 
 	imported := 0
 	for _, req := range requestsToSave {
@@ -375,6 +376,34 @@ func importSingleFile(
 		security:       result.Security,
 		action:         action,
 	}, nil
+}
+
+// deduplicateImportedRequestNames makes request names unique for one import
+// operation. The database constraint remains the final guard for all other
+// request writes; this only avoids rejecting valid Postman collections that
+// contain multiple items with the same name.
+func deduplicateImportedRequestNames(requests []*domain.Request, existingNames map[string]bool) {
+	usedNames := make(map[string]bool, len(existingNames)+len(requests))
+	for name := range existingNames {
+		usedNames[name] = true
+	}
+
+	for _, req := range requests {
+		baseName := req.Name
+		if !usedNames[baseName] {
+			usedNames[baseName] = true
+			continue
+		}
+
+		for suffix := 1; ; suffix++ {
+			candidate := fmt.Sprintf("%s (%d)", baseName, suffix)
+			if !usedNames[candidate] {
+				req.Name = candidate
+				usedNames[candidate] = true
+				break
+			}
+		}
+	}
 }
 
 type envImportResult struct {
