@@ -39,6 +39,52 @@ func TestSafeManifestID(t *testing.T) {
 	}
 }
 
+func TestDeduplicateImportedRequestNames(t *testing.T) {
+	requests := []*domain.Request{
+		{Name: "New Request"},
+		{Name: "New Request"},
+		{Name: "New Request"},
+		{Name: "Health"},
+		{Name: "Health"},
+	}
+
+	deduplicateImportedRequestNames(requests, nil)
+
+	assert.Equal(t, []string{
+		"New Request",
+		"New Request (1)",
+		"New Request (2)",
+		"Health",
+		"Health (1)",
+	}, requestNames(requests))
+}
+
+func TestDeduplicateImportedRequestNamesAvoidsExistingAndExplicitNames(t *testing.T) {
+	requests := []*domain.Request{
+		{Name: "New Request"},
+		{Name: "New Request"},
+		{Name: "New Request (1)"},
+	}
+
+	deduplicateImportedRequestNames(requests, map[string]bool{
+		"New Request (1)": true,
+	})
+
+	assert.Equal(t, []string{
+		"New Request",
+		"New Request (2)",
+		"New Request (1) (1)",
+	}, requestNames(requests))
+}
+
+func requestNames(requests []*domain.Request) []string {
+	names := make([]string, 0, len(requests))
+	for _, req := range requests {
+		names = append(names, req.Name)
+	}
+	return names
+}
+
 // --- mergeEnvironmentsIntoGlobal tests ---
 
 type mergeTestStore struct {
