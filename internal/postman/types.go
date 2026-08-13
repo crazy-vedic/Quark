@@ -116,9 +116,27 @@ type Header struct {
 
 // Body represents the request body.
 type Body struct {
-	Mode    string  `json:"mode"`              // "raw", "urlencoded", "formdata", "graphql", "file"
-	Raw     string  `json:"raw,omitempty"`     // for mode="raw"
-	Options Options `json:"options,omitempty"` // language info
+	Mode       string          `json:"mode"`                 // "raw", "urlencoded", "formdata", "graphql", "file"
+	Raw        string          `json:"raw,omitempty"`        // for mode="raw"
+	URLEncoded []BodyParam     `json:"urlencoded,omitempty"` // for mode="urlencoded"
+	FormData   []FormDataParam `json:"formdata,omitempty"`   // for mode="formdata"
+	Options    Options         `json:"options,omitempty"`    // language info
+}
+
+// BodyParam represents a Postman urlencoded body parameter.
+type BodyParam struct {
+	Key      string      `json:"key"`
+	Value    scalarValue `json:"value"`
+	Disabled bool        `json:"disabled,omitempty"`
+}
+
+// FormDataParam represents a Postman multipart/form-data body parameter.
+type FormDataParam struct {
+	Key      string          `json:"key"`
+	Value    scalarValue     `json:"value,omitempty"`
+	Type     string          `json:"type,omitempty"` // "text" or "file"
+	Src      json.RawMessage `json:"src,omitempty"`  // string, string array, or null
+	Disabled bool            `json:"disabled,omitempty"`
 }
 
 // Options contains body format options.
