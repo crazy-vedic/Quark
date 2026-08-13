@@ -565,12 +565,14 @@ func (m Model) sidebarDown() (tea.Model, tea.Cmd) {
 		if reqs := m.collectionRequests[colID]; len(reqs) > 0 {
 			m.reqCursor = 0
 			m.requests = reqs
+			m = m.ensureSidebarCollectionVisible()
 			return m, nil
 		}
 	}
 	// If we're on a request and there are more requests below, move within requests.
 	if m.reqCursor >= 0 && m.reqCursor < len(m.requests)-1 {
 		m.reqCursor++
+		m = m.ensureSidebarCollectionVisible()
 		return m, nil
 	}
 	// At end of requests (or on unexpanded collection), move to next collection.
@@ -597,11 +599,13 @@ func (m Model) sidebarUp() (tea.Model, tea.Cmd) {
 	// If we're on a request and not at the first one, move up within requests.
 	if m.reqCursor > 0 {
 		m.reqCursor--
+		m = m.ensureSidebarCollectionVisible()
 		return m, nil
 	}
 	// If we're on the first request (or collection with no requests), go to collection itself.
 	if m.reqCursor == 0 {
 		m.reqCursor = -1
+		m = m.ensureSidebarCollectionVisible()
 		return m, nil
 	}
 	// We're on a collection — move to previous collection.
