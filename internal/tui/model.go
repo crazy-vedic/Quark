@@ -1051,14 +1051,16 @@ func (m Model) selectedCollection() *domain.Collection {
 	return m.collections[m.colCursor]
 }
 
-// sidebarVisible returns the approximate number of visible collection rows
-// based on terminal height. Used for scroll offset calculations (BUG-011).
+// sidebarVisible returns the number of sidebar tree rows reserved for the
+// scrollable list. Two rows are kept available for the optional scroll
+// indicators so they cannot push the pane past its inner height.
 func (m Model) sidebarVisible() int {
 	layout := m.currentLayout()
 	v := layout.sidebarInnerH
 	if m.effectiveDim() == DimWide {
 		v = m.height - 5 // header + borders + status bar (legacy wide budget)
 	}
+	v -= 2
 	if v < 1 {
 		return 1
 	}

@@ -330,9 +330,7 @@ func (m Model) viewSidebar(w, h int) string {
 	var sb strings.Builder
 	sb.WriteString(titleStyle.Render("Collections") + "\n")
 
-	rows, _ := m.buildSidebarRows()
-	start := min(m.sidebarOffset, max(0, len(rows)-m.sidebarVisible()))
-	end := min(len(rows), start+m.sidebarVisible())
+	rows, start, end := m.sidebarListWindow()
 	if start > 0 {
 		sb.WriteString(mutedStyle.Render("  ↑ more above") + "\n")
 	}
@@ -350,7 +348,8 @@ func (m Model) viewSidebar(w, h int) string {
 			if expanded {
 				icon = "▼ "
 			}
-			name := truncate(col.Name, w-6)
+			innerW := max(1, w-2)
+			name := truncate(col.Name, innerW-4)
 			line := cursor + icon + name
 			if row.colIndex == m.colCursor && m.reqCursor == -1 {
 				line = lipgloss.NewStyle().Foreground(blue).Bold(true).Render(line)
@@ -366,7 +365,10 @@ func (m Model) viewSidebar(w, h int) string {
 			if isSelected {
 				cursor = "  ▸ "
 			}
-			line := cursor + methodBadge(req.Method) + " " + truncate(req.Name, w-10)
+			innerW := max(1, w-2)
+			badge := methodBadge(req.Method)
+			nameWidth := innerW - lipgloss.Width(cursor) - lipgloss.Width(badge) - 1
+			line := cursor + badge + " " + truncate(req.Name, nameWidth)
 			if isSelected {
 				line = lipgloss.NewStyle().Foreground(cyan).Render(line)
 			} else {
@@ -2035,8 +2037,10 @@ func truncate(s string, maxCols int) string {
 		}
 		return b.String()
 	}
-
 	budget := maxCols - lipgloss.Width("…")
+	if budget < 1 {
+		return "…"
+	}
 	var b strings.Builder
 	width := 0
 	for _, r := range s {
