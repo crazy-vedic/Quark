@@ -19,6 +19,11 @@ Quark is a terminal-native TUI that keeps everything in a local SQLite database,
 curl -sL https://github.com/crazy-vedic/Quark/releases/latest/download/install.sh | bash
 ```
 
+**Windows PowerShell (native Windows):**
+```powershell
+irm https://github.com/crazy-vedic/Quark/releases/latest/download/install.ps1 | iex
+```
+
 **Specific version or platform:**
 ```bash
 curl -sL https://raw.githubusercontent.com/crazy-vedic/Quark/master/install.sh | bash -s -- --version v1.0.0 --platform linux-amd64
@@ -32,6 +37,17 @@ Private repos: set `GITHUB_TOKEN` or `GITHUB_ACCESS_TOKEN` — auth headers forw
 git clone https://github.com/crazy-vedic/Quark.git && cd Quark
 make build && make install
 ```
+
+On native Windows, the Makefile requires a Unix-compatible shell. With the Go
+toolchain installed, build directly from PowerShell instead:
+
+```powershell
+git clone https://github.com/crazy-vedic/Quark.git
+cd Quark
+go build -o quark.exe ./cmd/quark
+```
+
+Run `./quark.exe`, or move it to a directory on your `PATH`.
 
 ---
 
