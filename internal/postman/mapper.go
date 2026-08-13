@@ -1,10 +1,13 @@
 package postman
 
 import (
+	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"mime/multipart"
 	"net/url"
+	"path"
 	"strings"
 
 	"github.com/google/uuid"
@@ -82,9 +85,10 @@ func mapRequest(item Item, prefix string, sortOrder int) (*domain.Request, []str
 	// Extract authentication as headers
 	warnings := mapAuth(req.Auth, headersMap)
 
-	// Body: only support raw mode for now
+	// Body
 	body := ""
-	if req.Body.Mode == "raw" {
+	switch req.Body.Mode {
+	case "raw":
 		body = req.Body.Raw
 		// Auto-set Content-Type from body language if not already present
 		if _, ok := headersMap["Content-Type"]; !ok && req.Body.Options.Raw.Language != "" {
@@ -93,7 +97,20 @@ func mapRequest(item Item, prefix string, sortOrder int) (*domain.Request, []str
 				headersMap["Content-Type"] = ct
 			}
 		}
-	} else if req.Body.Mode != "" && req.Body.Mode != "none" {
+	case "urlencoded":
+		body = encodeURLEncodedBody(req.Body.URLEncoded)
+		if _, ok := headersMap["Content-Type"]; !ok {
+			headersMap["Content-Type"] = "application/x-www-form-urlencoded"
+		}
+	case "formdata":
+		var contentType string
+		body, contentType = encodeFormDataBody(req.Body.FormData)
+		if _, ok := headersMap["Content-Type"]; !ok {
+			headersMap["Content-Type"] = contentType
+		}
+	case "", "none":
+		// No body.
+	default:
 		// Unsupported body mode: mark with warning but still import without body
 		warnings = append(
 			warnings,
@@ -116,6 +133,89 @@ func mapRequest(item Item, prefix string, sortOrder int) (*domain.Request, []str
 		Body:      body,
 		SortOrder: sortOrder,
 	}, warnings
+}
+
+func encodeURLEncodedBody(params []BodyParam) string {
+	parts := make([]string, 0, len(params))
+	for _, p := range params {
+		if p.Disabled {
+			continue
+		}
+		parts = append(
+			parts,
+			escapeFormComponent(p.Key)+"="+escapeFormComponent(p.Value.String()),
+		)
+	}
+	return strings.Join(parts, "&")
+}
+
+func escapeFormComponent(s string) string {
+	var out strings.Builder
+	for {
+		start := strings.Index(s, "{{")
+		if start == -1 {
+			out.WriteString(url.QueryEscape(s))
+			return out.String()
+		}
+		endRel := strings.Index(s[start+2:], "}}")
+		if endRel == -1 {
+			out.WriteString(url.QueryEscape(s))
+			return out.String()
+		}
+		end := start + 2 + endRel + 2
+		out.WriteString(url.QueryEscape(s[:start]))
+		out.WriteString(s[start:end])
+		s = s[end:]
+	}
+}
+
+func encodeFormDataBody(params []FormDataParam) (string, string) {
+	var buf bytes.Buffer
+	writer := multipart.NewWriter(&buf)
+	_ = writer.SetBoundary("quark-postman-boundary")
+
+	for _, p := range params {
+		if p.Disabled {
+			continue
+		}
+		if p.Type == "file" {
+			for _, src := range formDataSources(p.Src) {
+				filename := path.Base(strings.ReplaceAll(src, `\`, `/`))
+				if filename == "." || filename == "/" {
+					filename = p.Key
+				}
+				part, err := writer.CreateFormFile(p.Key, filename)
+				if err == nil {
+					_, _ = part.Write(nil)
+				}
+			}
+			continue
+		}
+		_ = writer.WriteField(p.Key, p.Value.String())
+	}
+
+	_ = writer.Close()
+	return buf.String(), writer.FormDataContentType()
+}
+
+func formDataSources(raw json.RawMessage) []string {
+	var src string
+	if err := json.Unmarshal(raw, &src); err == nil && src != "" {
+		return []string{src}
+	}
+
+	var srcs []string
+	if err := json.Unmarshal(raw, &srcs); err == nil {
+		out := make([]string, 0, len(srcs))
+		for _, src := range srcs {
+			if src != "" {
+				out = append(out, src)
+			}
+		}
+		return out
+	}
+
+	return nil
 }
 
 // buildURL reconstructs a URL from Postman's structured URL fields.
