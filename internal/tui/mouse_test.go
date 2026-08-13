@@ -191,6 +191,7 @@ func TestUpdate_Mouse_ResponseHistoryPopupWheelIsHistoryNotText(t *testing.T) {
 	m := resizedMouseUnitModel(t).
 		WithExecutions(execs).
 		WithExecCursor(2).
+		WithActiveField(tui.NoneField).
 		WithFocus(tui.ResponsePane)
 	x, y, ok := m.ResponseHistoryRowClickPos(0)
 	require.True(t, ok)
@@ -343,6 +344,7 @@ func TestUpdate_Keyboard_ResponseTextScrollsBesideHistoryPopup(t *testing.T) {
 	m := resizedMouseUnitModel(t).
 		WithExecutions(execs).
 		WithExecCursor(2).
+		WithActiveField(tui.NoneField).
 		WithFocus(tui.ResponsePane)
 	_ = m.View()
 	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyDown})
@@ -379,6 +381,7 @@ func responseHistoryMouseModel(t *testing.T, body string) tui.Model {
 			{ID: "ex-1", RequestID: "req-1", StatusCode: 200, ResponseBody: "older", ResponseHeaders: `{}`},
 		}).
 		WithExecCursor(0).
+		WithActiveField(tui.NoneField).
 		WithFocus(tui.ResponsePane)
 	_ = m.View()
 	return m

@@ -60,5 +60,9 @@ func wrappedTextLines(content string, width int) []string {
 	if content == "" || width <= 0 {
 		return nil
 	}
-	return strings.Split(softWrap(content, width), "\n")
+	raw := strings.Split(softWrap(content, width), "\n")
+	for i := range raw {
+		raw[i] = strings.TrimRight(raw[i], " ")
+	}
+	return raw
 }

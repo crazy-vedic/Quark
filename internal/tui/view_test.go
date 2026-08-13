@@ -592,7 +592,7 @@ func TestView_SidebarIndicatorsFitInsidePane(t *testing.T) {
 	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("l")})
 
 	view := m.View()
-	assert.Contains(t, view, "â†“ more below")
+	assert.Contains(t, view, "↓ more below")
 	assert.LessOrEqual(t, lipgloss.Height(view), m.Height())
 	for _, line := range strings.Split(view, "\n") {
 		assert.LessOrEqual(t, lipgloss.Width(line), m.Width(), "sidebar row wrapped: %q", line)

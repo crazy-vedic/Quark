@@ -311,7 +311,7 @@ func (m Model) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleRequestKey("", msg)
 	}
 	if m.focus == responsePane && isResponseHistoryKey(msg) {
-		if msg.Type == tea.KeyShiftDown || msg.String() == "shift+pgdown" {
+		if msg.Type == tea.KeyShiftDown || msg.Type == tea.KeyPgDown || msg.String() == "shift+pgdown" {
 			return m.handleResponseAction("history_next")
 		}
 		return m.handleResponseAction("history_prev")
