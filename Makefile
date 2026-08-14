@@ -6,6 +6,7 @@
 #   make run ARGS="--help"
 #   make ut ARGS="-v -run TestFoo"
 #   make e2e ARGS="-count=1"
+#   make e2e-tui TIMING=1
 #   make lint ARGS="--fast"
 
 # ---------------------------------------------------------------------------
@@ -31,6 +32,7 @@ LDFLAGS     := -X main.Version=$(VERSION) -X main.Commit=$(COMMIT) -X main.Build
 
 # Extra args passed through to the underlying command.
 ARGS        ?=
+TIMING      ?= 1
 
 # Test runner — use gotestsum for nice output + timing if available.
 NCPU        := $(shell nproc 2>/dev/null || sysctl -n hw.logicalcpu 2>/dev/null || echo 4)
@@ -94,7 +96,7 @@ ut: ## Run unit tests (excludes e2e / integration tests)
 
 .PHONY: e2e-tui
 e2e-tui: ## Run TUI e2e tests (requires e2e build tag)
-	$(call go-test,./tests/e2e/tui/...,-v -tags e2e -coverpkg=./... $(ARGS)) | tee $(TEST_LOG)
+	QUARK_TIMING=$(TIMING) $(call go-test,./tests/e2e/tui/...,-v -tags e2e -coverpkg=./... $(ARGS)) | tee $(TEST_LOG)
 
 # e2e-cli: build + run (local dev — always rebuilds the coverage binary)
 .PHONY: e2e-cli

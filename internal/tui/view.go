@@ -17,6 +17,7 @@ import (
 	"github.com/crazy-vedic/quark/internal/highlight"
 	"github.com/crazy-vedic/quark/internal/keybindings"
 	"github.com/crazy-vedic/quark/internal/search"
+	"github.com/crazy-vedic/quark/internal/timing"
 )
 
 // ansiEscape strips ANSI/VT100 escape sequences from untrusted terminal output.
@@ -330,9 +331,7 @@ func (m Model) viewSidebar(w, h int) string {
 	var sb strings.Builder
 	sb.WriteString(titleStyle.Render("Collections") + "\n")
 
-	rows, _ := m.buildSidebarRows()
-	start := min(m.sidebarOffset, max(0, len(rows)-m.sidebarVisible()))
-	end := min(len(rows), start+m.sidebarVisible())
+	rows, start, end := m.sidebarListWindow()
 	if start > 0 {
 		sb.WriteString(mutedStyle.Render("  ↑ more above") + "\n")
 	}
@@ -350,7 +349,8 @@ func (m Model) viewSidebar(w, h int) string {
 			if expanded {
 				icon = "▼ "
 			}
-			name := truncate(col.Name, w-6)
+			innerW := max(1, w-2)
+			name := truncate(col.Name, innerW-4)
 			line := cursor + icon + name
 			if row.colIndex == m.colCursor && m.reqCursor == -1 {
 				line = lipgloss.NewStyle().Foreground(blue).Bold(true).Render(line)
@@ -366,7 +366,10 @@ func (m Model) viewSidebar(w, h int) string {
 			if isSelected {
 				cursor = "  ▸ "
 			}
-			line := cursor + methodBadge(req.Method) + " " + truncate(req.Name, w-10)
+			innerW := max(1, w-2)
+			badge := methodBadge(req.Method)
+			nameWidth := innerW - lipgloss.Width(cursor) - lipgloss.Width(badge) - 1
+			line := cursor + badge + " " + truncate(req.Name, nameWidth)
 			if isSelected {
 				line = lipgloss.NewStyle().Foreground(cyan).Render(line)
 			} else {
@@ -429,6 +432,13 @@ func (m Model) requestTitleRightChromeWidth() int {
 }
 
 func (m Model) viewRequestPane(w, h int) string {
+	timingSpan := m.timing.Track("tui.view_request_pane")
+	defer timingSpan.Done()
+	started := time.Now()
+	defer func() {
+		logDebugTiming(m.debugLog, "view_request_pane", started,
+			fmt.Sprintf("width=%d height=%d field=%d", w, h, m.activeField))
+	}()
 	border := inactiveBorder
 	if m.focus == requestPane {
 		border = activeBorder
@@ -489,6 +499,11 @@ func (m Model) viewRequestPane(w, h int) string {
 				Foreground(lipgloss.Color("#c0caf5")).
 				Render(authSummary),
 		)
+		if m.activeField == urlField {
+			if warning := singleLineInputWarning(m.urlInput.Value()); warning != "" {
+				top = append(top, warning)
+			}
+		}
 	}
 
 	top = append(top, "")
@@ -518,6 +533,13 @@ func (m Model) viewRequestPane(w, h int) string {
 			preview.WriteString(m.headerKeyInput.View() + "\n\n")
 			preview.WriteString("Value:\n")
 			preview.WriteString(m.headerValueInput.View() + "\n")
+			if m.headerKeyInput.Focused() {
+				if warning := singleLineInputWarning(m.headerKeyInput.Value()); warning != "" {
+					preview.WriteString(warning + "\n")
+				}
+			} else if warning := singleLineInputWarning(m.headerValueInput.Value()); warning != "" {
+				preview.WriteString(warning + "\n")
+			}
 		} else {
 			if len(m.headerPairs) == 0 {
 				preview.WriteString(
@@ -547,25 +569,8 @@ func (m Model) viewRequestPane(w, h int) string {
 		}
 		content = preview.String()
 	case m.activeRequest != nil:
-		var preview strings.Builder
-		// Default: show body as read-only preview.
-		if m.activeRequest.Body != "" {
-			for _, line := range strings.Split(m.activeRequest.Body, "\n") {
-				preview.WriteString("  " + truncate(line, w-4) + "\n")
-			}
-		} else if m.activeRequest.Headers != "" && m.activeRequest.Headers != "{}" {
-			var hdrs map[string]string
-			if err := json.Unmarshal([]byte(m.activeRequest.Headers), &hdrs); err == nil {
-				for _, k := range sortedStringMapKeys(hdrs) {
-					v := hdrs[k]
-					plain := "  " + k + ": " + v
-					preview.WriteString(
-						lipgloss.NewStyle().Foreground(cyan).Render(truncate(plain, w-4)) + "\n",
-					)
-				}
-			}
-		}
-		content = preview.String()
+		// The read-only preview is formatted lazily by requestText below.
+		content = ""
 	}
 
 	// Responsive key hints — shorten at narrow terminals, then hard-clamp to one
@@ -633,7 +638,17 @@ func (m Model) viewRequestPane(w, h int) string {
 	if contentLines < 0 {
 		contentLines = 0
 	}
-	renderedContent := limitLines(content, innerWidth, contentLines)
+	var renderedContent string
+	if m.activeField == noneField && m.activeRequest != nil {
+		m.requestText.SetDebugLog(m.debugLog, "request")
+		m.requestText.SetTiming(m.timing)
+		m.requestText.SetFormattedContent(m.requestBodyPreviewSourceKey(), func() string {
+			return m.requestBodyPreviewContent(timingSpan)
+		}, timingSpan)
+		renderedContent = m.requestText.View(innerWidth, contentLines, timingSpan)
+	} else {
+		renderedContent = limitLines(content, innerWidth, contentLines)
+	}
 	paddingLines := contentLines - visualRows(renderedContent, innerWidth)
 	if paddingLines < 0 {
 		paddingLines = 0
@@ -656,6 +671,39 @@ func (m Model) viewRequestPane(w, h int) string {
 	return border.Width(w).Height(h).MaxHeight(h + 2).Render(clipToRows(sb.String(), innerWidth, h))
 }
 
+func (m Model) requestBodyPreviewContent(parent ...*timing.Span) string {
+	timingSpan := m.timing.Track("tui.request_body_preview_content", timingParent(parent))
+	defer timingSpan.Done()
+	started := time.Now()
+	defer func() {
+		logDebugTiming(m.debugLog, "request_body_preview_content", started,
+			fmt.Sprintf("has_request=%t", m.activeRequest != nil))
+	}()
+	if m.activeRequest == nil {
+		return ""
+	}
+	if m.activeRequest.Body != "" {
+		lines := strings.Split(m.activeRequest.Body, "\n")
+		for i := range lines {
+			lines[i] = "  " + lines[i]
+		}
+		return strings.Join(lines, "\n")
+	}
+	if m.activeRequest.Headers == "" || m.activeRequest.Headers == "{}" {
+		return ""
+	}
+	var hdrs map[string]string
+	if err := json.Unmarshal([]byte(m.activeRequest.Headers), &hdrs); err != nil {
+		return ""
+	}
+	keys := sortedStringMapKeys(hdrs)
+	lines := make([]string, 0, len(keys))
+	for _, k := range keys {
+		lines = append(lines, "  "+k+": "+hdrs[k])
+	}
+	return strings.Join(lines, "\n")
+}
+
 func (m Model) viewAuthEditor() string {
 	var sb strings.Builder
 	sb.WriteString(titleStyle.Render("Auth") + "\n")
@@ -672,6 +720,11 @@ func (m Model) viewAuthEditor() string {
 			line = lipgloss.NewStyle().Bold(true).Render(line)
 		}
 		sb.WriteString(line + "\n")
+		if idx == m.authEditor.cursor && m.authEditor.editing {
+			if warning := singleLineInputWarning(m.authEditor.singleLineValue(row)); warning != "" {
+				sb.WriteString(warning + "\n")
+			}
+		}
 	}
 	sb.WriteString("\n")
 	sb.WriteString(mutedStyle.Render(m.renderHints([]hintItem{
@@ -686,6 +739,13 @@ func (m Model) viewAuthEditor() string {
 // --- Response pane ---
 
 func (m Model) viewResponsePane(w, h int) string {
+	timingSpan := m.timing.Track("tui.view_response_pane")
+	defer timingSpan.Done()
+	started := time.Now()
+	defer func() {
+		logDebugTiming(m.debugLog, "view_response_pane", started,
+			fmt.Sprintf("width=%d height=%d tab=%d cursor=%d", w, h, m.responseTab, m.execCursor))
+	}()
 	border := inactiveBorder
 	if m.focus == responsePane {
 		border = activeBorder
@@ -737,45 +797,54 @@ func (m Model) viewResponsePane(w, h int) string {
 		bodyLines = 0
 	}
 
-	// Tab content — clipped to available lines.
-	var body string
+	// Tab content is formatted lazily by the scrollable component.
+	var formatBody func() string
 	if currentExec != nil {
 		switch m.responseTab {
 		case bodyTab:
-			body = m.viewExecutionBody(currentExec)
+			formatBody = func() string { return m.viewExecutionBody(currentExec, timingSpan) }
 		case headersTab:
-			body = m.viewExecutionHeaders(currentExec)
+			formatBody = func() string { return m.viewExecutionHeaders(currentExec) }
 		case rawTab:
-			if currentExec.ResponseBody == "" {
-				body = mutedStyle.Render("  (empty body)")
-			} else {
-				body = stripANSI(currentExec.ResponseBody)
+			formatBody = func() string {
+				if currentExec.ResponseBody == "" {
+					return mutedStyle.Render("  (empty body)")
+				}
+				return stripANSI(currentExec.ResponseBody)
 			}
 		}
 	} else if r := m.response; r != nil {
 		switch m.responseTab {
 		case bodyTab:
-			body = m.viewResponseBody()
+			formatBody = func() string { return m.viewResponseBody(timingSpan) }
 		case headersTab:
-			body = m.viewResponseHeaders()
+			formatBody = func() string { return m.viewResponseHeaders() }
 		case rawTab:
-			if r.Body != nil {
-				body = stripANSI(string(r.Body))
-			} else if r.TempPath != "" {
-				body = mutedStyle.Render(fmt.Sprintf("[streamed → %s]", r.TempPath))
+			formatBody = func() string {
+				if r.Body != nil {
+					return stripANSI(string(r.Body))
+				}
+				if r.TempPath != "" {
+					return mutedStyle.Render(fmt.Sprintf("[streamed → %s]", r.TempPath))
+				}
+				return ""
 			}
 		}
 	}
+	// Body/Raw content is owned by a scrollable text component. Keep the
+	// response history popup as a separate column, but let wheel and arrows
+	// move through the body instead of changing history.
+	m.responseText.SetDebugLog(m.debugLog, "response")
+	m.responseText.SetTiming(m.timing)
+	m.responseText.SetFormattedContent(m.responseTextSourceKey(), formatBody, timingSpan)
 
 	popup := m.viewExecutionHistoryPopup(w, bodyLines)
 	if popup != "" && w >= 64 {
 		popupWidth := lipgloss.Width(popup)
 		bodyWidth := w - popupWidth - 4
 		if bodyWidth >= 18 {
-			left := lipgloss.NewStyle().
-				Width(bodyWidth).
-				MaxHeight(bodyLines).
-				Render(limitLines(body, bodyWidth, bodyLines))
+			left := lipgloss.NewStyle().Width(bodyWidth).MaxHeight(bodyLines).
+				Render(m.responseText.View(bodyWidth, bodyLines, timingSpan))
 			sb.WriteString(lipgloss.JoinHorizontal(lipgloss.Top, left, "  ", popup))
 			return border.Width(w).
 				Height(h).
@@ -795,9 +864,83 @@ func (m Model) viewResponsePane(w, h int) string {
 		}
 	}
 
-	sb.WriteString(limitLines(body, innerWidth, bodyLines))
+	sb.WriteString(m.responseText.View(innerWidth, bodyLines, timingSpan))
 
 	return border.Width(w).Height(h).MaxHeight(h + 2).Render(clipToRows(sb.String(), innerWidth, h))
+}
+
+func (m Model) requestBodyPreviewSourceKey() string {
+	if m.activeRequest == nil {
+		return "request:none"
+	}
+	return fmt.Sprintf("request:%p:%s", m.activeRequest, m.activeRequest.ID)
+}
+
+func (m Model) responseTextSourceKey() string {
+	if currentExec := m.selectedExecution(); currentExec != nil {
+		return fmt.Sprintf("execution:%p:%s:%d", currentExec, currentExec.ID, m.responseTab)
+	}
+	if m.response != nil {
+		return fmt.Sprintf("response:%p:%d", m.response, m.responseTab)
+	}
+	return fmt.Sprintf("response:none:%d", m.responseTab)
+}
+
+// formatResponseTextContent produces the formatted response content. The
+// scrollable component owns caching; callers should use setResponseTextContent.
+func (m Model) formatResponseTextContent(parent ...*timing.Span) string {
+	timingSpan := m.timing.Track("tui.response_text_content", timingParent(parent))
+	defer timingSpan.Done()
+	started := time.Now()
+	defer func() {
+		logDebugTiming(m.debugLog, "response_text_content", started,
+			fmt.Sprintf("tab=%d cursor=%d", m.responseTab, m.execCursor))
+	}()
+	currentExec := m.selectedExecution()
+	if currentExec != nil {
+		switch m.responseTab {
+		case bodyTab:
+			return m.viewExecutionBody(currentExec, timingSpan)
+		case headersTab:
+			return m.viewExecutionHeaders(currentExec)
+		case rawTab:
+			if currentExec.ResponseBody == "" {
+				return mutedStyle.Render("  (empty body)")
+			}
+			return stripANSI(currentExec.ResponseBody)
+		}
+	} else if r := m.response; r != nil {
+		switch m.responseTab {
+		case bodyTab:
+			return m.viewResponseBody(timingSpan)
+		case headersTab:
+			return m.viewResponseHeaders()
+		case rawTab:
+			if r.Body != nil {
+				return stripANSI(string(r.Body))
+			}
+			if r.TempPath != "" {
+				return mutedStyle.Render(fmt.Sprintf("[streamed â†’ %s]", r.TempPath))
+			}
+		}
+	}
+	return ""
+}
+
+func (m *Model) setRequestTextContent(parent ...*timing.Span) {
+	m.requestText.SetDebugLog(m.debugLog, "request")
+	m.requestText.SetTiming(m.timing)
+	m.requestText.SetFormattedContent(m.requestBodyPreviewSourceKey(), func() string {
+		return m.requestBodyPreviewContent(timingParent(parent))
+	}, timingParent(parent))
+}
+
+func (m *Model) setResponseTextContent(parent ...*timing.Span) {
+	m.responseText.SetDebugLog(m.debugLog, "response")
+	m.responseText.SetTiming(m.timing)
+	m.responseText.SetFormattedContent(m.responseTextSourceKey(), func() string {
+		return m.formatResponseTextContent(timingParent(parent))
+	}, timingParent(parent))
 }
 
 func (m Model) viewTabBar(maxWidth int) string {
@@ -921,7 +1064,18 @@ func isBinaryBody(b []byte) bool {
 	return !utf8.Valid(b)
 }
 
-func (m Model) viewResponseBody() string {
+func (m Model) viewResponseBody(parent ...*timing.Span) string {
+	timingSpan := m.timing.Track("tui.view_response_body", timingParent(parent))
+	defer timingSpan.Done()
+	started := time.Now()
+	defer func() {
+		bodyBytes := 0
+		if m.response != nil {
+			bodyBytes = len(m.response.Body)
+		}
+		logDebugTiming(m.debugLog, "view_response_body", started,
+			fmt.Sprintf("bytes=%d", bodyBytes))
+	}()
 	r := m.response
 	if r.Body == nil {
 		if r.TempPath != "" {
@@ -963,7 +1117,18 @@ func (m Model) viewResponseHeaders() string {
 	return renderHTTPHeaders(m.response.Headers)
 }
 
-func (m Model) viewExecutionBody(ex *domain.Execution) string {
+func (m Model) viewExecutionBody(ex *domain.Execution, parent ...*timing.Span) string {
+	timingSpan := m.timing.Track("tui.view_execution_body", timingParent(parent))
+	defer timingSpan.Done()
+	started := time.Now()
+	defer func() {
+		bodyBytes := 0
+		if ex != nil {
+			bodyBytes = len(ex.ResponseBody)
+		}
+		logDebugTiming(m.debugLog, "view_execution_body", started,
+			fmt.Sprintf("bytes=%d", bodyBytes))
+	}()
 	if ex.Error != "" {
 		if ex.ResponseBody == "" {
 			return errorStyle.Render("  " + ex.Error)
@@ -2035,8 +2200,10 @@ func truncate(s string, maxCols int) string {
 		}
 		return b.String()
 	}
-
 	budget := maxCols - lipgloss.Width("…")
+	if budget < 1 {
+		return "…"
+	}
 	var b strings.Builder
 	width := 0
 	for _, r := range s {
