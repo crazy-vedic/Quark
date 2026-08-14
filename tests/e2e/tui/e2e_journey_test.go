@@ -590,7 +590,7 @@ func TestE2E_ResponsePane_HistoryNavigationAcrossExecutions(t *testing.T) {
 	assertViewNotContains(t, m, "Execution History")
 
 	// Move down to an older execution in the history list.
-	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyDown})
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyShiftDown})
 	assert.Equal(t, 1, m.ExecCursor())
 	assertViewContains(t, m, "Run 2/2")
 	assertViewContains(t, m, "201")
@@ -599,7 +599,7 @@ func TestE2E_ResponsePane_HistoryNavigationAcrossExecutions(t *testing.T) {
 	assertViewContains(t, m, "Latest")
 
 	// Move back up toward the present execution.
-	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyUp})
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyShiftUp})
 	assert.Equal(t, 0, m.ExecCursor())
 	assertViewContains(t, m, "Run 1/2")
 	assertViewContains(t, m, "503")
@@ -709,7 +709,7 @@ func TestE2E_ResponseRetry_ReplaysOlderExecutionWithoutChangingRequestPane(t *te
 	)
 
 	// Move to the older execution and retry it from history.
-	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyDown})
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyShiftDown})
 	assert.Equal(t, 1, m.ExecCursor())
 
 	m, cmd = callUpdateWithCmd(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'R'}})

@@ -21,6 +21,7 @@ import (
 	"github.com/crazy-vedic/quark/internal/keybindings"
 	"github.com/crazy-vedic/quark/internal/search"
 	"github.com/crazy-vedic/quark/internal/store"
+	"github.com/crazy-vedic/quark/internal/timing"
 )
 
 // --- Layout enums ---
@@ -224,10 +225,11 @@ type Model struct {
 	preEditBody   string       // Body value saved when editing starts; restored on Esc
 
 	// --- Response state ---
-	response    *exec.ExecuteResult
-	responseTab responseTabID
-	executions  []*domain.Execution
-	execCursor  int
+	response     *exec.ExecuteResult
+	responseTab  responseTabID
+	responseText scrollableText
+	executions   []*domain.Execution
+	execCursor   int
 
 	// --- In-flight request ---
 	cancel  context.CancelFunc
@@ -264,6 +266,7 @@ type Model struct {
 
 	// --- Body / Header inline editor ---
 	bodyTextarea     textarea.Model
+	requestText      scrollableText
 	headerPairs      []headerPair
 	headerCursor     int
 	headerEditing    bool
@@ -278,6 +281,7 @@ type Model struct {
 
 	// DebugLog, when non-nil, receives a timestamped line for every key message.
 	debugLog *os.File
+	timing   *timing.Collector
 
 	// configDir is the directory where config.toml and the DB are stored.
 	configDir string
@@ -345,6 +349,8 @@ type Deps struct {
 	Now func() time.Time
 	// DebugLog, if set, receives a timestamped line for every key message.
 	DebugLog *os.File
+	// Timing enables opt-in operation timing. Nil uses timing.Default().
+	Timing *timing.Collector
 	// ConfigDir is the directory where config.toml and the DB are stored.
 	// Used when persisting keybinding changes.
 	ConfigDir string
@@ -412,6 +418,8 @@ func New(deps Deps) Model {
 		importName:            importName,
 		promptInput:           promptInput,
 		bodyTextarea:          bodyTA,
+		requestText:           scrollableText{cache: &scrollableTextCache{}},
+		responseText:          scrollableText{cache: &scrollableTextCache{}},
 		headerKeyInput:        headerKeyInput,
 		headerValueInput:      headerValueInput,
 		expanded:              make(map[string]bool),
@@ -420,6 +428,7 @@ func New(deps Deps) Model {
 		reqCursor:             -1, // start on collection, not on a request
 		focus:                 sidebarPane,
 		debugLog:              deps.DebugLog,
+		timing:                collectorOrDefault(deps.Timing),
 		configDir:             deps.ConfigDir,
 		forceDim:              deps.ForceDim,
 		resolver:              resolverOrDefault(deps.Resolver, deps.Config),
@@ -1051,14 +1060,16 @@ func (m Model) selectedCollection() *domain.Collection {
 	return m.collections[m.colCursor]
 }
 
-// sidebarVisible returns the approximate number of visible collection rows
-// based on terminal height. Used for scroll offset calculations (BUG-011).
+// sidebarVisible returns the number of sidebar tree rows reserved for the
+// scrollable list. Two rows are kept available for the optional scroll
+// indicators so they cannot push the pane past its inner height.
 func (m Model) sidebarVisible() int {
 	layout := m.currentLayout()
 	v := layout.sidebarInnerH
 	if m.effectiveDim() == DimWide {
 		v = m.height - 5 // header + borders + status bar (legacy wide budget)
 	}
+	v -= 2
 	if v < 1 {
 		return 1
 	}

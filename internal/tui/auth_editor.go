@@ -236,6 +236,26 @@ func (e authEditor) valueForRow(row authRowID, editing bool) string {
 	}
 }
 
+// singleLineValue returns the underlying value for warning/validation UI.
+// valueForRow intentionally redacts secrets, so it must not be used for length
+// checks on auth fields.
+func (e authEditor) singleLineValue(row authRowID) string {
+	switch row {
+	case authRowToken:
+		return e.tokenInput.Value()
+	case authRowUsername:
+		return e.usernameInput.Value()
+	case authRowPassword:
+		return e.passwordInput.Value()
+	case authRowAPIKeyName:
+		return e.apiKeyNameInput.Value()
+	case authRowAPIKeyValue:
+		return e.apiKeyValueInput.Value()
+	default:
+		return ""
+	}
+}
+
 func authRowLabel(row authRowID) string {
 	switch row {
 	case authRowType:

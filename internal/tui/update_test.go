@@ -539,7 +539,7 @@ func TestUpdate_ResponseHistory_ArrowKeysFollowVisibleListDirection(t *testing.T
 		WithExecutions(executions).
 		WithExecCursor(0)
 
-	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyDown})
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyShiftDown})
 	assert.Equal(
 		t,
 		1,
@@ -547,7 +547,7 @@ func TestUpdate_ResponseHistory_ArrowKeysFollowVisibleListDirection(t *testing.T
 		"down should move to an older execution shown lower in the list",
 	)
 
-	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyUp})
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyShiftUp})
 	assert.Equal(
 		t,
 		0,

@@ -27,13 +27,15 @@ import (
 	"github.com/crazy-vedic/quark/internal/keybindings"
 	"github.com/crazy-vedic/quark/internal/search"
 	"github.com/crazy-vedic/quark/internal/store"
+	"github.com/crazy-vedic/quark/internal/timing"
 	"github.com/crazy-vedic/quark/internal/tui"
 )
 
 var (
-	debugMode bool
-	configDir string
-	dimFlag   string
+	debugMode  bool
+	timingMode string
+	configDir  string
+	dimFlag    string
 )
 
 func main() {
@@ -60,6 +62,8 @@ func run() error {
 	root.SetContext(ctx)
 	root.PersistentFlags().
 		BoolVar(&debugMode, "debug", false, "Log keystrokes and diagnostics to /tmp/quark_debug_logs/debug.log")
+	root.PersistentFlags().
+		StringVar(&timingMode, "timing", "tree", "Timing report format with --debug: tree|flat|off")
 	root.PersistentFlags().
 		StringVar(&configDir, "config", defaultConfigDir, "Directory for config and db")
 	root.PersistentFlags().
@@ -237,6 +241,12 @@ func launchTUI(
 		}
 		forceDim = parsed
 	}
+	timingFormat, err := timing.ParseReportFormat(timingMode)
+	if err != nil {
+		return err
+	}
+	timingEnabled := debugMode && timingFormat != timing.ReportFormatOff
+	timingCollector := timing.New(timingEnabled)
 	model := tui.New(tui.Deps{
 		Lister:          st,
 		Reader:          st,
@@ -254,6 +264,7 @@ func launchTUI(
 		Resolver:        keybindings.NewResolver(cfg.Keybindings),
 		Ctx:             ctx, // signal-aware context: TUI goroutines cancel on SIGINT/SIGTERM
 		DebugLog:        debugLog,
+		Timing:          timingCollector,
 		ConfigDir:       configDir,
 		ForceDim:        forceDim,
 	})
@@ -268,7 +279,16 @@ func launchTUI(
 		tea.WithFilter(resize.Filter),
 	)
 	resize.Bind(p.Send)
-	_, err := p.Run()
+	_, err = p.Run()
+	if timingEnabled {
+		// Print the opt-in timing summary after the alternate screen is closed.
+		switch timingFormat {
+		case timing.ReportFormatFlat:
+			timingCollector.ReportFlat(os.Stderr, 30)
+		default:
+			timingCollector.ReportTree(os.Stderr, 30)
+		}
+	}
 	if err != nil && !errors.Is(err, tea.ErrProgramKilled) {
 		return fmt.Errorf("tui: %w", err)
 	}

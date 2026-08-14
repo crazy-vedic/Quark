@@ -220,7 +220,7 @@ jobs:
         run: go install gotest.tools/gotestsum@${{ env.GOTESTSUM_VERSION }}
 
       - name: Run TUI e2e tests with coverage
-        run: make e2e-tui ARGS="-coverprofile=tui.out"
+        run: QUARK_TIMING=1 make e2e-tui ARGS="-coverprofile=tui.out"
 
       - name: Per-package timing
         if: always() && !cancelled()
@@ -464,7 +464,7 @@ jobs:
       - name: Run TUI e2e tests with coverage
         if: steps.check-baseline.outputs.found != 'true'
         continue-on-error: true
-        run: make e2e-tui ARGS="-coverprofile=tui.out"
+        run: QUARK_TIMING=1 make e2e-tui ARGS="-coverprofile=tui.out"
 
       - name: Run CLI e2e tests with coverage
         if: steps.check-baseline.outputs.found != 'true'
