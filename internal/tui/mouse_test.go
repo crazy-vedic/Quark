@@ -3,6 +3,7 @@ package tui_test
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -91,6 +92,299 @@ func TestUpdate_Mouse_ResponseWheelCyclesHistory(t *testing.T) {
 		X: x, Y: y, Action: tea.MouseActionPress, Button: tea.MouseButtonWheelUp,
 	})
 	assert.Equal(t, 0, m.ExecCursor())
+}
+
+func TestUpdate_Mouse_ResponseTextWheelDoesNotCycleHistory(t *testing.T) {
+	t.Parallel()
+
+	longBody := ""
+	for i := 0; i < 80; i++ {
+		longBody += fmt.Sprintf("line-%03d\n", i)
+	}
+	execs := []*domain.Execution{
+		{ID: "ex-0", RequestID: "req-1", StatusCode: 200, ResponseBody: longBody, ResponseHeaders: `{}`},
+		{ID: "ex-1", RequestID: "req-1", StatusCode: 200, ResponseBody: "older", ResponseHeaders: `{}`},
+	}
+	m := resizedMouseUnitModel(t).
+		WithExecutions(execs).
+		WithExecCursor(0).
+		WithFocus(tui.ResponsePane)
+
+	before := m.View()
+	x, y, ok := m.ResponseTextWheelPos()
+	require.True(t, ok)
+	m = callUpdate(t, m, tea.MouseMsg{
+		X: x, Y: y, Action: tea.MouseActionPress, Button: tea.MouseButtonWheelDown,
+	})
+
+	assert.Equal(t, 0, m.ExecCursor())
+	assert.NotEqual(t, before, m.View(), "wheel inside response text should move text, not history")
+}
+
+func TestUpdate_Mouse_ResponseTextWheelClampsWithoutHistoryFallback(t *testing.T) {
+	t.Parallel()
+
+	m := longResponseMouseModel(t)
+	x, y, ok := m.ResponseTextWheelPos()
+	require.True(t, ok)
+
+	m = callUpdate(t, m, tea.MouseMsg{
+		X: x, Y: y, Action: tea.MouseActionPress, Button: tea.MouseButtonWheelUp,
+	})
+	assert.Equal(t, 0, m.ExecCursor(), "scrolling above the text must not go to history")
+	assert.Equal(t, 0, m.ResponseTextOffset(), "text should remain clamped at the top")
+
+	for i := 0; i < 100; i++ {
+		m = callUpdate(t, m, tea.MouseMsg{
+			X: x, Y: y, Action: tea.MouseActionPress, Button: tea.MouseButtonWheelDown,
+		})
+	}
+	bottom := m.ResponseTextOffset()
+	assert.Greater(t, bottom, 0, "setup should reach a non-zero text offset")
+	assert.Equal(t, 0, m.ExecCursor(), "scrolling down at the text bottom must not go to history")
+
+	m = callUpdate(t, m, tea.MouseMsg{
+		X: x, Y: y, Action: tea.MouseActionPress, Button: tea.MouseButtonWheelDown,
+	})
+	assert.Equal(t, bottom, m.ResponseTextOffset(), "text should remain clamped at the bottom")
+	assert.Equal(t, 0, m.ExecCursor(), "extra bottom scrolling must not change history")
+}
+
+func TestUpdate_Mouse_ResponseOutsideTextCyclesHistoryRegardlessOfBodyLength(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name string
+		body string
+	}{
+		{name: "short body", body: "short"},
+		{name: "long body", body: longResponseBody()},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := responseHistoryMouseModel(t, tc.body)
+			x, y, ok := m.ResponsePaneWheelPos()
+			require.True(t, ok)
+
+			m = callUpdate(t, m, tea.MouseMsg{
+				X: x, Y: y, Action: tea.MouseActionPress, Button: tea.MouseButtonWheelDown,
+			})
+			assert.Equal(t, 1, m.ExecCursor(), "response-pane chrome should navigate history")
+
+			m = callUpdate(t, m, tea.MouseMsg{
+				X: x, Y: y, Action: tea.MouseActionPress, Button: tea.MouseButtonWheelUp,
+			})
+			assert.Equal(t, 0, m.ExecCursor(), "response-pane chrome should navigate back")
+		})
+	}
+}
+
+func TestUpdate_Mouse_ResponseHistoryPopupWheelIsHistoryNotText(t *testing.T) {
+	t.Parallel()
+
+	execs := make([]*domain.Execution, 0, 4)
+	for i := 0; i < 4; i++ {
+		execs = append(execs, &domain.Execution{
+			ID: fmt.Sprintf("ex-%d", i), RequestID: "req-1", StatusCode: 200,
+			ResponseBody: longResponseBody(), ResponseHeaders: `{}`,
+		})
+	}
+	m := resizedMouseUnitModel(t).
+		WithExecutions(execs).
+		WithExecCursor(2).
+		WithActiveField(tui.NoneField).
+		WithFocus(tui.ResponsePane)
+	x, y, ok := m.ResponseHistoryRowClickPos(0)
+	require.True(t, ok)
+
+	m = callUpdate(t, m, tea.MouseMsg{
+		X: x, Y: y, Action: tea.MouseActionPress, Button: tea.MouseButtonWheelDown,
+	})
+	assert.Equal(t, 3, m.ExecCursor(), "wheel over the history popup should advance history")
+}
+
+func TestUpdate_Mouse_ResponseTextWheelWorksForRawTab(t *testing.T) {
+	t.Parallel()
+
+	m := longResponseMouseModel(t).WithResponseTab(tui.RawTab)
+	x, y, ok := m.ResponseTextWheelPos()
+	require.True(t, ok)
+	m = callUpdate(t, m, tea.MouseMsg{
+		X: x, Y: y, Action: tea.MouseActionPress, Button: tea.MouseButtonWheelDown,
+	})
+
+	assert.Greater(t, m.ResponseTextOffset(), 0, "raw response body should use the scrollable text component")
+	assert.Equal(t, 0, m.ExecCursor(), "raw text scrolling must not change history")
+}
+
+func TestUpdate_Keyboard_ResponseTextScrollDoesNotCycleHistory(t *testing.T) {
+	t.Parallel()
+
+	m := longResponseMouseModel(t)
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyDown})
+	downOffset := m.ResponseTextOffset()
+	assert.Greater(t, downOffset, 0, "Down should scroll response text")
+	assert.Equal(t, 0, m.ExecCursor(), "Down should not cycle response history")
+
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyPgDown})
+	pageOffset := m.ResponseTextOffset()
+	assert.Greater(t, pageOffset, downOffset, "PageDown should advance response text")
+	assert.Equal(t, 0, m.ExecCursor(), "PageDown should not cycle response history")
+
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyUp})
+	assert.Less(t, m.ResponseTextOffset(), pageOffset, "Up should scroll response text back")
+	assert.Equal(t, 0, m.ExecCursor(), "Up should not cycle response history")
+
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyPgUp})
+	assert.Equal(t, 0, m.ResponseTextOffset(), "PageUp should clamp response text at the top")
+	assert.Equal(t, 0, m.ExecCursor(), "PageUp should not cycle response history")
+}
+
+func TestUpdate_Keyboard_ShiftResponseNavigationUsesHistory(t *testing.T) {
+	t.Parallel()
+
+	m := longResponseMouseModel(t).WithExecCursor(1)
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyShiftUp})
+	assert.Equal(t, 0, m.ExecCursor(), "Shift+Up should select the previous history item")
+	assert.Equal(t, 0, m.ResponseTextOffset(), "Shift+Up should not scroll response text")
+
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyShiftDown})
+	assert.Equal(t, 1, m.ExecCursor(), "Shift+Down should select the next history item")
+	assert.Equal(t, 0, m.ResponseTextOffset(), "Shift+Down should not scroll response text")
+
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyPgUp, Alt: true})
+	assert.Equal(t, 0, m.ExecCursor(), "modified PageUp should select previous history")
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyPgDown, Alt: true})
+	assert.Equal(t, 1, m.ExecCursor(), "modified PageDown should select next history")
+}
+
+func TestUpdate_Mouse_RequestBodyWheelOnlyScrollsInsideEditor(t *testing.T) {
+	t.Parallel()
+
+	req := &domain.Request{
+		ID: "req-1", Name: "Post", Method: "POST", URL: "https://example.test",
+		Body: longResponseBody(),
+	}
+	m := requestMouseModel(t).WithActiveRequest(req)
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'b'}})
+	x, y, ok := m.BodyTextareaWheelPos()
+	require.True(t, ok)
+
+	before := m.ViewRequestPaneForTest(90, 18)
+	m = callUpdate(t, m, tea.MouseMsg{
+		X: x, Y: y, Action: tea.MouseActionPress, Button: tea.MouseButtonWheelDown,
+	})
+	after := m.ViewRequestPaneForTest(90, 18)
+	assert.NotEqual(t, before, after, "wheel inside request body should scroll its editor")
+
+	outside := callUpdate(t, m, tea.MouseMsg{
+		X: x - 1, Y: y, Action: tea.MouseActionPress, Button: tea.MouseButtonWheelUp,
+	})
+	assert.Equal(t, after, outside.ViewRequestPaneForTest(90, 18), "wheel outside request body should not move its editor")
+}
+
+func TestUpdate_Mouse_RequestBodyPreviewShowsExpectedLinesWhileScrolling(t *testing.T) {
+	t.Parallel()
+
+	req := &domain.Request{
+		ID: "req-preview", Name: "Large body", Method: "POST", URL: "https://example.test",
+		Body: numberedRequestBody(80),
+	}
+	m := requestMouseModel(t).WithActiveRequest(req).WithFocus(tui.RequestPane)
+	before := m.ViewRequestPaneForTest(90, 18)
+	assert.Contains(t, before, "BODY_LINE_000")
+	assert.NotContains(t, before, "BODY_LINE_079")
+
+	x, y, ok := m.RequestBodyPreviewWheelPos()
+	require.True(t, ok)
+	for i := 0; i < 100; i++ {
+		m = callUpdate(t, m, tea.MouseMsg{
+			X: x, Y: y, Action: tea.MouseActionPress, Button: tea.MouseButtonWheelDown,
+		})
+	}
+	middle := m.ViewRequestPaneForTest(90, 18)
+	assert.NotContains(t, middle, "BODY_LINE_000", "top lines should scroll out of the preview")
+	assert.Contains(t, middle, "BODY_LINE_079", "the preview should reach the end of a large body")
+	assert.Greater(t, m.RequestTextOffset(), 0)
+
+	for i := 0; i < 100; i++ {
+		m = callUpdate(t, m, tea.MouseMsg{
+			X: x, Y: y, Action: tea.MouseActionPress, Button: tea.MouseButtonWheelUp,
+		})
+	}
+	afterUp := m.ViewRequestPaneForTest(90, 18)
+	assert.Contains(t, afterUp, "BODY_LINE_000", "scrolling up should reveal the first body line again")
+	assert.Equal(t, 0, m.RequestTextOffset())
+}
+
+func TestUpdate_Mouse_RequestBodyPreviewIgnoresHorizontalWheel(t *testing.T) {
+	t.Parallel()
+
+	m := requestMouseModel(t).WithActiveRequest(&domain.Request{
+		ID: "req-horizontal", Name: "Large body", Method: "POST", URL: "https://example.test",
+		Body: numberedRequestBody(40),
+	}).WithFocus(tui.RequestPane)
+	x, y, ok := m.RequestBodyPreviewWheelPos()
+	require.True(t, ok)
+	m = callUpdate(t, m, tea.MouseMsg{
+		X: x, Y: y, Action: tea.MouseActionPress, Button: tea.MouseButtonWheelRight,
+	})
+	assert.Equal(t, 0, m.RequestTextOffset(), "horizontal wheel must not scroll request body")
+}
+
+func TestUpdate_Keyboard_ResponseTextScrollsBesideHistoryPopup(t *testing.T) {
+	t.Parallel()
+
+	execs := make([]*domain.Execution, 0, 4)
+	for i := 0; i < 4; i++ {
+		execs = append(execs, &domain.Execution{
+			ID: fmt.Sprintf("popup-%d", i), RequestID: "req-popup", StatusCode: 200,
+			ResponseBody: longResponseBody(), ResponseHeaders: `{}`,
+		})
+	}
+	m := resizedMouseUnitModel(t).
+		WithExecutions(execs).
+		WithExecCursor(2).
+		WithActiveField(tui.NoneField).
+		WithFocus(tui.ResponsePane)
+	_ = m.View()
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyDown})
+	assert.Greater(t, m.ResponseTextOffset(), 0, "plain Down should scroll text even with history popup visible")
+	assert.Equal(t, 2, m.ExecCursor(), "plain Down should not navigate history")
+}
+
+func numberedRequestBody(count int) string {
+	lines := make([]string, count)
+	for i := range lines {
+		lines[i] = fmt.Sprintf("BODY_LINE_%03d", i)
+	}
+	return strings.Join(lines, "\n")
+}
+
+func longResponseBody() string {
+	body := ""
+	for i := 0; i < 100; i++ {
+		body += fmt.Sprintf("line-%03d\n", i)
+	}
+	return body
+}
+
+func longResponseMouseModel(t *testing.T) tui.Model {
+	t.Helper()
+	return responseHistoryMouseModel(t, longResponseBody())
+}
+
+func responseHistoryMouseModel(t *testing.T, body string) tui.Model {
+	t.Helper()
+	m := resizedMouseUnitModel(t).
+		WithExecutions([]*domain.Execution{
+			{ID: "ex-0", RequestID: "req-1", StatusCode: 200, ResponseBody: body, ResponseHeaders: `{}`},
+			{ID: "ex-1", RequestID: "req-1", StatusCode: 200, ResponseBody: "older", ResponseHeaders: `{}`},
+		}).
+		WithExecCursor(0).
+		WithActiveField(tui.NoneField).
+		WithFocus(tui.ResponsePane)
+	_ = m.View()
+	return m
 }
 
 func TestUpdate_Mouse_ResponseHistoryPopupClick(t *testing.T) {

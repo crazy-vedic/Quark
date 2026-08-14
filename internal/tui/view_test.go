@@ -575,6 +575,30 @@ func TestTruncate_MaxColsTiny(t *testing.T) {
 	assert.NotContains(t, tui.Truncate("Hello", 2), "…")
 }
 
+func TestView_SidebarIndicatorsFitInsidePane(t *testing.T) {
+	reqs := make([]*domain.Request, 100)
+	for i := range reqs {
+		reqs[i] = &domain.Request{
+			ID:     fmt.Sprintf("r-%d", i),
+			Name:   "A request name that is deliberately much longer than the sidebar width",
+			Method: "DELETE",
+		}
+	}
+	m := newModel(defaultConfig()).
+		WithCollections([]*domain.Collection{{ID: "col-1", Name: "Collection with a very long name"}}).
+		WithCollectionRequests(map[string][]*domain.Request{"col-1": reqs}).
+		WithFocus(tui.SidebarPane)
+	m = callUpdate(t, m, tea.WindowSizeMsg{Width: 80, Height: 20})
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("l")})
+
+	view := m.View()
+	assert.Contains(t, view, "↓ more below")
+	assert.LessOrEqual(t, lipgloss.Height(view), m.Height())
+	for _, line := range strings.Split(view, "\n") {
+		assert.LessOrEqual(t, lipgloss.Width(line), m.Width(), "sidebar row wrapped: %q", line)
+	}
+}
+
 // limitLines must never emit more visual rows than its budget. Regression test
 // for the bug where the appended "… N more lines" notice pushed clipped output
 // to maxRows+1 rows, overflowing the exactly-terminal-height layout and

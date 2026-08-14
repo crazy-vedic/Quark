@@ -20,6 +20,7 @@ import (
 	"github.com/crazy-vedic/quark/internal/keybindings"
 	"github.com/crazy-vedic/quark/internal/schedule"
 	"github.com/crazy-vedic/quark/internal/store"
+	"github.com/crazy-vedic/quark/internal/timing"
 )
 
 // Update implements tea.Model — routes every message to the correct handler.
@@ -302,6 +303,13 @@ func (m Model) handleEsc() Model {
 // --- Normal mode ---
 
 func (m Model) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	timingSpan := m.timing.Track("tui.handle_normal_key")
+	defer timingSpan.Done()
+	started := time.Now()
+	defer func() {
+		logDebugTiming(m.debugLog, "handle_normal_key", started,
+			fmt.Sprintf("key=%q focus=%d", msg.String(), m.focus))
+	}()
 	// BUG-010: dismiss tmux warning on first interaction.
 	m.showTmuxWarning = false
 
@@ -310,12 +318,74 @@ func (m Model) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.activeField != noneField {
 		return m.handleRequestKey("", msg)
 	}
+	if m.focus == responsePane && isResponseHistoryKey(msg) {
+		if msg.Type == tea.KeyShiftDown || msg.Type == tea.KeyPgDown || msg.String() == "shift+pgdown" {
+			return m.handleResponseAction("history_next", timingSpan)
+		}
+		return m.handleResponseAction("history_prev", timingSpan)
+	}
+	if m.focus == requestPane && m.activeField == noneField && isVerticalScrollKey(msg) {
+		m.requestText.SetDebugLog(m.debugLog, "request")
+		m.requestText.SetTiming(m.timing)
+		m.setRequestTextContent(timingSpan)
+		r := m.requestBodyPreviewRect(m.currentLayout())
+		if r.right >= r.left && r.bottom >= r.top {
+			delta := -1
+			if msg.Type == tea.KeyDown || msg.Type == tea.KeyPgDown {
+				delta = 1
+			}
+			if msg.Type == tea.KeyPgUp || msg.Type == tea.KeyPgDown {
+				delta *= max(1, r.bottom-r.top)
+			}
+			m.requestText.Scroll(delta, max(1, r.right-r.left+1), max(1, r.bottom-r.top+1), timingSpan)
+		}
+		return m, nil
+	}
+	if m.focus == responsePane && (msg.Type == tea.KeyUp || msg.Type == tea.KeyDown || msg.Type == tea.KeyPgUp || msg.Type == tea.KeyPgDown) {
+		m.responseText.SetDebugLog(m.debugLog, "response")
+		m.responseText.SetTiming(m.timing)
+		m.setResponseTextContent(timingSpan)
+		textRect := m.responseTextRect(m.currentLayout())
+		width := max(1, textRect.right-textRect.left+1)
+		height := max(1, textRect.bottom-textRect.top+1)
+		delta := -1
+		if msg.Type == tea.KeyDown || msg.Type == tea.KeyPgDown {
+			delta = 1
+		}
+		if msg.Type == tea.KeyPgUp || msg.Type == tea.KeyPgDown {
+			delta *= max(1, height-1)
+		}
+		m.responseText.Scroll(delta, width, height, timingSpan)
+		return m, nil
+	}
 
 	if action, ok := m.resolver.Resolve(0, int(m.focus), msg); ok {
 		return m.dispatchNormalAction(action)
 	}
 	// Key didn't map to any action — intentional no-op.
 	return m, nil
+}
+
+func isVerticalScrollKey(msg tea.KeyMsg) bool {
+	return msg.Type == tea.KeyUp || msg.Type == tea.KeyDown || msg.Type == tea.KeyPgUp || msg.Type == tea.KeyPgDown
+}
+
+func isResponseHistoryKey(msg tea.KeyMsg) bool {
+	switch msg.Type {
+	case tea.KeyShiftUp, tea.KeyShiftDown:
+		return true
+	case tea.KeyPgUp, tea.KeyPgDown:
+		// Bubble Tea does not expose a separate Shift+PageUp key type on
+		// every terminal. Accept the modified form when the terminal reports
+		// it through the Alt flag, while plain PageUp/PageDown still scroll.
+		return msg.Alt
+	}
+	switch msg.String() {
+	case "shift+pgup", "shift+pageup", "shift+pgdown", "shift+pagedown":
+		return true
+	default:
+		return false
+	}
 }
 
 // dispatchNormalAction routes a resolver action in normal mode.
@@ -466,7 +536,14 @@ func (m Model) handleRequestAction(action string) (tea.Model, tea.Cmd) {
 }
 
 // handleResponseAction routes resolver actions for the response pane.
-func (m Model) handleResponseAction(action string) (tea.Model, tea.Cmd) {
+func (m Model) handleResponseAction(action string, parent ...*timing.Span) (tea.Model, tea.Cmd) {
+	timingSpan := m.timing.Track("tui.handle_response_action", timingParent(parent))
+	defer timingSpan.Done()
+	started := time.Now()
+	defer func() {
+		logDebugTiming(m.debugLog, "handle_response_action", started,
+			fmt.Sprintf("action=%s cursor=%d", action, m.execCursor))
+	}()
 	switch action {
 	case "history_next":
 		if m.execCursor < len(m.executions)-1 {
