@@ -302,6 +302,11 @@ func (m Model) handleEsc() Model {
 // --- Normal mode ---
 
 func (m Model) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	started := time.Now()
+	defer func() {
+		logDebugTiming(m.debugLog, "handle_normal_key", started,
+			fmt.Sprintf("key=%q focus=%d", msg.String(), m.focus))
+	}()
 	// BUG-010: dismiss tmux warning on first interaction.
 	m.showTmuxWarning = false
 
@@ -317,7 +322,8 @@ func (m Model) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleResponseAction("history_prev")
 	}
 	if m.focus == requestPane && m.activeField == noneField && isVerticalScrollKey(msg) {
-		m.requestText.SetContent(m.requestBodyPreviewContent())
+		m.requestText.SetDebugLog(m.debugLog, "request")
+		m.setRequestTextContent()
 		r := m.requestBodyPreviewRect(m.currentLayout())
 		if r.right >= r.left && r.bottom >= r.top {
 			delta := -1
@@ -332,7 +338,8 @@ func (m Model) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	if m.focus == responsePane && (msg.Type == tea.KeyUp || msg.Type == tea.KeyDown || msg.Type == tea.KeyPgUp || msg.Type == tea.KeyPgDown) {
-		m.responseText.SetContent(m.responseTextContent())
+		m.responseText.SetDebugLog(m.debugLog, "response")
+		m.setResponseTextContent()
 		textRect := m.responseTextRect(m.currentLayout())
 		width := max(1, textRect.right-textRect.left+1)
 		height := max(1, textRect.bottom-textRect.top+1)
@@ -525,6 +532,11 @@ func (m Model) handleRequestAction(action string) (tea.Model, tea.Cmd) {
 
 // handleResponseAction routes resolver actions for the response pane.
 func (m Model) handleResponseAction(action string) (tea.Model, tea.Cmd) {
+	started := time.Now()
+	defer func() {
+		logDebugTiming(m.debugLog, "handle_response_action", started,
+			fmt.Sprintf("action=%s cursor=%d", action, m.execCursor))
+	}()
 	switch action {
 	case "history_next":
 		if m.execCursor < len(m.executions)-1 {

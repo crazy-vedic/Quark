@@ -64,6 +64,52 @@ func TestScrollableTextSetContentResetsOnlyWhenContentChanges(t *testing.T) {
 	}
 }
 
+func TestScrollableTextCachesWrappedLinesPerWidth(t *testing.T) {
+	var text scrollableText
+	text.SetContent("one\ntwo\nthree")
+
+	text.Scroll(1, 10, 1)
+	first := text.wrapped
+	text.Scroll(1, 10, 1)
+	if len(text.wrapped) == 0 || &text.wrapped[0] != &first[0] {
+		t.Fatal("scrolling at the same width should reuse wrapped lines")
+	}
+
+	text.Scroll(1, 20, 1)
+	if text.wrappedFor != 20 {
+		t.Fatalf("wrapped width = %d, want 20", text.wrappedFor)
+	}
+}
+
+func TestScrollableTextCachesFormattedContentBySource(t *testing.T) {
+	var text scrollableText
+	calls := 0
+	format := func() string {
+		calls++
+		return "formatted body"
+	}
+
+	text.SetFormattedContent("response-1", format)
+	text.SetFormattedContent("response-1", format)
+	if calls != 1 {
+		t.Fatalf("formatter calls = %d, want 1 for the same source", calls)
+	}
+
+	text.Scroll(1, 20, 1)
+	text.SetFormattedContent("response-1", format)
+	if calls != 1 {
+		t.Fatalf("formatter calls after scrolling = %d, want 1", calls)
+	}
+
+	text.SetFormattedContent("response-2", format)
+	if calls != 2 {
+		t.Fatalf("formatter calls after source change = %d, want 2", calls)
+	}
+	if text.offset != 0 {
+		t.Fatalf("offset after source change = %d, want 0", text.offset)
+	}
+}
+
 func TestScrollableTextHandlesEmptyAndInvalidViewports(t *testing.T) {
 	var text scrollableText
 	text.SetContent("content")

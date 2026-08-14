@@ -1,25 +1,87 @@
 package tui
 
-import "strings"
+import (
+	"fmt"
+	"os"
+	"strings"
+	"time"
+)
 
 // scrollableText is the read-only text component used for large bodies.
 type scrollableText struct {
-	content string
-	offset  int
+	content    string
+	sourceKey  string
+	formatted  bool
+	offset     int
+	wrapped    []string
+	wrappedFor int
+	debugLog   *os.File
+	debugName  string
+}
+
+func (s *scrollableText) SetDebugLog(log *os.File, name string) {
+	s.debugLog = log
+	s.debugName = name
+}
+
+func (s *scrollableText) logTiming(event string, started time.Time, width, height int, extra string) {
+	if s.debugLog == nil {
+		return
+	}
+	fmt.Fprintf(s.debugLog,
+		"[%s] scrollable_%s component=%s duration=%s bytes=%d width=%d height=%d offset=%d wrapped_lines=%d %s\n",
+		time.Now().Format("15:04:05.000"), event, s.debugName, time.Since(started),
+		len(s.content), width, height, s.offset, len(s.wrapped), extra)
 }
 
 func (s *scrollableText) SetContent(content string) {
 	if s.content != content {
-		s.content = content
-		s.offset = 0
+		debugLog, debugName := s.debugLog, s.debugName
+		*s = scrollableText{content: content, debugLog: debugLog, debugName: debugName}
 	}
 }
 
-func (s *scrollableText) Scroll(delta, width, height int) {
-	if width <= 0 || height <= 0 {
+// SetFormattedContent caches the result of format for a logical source. This
+// keeps expensive formatting (for example JSON pretty-printing and syntax
+// highlighting) out of repeated scroll/update/render cycles.
+func (s *scrollableText) SetFormattedContent(sourceKey string, format func() string) {
+	if s.formatted && s.sourceKey == sourceKey {
 		return
 	}
-	lines := wrappedTextLines(s.content, width)
+	content := ""
+	if format != nil {
+		content = format()
+	}
+	debugLog, debugName := s.debugLog, s.debugName
+	*s = scrollableText{
+		content:   content,
+		sourceKey: sourceKey,
+		formatted: true,
+		debugLog:  debugLog,
+		debugName: debugName,
+	}
+}
+
+func (s *scrollableText) lines(width int) []string {
+	if width <= 0 || s.content == "" {
+		return nil
+	}
+	if s.wrapped == nil || s.wrappedFor != width {
+		started := time.Now()
+		s.wrapped = wrappedTextLines(s.content, width)
+		s.wrappedFor = width
+		s.logTiming("wrap", started, width, 0, "cache=miss")
+	}
+	return s.wrapped
+}
+
+func (s *scrollableText) Scroll(delta, width, height int) {
+	started := time.Now()
+	if width <= 0 || height <= 0 {
+		s.logTiming("scroll", started, width, height, fmt.Sprintf("delta=%d result=invalid_viewport", delta))
+		return
+	}
+	lines := s.lines(width)
 	maxOffset := len(lines) - height
 	if maxOffset < 0 {
 		maxOffset = 0
@@ -31,14 +93,18 @@ func (s *scrollableText) Scroll(delta, width, height int) {
 	if s.offset > maxOffset {
 		s.offset = maxOffset
 	}
+	s.logTiming("scroll", started, width, height, fmt.Sprintf("delta=%d max_offset=%d", delta, maxOffset))
 }
 
 func (s scrollableText) View(width, height int) string {
+	started := time.Now()
 	if width <= 0 || height <= 0 {
+		s.logTiming("view", started, width, height, "result=invalid_viewport")
 		return ""
 	}
-	lines := wrappedTextLines(s.content, width)
+	lines := s.lines(width)
 	if len(lines) == 0 {
+		s.logTiming("view", started, width, height, "result=empty")
 		return ""
 	}
 	offset := s.offset
@@ -53,7 +119,9 @@ func (s scrollableText) View(width, height int) string {
 	if end > len(lines) {
 		end = len(lines)
 	}
-	return strings.Join(lines[offset:end], "\n")
+	view := strings.Join(lines[offset:end], "\n")
+	s.logTiming("view", started, width, height, fmt.Sprintf("visible_lines=%d", end-offset))
+	return view
 }
 
 func wrappedTextLines(content string, width int) []string {

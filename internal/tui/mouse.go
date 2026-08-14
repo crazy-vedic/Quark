@@ -1,6 +1,9 @@
 package tui
 
 import (
+	"fmt"
+	"time"
+
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
@@ -54,7 +57,8 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 				return m, cmd
 			}
 			if m.activeField == noneField && m.requestBodyPreviewRect(layout).contains(msg.X, msg.Y) {
-				m.requestText.SetContent(m.requestBodyPreviewContent())
+				m.requestText.SetDebugLog(m.debugLog, "request")
+				m.setRequestTextContent()
 				r := m.requestBodyPreviewRect(layout)
 				delta := 0
 				switch msg.Button {
@@ -144,6 +148,11 @@ func (m Model) handleResponseClick(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleResponseWheel(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	started := time.Now()
+	defer func() {
+		logDebugTiming(m.debugLog, "handle_response_wheel", started,
+			fmt.Sprintf("x=%d y=%d button=%d", msg.X, msg.Y, msg.Button))
+	}()
 	m.focus = responsePane
 	m.activeField = noneField
 	layout := m.currentLayout()
@@ -159,7 +168,8 @@ func (m Model) handleResponseWheel(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	if !textRect.contains(msg.X, msg.Y) {
 		return m, nil
 	}
-	m.responseText.SetContent(m.responseTextContent())
+	m.responseText.SetDebugLog(m.debugLog, "response")
+	m.setResponseTextContent()
 	width := max(1, textRect.right-textRect.left+1)
 	height := max(1, textRect.bottom-textRect.top+1)
 	switch msg.Button {

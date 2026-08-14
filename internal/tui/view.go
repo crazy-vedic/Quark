@@ -431,6 +431,11 @@ func (m Model) requestTitleRightChromeWidth() int {
 }
 
 func (m Model) viewRequestPane(w, h int) string {
+	started := time.Now()
+	defer func() {
+		logDebugTiming(m.debugLog, "view_request_pane", started,
+			fmt.Sprintf("width=%d height=%d field=%d", w, h, m.activeField))
+	}()
 	border := inactiveBorder
 	if m.focus == requestPane {
 		border = activeBorder
@@ -561,7 +566,8 @@ func (m Model) viewRequestPane(w, h int) string {
 		}
 		content = preview.String()
 	case m.activeRequest != nil:
-		content = m.requestBodyPreviewContent()
+		// The read-only preview is formatted lazily by requestText below.
+		content = ""
 	}
 
 	// Responsive key hints — shorten at narrow terminals, then hard-clamp to one
@@ -631,7 +637,10 @@ func (m Model) viewRequestPane(w, h int) string {
 	}
 	var renderedContent string
 	if m.activeField == noneField && m.activeRequest != nil {
-		m.requestText.SetContent(content)
+		m.requestText.SetDebugLog(m.debugLog, "request")
+		m.requestText.SetFormattedContent(m.requestBodyPreviewSourceKey(), func() string {
+			return m.requestBodyPreviewContent()
+		})
 		renderedContent = m.requestText.View(innerWidth, contentLines)
 	} else {
 		renderedContent = limitLines(content, innerWidth, contentLines)
@@ -659,6 +668,11 @@ func (m Model) viewRequestPane(w, h int) string {
 }
 
 func (m Model) requestBodyPreviewContent() string {
+	started := time.Now()
+	defer func() {
+		logDebugTiming(m.debugLog, "request_body_preview_content", started,
+			fmt.Sprintf("has_request=%t", m.activeRequest != nil))
+	}()
 	if m.activeRequest == nil {
 		return ""
 	}
@@ -719,6 +733,11 @@ func (m Model) viewAuthEditor() string {
 // --- Response pane ---
 
 func (m Model) viewResponsePane(w, h int) string {
+	started := time.Now()
+	defer func() {
+		logDebugTiming(m.debugLog, "view_response_pane", started,
+			fmt.Sprintf("width=%d height=%d tab=%d cursor=%d", w, h, m.responseTab, m.execCursor))
+	}()
 	border := inactiveBorder
 	if m.focus == responsePane {
 		border = activeBorder
@@ -770,39 +789,45 @@ func (m Model) viewResponsePane(w, h int) string {
 		bodyLines = 0
 	}
 
-	// Tab content — clipped to available lines.
-	var body string
+	// Tab content is formatted lazily by the scrollable component.
+	var formatBody func() string
 	if currentExec != nil {
 		switch m.responseTab {
 		case bodyTab:
-			body = m.viewExecutionBody(currentExec)
+			formatBody = func() string { return m.viewExecutionBody(currentExec) }
 		case headersTab:
-			body = m.viewExecutionHeaders(currentExec)
+			formatBody = func() string { return m.viewExecutionHeaders(currentExec) }
 		case rawTab:
-			if currentExec.ResponseBody == "" {
-				body = mutedStyle.Render("  (empty body)")
-			} else {
-				body = stripANSI(currentExec.ResponseBody)
+			formatBody = func() string {
+				if currentExec.ResponseBody == "" {
+					return mutedStyle.Render("  (empty body)")
+				}
+				return stripANSI(currentExec.ResponseBody)
 			}
 		}
 	} else if r := m.response; r != nil {
 		switch m.responseTab {
 		case bodyTab:
-			body = m.viewResponseBody()
+			formatBody = func() string { return m.viewResponseBody() }
 		case headersTab:
-			body = m.viewResponseHeaders()
+			formatBody = func() string { return m.viewResponseHeaders() }
 		case rawTab:
-			if r.Body != nil {
-				body = stripANSI(string(r.Body))
-			} else if r.TempPath != "" {
-				body = mutedStyle.Render(fmt.Sprintf("[streamed → %s]", r.TempPath))
+			formatBody = func() string {
+				if r.Body != nil {
+					return stripANSI(string(r.Body))
+				}
+				if r.TempPath != "" {
+					return mutedStyle.Render(fmt.Sprintf("[streamed → %s]", r.TempPath))
+				}
+				return ""
 			}
 		}
 	}
 	// Body/Raw content is owned by a scrollable text component. Keep the
 	// response history popup as a separate column, but let wheel and arrows
 	// move through the body instead of changing history.
-	m.responseText.SetContent(body)
+	m.responseText.SetDebugLog(m.debugLog, "response")
+	m.responseText.SetFormattedContent(m.responseTextSourceKey(), formatBody)
 
 	popup := m.viewExecutionHistoryPopup(w, bodyLines)
 	if popup != "" && w >= 64 {
@@ -835,10 +860,31 @@ func (m Model) viewResponsePane(w, h int) string {
 	return border.Width(w).Height(h).MaxHeight(h + 2).Render(clipToRows(sb.String(), innerWidth, h))
 }
 
-// responseTextContent is shared by input handling and rendering. View has a
-// value receiver, so scrolling handlers refresh the component before changing
-// its persistent offset.
-func (m Model) responseTextContent() string {
+func (m Model) requestBodyPreviewSourceKey() string {
+	if m.activeRequest == nil {
+		return "request:none"
+	}
+	return fmt.Sprintf("request:%p:%s", m.activeRequest, m.activeRequest.ID)
+}
+
+func (m Model) responseTextSourceKey() string {
+	if currentExec := m.selectedExecution(); currentExec != nil {
+		return fmt.Sprintf("execution:%p:%s:%d", currentExec, currentExec.ID, m.responseTab)
+	}
+	if m.response != nil {
+		return fmt.Sprintf("response:%p:%d", m.response, m.responseTab)
+	}
+	return fmt.Sprintf("response:none:%d", m.responseTab)
+}
+
+// formatResponseTextContent produces the formatted response content. The
+// scrollable component owns caching; callers should use setResponseTextContent.
+func (m Model) formatResponseTextContent() string {
+	started := time.Now()
+	defer func() {
+		logDebugTiming(m.debugLog, "response_text_content", started,
+			fmt.Sprintf("tab=%d cursor=%d", m.responseTab, m.execCursor))
+	}()
 	currentExec := m.selectedExecution()
 	if currentExec != nil {
 		switch m.responseTab {
@@ -868,6 +914,20 @@ func (m Model) responseTextContent() string {
 		}
 	}
 	return ""
+}
+
+func (m *Model) setRequestTextContent() {
+	m.requestText.SetDebugLog(m.debugLog, "request")
+	m.requestText.SetFormattedContent(m.requestBodyPreviewSourceKey(), func() string {
+		return m.requestBodyPreviewContent()
+	})
+}
+
+func (m *Model) setResponseTextContent() {
+	m.responseText.SetDebugLog(m.debugLog, "response")
+	m.responseText.SetFormattedContent(m.responseTextSourceKey(), func() string {
+		return m.formatResponseTextContent()
+	})
 }
 
 func (m Model) viewTabBar(maxWidth int) string {
@@ -992,6 +1052,15 @@ func isBinaryBody(b []byte) bool {
 }
 
 func (m Model) viewResponseBody() string {
+	started := time.Now()
+	defer func() {
+		bodyBytes := 0
+		if m.response != nil {
+			bodyBytes = len(m.response.Body)
+		}
+		logDebugTiming(m.debugLog, "view_response_body", started,
+			fmt.Sprintf("bytes=%d", bodyBytes))
+	}()
 	r := m.response
 	if r.Body == nil {
 		if r.TempPath != "" {
@@ -1034,6 +1103,15 @@ func (m Model) viewResponseHeaders() string {
 }
 
 func (m Model) viewExecutionBody(ex *domain.Execution) string {
+	started := time.Now()
+	defer func() {
+		bodyBytes := 0
+		if ex != nil {
+			bodyBytes = len(ex.ResponseBody)
+		}
+		logDebugTiming(m.debugLog, "view_execution_body", started,
+			fmt.Sprintf("bytes=%d", bodyBytes))
+	}()
 	if ex.Error != "" {
 		if ex.ResponseBody == "" {
 			return errorStyle.Render("  " + ex.Error)
