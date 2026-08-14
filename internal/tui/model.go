@@ -418,6 +418,8 @@ func New(deps Deps) Model {
 		importName:            importName,
 		promptInput:           promptInput,
 		bodyTextarea:          bodyTA,
+		requestText:           scrollableText{cache: &scrollableTextCache{}},
+		responseText:          scrollableText{cache: &scrollableTextCache{}},
 		headerKeyInput:        headerKeyInput,
 		headerValueInput:      headerValueInput,
 		expanded:              make(map[string]bool),

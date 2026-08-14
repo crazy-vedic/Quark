@@ -57,9 +57,11 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 				return m, cmd
 			}
 			if m.activeField == noneField && m.requestBodyPreviewRect(layout).contains(msg.X, msg.Y) {
+				timingSpan := m.timing.Track("tui.handle_request_wheel")
+				defer timingSpan.Done()
 				m.requestText.SetDebugLog(m.debugLog, "request")
 				m.requestText.SetTiming(m.timing)
-				m.setRequestTextContent()
+				m.setRequestTextContent(timingSpan)
 				r := m.requestBodyPreviewRect(layout)
 				delta := 0
 				switch msg.Button {
@@ -69,7 +71,7 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 					delta = -3
 				}
 				if delta != 0 {
-					m.requestText.Scroll(delta, max(1, r.right-r.left+1), max(1, r.bottom-r.top+1))
+					m.requestText.Scroll(delta, max(1, r.right-r.left+1), max(1, r.bottom-r.top+1), timingSpan)
 				}
 				return m, nil
 			}
@@ -149,8 +151,8 @@ func (m Model) handleResponseClick(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleResponseWheel(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
-	stopTiming := m.timing.Track("tui.handle_response_wheel")
-	defer stopTiming()
+	timingSpan := m.timing.Track("tui.handle_response_wheel")
+	defer timingSpan.Done()
 	started := time.Now()
 	defer func() {
 		logDebugTiming(m.debugLog, "handle_response_wheel", started,
@@ -162,10 +164,10 @@ func (m Model) handleResponseWheel(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	textRect := m.responseTextRect(layout)
 	if !textRect.contains(msg.X, msg.Y) && len(m.executions) > 1 {
 		if msg.Button == tea.MouseButtonWheelDown {
-			return m.handleResponseAction("history_next")
+			return m.handleResponseAction("history_next", timingSpan)
 		}
 		if msg.Button == tea.MouseButtonWheelUp {
-			return m.handleResponseAction("history_prev")
+			return m.handleResponseAction("history_prev", timingSpan)
 		}
 	}
 	if !textRect.contains(msg.X, msg.Y) {
@@ -173,14 +175,14 @@ func (m Model) handleResponseWheel(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	}
 	m.responseText.SetDebugLog(m.debugLog, "response")
 	m.responseText.SetTiming(m.timing)
-	m.setResponseTextContent()
+	m.setResponseTextContent(timingSpan)
 	width := max(1, textRect.right-textRect.left+1)
 	height := max(1, textRect.bottom-textRect.top+1)
 	switch msg.Button {
 	case tea.MouseButtonWheelDown:
-		m.responseText.Scroll(3, width, height)
+		m.responseText.Scroll(3, width, height, timingSpan)
 	case tea.MouseButtonWheelUp:
-		m.responseText.Scroll(-3, width, height)
+		m.responseText.Scroll(-3, width, height, timingSpan)
 	}
 	return m, nil
 }

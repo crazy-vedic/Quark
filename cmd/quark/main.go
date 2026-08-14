@@ -32,9 +32,10 @@ import (
 )
 
 var (
-	debugMode bool
-	configDir string
-	dimFlag   string
+	debugMode  bool
+	timingMode string
+	configDir  string
+	dimFlag    string
 )
 
 func main() {
@@ -61,6 +62,8 @@ func run() error {
 	root.SetContext(ctx)
 	root.PersistentFlags().
 		BoolVar(&debugMode, "debug", false, "Log keystrokes and diagnostics to /tmp/quark_debug_logs/debug.log")
+	root.PersistentFlags().
+		StringVar(&timingMode, "timing", "tree", "Timing report format with --debug: tree|flat|off")
 	root.PersistentFlags().
 		StringVar(&configDir, "config", defaultConfigDir, "Directory for config and db")
 	root.PersistentFlags().
@@ -238,7 +241,12 @@ func launchTUI(
 		}
 		forceDim = parsed
 	}
-	timingCollector := timing.New(debugMode)
+	timingFormat, err := timing.ParseReportFormat(timingMode)
+	if err != nil {
+		return err
+	}
+	timingEnabled := debugMode && timingFormat != timing.ReportFormatOff
+	timingCollector := timing.New(timingEnabled)
 	model := tui.New(tui.Deps{
 		Lister:          st,
 		Reader:          st,
@@ -271,10 +279,15 @@ func launchTUI(
 		tea.WithFilter(resize.Filter),
 	)
 	resize.Bind(p.Send)
-	_, err := p.Run()
-	if debugMode {
+	_, err = p.Run()
+	if timingEnabled {
 		// Print the opt-in timing summary after the alternate screen is closed.
-		timingCollector.Report(os.Stderr, 30)
+		switch timingFormat {
+		case timing.ReportFormatFlat:
+			timingCollector.ReportFlat(os.Stderr, 30)
+		default:
+			timingCollector.ReportTree(os.Stderr, 30)
+		}
 	}
 	if err != nil && !errors.Is(err, tea.ErrProgramKilled) {
 		return fmt.Errorf("tui: %w", err)

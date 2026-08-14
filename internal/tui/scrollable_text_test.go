@@ -69,15 +69,58 @@ func TestScrollableTextCachesWrappedLinesPerWidth(t *testing.T) {
 	text.SetContent("one\ntwo\nthree")
 
 	text.Scroll(1, 10, 1)
-	first := text.wrapped
+	first := text.ensureCache().wrapped[10]
 	text.Scroll(1, 10, 1)
-	if len(text.wrapped) == 0 || &text.wrapped[0] != &first[0] {
+	if len(text.ensureCache().wrapped[10]) == 0 || &text.ensureCache().wrapped[10][0] != &first[0] {
 		t.Fatal("scrolling at the same width should reuse wrapped lines")
 	}
 
 	text.Scroll(1, 20, 1)
-	if text.wrappedFor != 20 {
-		t.Fatalf("wrapped width = %d, want 20", text.wrappedFor)
+	if _, ok := text.ensureCache().wrapped[20]; !ok {
+		t.Fatal("wrapped lines were not cached for width 20")
+	}
+	text.Scroll(-1, 10, 1)
+	if &text.ensureCache().wrapped[10][0] != &first[0] {
+		t.Fatal("returning to width 10 did not reuse its wrapped lines")
+	}
+}
+
+func TestScrollableTextWrappedCacheSurvivesValueCopies(t *testing.T) {
+	var original scrollableText
+	original.SetContent("abcdefghijklmnopqrstuvwxyz")
+
+	copyForRender := original
+	if got := copyForRender.View(5, 2); got != "abcde\nfghij" {
+		t.Fatalf("copied View() = %q, want %q", got, "abcde\\nfghij")
+	}
+	if len(original.ensureCache().wrapped) != 1 {
+		t.Fatal("wrapped cache was not shared with the copied component")
+	}
+	first := original.ensureCache().wrapped[5]
+
+	if got := original.View(5, 2); got != "abcde\nfghij" {
+		t.Fatalf("original View() = %q, want %q", got, "abcde\\nfghij")
+	}
+	if &original.ensureCache().wrapped[5][0] != &first[0] {
+		t.Fatal("original component did not reuse the copied component cache")
+	}
+}
+
+func TestScrollableTextCachesDistinctWidthsWithoutMixingVisibleData(t *testing.T) {
+	var text scrollableText
+	text.SetContent("abcdefghijklmnop")
+
+	if got := text.View(4, 2); got != "abcd\nefgh" {
+		t.Fatalf("width-4 view = %q, want %q", got, "abcd\\nefgh")
+	}
+	if got := text.View(8, 2); got != "abcdefgh\nijklmnop" {
+		t.Fatalf("width-8 view = %q, want %q", got, "abcdefgh\\nijklmnop")
+	}
+	if got := text.View(4, 2); got != "abcd\nefgh" {
+		t.Fatalf("width-4 cached view = %q, want %q", got, "abcd\\nefgh")
+	}
+	if len(text.ensureCache().wrapped) != 2 {
+		t.Fatalf("cached widths = %d, want 2", len(text.ensureCache().wrapped))
 	}
 }
 
@@ -96,6 +139,8 @@ func TestScrollableTextCachesFormattedContentBySource(t *testing.T) {
 	}
 
 	text.Scroll(1, 20, 1)
+	_ = text.View(10, 1)
+	_ = text.View(20, 1)
 	text.SetFormattedContent("response-1", format)
 	if calls != 1 {
 		t.Fatalf("formatter calls after scrolling = %d, want 1", calls)
@@ -107,6 +152,30 @@ func TestScrollableTextCachesFormattedContentBySource(t *testing.T) {
 	}
 	if text.offset != 0 {
 		t.Fatalf("offset after source change = %d, want 0", text.offset)
+	}
+	if len(text.ensureCache().wrapped) != 0 {
+		t.Fatalf("wrapped widths after source change = %d, want 0", len(text.ensureCache().wrapped))
+	}
+}
+
+func TestScrollableTextFormattedCacheSurvivesValueCopies(t *testing.T) {
+	var original scrollableText
+	calls := 0
+	original.SetFormattedContent("body-1", func() string {
+		calls++
+		return "one\ntwo\nthree"
+	})
+
+	copyForRender := original
+	copyForRender.SetFormattedContent("body-1", func() string {
+		calls++
+		return "wrong content"
+	})
+	if calls != 1 {
+		t.Fatalf("formatter calls after copied component = %d, want 1", calls)
+	}
+	if got := copyForRender.View(20, 2); got != "one\ntwo" {
+		t.Fatalf("copied formatted View() = %q, want %q", got, "one\\ntwo")
 	}
 }
 

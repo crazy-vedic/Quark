@@ -20,6 +20,7 @@ import (
 	"github.com/crazy-vedic/quark/internal/keybindings"
 	"github.com/crazy-vedic/quark/internal/schedule"
 	"github.com/crazy-vedic/quark/internal/store"
+	"github.com/crazy-vedic/quark/internal/timing"
 )
 
 // Update implements tea.Model — routes every message to the correct handler.
@@ -302,8 +303,8 @@ func (m Model) handleEsc() Model {
 // --- Normal mode ---
 
 func (m Model) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	stopTiming := m.timing.Track("tui.handle_normal_key")
-	defer stopTiming()
+	timingSpan := m.timing.Track("tui.handle_normal_key")
+	defer timingSpan.Done()
 	started := time.Now()
 	defer func() {
 		logDebugTiming(m.debugLog, "handle_normal_key", started,
@@ -319,14 +320,14 @@ func (m Model) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 	if m.focus == responsePane && isResponseHistoryKey(msg) {
 		if msg.Type == tea.KeyShiftDown || msg.Type == tea.KeyPgDown || msg.String() == "shift+pgdown" {
-			return m.handleResponseAction("history_next")
+			return m.handleResponseAction("history_next", timingSpan)
 		}
-		return m.handleResponseAction("history_prev")
+		return m.handleResponseAction("history_prev", timingSpan)
 	}
 	if m.focus == requestPane && m.activeField == noneField && isVerticalScrollKey(msg) {
 		m.requestText.SetDebugLog(m.debugLog, "request")
 		m.requestText.SetTiming(m.timing)
-		m.setRequestTextContent()
+		m.setRequestTextContent(timingSpan)
 		r := m.requestBodyPreviewRect(m.currentLayout())
 		if r.right >= r.left && r.bottom >= r.top {
 			delta := -1
@@ -336,14 +337,14 @@ func (m Model) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if msg.Type == tea.KeyPgUp || msg.Type == tea.KeyPgDown {
 				delta *= max(1, r.bottom-r.top)
 			}
-			m.requestText.Scroll(delta, max(1, r.right-r.left+1), max(1, r.bottom-r.top+1))
+			m.requestText.Scroll(delta, max(1, r.right-r.left+1), max(1, r.bottom-r.top+1), timingSpan)
 		}
 		return m, nil
 	}
 	if m.focus == responsePane && (msg.Type == tea.KeyUp || msg.Type == tea.KeyDown || msg.Type == tea.KeyPgUp || msg.Type == tea.KeyPgDown) {
 		m.responseText.SetDebugLog(m.debugLog, "response")
 		m.responseText.SetTiming(m.timing)
-		m.setResponseTextContent()
+		m.setResponseTextContent(timingSpan)
 		textRect := m.responseTextRect(m.currentLayout())
 		width := max(1, textRect.right-textRect.left+1)
 		height := max(1, textRect.bottom-textRect.top+1)
@@ -354,7 +355,7 @@ func (m Model) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if msg.Type == tea.KeyPgUp || msg.Type == tea.KeyPgDown {
 			delta *= max(1, height-1)
 		}
-		m.responseText.Scroll(delta, width, height)
+		m.responseText.Scroll(delta, width, height, timingSpan)
 		return m, nil
 	}
 
@@ -535,9 +536,9 @@ func (m Model) handleRequestAction(action string) (tea.Model, tea.Cmd) {
 }
 
 // handleResponseAction routes resolver actions for the response pane.
-func (m Model) handleResponseAction(action string) (tea.Model, tea.Cmd) {
-	stopTiming := m.timing.Track("tui.handle_response_action")
-	defer stopTiming()
+func (m Model) handleResponseAction(action string, parent ...*timing.Span) (tea.Model, tea.Cmd) {
+	timingSpan := m.timing.Track("tui.handle_response_action", timingParent(parent))
+	defer timingSpan.Done()
 	started := time.Now()
 	defer func() {
 		logDebugTiming(m.debugLog, "handle_response_action", started,
