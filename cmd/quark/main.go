@@ -27,6 +27,7 @@ import (
 	"github.com/crazy-vedic/quark/internal/keybindings"
 	"github.com/crazy-vedic/quark/internal/search"
 	"github.com/crazy-vedic/quark/internal/store"
+	"github.com/crazy-vedic/quark/internal/timing"
 	"github.com/crazy-vedic/quark/internal/tui"
 )
 
@@ -237,6 +238,7 @@ func launchTUI(
 		}
 		forceDim = parsed
 	}
+	timingCollector := timing.New(debugMode)
 	model := tui.New(tui.Deps{
 		Lister:          st,
 		Reader:          st,
@@ -254,6 +256,7 @@ func launchTUI(
 		Resolver:        keybindings.NewResolver(cfg.Keybindings),
 		Ctx:             ctx, // signal-aware context: TUI goroutines cancel on SIGINT/SIGTERM
 		DebugLog:        debugLog,
+		Timing:          timingCollector,
 		ConfigDir:       configDir,
 		ForceDim:        forceDim,
 	})
@@ -269,6 +272,10 @@ func launchTUI(
 	)
 	resize.Bind(p.Send)
 	_, err := p.Run()
+	if debugMode {
+		// Print the opt-in timing summary after the alternate screen is closed.
+		timingCollector.Report(os.Stderr, 30)
+	}
 	if err != nil && !errors.Is(err, tea.ErrProgramKilled) {
 		return fmt.Errorf("tui: %w", err)
 	}

@@ -4,7 +4,16 @@ import (
 	"fmt"
 	"os"
 	"time"
+
+	"github.com/crazy-vedic/quark/internal/timing"
 )
+
+func collectorOrDefault(collector *timing.Collector) *timing.Collector {
+	if collector != nil {
+		return collector
+	}
+	return timing.Default()
+}
 
 // logDebugTiming records elapsed time for expensive UI paths when --debug is
 // enabled. It intentionally does nothing in normal runs.

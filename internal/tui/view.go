@@ -431,6 +431,8 @@ func (m Model) requestTitleRightChromeWidth() int {
 }
 
 func (m Model) viewRequestPane(w, h int) string {
+	stopTiming := m.timing.Track("tui.view_request_pane")
+	defer stopTiming()
 	started := time.Now()
 	defer func() {
 		logDebugTiming(m.debugLog, "view_request_pane", started,
@@ -638,6 +640,7 @@ func (m Model) viewRequestPane(w, h int) string {
 	var renderedContent string
 	if m.activeField == noneField && m.activeRequest != nil {
 		m.requestText.SetDebugLog(m.debugLog, "request")
+		m.requestText.SetTiming(m.timing)
 		m.requestText.SetFormattedContent(m.requestBodyPreviewSourceKey(), func() string {
 			return m.requestBodyPreviewContent()
 		})
@@ -668,6 +671,8 @@ func (m Model) viewRequestPane(w, h int) string {
 }
 
 func (m Model) requestBodyPreviewContent() string {
+	stopTiming := m.timing.Track("tui.request_body_preview_content")
+	defer stopTiming()
 	started := time.Now()
 	defer func() {
 		logDebugTiming(m.debugLog, "request_body_preview_content", started,
@@ -733,6 +738,8 @@ func (m Model) viewAuthEditor() string {
 // --- Response pane ---
 
 func (m Model) viewResponsePane(w, h int) string {
+	stopTiming := m.timing.Track("tui.view_response_pane")
+	defer stopTiming()
 	started := time.Now()
 	defer func() {
 		logDebugTiming(m.debugLog, "view_response_pane", started,
@@ -827,6 +834,7 @@ func (m Model) viewResponsePane(w, h int) string {
 	// response history popup as a separate column, but let wheel and arrows
 	// move through the body instead of changing history.
 	m.responseText.SetDebugLog(m.debugLog, "response")
+	m.responseText.SetTiming(m.timing)
 	m.responseText.SetFormattedContent(m.responseTextSourceKey(), formatBody)
 
 	popup := m.viewExecutionHistoryPopup(w, bodyLines)
@@ -880,6 +888,8 @@ func (m Model) responseTextSourceKey() string {
 // formatResponseTextContent produces the formatted response content. The
 // scrollable component owns caching; callers should use setResponseTextContent.
 func (m Model) formatResponseTextContent() string {
+	stopTiming := m.timing.Track("tui.response_text_content")
+	defer stopTiming()
 	started := time.Now()
 	defer func() {
 		logDebugTiming(m.debugLog, "response_text_content", started,
@@ -918,6 +928,7 @@ func (m Model) formatResponseTextContent() string {
 
 func (m *Model) setRequestTextContent() {
 	m.requestText.SetDebugLog(m.debugLog, "request")
+	m.requestText.SetTiming(m.timing)
 	m.requestText.SetFormattedContent(m.requestBodyPreviewSourceKey(), func() string {
 		return m.requestBodyPreviewContent()
 	})
@@ -925,6 +936,7 @@ func (m *Model) setRequestTextContent() {
 
 func (m *Model) setResponseTextContent() {
 	m.responseText.SetDebugLog(m.debugLog, "response")
+	m.responseText.SetTiming(m.timing)
 	m.responseText.SetFormattedContent(m.responseTextSourceKey(), func() string {
 		return m.formatResponseTextContent()
 	})
@@ -1052,6 +1064,8 @@ func isBinaryBody(b []byte) bool {
 }
 
 func (m Model) viewResponseBody() string {
+	stopTiming := m.timing.Track("tui.view_response_body")
+	defer stopTiming()
 	started := time.Now()
 	defer func() {
 		bodyBytes := 0
@@ -1103,6 +1117,8 @@ func (m Model) viewResponseHeaders() string {
 }
 
 func (m Model) viewExecutionBody(ex *domain.Execution) string {
+	stopTiming := m.timing.Track("tui.view_execution_body")
+	defer stopTiming()
 	started := time.Now()
 	defer func() {
 		bodyBytes := 0

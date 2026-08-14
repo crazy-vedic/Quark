@@ -5,6 +5,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/crazy-vedic/quark/internal/timing"
 )
 
 // scrollableText is the read-only text component used for large bodies.
@@ -17,11 +19,16 @@ type scrollableText struct {
 	wrappedFor int
 	debugLog   *os.File
 	debugName  string
+	timing     *timing.Collector
 }
 
 func (s *scrollableText) SetDebugLog(log *os.File, name string) {
 	s.debugLog = log
 	s.debugName = name
+}
+
+func (s *scrollableText) SetTiming(collector *timing.Collector) {
+	s.timing = collector
 }
 
 func (s *scrollableText) logTiming(event string, started time.Time, width, height int, extra string) {
@@ -50,6 +57,8 @@ func (s *scrollableText) SetFormattedContent(sourceKey string, format func() str
 	}
 	content := ""
 	if format != nil {
+		stop := s.timing.Track("scrollable.format." + s.debugName)
+		defer stop()
 		content = format()
 	}
 	debugLog, debugName := s.debugLog, s.debugName
@@ -68,6 +77,8 @@ func (s *scrollableText) lines(width int) []string {
 	}
 	if s.wrapped == nil || s.wrappedFor != width {
 		started := time.Now()
+		stop := s.timing.Track("scrollable.wrap." + s.debugName)
+		defer stop()
 		s.wrapped = wrappedTextLines(s.content, width)
 		s.wrappedFor = width
 		s.logTiming("wrap", started, width, 0, "cache=miss")
@@ -77,6 +88,8 @@ func (s *scrollableText) lines(width int) []string {
 
 func (s *scrollableText) Scroll(delta, width, height int) {
 	started := time.Now()
+	stop := s.timing.Track("scrollable.scroll." + s.debugName)
+	defer stop()
 	if width <= 0 || height <= 0 {
 		s.logTiming("scroll", started, width, height, fmt.Sprintf("delta=%d result=invalid_viewport", delta))
 		return
@@ -98,6 +111,8 @@ func (s *scrollableText) Scroll(delta, width, height int) {
 
 func (s scrollableText) View(width, height int) string {
 	started := time.Now()
+	stop := s.timing.Track("scrollable.view." + s.debugName)
+	defer stop()
 	if width <= 0 || height <= 0 {
 		s.logTiming("view", started, width, height, "result=invalid_viewport")
 		return ""

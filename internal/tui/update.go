@@ -302,6 +302,8 @@ func (m Model) handleEsc() Model {
 // --- Normal mode ---
 
 func (m Model) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	stopTiming := m.timing.Track("tui.handle_normal_key")
+	defer stopTiming()
 	started := time.Now()
 	defer func() {
 		logDebugTiming(m.debugLog, "handle_normal_key", started,
@@ -323,6 +325,7 @@ func (m Model) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 	if m.focus == requestPane && m.activeField == noneField && isVerticalScrollKey(msg) {
 		m.requestText.SetDebugLog(m.debugLog, "request")
+		m.requestText.SetTiming(m.timing)
 		m.setRequestTextContent()
 		r := m.requestBodyPreviewRect(m.currentLayout())
 		if r.right >= r.left && r.bottom >= r.top {
@@ -339,6 +342,7 @@ func (m Model) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 	if m.focus == responsePane && (msg.Type == tea.KeyUp || msg.Type == tea.KeyDown || msg.Type == tea.KeyPgUp || msg.Type == tea.KeyPgDown) {
 		m.responseText.SetDebugLog(m.debugLog, "response")
+		m.responseText.SetTiming(m.timing)
 		m.setResponseTextContent()
 		textRect := m.responseTextRect(m.currentLayout())
 		width := max(1, textRect.right-textRect.left+1)
@@ -532,6 +536,8 @@ func (m Model) handleRequestAction(action string) (tea.Model, tea.Cmd) {
 
 // handleResponseAction routes resolver actions for the response pane.
 func (m Model) handleResponseAction(action string) (tea.Model, tea.Cmd) {
+	stopTiming := m.timing.Track("tui.handle_response_action")
+	defer stopTiming()
 	started := time.Now()
 	defer func() {
 		logDebugTiming(m.debugLog, "handle_response_action", started,

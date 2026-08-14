@@ -21,6 +21,7 @@ import (
 	"github.com/crazy-vedic/quark/internal/keybindings"
 	"github.com/crazy-vedic/quark/internal/search"
 	"github.com/crazy-vedic/quark/internal/store"
+	"github.com/crazy-vedic/quark/internal/timing"
 )
 
 // --- Layout enums ---
@@ -280,6 +281,7 @@ type Model struct {
 
 	// DebugLog, when non-nil, receives a timestamped line for every key message.
 	debugLog *os.File
+	timing   *timing.Collector
 
 	// configDir is the directory where config.toml and the DB are stored.
 	configDir string
@@ -347,6 +349,8 @@ type Deps struct {
 	Now func() time.Time
 	// DebugLog, if set, receives a timestamped line for every key message.
 	DebugLog *os.File
+	// Timing enables opt-in operation timing. Nil uses timing.Default().
+	Timing *timing.Collector
 	// ConfigDir is the directory where config.toml and the DB are stored.
 	// Used when persisting keybinding changes.
 	ConfigDir string
@@ -422,6 +426,7 @@ func New(deps Deps) Model {
 		reqCursor:             -1, // start on collection, not on a request
 		focus:                 sidebarPane,
 		debugLog:              deps.DebugLog,
+		timing:                collectorOrDefault(deps.Timing),
 		configDir:             deps.ConfigDir,
 		forceDim:              deps.ForceDim,
 		resolver:              resolverOrDefault(deps.Resolver, deps.Config),

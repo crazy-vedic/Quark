@@ -58,6 +58,7 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 			}
 			if m.activeField == noneField && m.requestBodyPreviewRect(layout).contains(msg.X, msg.Y) {
 				m.requestText.SetDebugLog(m.debugLog, "request")
+				m.requestText.SetTiming(m.timing)
 				m.setRequestTextContent()
 				r := m.requestBodyPreviewRect(layout)
 				delta := 0
@@ -148,6 +149,8 @@ func (m Model) handleResponseClick(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleResponseWheel(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	stopTiming := m.timing.Track("tui.handle_response_wheel")
+	defer stopTiming()
 	started := time.Now()
 	defer func() {
 		logDebugTiming(m.debugLog, "handle_response_wheel", started,
@@ -169,6 +172,7 @@ func (m Model) handleResponseWheel(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	m.responseText.SetDebugLog(m.debugLog, "response")
+	m.responseText.SetTiming(m.timing)
 	m.setResponseTextContent()
 	width := max(1, textRect.right-textRect.left+1)
 	height := max(1, textRect.bottom-textRect.top+1)
