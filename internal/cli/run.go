@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strings"
@@ -20,6 +21,10 @@ type RunStore interface {
 	store.ActiveEnvironmentStore
 }
 
+type requestPathResolver interface {
+	ResolveRequestPath(context.Context, string) (*domain.Request, error)
+}
+
 // NewRunCmd returns the 'quark run' subcommand.
 // "Collection/Request Name" is the first positional argument.
 func NewRunCmd(st RunStore, e *exec.Executor) *cobra.Command {
@@ -30,6 +35,27 @@ func NewRunCmd(st RunStore, e *exec.Executor) *cobra.Command {
 		Short: "Execute a saved request",
 		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := cmd.Context()
+			if resolver, ok := st.(requestPathResolver); ok {
+				if found, err := resolver.ResolveRequestPath(ctx, args[0]); err == nil {
+					positionals, overrides, err := parseRunOverrides(args[1:], namedVars)
+					if err != nil {
+						return fmt.Errorf("run: %w", err)
+					}
+					activeEnvID, _ := st.GetActiveEnvironment(ctx, found.CollectionID)
+					colEnv, globalEnv := exec.ResolveEnvVars(ctx, st, activeEnvID, found.CollectionID)
+					prepared, err := exec.InterpolateRequestWithOverrides(found, positionals, overrides, colEnv, globalEnv)
+					if err != nil {
+						return fmt.Errorf("run: interpolate: %w", err)
+					}
+					result, err := e.Execute(ctx, prepared)
+					if err != nil {
+						return fmt.Errorf("run: execute: %w", err)
+					}
+					fmt.Fprintf(cmd.OutOrStdout(), "Status: %s\nSize:   %d bytes\nTime:   %v\n", result.Status, result.Size, result.Duration.Round(1000000))
+					return nil
+				}
+			}
 			parts := strings.SplitN(args[0], "/", 2)
 			if len(parts) != 2 {
 				return fmt.Errorf(
@@ -38,8 +64,6 @@ func NewRunCmd(st RunStore, e *exec.Executor) *cobra.Command {
 				)
 			}
 			collectionName, requestName := parts[0], parts[1]
-
-			ctx := cmd.Context()
 
 			cols, err := st.ListCollections(ctx)
 			if err != nil {

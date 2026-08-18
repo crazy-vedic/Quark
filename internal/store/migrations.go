@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS schema_versions (
 
 CREATE TABLE IF NOT EXISTS collections (
     id          TEXT PRIMARY KEY,
-    name        TEXT NOT NULL UNIQUE,
+    name        TEXT NOT NULL,
     description TEXT,
     meta        TEXT DEFAULT '{}',
     created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -183,6 +183,17 @@ WHERE id IN (SELECT old_id FROM request_id_repairs);
 DROP TABLE request_id_repairs;
 `,
 	},
+	{
+		version: 8,
+		name:    "nested_collections",
+		upSQL: `
+ALTER TABLE collections ADD COLUMN parent_id TEXT REFERENCES collections(id) ON DELETE CASCADE;
+CREATE INDEX IF NOT EXISTS idx_collections_parent ON collections(parent_id, name);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_collections_sibling_name
+ON collections(COALESCE(parent_id, ''), name);
+`,
+		downSQL: `DROP INDEX IF EXISTS idx_collections_sibling_name; DROP INDEX IF EXISTS idx_collections_parent;`,
+	},
 }
 
 // migrate runs all pending migrations in order.
@@ -207,8 +218,26 @@ func (s *Store) migrate() error {
 			}
 		}
 	}
+	// Keep the legacy repair safe to rerun. This also handles databases where
+	// an older migration was manually rolled back or repaired data was added
+	// after the migration record was written.
+	if err := s.repairEmptyRequestIDs(); err != nil {
+		return err
+	}
 
 	return nil
+}
+
+func (s *Store) repairEmptyRequestIDs() error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err = tx.Exec(`PRAGMA defer_foreign_keys = ON; CREATE TEMP TABLE IF NOT EXISTS request_id_repairs (old_id TEXT PRIMARY KEY, new_id TEXT NOT NULL); DELETE FROM request_id_repairs; INSERT INTO request_id_repairs (old_id, new_id) SELECT id, lower(hex(randomblob(16))) FROM requests WHERE id = ''; UPDATE executions SET request_id = (SELECT new_id FROM request_id_repairs WHERE old_id = executions.request_id) WHERE request_id IN (SELECT old_id FROM request_id_repairs); UPDATE scheduled_runs SET request_id = (SELECT new_id FROM request_id_repairs WHERE old_id = scheduled_runs.request_id) WHERE request_id IN (SELECT old_id FROM request_id_repairs); UPDATE requests SET id = (SELECT new_id FROM request_id_repairs WHERE old_id = requests.id) WHERE id IN (SELECT old_id FROM request_id_repairs); DROP TABLE request_id_repairs;`); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // createSchemaVersionsTable creates the migration tracking table.

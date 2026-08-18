@@ -19,6 +19,16 @@ type CollectionLister interface {
 	ListCollections(ctx context.Context) ([]*domain.Collection, error)
 }
 
+// NestedCollectionStore exposes hierarchy operations while preserving the
+// original flat collection interfaces for existing callers.
+type NestedCollectionStore interface {
+	ListRootCollections(context.Context) ([]*domain.Collection, error)
+	ListChildCollections(context.Context, string) ([]*domain.Collection, error)
+	MoveCollection(context.Context, string, string) error
+	CollectionPath(context.Context, string) (string, error)
+	CountDescendants(context.Context, string) (int, int, error)
+}
+
 // RequestReader is the read interface for request storage.
 type RequestReader interface {
 	// GetRequest returns the request with the given ID.
