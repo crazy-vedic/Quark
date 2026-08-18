@@ -33,10 +33,18 @@ type sidebarListHit struct {
 }
 
 func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	if m.mode == viewerMode {
+		return m.handleViewerMouse(msg)
+	}
 	if m.mode != normalMode {
 		return m, nil
 	}
 	if m.effectiveDim() == DimAbsurd {
+		return m, nil
+	}
+	// Shift-clicks are intentionally ignored so terminals that support the
+	// modifier-key native selection escape hatch can handle them themselves.
+	if msg.Shift {
 		return m, nil
 	}
 
@@ -89,6 +97,28 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	if !ok {
 		return m, nil
 	}
+	textClick := false
+	if pane == requestPane && m.activeField == noneField {
+		r := m.requestBodyPreviewRect(layout)
+		if r.contains(msg.X, msg.Y) {
+			textClick = true
+			if m.isDoubleTextClick(msg, "request") {
+				return m.openViewerForRequest()
+			}
+		}
+	}
+	if pane == responsePane {
+		r := m.responseTextRect(layout)
+		if r.contains(msg.X, msg.Y) {
+			textClick = true
+			if m.isDoubleTextClick(msg, "response") {
+				return m.openViewerForResponse()
+			}
+		}
+	}
+	if !textClick {
+		m.lastTextClickSource = ""
+	}
 
 	switch pane {
 	case sidebarPane:
@@ -97,6 +127,35 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		return m.handleRequestClick(msg)
 	case responsePane:
 		return m.handleResponseClick(msg)
+	}
+	return m, nil
+}
+
+func (m *Model) isDoubleTextClick(msg tea.MouseMsg, source string) bool {
+	now := m.now()
+	withinTime := m.lastTextClickSource == source && !m.lastTextClick.IsZero() && now.Sub(m.lastTextClick) <= viewerDoubleClickWindow*time.Millisecond
+	withinCell := viewerAbs(msg.X-m.lastTextClickX) <= 1 && viewerAbs(msg.Y-m.lastTextClickY) <= 1
+	m.lastTextClick = now
+	m.lastTextClickX = msg.X
+	m.lastTextClickY = msg.Y
+	m.lastTextClickSource = source
+	return withinTime && withinCell
+}
+
+func (m Model) handleViewerMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	if msg.Shift {
+		return m, nil
+	}
+	if !isMouseWheel(msg) || msg.Y >= m.height-1 {
+		return m, nil
+	}
+	width := max(1, m.width)
+	height := max(1, m.height-1)
+	switch msg.Button {
+	case tea.MouseButtonWheelDown:
+		m.viewerText.Scroll(3, width, height)
+	case tea.MouseButtonWheelUp:
+		m.viewerText.Scroll(-3, width, height)
 	}
 	return m, nil
 }

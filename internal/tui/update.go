@@ -84,6 +84,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.searched = true // BUG-008: mark that at least one search has completed
 		return m, nil
 
+	case viewerClipboardMsg:
+		if msg.err != nil {
+			m.statusErr = "Copy failed: " + msg.err.Error()
+		} else {
+			m.statusSuccess = "Copied body"
+		}
+		return m, nil
+
 	case executionHistoryLoadedMsg:
 		if m.activeRequest == nil || msg.requestID != m.activeRequest.ID {
 			return m, nil
@@ -129,6 +137,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch m.mode {
 		case searchMode:
 			return m.handleSearchKey(msg)
+		case viewerMode:
+			return m.handleViewerKey(msg)
 		case helpMode:
 			return m.handleHelpKey(msg)
 		case envMode:
