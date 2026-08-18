@@ -183,6 +183,8 @@ func (m Model) View() string {
 		out = m.viewCollectionPromptModal()
 	case scheduleMode:
 		out = m.viewScheduleModal()
+	case viewerMode:
+		out = m.viewViewer()
 	default:
 		return m.viewByDim()
 	}

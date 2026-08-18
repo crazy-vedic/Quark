@@ -216,6 +216,71 @@ func TestUpdate_Mouse_ResponseTextWheelWorksForRawTab(t *testing.T) {
 	assert.Equal(t, 0, m.ExecCursor(), "raw text scrolling must not change history")
 }
 
+func TestUpdate_Mouse_DoubleClickResponseTextOpensViewer(t *testing.T) {
+	t.Parallel()
+
+	ex := &domain.Execution{
+		ID: "ex-viewer", RequestID: "req-1", StatusCode: 200,
+		ResponseBody: strings.Repeat("response line\n", 20), ResponseHeaders: `{}`,
+	}
+	m := resizedMouseUnitModel(t).
+		WithExecutions([]*domain.Execution{ex}).
+		WithExecCursor(0).
+		WithResponseTab(tui.BodyTab)
+
+	x, y, ok := m.ResponseTextWheelPos()
+	require.True(t, ok)
+	click := tea.MouseMsg{X: x, Y: y, Action: tea.MouseActionPress, Button: tea.MouseButtonLeft}
+	m = callUpdate(t, m, click)
+	m = callUpdate(t, m, click)
+
+	assert.Equal(t, tui.ViewerMode, m.Mode())
+	assert.Contains(t, m.View(), "[f] find")
+	assert.Contains(t, m.View(), "[c] copy body")
+}
+
+func TestUpdate_ViewerOwnsTabAndFinderLifecycle(t *testing.T) {
+	t.Parallel()
+
+	m := longResponseMouseModel(t)
+	x, y, ok := m.ResponseTextWheelPos()
+	require.True(t, ok)
+	click := tea.MouseMsg{X: x, Y: y, Action: tea.MouseActionPress, Button: tea.MouseButtonLeft}
+	m = callUpdate(t, m, click)
+	m = callUpdate(t, m, click)
+	require.Equal(t, tui.ViewerMode, m.Mode())
+
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'f'}})
+	assert.True(t, m.ViewerFindOpen())
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyTab})
+	assert.False(t, m.ViewerFindOpen(), "Tab must close the viewer finder instead of changing panes")
+	assert.Equal(t, tui.ViewerMode, m.Mode())
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyTab})
+	assert.Equal(t, tui.NormalMode, m.Mode(), "Tab must close the viewer after the finder is closed")
+}
+
+func TestUpdate_ViewerScrollsAndIgnoresShiftMouse(t *testing.T) {
+	t.Parallel()
+
+	m := longResponseMouseModel(t)
+	x, y, ok := m.ResponseTextWheelPos()
+	require.True(t, ok)
+	click := tea.MouseMsg{X: x, Y: y, Action: tea.MouseActionPress, Button: tea.MouseButtonLeft}
+	m = callUpdate(t, m, click)
+	m = callUpdate(t, m, click)
+	require.Equal(t, tui.ViewerMode, m.Mode())
+
+	before := m.ViewerTextOffset()
+	m = callUpdate(t, m, tea.MouseMsg{
+		X: x, Y: y, Action: tea.MouseActionPress, Button: tea.MouseButtonWheelDown,
+	})
+	assert.Greater(t, m.ViewerTextOffset(), before)
+	m = callUpdate(t, m, tea.MouseMsg{
+		X: x, Y: y, Shift: true, Action: tea.MouseActionPress, Button: tea.MouseButtonLeft,
+	})
+	assert.Equal(t, tui.ViewerMode, m.Mode())
+}
+
 func TestUpdate_Keyboard_ResponseTextScrollDoesNotCycleHistory(t *testing.T) {
 	t.Parallel()
 

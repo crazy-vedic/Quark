@@ -41,6 +41,7 @@ type modeID int
 const (
 	normalMode modeID = iota
 	searchMode
+	viewerMode
 	helpMode
 	importMode
 	envMode
@@ -119,6 +120,8 @@ type errLoadMsg struct{ err error }
 
 // searchResultsMsg carries search hits.
 type searchResultsMsg struct{ hits []*search.SearchHit }
+
+type viewerClipboardMsg struct{ err error }
 
 // executionHistoryLoadedMsg carries persisted executions for a request.
 type executionHistoryLoadedMsg struct {
@@ -228,6 +231,17 @@ type Model struct {
 	response     *exec.ExecuteResult
 	responseTab  responseTabID
 	responseText scrollableText
+	viewerText  scrollableText
+	viewerCopy  string
+	viewerContent string
+	viewerFind  textinput.Model
+	viewerFindOpen bool
+	viewerLastMatch int
+	viewerMatches []int
+	lastTextClick time.Time
+	lastTextClickX int
+	lastTextClickY int
+	lastTextClickSource string
 	executions   []*domain.Execution
 	execCursor   int
 
@@ -369,6 +383,10 @@ func New(deps Deps) Model {
 	searchInput.Placeholder = "search requests..."
 	searchInput.CharLimit = 256
 
+	viewerFind := textinput.New()
+	viewerFind.Placeholder = "find in text..."
+	viewerFind.CharLimit = 256
+
 	importName := textinput.New()
 	importName.Placeholder = "request name"
 	importName.CharLimit = 128
@@ -415,11 +433,13 @@ func New(deps Deps) Model {
 		method:                deps.Config.UI.DefaultMethod,
 		urlInput:              urlInput,
 		searchInput:           searchInput,
+		viewerFind:            viewerFind,
 		importName:            importName,
 		promptInput:           promptInput,
 		bodyTextarea:          bodyTA,
 		requestText:           scrollableText{cache: &scrollableTextCache{}},
 		responseText:          scrollableText{cache: &scrollableTextCache{}},
+		viewerText:            scrollableText{cache: &scrollableTextCache{}},
 		headerKeyInput:        headerKeyInput,
 		headerValueInput:      headerValueInput,
 		expanded:              make(map[string]bool),

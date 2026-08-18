@@ -64,6 +64,7 @@ const (
 	ResponsePane = responsePane
 
 	NormalMode           = normalMode
+	ViewerMode           = viewerMode
 	SearchMode           = searchMode
 	HelpMode             = helpMode
 	ImportMode           = importMode
@@ -215,6 +216,9 @@ func (m Model) Width() int                                       { return m.widt
 func (m Model) Height() int                                      { return m.height }
 func (m Model) Focus() paneID                                    { return m.focus }
 func (m Model) Mode() modeID                                     { return m.mode }
+func (m Model) ViewerFindOpen() bool                             { return m.viewerFindOpen }
+func (m Model) ViewerTextOffset() int                            { return m.viewerText.offset }
+func (m Model) ViewerMatchCount() int                            { return len(m.viewerMatches) }
 func (m Model) ForceDim() DimMode                                { return m.forceDim }
 func (m Model) EffectiveDim() DimMode                            { return m.effectiveDim() }
 func (m Model) WithForceDim(d DimMode) Model                     { m.forceDim = d; return m }
