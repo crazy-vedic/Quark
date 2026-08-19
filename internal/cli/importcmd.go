@@ -96,7 +96,8 @@ func newImportCurlCmd(
 				if certificateSaver == nil {
 					_ = w.DeleteRequest(cmd.Context(), req.ID)
 					return fmt.Errorf(
-						"import curl: saving mTLS options is unavailable in this command context")
+						"import curl: saving mTLS options is unavailable in this command context",
+					)
 				}
 				if err := certificateSaver(cmd.Context(), result.Certificate, result.URL); err != nil {
 					_ = w.DeleteRequest(cmd.Context(), req.ID)

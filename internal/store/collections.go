@@ -168,7 +168,17 @@ func (s *Store) ListChildCollections(ctx context.Context, parentID string) ([]*d
 }
 
 func (s *Store) listCollectionsWhere(ctx context.Context, where string, args ...any) ([]*domain.Collection, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id, name, COALESCE(parent_id, ''), description, meta, created_at, updated_at, version FROM collections WHERE `+where+` ORDER BY name`, args...)
+	const selectPrefix = `SELECT id, name, COALESCE(parent_id, ''), description, meta, created_at, updated_at, version FROM collections WHERE `
+	var query string
+	switch where {
+	case "parent_id IS NULL":
+		query = selectPrefix + "parent_id IS NULL ORDER BY name"
+	case "parent_id = ?":
+		query = selectPrefix + "parent_id = ? ORDER BY name"
+	default:
+		return nil, fmt.Errorf("store: unsupported collection filter %q", where)
+	}
+	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("store: list collections: %w", err)
 	}
