@@ -2,6 +2,8 @@ package exec
 
 import (
 	"encoding/json"
+	"fmt"
+	"net/http"
 	"strings"
 )
 
@@ -11,11 +13,27 @@ func newStringReader(s string) *strings.Reader {
 }
 
 // parseHeaders decodes the JSON object stored in domain.Request.Headers.
-// Returns a flat map[string]string.
-func parseHeaders(raw string) (map[string]string, error) {
-	var m map[string]string
-	if err := json.Unmarshal([]byte(raw), &m); err != nil {
+// Both the legacy {"Name":"value"} representation and the repeated-value
+// {"Name":["one","two"]} representation are accepted.
+func parseHeaders(raw string) (http.Header, error) {
+	var values map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(raw), &values); err != nil {
 		return nil, err
 	}
-	return m, nil
+	headers := make(http.Header, len(values))
+	for key, encoded := range values {
+		var repeated []string
+		if err := json.Unmarshal(encoded, &repeated); err == nil {
+			for _, value := range repeated {
+				headers.Add(key, value)
+			}
+			continue
+		}
+		var single string
+		if err := json.Unmarshal(encoded, &single); err != nil {
+			return nil, fmt.Errorf("header %q: value must be a string or string array", key)
+		}
+		headers.Add(key, single)
+	}
+	return headers, nil
 }

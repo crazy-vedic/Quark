@@ -74,6 +74,17 @@ quark collection list         # List all collections
 - **Signal-aware** — SIGINT cancels in-flight, restores terminal
 - **Scheduling** — Persist due times with `quark schedule add`; Quark is **not** a background daemon. Runs fire when you invoke `quark schedule run-due` (cron/systemd/CI) or while the TUI is open (in-app timer)
 
+### Import a cURL command in the TUI
+
+Press `I` to open the multiline cURL importer. `Ctrl+V` reads the complete
+clipboard, `Ctrl+S` parses it, and `Enter` confirms the preview. The importer
+preserves repeated headers, request bodies, JSON, URL-encoded data, and
+multipart text fields.
+
+`--cert`/`--cert-type P12`, PEM `--cert` plus `--key`, and `--cacert` are saved
+as host-scoped TLS configuration. File- or stdin-backed bodies, shell
+expansions, redirections, and multiple URLs are rejected rather than executed.
+
 ---
 
 ## Migrate From Postman

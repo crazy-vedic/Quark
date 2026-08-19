@@ -47,7 +47,12 @@ func NewRunCmd(st RunStore, e *exec.Executor) *cobra.Command {
 						return fmt.Errorf("run: %w", err)
 					}
 					activeEnvID, _ := st.GetActiveEnvironment(ctx, found.CollectionID)
-					colEnv, globalEnv := exec.ResolveEnvVars(ctx, st, activeEnvID, found.CollectionID)
+					colEnv, globalEnv := exec.ResolveEnvVars(
+						ctx,
+						st,
+						activeEnvID,
+						found.CollectionID,
+					)
 					prepared, err := exec.InterpolateRequestWithOverrides(found, positionals, overrides, colEnv, globalEnv)
 					if err != nil {
 						return fmt.Errorf("run: interpolate: %w", err)
@@ -114,7 +119,8 @@ func NewRunCmd(st RunStore, e *exec.Executor) *cobra.Command {
 			if err != nil {
 				activeEnvID = ""
 			}
-			colEnv, globalEnv := exec.ResolveEnvVars(ctx, st, activeEnvID, collectionID)
+			colEnv, globalEnv := exec.ResolveEnvVars(
+				ctx, st, activeEnvID, collectionID)
 			prepared, err := exec.InterpolateRequestWithOverrides(
 				found,
 				positionals,

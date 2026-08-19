@@ -17,6 +17,7 @@ func DefaultKeybindings() Keybindings {
 		FocusResponse: "3",
 		PaneNext:      "tab",
 		PanePrev:      KeyShiftTab,
+		ImportCurl:    "I",
 
 		// Sidebar
 		SidebarDown:       "j",
@@ -38,6 +39,7 @@ func DefaultKeybindings() Keybindings {
 		EditAuth:    "a",
 		ScheduleRun: "S",
 		EnvOpen:     "e",
+		ClientCerts: "C",
 		EnvNext:     "shift+right",
 		EnvPrev:     "shift+left",
 
@@ -106,6 +108,7 @@ func DefaultKeybindings() Keybindings {
 
 		// Import modal
 		ImportConfirm: KeyEnter,
+		ImportParse:   "ctrl+s",
 		ImportCancel:  "esc",
 	}
 }
