@@ -356,8 +356,8 @@ jobs:
           mkdir -p /tmp/baseline/bin
           cp /tmp/baseline-raw/coverage-ut-pr/ut.out     /tmp/baseline/ut.out
           cp /tmp/baseline-raw/coverage-tui-pr/tui.out   /tmp/baseline/tui.out
-          if [ -f /tmp/baseline-raw/coverage-cli-pr/bin/cover-cli.out ]; then \
-            cp /tmp/baseline-raw/coverage-cli-pr/bin/cover-cli.out \
+          if [ -f /tmp/baseline-raw/coverage-cli-pr/cover-cli.out ]; then \
+            cp /tmp/baseline-raw/coverage-cli-pr/cover-cli.out \
                /tmp/baseline/bin/cover-cli.out; \
           fi
           cp /tmp/baseline-raw/lint-pr/lint-output.txt /tmp/baseline/lint-output.txt
