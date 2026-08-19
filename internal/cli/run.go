@@ -37,7 +37,11 @@ func NewRunCmd(st RunStore, e *exec.Executor) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 			if resolver, ok := st.(requestPathResolver); ok {
-				if found, err := resolver.ResolveRequestPath(ctx, args[0]); err == nil {
+				found, err := resolver.ResolveRequestPath(ctx, args[0])
+				if err != nil {
+					return fmt.Errorf("run: resolve request: %w", err)
+				}
+				{
 					positionals, overrides, err := parseRunOverrides(args[1:], namedVars)
 					if err != nil {
 						return fmt.Errorf("run: %w", err)

@@ -32,8 +32,8 @@ func (s *Store) SaveCollection(ctx context.Context, c *domain.Collection) error 
 	if c.ParentID == c.ID && c.ParentID != "" {
 		return fmt.Errorf("store: collection cannot parent itself")
 	}
-	// Names are unique only among siblings. Repair collisions deterministically
-	// so imports and bulk writes remain repeatable.
+	// When slash normalization collides with a sibling, repair the name with a
+	// deterministic suffix so imports and bulk writes remain repeatable.
 	base := c.Name
 	for suffix := 1; repaired; suffix++ {
 		var n int
@@ -189,6 +189,9 @@ func (s *Store) MoveCollection(ctx context.Context, id, parentID string) error {
 	if id == parentID {
 		return fmt.Errorf("store: collection cannot parent itself")
 	}
+	if _, err := s.GetCollection(ctx, id); err != nil {
+		return fmt.Errorf("store: move collection %q: %w", id, err)
+	}
 	if parentID != "" {
 		if _, err := s.GetCollection(ctx, parentID); err != nil {
 			return fmt.Errorf("store: parent: %w", err)
@@ -205,7 +208,13 @@ func (s *Store) MoveCollection(ctx context.Context, id, parentID string) error {
 		p = c.ParentID
 	}
 	_, err := s.db.ExecContext(ctx, `UPDATE collections SET parent_id = ?, updated_at=CURRENT_TIMESTAMP WHERE id = ?`, sql.NullString{String: parentID, Valid: parentID != ""}, id)
-	return err
+	if err != nil {
+		if isSQLiteUnique(err) {
+			return fmt.Errorf("store: move collection %q: %w", id, ErrDuplicate)
+		}
+		return fmt.Errorf("store: move collection %q: %w", id, err)
+	}
+	return nil
 }
 
 // CollectionPath returns the full slash-delimited path for a collection.
@@ -260,6 +269,9 @@ func (s *Store) ResolveCollectionPath(ctx context.Context, reference string) (*d
 
 // CountDescendants returns descendant collection and request counts.
 func (s *Store) CountDescendants(ctx context.Context, id string) (collections, requests int, err error) {
+	if _, err = s.GetCollection(ctx, id); err != nil {
+		return 0, 0, err
+	}
 	row := s.db.QueryRowContext(ctx, `WITH RECURSIVE tree(id) AS (SELECT id FROM collections WHERE id=? UNION ALL SELECT c.id FROM collections c JOIN tree t ON c.parent_id=t.id) SELECT (SELECT COUNT(*)-1 FROM tree), (SELECT COUNT(*) FROM requests WHERE collection_id IN (SELECT id FROM tree))`, id)
 	err = row.Scan(&collections, &requests)
 	return

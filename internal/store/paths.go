@@ -22,6 +22,18 @@ func (e *AmbiguousPathError) Error() string {
 
 // ResolveRequestPath resolves a full path or the shortest unique suffix.
 func (s *Store) ResolveRequestPath(ctx context.Context, reference string) (*domain.Request, error) {
+	pathCache := make(map[string]string)
+	collections, err := s.ListCollections(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("store: resolve request collections: %w", err)
+	}
+	for _, c := range collections {
+		path, err := s.CollectionPath(ctx, c.ID)
+		if err != nil {
+			return nil, err
+		}
+		pathCache[c.ID] = path
+	}
 	rows, err := s.db.QueryContext(ctx, `SELECT id, collection_id, name, method, url, headers, auth_type, auth_config, body, sort_order, enabled, created_at, updated_at FROM requests`)
 	if err != nil {
 		return nil, fmt.Errorf("store: resolve request: %w", err)
@@ -36,9 +48,9 @@ func (s *Store) ResolveRequestPath(ctx context.Context, reference string) (*doma
 			return nil, err
 		}
 		r.Body = body.String
-		p, err := s.CollectionPath(ctx, r.CollectionID)
-		if err != nil {
-			return nil, err
+		p, ok := pathCache[r.CollectionID]
+		if !ok {
+			return nil, fmt.Errorf("store: request collection %q: %w", r.CollectionID, ErrNotFound)
 		}
 		full := p + "/" + r.Name
 		if reference == full || strings.HasSuffix(full, "/"+reference) || (reference == r.Name && strings.Count(full, "/") == 1) {

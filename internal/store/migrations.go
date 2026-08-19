@@ -2,7 +2,9 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
+	"github.com/crazy-vedic/quark/internal/domain"
 	"log/slog"
 )
 
@@ -269,6 +271,9 @@ func (s *Store) currentSchemaVersion() (int, error) {
 
 // applyMigration runs a single migration within a transaction.
 func (s *Store) applyMigration(m migration) error {
+	if m.version == 8 {
+		return s.applyNestedCollectionsMigration(m)
+	}
 	tx, err := s.db.Begin()
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
@@ -296,6 +301,102 @@ func (s *Store) applyMigration(m migration) error {
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit: %w", err)
 	}
+	return nil
+}
+
+// applyNestedCollectionsMigration rebuilds collections so databases created
+// before nesting no longer retain the old global UNIQUE(name) constraint.
+// It also repairs slash-containing legacy names before paths are exposed.
+func (s *Store) applyNestedCollectionsMigration(m migration) error {
+	if _, err := s.db.Exec(`PRAGMA foreign_keys = OFF; PRAGMA legacy_alter_table = ON`); err != nil {
+		return err
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err = tx.Exec(`ALTER TABLE collections RENAME TO collections_legacy`); err != nil {
+		return err
+	}
+	if _, err = tx.Exec(`CREATE TABLE collections (
+    id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT, meta TEXT DEFAULT '{}',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    version INTEGER DEFAULT 1, parent_id TEXT REFERENCES collections(id) ON DELETE CASCADE
+)`); err != nil {
+		return err
+	}
+	rows, err := tx.Query(`SELECT id, name, description, meta, created_at, updated_at, version FROM collections_legacy`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	names := make(map[string]bool)
+	for rows.Next() {
+		var c domain.Collection
+		var description, meta sql.NullString
+		if err := rows.Scan(&c.ID, &c.Name, &description, &meta, &c.CreatedAt, &c.UpdatedAt, &c.Version); err != nil {
+			return err
+		}
+		c.Description, c.Meta = description.String, meta.String
+		c.Name, _ = NormalizeName(c.Name)
+		base := c.Name
+		for i := 2; names[c.Name]; i++ {
+			c.Name = fmt.Sprintf("%s-%d", base, i)
+		}
+		names[c.Name] = true
+		if _, err := tx.Exec(`INSERT INTO collections (id,name,description,meta,created_at,updated_at,version,parent_id) VALUES (?,?,?,?,?,?,?,NULL)`, c.ID, c.Name, c.Description, c.Meta, c.CreatedAt, c.UpdatedAt, c.Version); err != nil {
+			return err
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	rows.Close()
+	if _, err = tx.Exec(`DROP TABLE collections_legacy; CREATE INDEX idx_collections_parent ON collections(parent_id,name); CREATE UNIQUE INDEX idx_collections_sibling_name ON collections(COALESCE(parent_id,''),name)`); err != nil {
+		return err
+	}
+	requestRows, err := tx.Query(`SELECT id, collection_id, name FROM requests ORDER BY collection_id, created_at, id`)
+	if err != nil {
+		return err
+	}
+	for requestRows.Next() {
+		var id, collectionID, name string
+		if err := requestRows.Scan(&id, &collectionID, &name); err != nil {
+			requestRows.Close()
+			return err
+		}
+		name, repaired := NormalizeName(name)
+		if repaired {
+			base := name
+			for i := 2; ; i++ {
+				var count int
+				if err := tx.QueryRow(`SELECT COUNT(*) FROM requests WHERE collection_id=? AND name=? AND id<>?`, collectionID, name, id).Scan(&count); err != nil {
+					requestRows.Close()
+					return err
+				}
+				if count == 0 {
+					break
+				}
+				name = fmt.Sprintf("%s-%d", base, i)
+			}
+			if _, err := tx.Exec(`UPDATE requests SET name=? WHERE id=?`, name, id); err != nil {
+				requestRows.Close()
+				return err
+			}
+		}
+	}
+	requestRows.Close()
+	if err := requestRows.Err(); err != nil {
+		return err
+	}
+	if _, err = tx.Exec(`INSERT INTO schema_versions (version) VALUES (?)`, m.version); err != nil {
+		return err
+	}
+	if err = tx.Commit(); err != nil {
+		return err
+	}
+	_, _ = s.db.Exec(`PRAGMA legacy_alter_table = OFF; PRAGMA foreign_keys = ON`)
 	return nil
 }
 
