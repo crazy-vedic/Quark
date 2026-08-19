@@ -36,16 +36,38 @@ func (t *Transaction) SaveCollection(ctx context.Context, c *domain.Collection) 
 	if c.ID == "" {
 		c.ID = uuid.New().String()
 	}
+	var repaired bool
+	c.Name, repaired = NormalizeName(c.Name)
+	if c.ParentID == c.ID && c.ParentID != "" {
+		return fmt.Errorf("store: collection cannot parent itself")
+	}
+	base := c.Name
+	for suffix := 1; repaired; suffix++ {
+		var n int
+		if c.ParentID == "" {
+			if err := t.tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM collections WHERE name=? AND id<>? AND parent_id IS NULL`, c.Name, c.ID).Scan(&n); err != nil {
+				return err
+			}
+		} else if err := t.tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM collections WHERE name=? AND id<>? AND parent_id=?`, c.Name, c.ID, c.ParentID).Scan(&n); err != nil {
+			return err
+		}
+		if n == 0 {
+			break
+		}
+		c.Name = fmt.Sprintf("%s-%d", base, suffix+1)
+	}
+	parent := sql.NullString{String: c.ParentID, Valid: c.ParentID != ""}
 	_, err := t.tx.ExecContext(ctx,
-		`INSERT INTO collections (id, name, description, meta)
-		 VALUES (?, ?, ?, ?)
+		`INSERT INTO collections (id, name, description, meta, parent_id)
+		 VALUES (?, ?, ?, ?, ?)
 		 ON CONFLICT(id) DO UPDATE SET
 		   name=excluded.name,
 		   description=excluded.description,
 		   meta=excluded.meta,
+		   parent_id=excluded.parent_id,
 		   updated_at=CURRENT_TIMESTAMP,
 		   version=version+1`,
-		c.ID, c.Name, c.Description, c.Meta,
+		c.ID, c.Name, c.Description, c.Meta, parent,
 	)
 	if err != nil {
 		if isSQLiteUnique(err) {
@@ -70,6 +92,7 @@ func (t *Transaction) SaveRequest(ctx context.Context, req *domain.Request) erro
 	if req.ID == "" {
 		req.ID = uuid.New().String()
 	}
+	req.Name, _ = NormalizeName(req.Name)
 	headers := req.Headers
 	if headers == "" {
 		headers = "{}"
