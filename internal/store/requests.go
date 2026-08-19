@@ -89,6 +89,7 @@ func (s *Store) SaveRequest(ctx context.Context, req *domain.Request) error {
 	if req.ID == "" {
 		req.ID = uuid.New().String()
 	}
+	req.Name, _ = NormalizeName(req.Name)
 	headers := req.Headers
 	if headers == "" {
 		headers = "{}"
