@@ -163,9 +163,8 @@ func run() error {
 			if err != nil {
 				return err
 			}
-			return launchTUI(
-				ctx, rt.st, rt.executor, rt.transport, rt.searcher, rt.importer, rt.cfg, debugLog, configDir,
-			)
+			return launchTUI(ctx, rt.st, rt.executor, rt.transport, rt.searcher,
+				rt.importer, rt.cfg, debugLog, configDir)
 		},
 	})
 

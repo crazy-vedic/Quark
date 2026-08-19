@@ -821,7 +821,7 @@ func (m Model) viewResponsePane(w, h int) string {
 		case bodyTab:
 			formatBody = func() string { return m.viewResponseBody(timingSpan) }
 		case headersTab:
-			formatBody = func() string { return m.viewResponseHeaders() }
+			formatBody = m.viewResponseHeaders
 		case rawTab:
 			formatBody = func() string {
 				if r.Body != nil {
@@ -1360,15 +1360,6 @@ func sameLocalDay(a, b time.Time) bool {
 func sortedHeaderKeys(headers http.Header) []string {
 	keys := make([]string, 0, len(headers))
 	for k := range headers {
-		keys = append(keys, k)
-	}
-	sortHeaderKeys(keys)
-	return keys
-}
-
-func sortedStringMapKeys(values map[string]string) []string {
-	keys := make([]string, 0, len(values))
-	for k := range values {
 		keys = append(keys, k)
 	}
 	sortHeaderKeys(keys)

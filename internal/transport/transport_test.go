@@ -30,6 +30,7 @@ func TestPlatformPathConvertsWSLAndGitBashPathsOnWindows(t *testing.T) {
 func TestNewLoadsPKCS12ChainAndRoutesByHost(t *testing.T) {
 	p12Path := writeTestPKCS12(t, "secret")
 	cfg := config.Default(t.TempDir())
+	//nolint:gosec // test-only environment variable name, not a credential.
 	cfg.HTTP.ClientCertificates = []config.ClientCertificate{{
 		Host: "ACCESS.DEV.EXAMPLE.COM", File: p12Path, Password: "secret",
 	}}
@@ -47,7 +48,7 @@ func TestNewReadsPasswordFromEnvironment(t *testing.T) {
 	p12Path := writeTestPKCS12(t, "from-env")
 	cfg := config.Default(t.TempDir())
 	cfg.HTTP.ClientCertificates = []config.ClientCertificate{{
-		Host: "api.example.com", File: p12Path, PasswordEnv: "QUARK_TEST_CERT_PASSWORD",
+		Host: "api.example.com", File: p12Path, PasswordEnv: "QUARK_TEST_CERT_PASSWORD", //nolint:gosec // fixture is an environment-variable name.
 	}}
 
 	_, err := New(cfg)
@@ -108,7 +109,7 @@ func writeTestPKCS12(t *testing.T, password string) string {
 	}
 	der, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
 	require.NoError(t, err)
-	encoded, err := pkcs12.Encode(rand.Reader, key, &x509.Certificate{Raw: der}, nil, password)
+	encoded, err := pkcs12.LegacyRC2.Encode(key, &x509.Certificate{Raw: der}, nil, password)
 	require.NoError(t, err)
 	path := filepath.Join(t.TempDir(), "client.p12")
 	require.NoError(t, os.WriteFile(path, encoded, 0o600))

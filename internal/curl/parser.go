@@ -119,6 +119,7 @@ type formField struct {
 	value string
 }
 
+//nolint:gocyclo // curl's option grammar is intentionally handled in one pass.
 func parseCommand(command string) (*ImportResult, error) {
 	tokens, err := shellWords(command)
 	if err != nil {
@@ -190,7 +191,7 @@ func parseCommand(command string) (*ImportResult, error) {
 			}
 			bodyMode = "data"
 			bodyParts = append(bodyParts, value)
-			upgradeSecurityTo(result, Review)
+			upgradeSecurityTo(result)
 		case optionDataURLEncode:
 			if len(fields) != 0 {
 				return nil, errors.New("curl: multipart form and data options cannot be mixed")
@@ -201,14 +202,14 @@ func parseCommand(command string) (*ImportResult, error) {
 			}
 			bodyMode = "data"
 			bodyParts = append(bodyParts, encoded)
-			upgradeSecurityTo(result, Review)
+			upgradeSecurityTo(result)
 		case optionJSON:
 			if len(fields) != 0 || strings.HasPrefix(value, "@") {
 				return nil, errors.New("curl: file-backed JSON and mixed multipart bodies are not imported")
 			}
 			bodyMode = "json"
 			bodyParts = append(bodyParts, value)
-			upgradeSecurityTo(result, Review)
+			upgradeSecurityTo(result)
 		case optionForm, optionFormString:
 			if len(bodyParts) != 0 {
 				return nil, errors.New("curl: multipart form and data options cannot be mixed")
@@ -218,16 +219,16 @@ func parseCommand(command string) (*ImportResult, error) {
 				return nil, fieldErr
 			}
 			fields = append(fields, field)
-			upgradeSecurityTo(result, Review)
+			upgradeSecurityTo(result)
 		case optionUser:
 			result.Headers.Set("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(value)))
-			upgradeSecurityTo(result, Review)
+			upgradeSecurityTo(result)
 		case optionCookie:
 			if strings.HasPrefix(value, "@") {
 				return nil, errors.New("curl: file-backed cookies are not imported")
 			}
 			result.Headers.Add("Cookie", value)
-			upgradeSecurityTo(result, Review)
+			upgradeSecurityTo(result)
 		case optionURL:
 			if result.URL != "" {
 				return nil, errors.New("curl: multiple URLs are not imported")
@@ -248,7 +249,7 @@ func parseCommand(command string) (*ImportResult, error) {
 		case optionCert:
 			cert.File = value
 			hasCertOptions = true
-			upgradeSecurityTo(result, Review)
+			upgradeSecurityTo(result)
 		case optionCertType:
 			cert.Type = strings.ToUpper(strings.TrimSpace(value))
 			hasCertOptions = true
@@ -321,7 +322,7 @@ func parseCommand(command string) (*ImportResult, error) {
 	}
 
 	if hasCertOptions {
-		upgradeSecurityTo(result, Review)
+		upgradeSecurityTo(result)
 		finalizeCertificate(&cert, result)
 		result.Certificate = &cert
 	}
@@ -638,7 +639,7 @@ func validateRequest(result *ImportResult) error {
 func classifyHeader(key string, result *ImportResult) {
 	switch strings.ToLower(key) {
 	case "authorization", "cookie", "proxy-authorization", "x-api-key":
-		upgradeSecurityTo(result, Review)
+		upgradeSecurityTo(result)
 	}
 }
 
@@ -652,11 +653,11 @@ func addWarning(result *ImportResult, warning string) {
 		}
 	}
 	result.Warnings = append(result.Warnings, warning)
-	upgradeSecurityTo(result, Review)
+	upgradeSecurityTo(result)
 }
 
-func upgradeSecurityTo(result *ImportResult, level SecurityLevel) {
-	if level > result.Security {
-		result.Security = level
+func upgradeSecurityTo(result *ImportResult) {
+	if Review > result.Security {
+		result.Security = Review
 	}
 }

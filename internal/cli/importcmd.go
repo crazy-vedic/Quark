@@ -20,7 +20,11 @@ import (
 type CurlCertificateSaver func(context.Context, *curl.CertificateSpec, string) error
 
 // NewImportCmd returns the 'quark import' subcommand tree.
-func NewImportCmd(w store.RequestWriter, im *curl.Importer, certificateSavers ...CurlCertificateSaver) *cobra.Command {
+func NewImportCmd(
+	w store.RequestWriter,
+	im *curl.Importer,
+	certificateSavers ...CurlCertificateSaver,
+) *cobra.Command {
 	var certificateSaver CurlCertificateSaver
 	if len(certificateSavers) > 0 {
 		certificateSaver = certificateSavers[0]

@@ -21,7 +21,7 @@ func viewerAbs(n int) int {
 	return n
 }
 
-func (m Model) openViewerForResponse() (Model, tea.Cmd) {
+func (m Model) openViewerForResponse() Model {
 	m.setResponseTextContent()
 	display := ""
 	if m.responseText.cache != nil {
@@ -40,10 +40,10 @@ func (m Model) openViewerForResponse() (Model, tea.Cmd) {
 	m.viewerFind.Blur()
 	m.viewerLastMatch = -1
 	m.viewerMatches = nil
-	return m, nil
+	return m
 }
 
-func (m Model) openViewerForRequest() (Model, tea.Cmd) {
+func (m Model) openViewerForRequest() Model {
 	m.setRequestTextContent()
 	display := ""
 	if m.requestText.cache != nil {
@@ -62,7 +62,7 @@ func (m Model) openViewerForRequest() (Model, tea.Cmd) {
 	m.viewerFind.Blur()
 	m.viewerLastMatch = -1
 	m.viewerMatches = nil
-	return m, nil
+	return m
 }
 
 func (m Model) closeViewer() Model {

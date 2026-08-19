@@ -146,13 +146,14 @@ func platformPath(value string) string {
 	normalized := strings.ReplaceAll(value, "\\", "/")
 	var drive string
 	var rest string
-	if len(normalized) >= 7 && strings.HasPrefix(normalized, "/mnt/") && normalized[6] == '/' {
+	switch {
+	case len(normalized) >= 7 && strings.HasPrefix(normalized, "/mnt/") && normalized[6] == '/':
 		drive = normalized[5:6]
 		rest = normalized[7:]
-	} else if len(normalized) >= 4 && normalized[0] == '/' && normalized[2] == '/' {
+	case len(normalized) >= 4 && normalized[0] == '/' && normalized[2] == '/':
 		drive = normalized[1:2]
 		rest = normalized[3:]
-	} else {
+	default:
 		return value
 	}
 	if (drive[0] < 'a' || drive[0] > 'z') && (drive[0] < 'A' || drive[0] > 'Z') {

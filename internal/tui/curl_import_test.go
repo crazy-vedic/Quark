@@ -51,7 +51,9 @@ func (m *importedCertificateManager) Reload(cfg config.Config) error {
 func TestImportCurlKeyOpensDedicatedMultilineModal(t *testing.T) {
 	m := New(Deps{Importer: curl.NewImporter()})
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'I'}})
-	m = updated.(Model)
+	var ok bool
+	m, ok = updated.(Model)
+	require.True(t, ok)
 
 	require.Equal(t, importMode, m.mode)
 	require.Nil(t, m.importPreview)

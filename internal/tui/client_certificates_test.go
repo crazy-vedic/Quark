@@ -25,7 +25,8 @@ func TestClientCertificateGlobalKeyOpensModal(t *testing.T) {
 	m.width, m.height = 100, 30
 
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'C'}})
-	got := updated.(Model)
+	got, ok := updated.(Model)
+	require.True(t, ok)
 	require.Equal(t, clientCertMode, got.mode)
 }
 
@@ -41,7 +42,8 @@ func TestClientCertificateSavePersistsAndReloads(t *testing.T) {
 	m.clientCertPassword.SetValue("secret")
 
 	updated, _ := m.saveClientCert()
-	got := updated.(Model)
+	got, ok := updated.(Model)
+	require.True(t, ok)
 	require.Len(t, got.cfg.HTTP.ClientCertificates, 1)
 	require.Equal(t, "access.dev.example.com", got.cfg.HTTP.ClientCertificates[0].Host)
 	require.Len(t, manager.reloads, 1)
