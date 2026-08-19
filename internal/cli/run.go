@@ -81,7 +81,8 @@ func NewRunCmd(st RunStore, e *exec.Executor) *cobra.Command {
 			if err != nil {
 				activeEnvID = ""
 			}
-			colEnv, globalEnv := exec.ResolveEnvVars(ctx, st, activeEnvID, collectionID)
+			colEnv, globalEnv := exec.ResolveEnvVars(
+				ctx, st, activeEnvID, collectionID)
 			prepared, err := exec.InterpolateRequestWithOverrides(
 				found,
 				positionals,

@@ -48,6 +48,13 @@ func (m *importedCertificateManager) Reload(cfg config.Config) error {
 	return nil
 }
 
+func requireImportModel(t *testing.T, value tea.Model) Model {
+	t.Helper()
+	model, ok := value.(Model)
+	require.True(t, ok)
+	return model
+}
+
 func TestImportCurlKeyOpensDedicatedMultilineModal(t *testing.T) {
 	m := New(Deps{Importer: curl.NewImporter()})
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'I'}})
@@ -106,7 +113,7 @@ func TestImportInputEnterInsertsNewlineWithoutPartialParse(t *testing.T) {
 	m.importInput.SetValue("curl https://example.com \\")
 
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	m = updated.(Model)
+	m = requireImportModel(t, updated)
 
 	require.Nil(t, m.importPreview)
 	require.Equal(t, 0, importer.calls)
@@ -116,13 +123,13 @@ func TestImportInputEnterInsertsNewlineWithoutPartialParse(t *testing.T) {
 func TestImportModalAllowsUppercaseIInCommandAndSaveName(t *testing.T) {
 	m := New(Deps{Importer: curl.NewImporter()}).openCurlImport()
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("curl https://example.com/I")})
-	m = updated.(Model)
+	m = requireImportModel(t, updated)
 	require.Contains(t, m.importInput.Value(), "/I")
 
 	m.importPreview = &curl.ImportResult{Method: http.MethodGet, URL: "https://example.com"}
 	m.importName.Focus()
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'I'}})
-	m = updated.(Model)
+	m = requireImportModel(t, updated)
 	require.Equal(t, "I", m.importName.Value())
 }
 
@@ -150,7 +157,7 @@ func TestImportConfirmationPersistsHeadersBodyAndCertificate(t *testing.T) {
 	m.mode = importMode
 
 	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	m = updated.(Model)
+	m = requireImportModel(t, updated)
 	require.Equal(t, normalMode, m.mode)
 	require.NotNil(t, cmd)
 	cmd()
@@ -175,7 +182,7 @@ func TestImportCancelDoesNotChangeCurrentURL(t *testing.T) {
 	m.importInput.SetValue(strings.ReplaceAll(exactIAMCurl, "access.dev", "other.dev"))
 
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
-	m = updated.(Model)
+	m = requireImportModel(t, updated)
 	require.Equal(t, normalMode, m.mode)
 	require.Equal(t, "https://current.example", m.urlInput.Value())
 }

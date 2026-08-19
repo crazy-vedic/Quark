@@ -64,7 +64,9 @@ func newImportCurlCmd(
 				fmt.Fprintf(cmd.OutOrStdout(), "Warning:  %s\n", w)
 			}
 			if result.Certificate != nil {
-				fmt.Fprintf(cmd.OutOrStdout(), "mTLS:      %s certificate %s\n", result.Certificate.Type, result.Certificate.File)
+				fmt.Fprintf(cmd.OutOrStdout(),
+					"mTLS:      %s certificate %s\n",
+					result.Certificate.Type, result.Certificate.File)
 			}
 
 			if collectionID == "" || name == "" {
