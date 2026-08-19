@@ -5,10 +5,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/google/uuid"
@@ -23,17 +27,55 @@ import (
 	"github.com/crazy-vedic/quark/internal/timing"
 )
 
+func (m Model) debugCurl(format string, args ...interface{}) {
+	if m.debugLog == nil {
+		return
+	}
+	importID := m.importID
+	if importID == "" {
+		importID = "-"
+	}
+	fmt.Fprintf(m.debugLog, "[%s] CURL_IMPORT id=%s %s\n", time.Now().Format("15:04:05.000"), importID, fmt.Sprintf(format, args...))
+}
+
+func debugHeaderKeys(headers http.Header) string {
+	keys := make([]string, 0, len(headers))
+	for key := range headers {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return strings.Join(keys, ",")
+}
+
 // Update implements tea.Model — routes every message to the correct handler.
 //
 //nolint:gocyclo // Bubble Tea keeps the top-level message dispatcher centralized.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case curlClipboardMsg:
+		if m.mode != importMode || m.importPreview != nil {
+			return m, nil
+		}
+		if msg.err != nil {
+			m.importError = "Clipboard read failed: " + msg.err.Error()
+			return m, nil
+		}
+		m.importInput.SetValue(msg.value)
+		m.importInput.CursorEnd()
+		m.importError = ""
+		m.debugCurl("clipboard read bytes=%d", len(msg.value))
+		return m, nil
+
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
 		m = m.applyDimSticky()
 		if m.activeField == bodyField {
 			m = m.resizeBodyTextarea()
+		}
+		if m.mode == importMode && m.importPreview == nil {
+			m.importInput.SetWidth(max(20, min(m.width-12, 100)))
+			m.importInput.SetHeight(max(6, min(m.height/3, 14)))
 		}
 		return m, nil
 
@@ -43,6 +85,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m = m.applyDimSticky()
 		if m.activeField == bodyField {
 			m = m.resizeBodyTextarea()
+		}
+		if m.mode == importMode && m.importPreview == nil {
+			m.importInput.SetWidth(max(20, min(m.width-12, 100)))
+			m.importInput.SetHeight(max(6, min(m.height/3, 14)))
 		}
 		return m, nil
 
@@ -102,25 +148,45 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyMsg:
 		if m.debugLog != nil {
-			fmt.Fprintf(
-				m.debugLog,
-				"[%s] key=%q type=%d type_name=%q runes=%q rune_codes=%s alt=%v paste=%v focus=%d mode=%d colCursor=%d reqCursor=%d requests=%d expanded=%v\n",
-				time.Now().
-					Format("15:04:05.000"),
-				msg.String(),
-				msg.Type,
-				msg.Type.String(),
-				string(msg.Runes),
-				debugRuneCodes(msg.Runes),
-				msg.Alt,
-				msg.Paste,
-				m.focus,
-				m.mode,
-				m.colCursor,
-				m.reqCursor,
-				len(m.requests),
-				m.expanded,
-			)
+			if m.mode == importMode {
+				// The import textarea can contain credentials, request bodies, and
+				// literal certificate passwords. Log only structural key metadata.
+				fmt.Fprintf(
+					m.debugLog,
+					"[%s] key=[REDACTED] type=%d type_name=%q rune_count=%d alt=%v paste=%v focus=%d mode=%d colCursor=%d reqCursor=%d requests=%d expanded=%v\n",
+					time.Now().Format("15:04:05.000"),
+					msg.Type,
+					msg.Type.String(),
+					len(msg.Runes),
+					msg.Alt,
+					msg.Paste,
+					m.focus,
+					m.mode,
+					m.colCursor,
+					m.reqCursor,
+					len(m.requests),
+					m.expanded,
+				)
+			} else {
+				fmt.Fprintf(
+					m.debugLog,
+					"[%s] key=%q type=%d type_name=%q runes=%q rune_codes=%s alt=%v paste=%v focus=%d mode=%d colCursor=%d reqCursor=%d requests=%d expanded=%v\n",
+					time.Now().Format("15:04:05.000"),
+					msg.String(),
+					msg.Type,
+					msg.Type.String(),
+					string(msg.Runes),
+					debugRuneCodes(msg.Runes),
+					msg.Alt,
+					msg.Paste,
+					m.focus,
+					m.mode,
+					m.colCursor,
+					m.reqCursor,
+					len(m.requests),
+					m.expanded,
+				)
+			}
 		}
 		// Global shortcuts that work in all modes.
 		switch msg.Type {
@@ -149,6 +215,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.handleCollectionPromptKey(msg)
 		case scheduleMode:
 			return m.handleScheduleKey(msg)
+		case clientCertMode:
+			return m.handleClientCertKey(msg)
 		default:
 			return m.handleNormalKey(msg)
 		}
@@ -242,10 +310,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if m.activeField == urlField {
 		var cmd tea.Cmd
 		m.urlInput, cmd = m.urlInput.Update(msg)
-		// Auto-detect curl paste.
-		if strings.HasPrefix(strings.TrimSpace(m.urlInput.Value()), "curl") {
-			return m.triggerCurlImport(m.urlInput.Value())
-		}
+		return m, cmd
+	}
+	if m.mode == importMode && m.importPreview == nil {
+		var cmd tea.Cmd
+		m.importInput, cmd = m.importInput.Update(msg)
 		return m, cmd
 	}
 	if m.activeField == bodyField {
@@ -299,6 +368,8 @@ func (m Model) handleEsc() Model {
 		return m.closeImport()
 	case collectionPromptMode:
 		return m.closeCollectionPrompt()
+	case clientCertMode:
+		return m.closeClientCertModal()
 	}
 	// In normal mode: cancel in-flight request.
 	if m.loading && m.cancel != nil {
@@ -429,6 +500,10 @@ func (m Model) dispatchNormalAction(action string) (tea.Model, tea.Cmd) {
 		return m, nil
 	case keybindings.ActionEnvOpen:
 		return m.openEnvEditor()
+	case keybindings.ActionClientCerts:
+		return m.openClientCertModal(), nil
+	case keybindings.ActionImportCurl:
+		return m.openCurlImport(), textarea.Blink
 	case "env_next":
 		return m.cycleEnv(1)
 	case "env_prev":
@@ -720,10 +795,10 @@ func (m Model) handleRequestKey(_ string, msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case urlField:
 		var cmd tea.Cmd
 		m.urlInput, cmd = m.urlInput.Update(msg)
-		if strings.HasPrefix(strings.TrimSpace(m.urlInput.Value()), "curl") {
-			return m.triggerCurlImport(m.urlInput.Value())
-		}
 		if msg.Type == tea.KeyEnter {
+			if strings.HasPrefix(strings.TrimSpace(m.urlInput.Value()), "curl") {
+				return m.status("error", "This looks like curl; press I to open the curl importer"), nil
+			}
 			return m.finishURLEdit()
 		}
 		return m, cmd
@@ -751,19 +826,25 @@ func (m Model) handleRequestKey(_ string, msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// triggerCurlImport detects a curl command pasted into the URL field and
-// opens the import preview modal.
+// triggerCurlImport parses a complete command already collected by the
+// dedicated multiline importer.
 func (m Model) triggerCurlImport(raw string) (Model, tea.Cmd) {
+	m.debugCurl("parse start input_bytes=%d", len(raw))
 	if m.importer == nil {
+		m.debugCurl("parse skipped: importer is nil")
+		m.importError = "curl importer is unavailable"
 		return m, nil
 	}
 	result, err := m.importer.Parse(strings.NewReader(strings.TrimSpace(raw)))
 	if err != nil {
+		m.debugCurl("parse failed")
+		m.importError = err.Error()
 		return m, nil
 	}
-	// Populate request pane with parsed values.
-	m.urlInput.SetValue(result.URL)
-	m.method = result.Method
+	m.debugCurl("parse success method=%s url=%q header_count=%d header_keys=%q body_len=%d warning_count=%d", result.Method, result.URL, len(result.Headers), debugHeaderKeys(result.Headers), len(result.Body), len(result.Warnings))
+	if result.Certificate != nil {
+		m.debugCurl("certificate type=%s file=%q key_file=%q ca_file=%q", result.Certificate.Type, result.Certificate.File, result.Certificate.KeyFile, result.Certificate.CAFile)
+	}
 	return m.openImport(result)
 }
 
@@ -1004,6 +1085,8 @@ var commandPaletteItems = []commandPaletteItem{
 	{Title: "Focus response", Action: keybindings.ActionFocusResponse},
 	{Title: "Send request", Action: keybindings.ActionSendRequest},
 	{Title: "Schedule request", Action: keybindings.ActionScheduleRun},
+	{Title: "Import curl command", Action: keybindings.ActionImportCurl},
+	{Title: "Client certificates", Action: keybindings.ActionClientCerts},
 	{Title: "Open help", Action: "help"},
 }
 
@@ -1046,6 +1129,9 @@ func (m Model) executeSelectedCommand() (tea.Model, tea.Cmd) {
 	case keybindings.ActionScheduleRun:
 		m.focus = requestPane
 		return m.handleRequestAction(action)
+	case keybindings.ActionImportCurl,
+		keybindings.ActionClientCerts:
+		return m.dispatchNormalAction(action)
 	case keybindings.ActionFocusSidebar,
 		keybindings.ActionFocusRequest,
 		keybindings.ActionFocusResponse:
@@ -1055,16 +1141,42 @@ func (m Model) executeSelectedCommand() (tea.Model, tea.Cmd) {
 }
 
 func (m Model) openImport(preview *curl.ImportResult) (Model, tea.Cmd) {
+	m.debugCurl("open import modal method=%s url=%q header_count=%d body_len=%d", preview.Method, preview.URL, len(preview.Headers), len(preview.Body))
 	m.importPreview = preview
+	m.importError = ""
 	m.importColID = m.activeCollectionID()
 	m.mode = importMode
+	m.importInput.Blur()
+	m.importName.SetValue("")
 	m.importName.Focus()
 	return m, textinput.Blink
+}
+
+func (m Model) openCurlImport() Model {
+	m.mode = importMode
+	m.importPreview = nil
+	m.importError = ""
+	m.importID = uuid.NewString()
+	m.importColID = m.activeCollectionID()
+	m.importName.SetValue("")
+	m.importName.Blur()
+	m.importInput.SetValue("")
+	m.importInput.SetWidth(max(20, min(m.width-12, 100)))
+	m.importInput.SetHeight(max(6, min(m.height/3, 14)))
+	m.importInput.Focus()
+	m.activeField = noneField
+	m.urlInput.Blur()
+	m.debugCurl("open input modal")
+	return m
 }
 
 func (m Model) closeImport() Model {
 	m.mode = normalMode
 	m.importPreview = nil
+	m.importError = ""
+	m.importID = ""
+	m.importInput.SetValue("")
+	m.importInput.Blur()
 	m.importName.Blur()
 	m.activeField = noneField
 	m.urlInput.Blur()
@@ -1315,33 +1427,136 @@ func helpResetAllDiffs(current keybindings.Keybindings) []string {
 // --- Import modal ---
 
 func (m Model) handleImportKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.importPreview == nil && msg.Type == tea.KeyCtrlV {
+		m.debugCurl("clipboard read requested")
+		return m, readCurlClipboardCmd()
+	}
 	// Resolver lookup for overlay mode.
-	if action, ok := m.resolver.Resolve(3, 0, msg); ok {
+	if action, ok := m.resolver.Resolve(3, 0, msg); ok && action != keybindings.ActionImportCurl {
 		switch action {
+		case keybindings.ActionImportParse:
+			if m.importPreview == nil {
+				return m.triggerCurlImport(m.importInput.Value())
+			}
 		case keybindings.ActionConfirm:
+			if m.importPreview == nil {
+				break // Enter remains a newline in the multiline input stage.
+			}
+			if m.importPreview.Certificate != nil && m.writer == nil {
+				m.importError = "Cannot save imported request: request storage is unavailable"
+				return m, nil
+			}
+			previousConfig := m.cfg
+			previousCerts := append([]config.ClientCertificate(nil), m.clientCerts...)
 			var saveCmd tea.Cmd
-			if m.importPreview != nil && m.writer != nil {
+			if m.importPreview.Certificate != nil {
+				var certErr error
+				m, certErr = m.persistImportedCertificate(m.importPreview.Certificate, m.importPreview.URL)
+				if certErr != nil {
+					m.importError = "Certificate configuration failed: " + certErr.Error()
+					m.debugCurl("confirm certificate failed: %v", certErr)
+					return m, nil
+				}
+			}
+			if m.writer != nil {
 				name := strings.TrimSpace(m.importName.Value())
 				if name == "" {
 					name = m.importPreview.URL
+				}
+				headersJSON, err := json.Marshal(m.importPreview.Headers)
+				if err != nil {
+					m.debugCurl("confirm failed marshaling headers: %v", err)
+					return m.status("error", "Failed to marshal imported headers: "+err.Error()), nil
 				}
 				req := &domain.Request{
 					CollectionID: m.importColID,
 					Name:         name,
 					Method:       m.importPreview.Method,
 					URL:          m.importPreview.URL,
+					Headers:      string(headersJSON),
+					Body:         m.importPreview.Body,
 				}
-				saveCmd = saveRequestCmd(m.ctx, m.writer, m.reader, req)
+				m.debugCurl("confirm save name=%q method=%s url=%q header_names=%q body_len=%d", name, req.Method, req.URL, debugHeaderKeys(m.importPreview.Headers), len(req.Body))
+				saveCmd = saveRequestCmdWithRollback(m.ctx, m.writer, m.reader, req, func() {
+					_ = m.writer.DeleteRequest(m.ctx, req.ID)
+					_ = config.SaveClientCertificates(m.configDir, previousCerts)
+					if m.certificateManager != nil {
+						_ = m.certificateManager.Reload(previousConfig)
+					}
+				})
 			}
+			m.debugCurl("confirm complete")
 			return m.closeImport(), saveCmd
 		case keybindings.ActionCancel:
+			m.debugCurl("cancel")
 			return m.closeImport(), nil
 		}
 	}
 
 	var cmd tea.Cmd
-	m.importName, cmd = m.importName.Update(msg)
+	if m.importPreview == nil {
+		m.importInput, cmd = m.importInput.Update(msg)
+	} else {
+		if msg.String() == "e" {
+			m.importPreview = nil
+			m.importError = ""
+			m.importName.Blur()
+			m.importInput.Focus()
+			return m, textarea.Blink
+		}
+		m.importName, cmd = m.importName.Update(msg)
+	}
 	return m, cmd
+}
+
+func (m Model) persistImportedCertificate(spec *curl.CertificateSpec, rawURL string) (Model, error) {
+	parsedURL, err := url.Parse(rawURL)
+	if err != nil || parsedURL.Hostname() == "" {
+		return m, fmt.Errorf("cannot determine request hostname")
+	}
+	certType := strings.ToUpper(strings.TrimSpace(spec.Type))
+	if certType != "" && certType != "P12" && certType != "PEM" {
+		return m, fmt.Errorf("unsupported certificate type %q", certType)
+	}
+	if spec.File == "" && spec.CAFile == "" {
+		return m, fmt.Errorf("certificate or CA file is required")
+	}
+	entry := config.ClientCertificate{
+		Host:     strings.ToLower(parsedURL.Hostname()),
+		File:     spec.File,
+		Type:     certType,
+		KeyFile:  spec.KeyFile,
+		CAFile:   spec.CAFile,
+		Password: spec.Password,
+	}
+	next := append([]config.ClientCertificate(nil), m.cfg.HTTP.ClientCertificates...)
+	replaced := false
+	for index := range next {
+		if strings.EqualFold(next[index].Host, entry.Host) {
+			next[index] = entry
+			replaced = true
+			break
+		}
+	}
+	if !replaced {
+		next = append(next, entry)
+	}
+	nextConfig := m.cfg
+	nextConfig.HTTP.ClientCertificates = next
+	if m.certificateManager != nil {
+		if err := m.certificateManager.Reload(nextConfig); err != nil {
+			return m, err
+		}
+	}
+	if err := config.SaveClientCertificates(m.configDir, next); err != nil {
+		if m.certificateManager != nil {
+			_ = m.certificateManager.Reload(m.cfg)
+		}
+		return m, err
+	}
+	m.cfg = nextConfig
+	m.clientCerts = append([]config.ClientCertificate(nil), next...)
+	return m, nil
 }
 
 // --- HTTP response/error handlers ---
@@ -1588,10 +1803,10 @@ func (m Model) saveHeaders() (Model, tea.Cmd) {
 	if m.activeRequest == nil {
 		return m, nil
 	}
-	headersMap := make(map[string]string, len(m.headerPairs))
+	headersMap := make(http.Header, len(m.headerPairs))
 	for _, p := range m.headerPairs {
 		if p.Key != "" {
-			headersMap[p.Key] = p.Value
+			headersMap.Add(p.Key, p.Value)
 		}
 	}
 	headersJSON, err := json.Marshal(headersMap)
@@ -1612,14 +1827,30 @@ func parseHeadersJSON(raw string) []headerPair {
 	if raw == "" || raw == "{}" {
 		return nil
 	}
-	var m map[string]string
-	if err := json.Unmarshal([]byte(raw), &m); err != nil {
+	var encoded map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(raw), &encoded); err != nil {
 		return nil
 	}
-	pairs := make([]headerPair, 0, len(m))
-	for k, v := range m {
-		pairs = append(pairs, headerPair{Key: k, Value: v})
+	pairs := make([]headerPair, 0, len(encoded))
+	for key, valueJSON := range encoded {
+		var values []string
+		if err := json.Unmarshal(valueJSON, &values); err != nil {
+			var value string
+			if err := json.Unmarshal(valueJSON, &value); err != nil {
+				return nil
+			}
+			values = []string{value}
+		}
+		for _, value := range values {
+			pairs = append(pairs, headerPair{Key: key, Value: value})
+		}
 	}
+	sort.Slice(pairs, func(i, j int) bool {
+		if pairs[i].Key == pairs[j].Key {
+			return pairs[i].Value < pairs[j].Value
+		}
+		return pairs[i].Key < pairs[j].Key
+	})
 	return pairs
 }
 

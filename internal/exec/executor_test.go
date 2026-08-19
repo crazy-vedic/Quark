@@ -117,6 +117,28 @@ func TestExecutor_RequestHeadersSent(t *testing.T) {
 	assert.Equal(t, "Bearer tok123", receivedAuth)
 }
 
+func TestExecutor_RepeatedAndLegacyHeadersSent(t *testing.T) {
+	var repeated, legacy []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		repeated = append([]string(nil), r.Header.Values("X-Tag")...)
+		legacy = append([]string(nil), r.Header.Values("X-Legacy")...)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	transport := &http.Transport{}
+	defer transport.CloseIdleConnections()
+	e := newTestExecutor(transport)
+	_, err := e.Execute(context.Background(), &domain.Request{
+		Method:  http.MethodGet,
+		URL:     srv.URL,
+		Headers: `{"X-Tag":["one","two"],"X-Legacy":"value"}`,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, []string{"one", "two"}, repeated)
+	assert.Equal(t, []string{"value"}, legacy)
+}
+
 func TestExecutor_RequestAuth_BearerOverridesManualAuthorization(t *testing.T) {
 	var receivedAuth string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

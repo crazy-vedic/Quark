@@ -21,7 +21,7 @@ func viewerAbs(n int) int {
 	return n
 }
 
-func (m Model) openViewerForResponse() (Model, tea.Cmd) {
+func (m Model) openViewerForResponse() Model {
 	m.setResponseTextContent()
 	display := ""
 	if m.responseText.cache != nil {
@@ -40,10 +40,10 @@ func (m Model) openViewerForResponse() (Model, tea.Cmd) {
 	m.viewerFind.Blur()
 	m.viewerLastMatch = -1
 	m.viewerMatches = nil
-	return m, nil
+	return m
 }
 
-func (m Model) openViewerForRequest() (Model, tea.Cmd) {
+func (m Model) openViewerForRequest() Model {
 	m.setRequestTextContent()
 	display := ""
 	if m.requestText.cache != nil {
@@ -62,7 +62,7 @@ func (m Model) openViewerForRequest() (Model, tea.Cmd) {
 	m.viewerFind.Blur()
 	m.viewerLastMatch = -1
 	m.viewerMatches = nil
-	return m, nil
+	return m
 }
 
 func (m Model) closeViewer() Model {
@@ -235,6 +235,13 @@ func (m Model) viewerResponseContent() (string, string) {
 func copyViewerContentCmd(content string) tea.Cmd {
 	return func() tea.Msg {
 		return viewerClipboardMsg{err: clipboard.WriteAll(content)}
+	}
+}
+
+func readCurlClipboardCmd() tea.Cmd {
+	return func() tea.Msg {
+		value, err := clipboard.ReadAll()
+		return curlClipboardMsg{value: value, err: err}
 	}
 }
 

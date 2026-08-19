@@ -97,14 +97,16 @@ func TestCollectorSortsByTotalAndCapsAtThirty(t *testing.T) {
 }
 
 func TestParseReportFormat(t *testing.T) {
-	tests := map[string]ReportFormat{
-		"":       ReportFormatTree,
-		"tree":   ReportFormatTree,
-		"flat":   ReportFormatFlat,
-		"off":    ReportFormatOff,
-		" FLAT ": ReportFormatFlat,
+	tests := []struct {
+		input string
+		want  ReportFormat
+	}{
+		{"", ReportFormatTree}, {"tree", ReportFormatTree},
+		{"flat", ReportFormatFlat}, {"off", ReportFormatOff},
+		{" FLAT ", ReportFormatFlat},
 	}
-	for input, want := range tests {
+	for _, test := range tests {
+		input, want := test.input, test.want
 		got, err := ParseReportFormat(input)
 		if err != nil {
 			t.Fatalf("ParseReportFormat(%q) returned error: %v", input, err)

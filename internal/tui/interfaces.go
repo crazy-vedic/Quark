@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 
+	"github.com/crazy-vedic/quark/internal/config"
 	"github.com/crazy-vedic/quark/internal/curl"
 	"github.com/crazy-vedic/quark/internal/domain"
 	"github.com/crazy-vedic/quark/internal/exec"
@@ -27,4 +28,9 @@ type RequestSearcher interface {
 // *curl.Importer satisfies this interface structurally.
 type CurlImporter interface {
 	Parse(r io.Reader) (*curl.ImportResult, error)
+}
+
+// CertificateManager reloads the HTTP client-certificate routes.
+type CertificateManager interface {
+	Reload(config.Config) error
 }

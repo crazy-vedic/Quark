@@ -506,12 +506,12 @@ func TestView_ImportPreviewHeaders_RenderDeterministicallyAcrossRenders(t *testi
 		WithImportPreview(&curl.ImportResult{
 			Method: "POST",
 			URL:    "https://example.test/import",
-			Headers: map[string]string{
-				"X-Canary-Context": "ctx",
-				"Date":             "Wed, 17 Jun 2026 16:42:26 GMT",
-				"Content-Length":   "143",
-				"Content-Type":     "application/json; charset=utf-8",
-				"Server":           "quark-test",
+			Headers: http.Header{
+				"X-Canary-Context": {"ctx"},
+				"Date":             {"Wed, 17 Jun 2026 16:42:26 GMT"},
+				"Content-Length":   {"143"},
+				"Content-Type":     {"application/json; charset=utf-8"},
+				"Server":           {"quark-test"},
 			},
 		})
 	m = callUpdate(t, m, tea.WindowSizeMsg{Width: 140, Height: 40})

@@ -73,6 +73,9 @@ var helpActionLabels = map[string]string{
 	keybindings.ActionFocusSidebar:  "focus sidebar",
 	keybindings.ActionFocusRequest:  "focus request",
 	keybindings.ActionFocusResponse: "focus response",
+	keybindings.ActionClientCerts:   "client certificates",
+	keybindings.ActionImportCurl:    "import curl",
+	keybindings.ActionImportParse:   "parse curl",
 	"pane_next":                     "next pane",
 	"pane_prev":                     "prev pane",
 	"sidebar_down":                  helpLabelMoveDown,
@@ -185,6 +188,8 @@ func (m Model) View() string {
 		out = m.viewScheduleModal()
 	case viewerMode:
 		out = m.viewViewer()
+	case clientCertMode:
+		out = m.viewClientCertModal()
 	default:
 		return m.viewByDim()
 	}
@@ -694,14 +699,10 @@ func (m Model) requestBodyPreviewContent(parent ...*timing.Span) string {
 	if m.activeRequest.Headers == "" || m.activeRequest.Headers == "{}" {
 		return ""
 	}
-	var hdrs map[string]string
-	if err := json.Unmarshal([]byte(m.activeRequest.Headers), &hdrs); err != nil {
-		return ""
-	}
-	keys := sortedStringMapKeys(hdrs)
-	lines := make([]string, 0, len(keys))
-	for _, k := range keys {
-		lines = append(lines, "  "+k+": "+hdrs[k])
+	pairs := parseHeadersJSON(m.activeRequest.Headers)
+	lines := make([]string, 0, len(pairs))
+	for _, pair := range pairs {
+		lines = append(lines, "  "+pair.Key+": "+pair.Value)
 	}
 	return strings.Join(lines, "\n")
 }
@@ -820,7 +821,7 @@ func (m Model) viewResponsePane(w, h int) string {
 		case bodyTab:
 			formatBody = func() string { return m.viewResponseBody(timingSpan) }
 		case headersTab:
-			formatBody = func() string { return m.viewResponseHeaders() }
+			formatBody = m.viewResponseHeaders
 		case rawTab:
 			formatBody = func() string {
 				if r.Body != nil {
@@ -1359,15 +1360,6 @@ func sameLocalDay(a, b time.Time) bool {
 func sortedHeaderKeys(headers http.Header) []string {
 	keys := make([]string, 0, len(headers))
 	for k := range headers {
-		keys = append(keys, k)
-	}
-	sortHeaderKeys(keys)
-	return keys
-}
-
-func sortedStringMapKeys(values map[string]string) []string {
-	keys := make([]string, 0, len(values))
-	for k := range values {
 		keys = append(keys, k)
 	}
 	sortHeaderKeys(keys)
@@ -1917,8 +1909,23 @@ func (m Model) viewHelp() string {
 // --- Import modal ---
 
 func (m Model) viewImportModal() string {
+	var sb strings.Builder
+	sb.WriteString(titleStyle.Render("Import curl command") + "\n\n")
+	innerW := max(20, min(m.width-8, 96)-4)
 	if m.importPreview == nil {
-		return ""
+		sb.WriteString(mutedStyle.Render("Paste the complete command below. Enter inserts a newline.") + "\n\n")
+		sb.WriteString(m.importInput.View() + "\n")
+		if m.importError != "" {
+			sb.WriteString("\n" + errorStyle.Render("✗ "+stripANSI(m.importError)) + "\n")
+		}
+		sb.WriteString("\n" + mutedStyle.Render("Ctrl+V: read clipboard   Ctrl+S: parse   Esc: cancel"))
+		box := lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(blue).
+			Padding(1, 2).
+			Width(min(m.width-4, 104)).
+			Render(sb.String())
+		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box)
 	}
 
 	p := m.importPreview
@@ -1929,10 +1936,6 @@ func (m Model) viewImportModal() string {
 	case 2: // Dangerous
 		secColor = errorStyle
 	}
-
-	var sb strings.Builder
-	sb.WriteString(titleStyle.Render("Import curl command") + "\n\n")
-	innerW := max(1, min(m.width-4, 70)-4)
 	fmt.Fprintf(&sb, "Method:   %s\n", methodStyle.Render(p.Method))
 	fmt.Fprintf(
 		&sb,
@@ -1943,12 +1946,30 @@ func (m Model) viewImportModal() string {
 	)
 	if len(p.Headers) > 0 {
 		sb.WriteString("Headers:\n")
-		for _, k := range sortedStringMapKeys(p.Headers) {
-			v := p.Headers[k]
-			if isCredentialHeader(k) {
-				v = "[REDACTED]"
+		keys := sortedHeaderKeys(p.Headers)
+		for _, key := range keys {
+			for _, headerValue := range p.Headers.Values(key) {
+				if isCredentialHeader(key) {
+					headerValue = "[REDACTED]"
+				}
+				fmt.Fprintf(&sb, "  %s\n", truncate(key+": "+headerValue, innerW))
 			}
-			fmt.Fprintf(&sb, "  %s\n", truncate(k+": "+v, innerW))
+		}
+	}
+	if p.Body != "" {
+		body := stripANSI(p.Body)
+		if len(body) > 500 {
+			body = body[:500] + "…"
+		}
+		fmt.Fprintf(&sb, "Body (%d bytes):\n%s\n", len(p.Body), clipToRows(body, innerW, 6))
+	}
+	if p.Certificate != nil {
+		fmt.Fprintf(&sb, "mTLS:     %s %s\n", p.Certificate.Type, truncate(p.Certificate.File, max(1, innerW-12)))
+		if p.Certificate.KeyFile != "" {
+			fmt.Fprintf(&sb, "Key:      %s\n", truncate(p.Certificate.KeyFile, max(1, innerW-12)))
+		}
+		if p.Certificate.CAFile != "" {
+			fmt.Fprintf(&sb, "CA:       %s\n", truncate(p.Certificate.CAFile, max(1, innerW-12)))
 		}
 	}
 	fmt.Fprintf(&sb, "Security: %s\n", secColor.Render(p.Security.String()))
@@ -1957,16 +1978,19 @@ func (m Model) viewImportModal() string {
 	}
 	sb.WriteString("\n")
 	sb.WriteString("Save as: " + m.importName.View() + "\n\n")
+	if m.importError != "" {
+		sb.WriteString(errorStyle.Render("✗ "+stripANSI(m.importError)) + "\n")
+	}
 	sb.WriteString(mutedStyle.Render(m.renderHints([]hintItem{
 		{Label: "import", Actions: []string{"import_confirm"}},
 		{Label: helpLabelCancel, Actions: []string{keybindings.ActionImportCancel}},
-	})))
+	})) + "   e: edit command")
 
 	box := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(blue).
 		Padding(1, 2).
-		Width(min(m.width-4, 70)). //nolint:predeclared // uses Go 1.21 built-in min
+		Width(min(m.width-4, 104)). //nolint:predeclared // uses Go 1.21 built-in min
 		Render(sb.String())
 
 	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box)

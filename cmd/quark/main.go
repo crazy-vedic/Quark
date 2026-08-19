@@ -8,11 +8,12 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -28,6 +29,7 @@ import (
 	"github.com/crazy-vedic/quark/internal/search"
 	"github.com/crazy-vedic/quark/internal/store"
 	"github.com/crazy-vedic/quark/internal/timing"
+	"github.com/crazy-vedic/quark/internal/transport"
 	"github.com/crazy-vedic/quark/internal/tui"
 )
 
@@ -116,10 +118,11 @@ func run() error {
 			return nil, fmt.Errorf("open store: %w", err)
 		}
 
-		transport := &http.Transport{
-			ResponseHeaderTimeout: cfg.Timeout(),
+		httpTransport, err := transport.New(cfg)
+		if err != nil {
+			return nil, fmt.Errorf("configure HTTP transport: %w", err)
 		}
-		executor := exec.New(transport,
+		executor := exec.New(httpTransport,
 			exec.WithTimeout(cfg.Timeout()),
 			exec.WithVariableResolver(makeVariableResolver(st)),
 			exec.WithExecutionWriter(st),
@@ -128,11 +131,12 @@ func run() error {
 		searcher := search.New(st)
 
 		rt = &runtime{
-			st:       st,
-			cfg:      cfg,
-			executor: executor,
-			importer: importer,
-			searcher: searcher,
+			st:        st,
+			cfg:       cfg,
+			executor:  executor,
+			transport: httpTransport,
+			importer:  importer,
+			searcher:  searcher,
 		}
 		return rt, nil
 	}
@@ -159,9 +163,8 @@ func run() error {
 			if err != nil {
 				return err
 			}
-			return launchTUI(
-				ctx, rt.st, rt.executor, rt.searcher, rt.importer, rt.cfg, debugLog, configDir,
-			)
+			return launchTUI(ctx, rt.st, rt.executor, rt.transport, rt.searcher,
+				rt.importer, rt.cfg, debugLog, configDir)
 		},
 	})
 
@@ -178,6 +181,7 @@ func run() error {
 			ctx,
 			rt.st,
 			rt.executor,
+			rt.transport,
 			rt.searcher,
 			rt.importer,
 			rt.cfg,
@@ -191,11 +195,50 @@ func run() error {
 
 // runtime holds lazily-initialised dependencies that depend on the --config flag.
 type runtime struct {
-	st       *store.Store
-	cfg      config.Config
-	executor *exec.Executor
-	importer *curl.Importer
-	searcher *search.Searcher
+	st        *store.Store
+	cfg       config.Config
+	executor  *exec.Executor
+	transport *transport.Manager
+	importer  *curl.Importer
+	searcher  *search.Searcher
+}
+
+func saveRuntimeImportedCertificate(r *runtime, spec *curl.CertificateSpec, rawURL string) error {
+	parsedURL, err := url.Parse(rawURL)
+	if err != nil || parsedURL.Hostname() == "" {
+		return fmt.Errorf("cannot determine request hostname")
+	}
+	certType := strings.ToUpper(strings.TrimSpace(spec.Type))
+	if certType != "" && certType != "P12" && certType != "PEM" {
+		return fmt.Errorf("unsupported certificate type %q", certType)
+	}
+	entry := config.ClientCertificate{
+		Host: strings.ToLower(parsedURL.Hostname()), File: spec.File, Type: certType,
+		KeyFile: spec.KeyFile, CAFile: spec.CAFile, Password: spec.Password,
+	}
+	next := append([]config.ClientCertificate(nil), r.cfg.HTTP.ClientCertificates...)
+	replaced := false
+	for index := range next {
+		if strings.EqualFold(next[index].Host, entry.Host) {
+			next[index] = entry
+			replaced = true
+			break
+		}
+	}
+	if !replaced {
+		next = append(next, entry)
+	}
+	nextConfig := r.cfg
+	nextConfig.HTTP.ClientCertificates = next
+	if err := r.transport.Reload(nextConfig); err != nil {
+		return err
+	}
+	if err := config.SaveClientCertificates(configDir, next); err != nil {
+		_ = r.transport.Reload(r.cfg)
+		return err
+	}
+	r.cfg = nextConfig
+	return nil
 }
 
 // openDebugLog opens /tmp/quark_debug_logs/debug.log, archiving any existing file.
@@ -227,6 +270,7 @@ func launchTUI(
 	ctx context.Context,
 	st *store.Store,
 	executor *exec.Executor,
+	httpTransport *transport.Manager,
 	searcher *search.Searcher,
 	importer *curl.Importer,
 	cfg config.Config,
@@ -248,25 +292,26 @@ func launchTUI(
 	timingEnabled := debugMode && timingFormat != timing.ReportFormatOff
 	timingCollector := timing.New(timingEnabled)
 	model := tui.New(tui.Deps{
-		Lister:          st,
-		Reader:          st,
-		Writer:          st,
-		ColWriter:       st,
-		ExecutionReader: st,
-		Executor:        executor,
-		Searcher:        searcher,
-		Importer:        importer,
-		EnvReader:       st,
-		EnvWriter:       st,
-		ActiveEnvStore:  st,
-		Scheduler:       st,
-		Config:          cfg,
-		Resolver:        keybindings.NewResolver(cfg.Keybindings),
-		Ctx:             ctx, // signal-aware context: TUI goroutines cancel on SIGINT/SIGTERM
-		DebugLog:        debugLog,
-		Timing:          timingCollector,
-		ConfigDir:       configDir,
-		ForceDim:        forceDim,
+		Lister:             st,
+		Reader:             st,
+		Writer:             st,
+		ColWriter:          st,
+		ExecutionReader:    st,
+		Executor:           executor,
+		Searcher:           searcher,
+		Importer:           importer,
+		EnvReader:          st,
+		EnvWriter:          st,
+		ActiveEnvStore:     st,
+		Scheduler:          st,
+		Config:             cfg,
+		Resolver:           keybindings.NewResolver(cfg.Keybindings),
+		Ctx:                ctx, // signal-aware context: TUI goroutines cancel on SIGINT/SIGTERM
+		DebugLog:           debugLog,
+		Timing:             timingCollector,
+		CertificateManager: httpTransport,
+		ConfigDir:          configDir,
+		ForceDim:           forceDim,
 	})
 
 	// Coalesce WindowSizeMsg bursts: Bubble Tea's renderer force-repaints the
@@ -510,17 +555,39 @@ func lazyScheduleCmd(rt func() (*runtime, error)) *cobra.Command {
 }
 
 func lazyImportCmd(rt func() (*runtime, error)) *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "import",
 		Short: "Import requests from external formats",
+	}
+	var collectionID, name string
+	curlCmd := &cobra.Command{
+		Use:   "curl <quoted-curl-command>",
+		Short: "Import a curl command as a request",
+		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			r, err := rt()
 			if err != nil {
 				return err
 			}
-			return cli.NewImportCmd(r.st, r.importer).RunE(cmd, args)
+			certificateSaver := func(_ context.Context, spec *curl.CertificateSpec, rawURL string) error {
+				return saveRuntimeImportedCertificate(r, spec, rawURL)
+			}
+			inner := cli.NewImportCmd(r.st, r.importer, certificateSaver)
+			inner.SetContext(cmd.Context())
+			inner.SetOut(cmd.OutOrStdout())
+			inner.SetErr(cmd.ErrOrStderr())
+			inner.SetArgs([]string{
+				"curl", args[0],
+				"--collection", collectionID,
+				"--name", name,
+			})
+			return inner.Execute()
 		},
 	}
+	curlCmd.Flags().StringVar(&collectionID, "collection", "", "Target collection ID")
+	curlCmd.Flags().StringVar(&name, "name", "", "Request name")
+	cmd.AddCommand(curlCmd)
+	return cmd
 }
 
 func lazyImportPostmanCmd(rt func() (*runtime, error)) *cobra.Command {

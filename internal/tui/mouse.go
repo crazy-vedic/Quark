@@ -34,7 +34,7 @@ type sidebarListHit struct {
 
 func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	if m.mode == viewerMode {
-		return m.handleViewerMouse(msg)
+		return m.handleViewerMouse(msg), nil
 	}
 	if m.mode != normalMode {
 		return m, nil
@@ -103,7 +103,7 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		if r.contains(msg.X, msg.Y) {
 			textClick = true
 			if m.isDoubleTextClick(msg, "request") {
-				return m.openViewerForRequest()
+				return m.openViewerForRequest(), nil
 			}
 		}
 	}
@@ -112,7 +112,7 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		if r.contains(msg.X, msg.Y) {
 			textClick = true
 			if m.isDoubleTextClick(msg, "response") {
-				return m.openViewerForResponse()
+				return m.openViewerForResponse(), nil
 			}
 		}
 	}
@@ -142,12 +142,12 @@ func (m *Model) isDoubleTextClick(msg tea.MouseMsg, source string) bool {
 	return withinTime && withinCell
 }
 
-func (m Model) handleViewerMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+func (m Model) handleViewerMouse(msg tea.MouseMsg) Model {
 	if msg.Shift {
-		return m, nil
+		return m
 	}
 	if !isMouseWheel(msg) || msg.Y >= m.height-1 {
-		return m, nil
+		return m
 	}
 	width := max(1, m.width)
 	height := max(1, m.height-1)
@@ -157,7 +157,7 @@ func (m Model) handleViewerMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	case tea.MouseButtonWheelUp:
 		m.viewerText.Scroll(-3, width, height)
 	}
-	return m, nil
+	return m
 }
 
 func (m Model) requestBodyTextRect(layout normalLayout) layoutRect {

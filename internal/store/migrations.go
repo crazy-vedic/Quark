@@ -4,8 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"github.com/crazy-vedic/quark/internal/domain"
 	"log/slog"
+
+	"github.com/crazy-vedic/quark/internal/domain"
 )
 
 // schema is the initial v1 schema for all tables.
@@ -235,7 +236,7 @@ func (s *Store) repairEmptyRequestIDs() error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	if _, err = tx.Exec(`PRAGMA defer_foreign_keys = ON; CREATE TEMP TABLE IF NOT EXISTS request_id_repairs (old_id TEXT PRIMARY KEY, new_id TEXT NOT NULL); DELETE FROM request_id_repairs; INSERT INTO request_id_repairs (old_id, new_id) SELECT id, lower(hex(randomblob(16))) FROM requests WHERE id = ''; UPDATE executions SET request_id = (SELECT new_id FROM request_id_repairs WHERE old_id = executions.request_id) WHERE request_id IN (SELECT old_id FROM request_id_repairs); UPDATE scheduled_runs SET request_id = (SELECT new_id FROM request_id_repairs WHERE old_id = scheduled_runs.request_id) WHERE request_id IN (SELECT old_id FROM request_id_repairs); UPDATE requests SET id = (SELECT new_id FROM request_id_repairs WHERE old_id = requests.id) WHERE id IN (SELECT old_id FROM request_id_repairs); DROP TABLE request_id_repairs;`); err != nil {
 		return err
 	}
@@ -278,11 +279,7 @@ func (s *Store) applyMigration(m migration) error {
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
 	}
-	defer func() {
-		if err != nil {
-			_ = tx.Rollback()
-		}
-	}()
+	defer func() { _ = tx.Rollback() }()
 
 	// Execute migration SQL.
 	if _, err := tx.Exec(m.upSQL); err != nil {
@@ -315,7 +312,7 @@ func (s *Store) applyNestedCollectionsMigration(m migration) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	if _, err = tx.Exec(`ALTER TABLE collections RENAME TO collections_legacy`); err != nil {
 		return err
 	}

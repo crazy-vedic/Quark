@@ -338,12 +338,9 @@ func TestE2E_OverlayMode_HelpBindings_CanBeRemapped(t *testing.T) {
 func TestE2E_OverlayMode_ImportBindings(t *testing.T) {
 	m := newE2EModelWithBindings(t, keybindings.DefaultKeybindings())
 	m = callUpdate(t, m, tea.WindowSizeMsg{Width: 120, Height: 40})
-	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'2'}})
-	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'u'}})
-	// Paste curl command to trigger import mode
-	for _, r := range "curl https://example.com" {
-		m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
-	}
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'I'}})
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("curl https://example.com"), Paste: true})
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyCtrlS})
 	require.Equal(t, tui.ImportMode, m.Mode(), "curl paste must trigger import mode")
 
 	// Enter confirms import
@@ -351,10 +348,7 @@ func TestE2E_OverlayMode_ImportBindings(t *testing.T) {
 	assert.Equal(t, tui.NormalMode, m.Mode(), "Enter must confirm import")
 
 	// Esc cancels import
-	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'u'}})
-	for _, r := range "curl https://example.com" {
-		m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
-	}
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'I'}})
 	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyEsc})
 	assert.Equal(t, tui.NormalMode, m.Mode(), "Esc must cancel import")
 }

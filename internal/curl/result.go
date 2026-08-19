@@ -1,6 +1,8 @@
 // Package curl parses curl commands into structured HTTP request data.
 package curl
 
+import "net/http"
+
 // SecurityLevel classifies the risk level of a parsed curl command.
 type SecurityLevel int
 
@@ -30,12 +32,23 @@ func (s SecurityLevel) String() string {
 // ImportResult holds the parsed output of a curl command.
 // error is always its own return value — never part of this struct.
 type ImportResult struct {
-	Method   string
-	URL      string
-	Headers  map[string]string
-	Body     string
-	Security SecurityLevel
+	Method      string
+	URL         string
+	Headers     http.Header
+	Body        string
+	Security    SecurityLevel
+	Certificate *CertificateSpec
 	// Warnings is sorted lexicographically before return.
 	// Tests must use assert.Equal, not assert.ElementsMatch.
 	Warnings []string
+}
+
+// CertificateSpec contains curl TLS options that cannot be represented by an
+// http.Request. It is kept separate from HTTP headers and body data.
+type CertificateSpec struct {
+	File     string
+	Type     string
+	Password string
+	KeyFile  string
+	CAFile   string
 }

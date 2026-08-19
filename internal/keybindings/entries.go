@@ -21,7 +21,7 @@ var groups = []struct {
 	{"Global", []string{
 		"quit", "help", ActionSearch,
 		ActionFocusSidebar, ActionFocusRequest, ActionFocusResponse,
-		"pane_next", "pane_prev",
+		"pane_next", "pane_prev", ActionClientCerts, ActionImportCurl,
 	}},
 	{"Sidebar", []string{
 		"sidebar_down", "sidebar_up", "sidebar_expand", "sidebar_collapse",
@@ -61,7 +61,7 @@ var groups = []struct {
 		"help_edit", "help_reset", "help_reset_all", "help_unbind",
 	}},
 	{"Import", []string{
-		"import_confirm", ActionImportCancel,
+		ActionImportParse, "import_confirm", ActionImportCancel,
 	}},
 }
 

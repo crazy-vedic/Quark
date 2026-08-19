@@ -403,16 +403,11 @@ func TestE2E_CurlImportFlow(t *testing.T) {
 	m = callUpdate(t, m, tui.CollectionsLoadedMsg([]*domain.Collection{col}))
 	m = callUpdate(t, m, tui.RequestsLoadedMsg(col.ID, nil))
 
-	// Switch to request pane and enter URL editing
-	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'2'}})
-	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'u'}})
-	assert.True(t, m.ActiveField() == tui.URLField)
-
-	// Paste a curl command
+	// Open the dedicated import modal and paste a curl command.
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'I'}})
 	curlCmd := "curl -X POST -H 'Authorization: Bearer secret' https://api.example.com/items"
-	for _, r := range curlCmd {
-		m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
-	}
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(curlCmd), Paste: true})
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyCtrlS})
 
 	// Import modal should appear
 	assert.Equal(t, tui.ImportMode, m.Mode())
