@@ -244,11 +244,7 @@ func (s *Store) applyMigration(m migration) error {
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
 	}
-	defer func() {
-		if err != nil {
-			_ = tx.Rollback()
-		}
-	}()
+	defer func() { _ = tx.Rollback() }()
 
 	// Execute migration SQL.
 	if _, err := tx.Exec(m.upSQL); err != nil {

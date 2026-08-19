@@ -68,9 +68,12 @@ func TestURLFieldNeverAutoImportsCurl(t *testing.T) {
 	m.urlInput.SetValue("curl https://example.com")
 
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}, Paste: true})
-	m = updated.(Model)
+	var ok bool
+	m, ok = updated.(Model)
+	require.True(t, ok)
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	m = updated.(Model)
+	m, ok = updated.(Model)
+	require.True(t, ok)
 
 	require.Equal(t, normalMode, m.mode)
 	require.Equal(t, 0, importer.calls)
@@ -79,12 +82,15 @@ func TestURLFieldNeverAutoImportsCurl(t *testing.T) {
 
 func TestCompleteClipboardValueParsesExactIAMCommand(t *testing.T) {
 	m := New(Deps{Importer: curl.NewImporter()}).openCurlImport()
+	var ok bool
 	updated, _ := m.Update(curlClipboardMsg{value: exactIAMCurl})
-	m = updated.(Model)
+	m, ok = updated.(Model)
+	require.True(t, ok)
 	require.Equal(t, exactIAMCurl, m.importInput.Value())
 
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlS})
-	m = updated.(Model)
+	m, ok = updated.(Model)
+	require.True(t, ok)
 	require.NotNil(t, m.importPreview)
 	require.Equal(t, http.MethodPost, m.importPreview.Method)
 	require.Equal(t, "https://access.dev.wealthcareadmin.com/access/connect/token", m.importPreview.URL)

@@ -48,7 +48,7 @@ func TestNewReadsPasswordFromEnvironment(t *testing.T) {
 	p12Path := writeTestPKCS12(t, "from-env")
 	cfg := config.Default(t.TempDir())
 	cfg.HTTP.ClientCertificates = []config.ClientCertificate{{
-		Host: "api.example.com", File: p12Path, PasswordEnv: "QUARK_TEST_CERT_PASSWORD", //nolint:gosec // fixture is an environment-variable name.
+		Host: "api.example.com", File: p12Path, PasswordEnv: "QUARK_TEST_CERT_PASSWORD", // #nosec G101 -- fixture is an environment-variable name.
 	}}
 
 	_, err := New(cfg)

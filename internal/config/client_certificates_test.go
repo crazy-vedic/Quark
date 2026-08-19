@@ -15,7 +15,7 @@ func TestSaveClientCertificatesPreservesConfig(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "config.toml"), []byte("[ui]\ntheme = \"dark\"\n"), 0o600))
 	certs := []config.ClientCertificate{{
 		Host: "access.dev.example.com", File: `C:\certs\dev.pem`, Type: "PEM",
-		KeyFile: `C:\certs\dev-key.pem`, CAFile: `C:\certs\root.pem`, PasswordEnv: "QUARK_CERT_PASSWORD", //nolint:gosec // fixture is an environment-variable name.
+		KeyFile: `C:\certs\dev-key.pem`, CAFile: `C:\certs\root.pem`, PasswordEnv: "QUARK_CERT_PASSWORD", // #nosec G101 -- fixture is an environment-variable name.
 	}}
 
 	require.NoError(t, config.SaveClientCertificates(dir, certs))

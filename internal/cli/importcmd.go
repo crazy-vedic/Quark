@@ -37,7 +37,11 @@ func NewImportCmd(
 	return cmd
 }
 
-func newImportCurlCmd(w store.RequestWriter, im *curl.Importer, certificateSavers ...CurlCertificateSaver) *cobra.Command {
+func newImportCurlCmd(
+	w store.RequestWriter,
+	im *curl.Importer,
+	certificateSavers ...CurlCertificateSaver,
+) *cobra.Command {
 	var certificateSaver CurlCertificateSaver
 	if len(certificateSavers) > 0 {
 		certificateSaver = certificateSavers[0]

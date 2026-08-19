@@ -569,9 +569,10 @@ func lazyImportCmd(rt func() (*runtime, error)) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			inner := cli.NewImportCmd(r.st, r.importer, func(_ context.Context, spec *curl.CertificateSpec, rawURL string) error {
+			certificateSaver := func(_ context.Context, spec *curl.CertificateSpec, rawURL string) error {
 				return saveRuntimeImportedCertificate(r, spec, rawURL)
-			})
+			}
+			inner := cli.NewImportCmd(r.st, r.importer, certificateSaver)
 			inner.SetContext(cmd.Context())
 			inner.SetOut(cmd.OutOrStdout())
 			inner.SetErr(cmd.ErrOrStderr())
