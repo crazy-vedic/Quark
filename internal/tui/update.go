@@ -1442,6 +1442,12 @@ func (m Model) handleImportKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if m.importPreview == nil {
 				break // Enter remains a newline in the multiline input stage.
 			}
+			if m.importPreview.Certificate != nil && m.writer == nil {
+				m.importError = "Cannot save imported request: request storage is unavailable"
+				return m, nil
+			}
+			previousConfig := m.cfg
+			previousCerts := append([]config.ClientCertificate(nil), m.clientCerts...)
 			var saveCmd tea.Cmd
 			if m.importPreview.Certificate != nil {
 				var certErr error
@@ -1471,7 +1477,13 @@ func (m Model) handleImportKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					Body:         m.importPreview.Body,
 				}
 				m.debugCurl("confirm save name=%q method=%s url=%q header_names=%q body_len=%d", name, req.Method, req.URL, debugHeaderKeys(m.importPreview.Headers), len(req.Body))
-				saveCmd = saveRequestCmd(m.ctx, m.writer, m.reader, req)
+				saveCmd = saveRequestCmdWithRollback(m.ctx, m.writer, m.reader, req, func() {
+					_ = m.writer.DeleteRequest(m.ctx, req.ID)
+					_ = config.SaveClientCertificates(m.configDir, previousCerts)
+					if m.certificateManager != nil {
+						_ = m.certificateManager.Reload(previousConfig)
+					}
+				})
 			}
 			m.debugCurl("confirm complete")
 			return m.closeImport(), saveCmd

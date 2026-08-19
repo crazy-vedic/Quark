@@ -562,9 +562,9 @@ func lazyImportCmd(rt func() (*runtime, error)) *cobra.Command {
 	}
 	var collectionID, name string
 	curlCmd := &cobra.Command{
-		Use:   "curl <curl-command>",
+		Use:   "curl <quoted-curl-command>",
 		Short: "Import a curl command as a request",
-		Args:  cobra.MinimumNArgs(1),
+		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			r, err := rt()
 			if err != nil {
@@ -577,7 +577,7 @@ func lazyImportCmd(rt func() (*runtime, error)) *cobra.Command {
 			inner.SetOut(cmd.OutOrStdout())
 			inner.SetErr(cmd.ErrOrStderr())
 			inner.SetArgs([]string{
-				"curl", strings.Join(args, " "),
+				"curl", args[0],
 				"--collection", collectionID,
 				"--name", name,
 			})

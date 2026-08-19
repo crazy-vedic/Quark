@@ -40,11 +40,11 @@ func newImportCurlCmd(w store.RequestWriter, im *curl.Importer, certificateSaver
 	}
 	var collectionID, name string
 	cmd := &cobra.Command{
-		Use:   "curl <curl-command>",
+		Use:   "curl <quoted-curl-command>",
 		Short: "Import a curl command as a request",
-		Args:  cobra.MinimumNArgs(1),
+		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			curlCmd := strings.Join(args, " ")
+			curlCmd := args[0]
 			result, err := im.Parse(strings.NewReader(curlCmd))
 			if err != nil {
 				return fmt.Errorf("import curl: parse: %w", err)
@@ -63,15 +63,9 @@ func newImportCurlCmd(w store.RequestWriter, im *curl.Importer, certificateSaver
 				fmt.Fprintln(cmd.OutOrStdout(), "\n(Dry run: use --collection and --name to save)")
 				return nil
 			}
-			if result.Certificate != nil {
-				if certificateSaver == nil {
-					return fmt.Errorf("import curl: saving mTLS options is unavailable in this command context")
-				}
-				if err := certificateSaver(cmd.Context(), result.Certificate, result.URL); err != nil {
-					return fmt.Errorf("import curl: save mTLS configuration: %w", err)
-				}
+			if w == nil {
+				return fmt.Errorf("import curl: request storage is unavailable")
 			}
-
 			headersJSON, err := json.Marshal(result.Headers)
 			if err != nil {
 				return fmt.Errorf("import curl: encode headers: %w", err)
@@ -87,6 +81,16 @@ func newImportCurlCmd(w store.RequestWriter, im *curl.Importer, certificateSaver
 			}
 			if err := w.SaveRequest(cmd.Context(), req); err != nil {
 				return fmt.Errorf("import curl: save: %w", err)
+			}
+			if result.Certificate != nil {
+				if certificateSaver == nil {
+					_ = w.DeleteRequest(cmd.Context(), req.ID)
+					return fmt.Errorf("import curl: saving mTLS options is unavailable in this command context")
+				}
+				if err := certificateSaver(cmd.Context(), result.Certificate, result.URL); err != nil {
+					_ = w.DeleteRequest(cmd.Context(), req.ID)
+					return fmt.Errorf("import curl: save mTLS configuration: %w", err)
+				}
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "Saved as %q (%s)\n", name, req.ID[:8])
 			return nil

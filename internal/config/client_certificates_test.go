@@ -24,3 +24,15 @@ func TestSaveClientCertificatesPreservesConfig(t *testing.T) {
 	require.Equal(t, "dark", loaded.UI.Theme)
 	require.Equal(t, certs, loaded.HTTP.ClientCertificates)
 }
+
+func TestSaveClientCertificatesRejectsMalformedConfigWithoutRewrite(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.toml")
+	original := []byte("[ui\ntheme = \"dark\"\n")
+	require.NoError(t, os.WriteFile(path, original, 0o600))
+	err := config.SaveClientCertificates(dir, []config.ClientCertificate{{Host: "example.com", File: "client.pem"}})
+	require.Error(t, err)
+	actual, readErr := os.ReadFile(path)
+	require.NoError(t, readErr)
+	require.Equal(t, original, actual)
+}

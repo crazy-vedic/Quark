@@ -577,11 +577,18 @@ func setDefaultHeader(headers http.Header, suppressed map[string]bool, key, valu
 }
 
 func appendQuery(rawURL, query string) string {
-	separator := "?"
-	if strings.Contains(rawURL, "?") {
-		separator = "&"
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		// URL validation later reports malformed URLs; retain the original
+		// value here rather than moving a fragment accidentally.
+		return rawURL
 	}
-	return rawURL + separator + query
+	if parsed.RawQuery == "" {
+		parsed.RawQuery = query
+	} else {
+		parsed.RawQuery += "&" + query
+	}
+	return parsed.String()
 }
 
 func finalizeCertificate(cert *CertificateSpec, result *ImportResult) {

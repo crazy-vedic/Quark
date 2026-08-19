@@ -739,6 +739,34 @@ func saveRequestCmd(
 	}
 }
 
+func saveRequestCmdWithRollback(
+	ctx context.Context,
+	w store.RequestWriter,
+	reader store.RequestReader,
+	req *domain.Request,
+	rollback func(),
+) tea.Cmd {
+	return func() tea.Msg {
+		if err := w.SaveRequest(ctx, req); err != nil {
+			if rollback != nil {
+				rollback()
+			}
+			return errLoadMsg{err: fmt.Errorf("save request: %w", err)}
+		}
+		if reader == nil || req.CollectionID == "" {
+			return requestsLoadedMsg{}
+		}
+		reqs, err := reader.ListRequests(ctx, req.CollectionID)
+		if err != nil {
+			if rollback != nil {
+				rollback()
+			}
+			return errLoadMsg{err: fmt.Errorf("reload requests: %w", err)}
+		}
+		return requestsLoadedMsg{collectionID: req.CollectionID, requests: reqs}
+	}
+}
+
 // dispatchCmd follows Go convention: context.Context is the first parameter.
 // Closes over immutable values only — never a *Model pointer.
 func dispatchCmd(ctx context.Context, executor RequestExecutor, req *domain.Request) tea.Cmd {

@@ -4,6 +4,7 @@ package config
 
 import (
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -242,7 +243,7 @@ func SaveClientCertificates(configDir string, certs []ClientCertificate) error {
 	var doc map[string]any
 	if len(raw) > 0 {
 		if _, err := toml.Decode(string(raw), &doc); err != nil {
-			doc = make(map[string]any)
+			return fmt.Errorf("decode config.toml: %w", err)
 		}
 	} else {
 		doc = make(map[string]any)
