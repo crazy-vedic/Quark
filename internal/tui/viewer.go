@@ -238,6 +238,13 @@ func copyViewerContentCmd(content string) tea.Cmd {
 	}
 }
 
+func readCurlClipboardCmd() tea.Cmd {
+	return func() tea.Msg {
+		value, err := clipboard.ReadAll()
+		return curlClipboardMsg{value: value, err: err}
+	}
+}
+
 func (m Model) viewViewer() string {
 	help := "[f] find  [c] copy body  [esc/tab] close  [shift+click] terminal select"
 	matchStatus := m.viewerMatchStatus()

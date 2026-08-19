@@ -5,6 +5,7 @@ package integration_test
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -79,13 +80,15 @@ func TestRoundTrip_CurlImportAndExecute(t *testing.T) {
 	parsed, err := im.Parse(strings.NewReader(curlCmd))
 	require.NoError(t, err)
 	assert.Equal(t, "GET", parsed.Method)
-	assert.Equal(t, "hello", parsed.Headers["X-Import-Test"])
+	assert.Equal(t, "hello", parsed.Headers.Get("X-Import-Test"))
+	headersJSON, err := json.Marshal(parsed.Headers)
+	require.NoError(t, err)
 
 	req := &domain.Request{
 		ID:      uuid.New().String(),
 		Method:  parsed.Method,
 		URL:     parsed.URL,
-		Headers: fmt.Sprintf(`{"X-Import-Test":"%s"}`, parsed.Headers["X-Import-Test"]),
+		Headers: string(headersJSON),
 	}
 
 	transport := &http.Transport{}

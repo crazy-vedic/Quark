@@ -163,7 +163,7 @@ func buildHTTPRequest(ctx context.Context, req *domain.Request) (*http.Request, 
 		return nil, err
 	}
 
-	// Parse and apply headers stored as a flat map (JSON object in DB).
+	// Parse and apply headers stored as a JSON object in the DB.
 	if req.Headers != "" && req.Headers != "{}" {
 		headers, err := parseHeaders(req.Headers)
 		if err != nil {
@@ -172,8 +172,10 @@ func buildHTTPRequest(ctx context.Context, req *domain.Request) (*http.Request, 
 			slog.Warn("exec: failed to parse request headers; sending without headers",
 				"request_id", req.ID, "err", err)
 		} else {
-			for k, v := range headers {
-				httpReq.Header.Set(k, v)
+			for key, values := range headers {
+				for _, value := range values {
+					httpReq.Header.Add(key, value)
+				}
 			}
 		}
 	}

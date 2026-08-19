@@ -4,8 +4,9 @@ import (
 	"fmt"
 	"io"
 	"sort"
-	"strings"
 )
+
+const maxCommandBytes = 4 << 20
 
 // Importer parses curl commands into ImportResult values.
 type Importer struct{}
@@ -19,17 +20,15 @@ func NewImporter(opts ...Option) *Importer {
 // Parse reads a curl command from r and returns a structured ImportResult.
 // Warnings are sorted lexicographically before returning.
 func (im *Importer) Parse(r io.Reader) (*ImportResult, error) {
-	raw, err := io.ReadAll(r)
+	raw, err := io.ReadAll(io.LimitReader(r, maxCommandBytes+1))
 	if err != nil {
 		return nil, fmt.Errorf("curl: read input: %w", err)
 	}
-
-	tokens, err := tokenize(strings.TrimSpace(string(raw)))
-	if err != nil {
-		return nil, fmt.Errorf("curl: tokenize: %w", err)
+	if len(raw) > maxCommandBytes {
+		return nil, fmt.Errorf("curl: command exceeds %d bytes", maxCommandBytes)
 	}
 
-	result, err := parseTokens(tokens)
+	result, err := parseCommand(string(raw))
 	if err != nil {
 		return nil, err
 	}

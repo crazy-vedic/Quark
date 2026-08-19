@@ -37,9 +37,23 @@ type UI struct {
 
 // HTTP configures request defaults.
 type HTTP struct {
-	Timeout         duration `toml:"timeout"`
-	FollowRedirects bool     `toml:"follow_redirects"`
-	MaxRedirects    int      `toml:"max_redirects"`
+	Timeout            duration            `toml:"timeout"`
+	FollowRedirects    bool                `toml:"follow_redirects"`
+	MaxRedirects       int                 `toml:"max_redirects"`
+	ClientCertificates []ClientCertificate `toml:"client_certificates"`
+}
+
+// ClientCertificate configures TLS identity and trust material for one host.
+// PasswordEnv is preferred for deployments because it keeps the secret out of
+// config.toml. Password is supported for interactive TUI setup.
+type ClientCertificate struct {
+	Host        string `toml:"host"`
+	File        string `toml:"file"`
+	Type        string `toml:"type,omitempty"`
+	KeyFile     string `toml:"key_file,omitempty"`
+	CAFile      string `toml:"ca_file,omitempty"`
+	Password    string `toml:"password,omitempty"`
+	PasswordEnv string `toml:"password_env,omitempty"`
 }
 
 // Logging configures the application log.
@@ -133,6 +147,9 @@ func Load(configDir string) (Config, error) {
 	if md.IsDefined("http", "max_redirects") {
 		cfg.HTTP.MaxRedirects = override.HTTP.MaxRedirects
 	}
+	if md.IsDefined("http", "client_certificates") {
+		cfg.HTTP.ClientCertificates = override.HTTP.ClientCertificates
+	}
 	if md.IsDefined("logging", "level") {
 		cfg.Logging.Level = override.Logging.Level
 	}
@@ -208,6 +225,62 @@ func SaveKeybindings(configDir string, binds keybindings.Keybindings) error {
 		return err
 	}
 	defer f.Close()
+	return toml.NewEncoder(f).Encode(doc)
+}
+
+// SaveClientCertificates writes only the HTTP client_certificates setting,
+// preserving all other sections in config.toml.
+func SaveClientCertificates(configDir string, certs []ClientCertificate) error {
+	if err := os.MkdirAll(configDir, 0o700); err != nil {
+		return err
+	}
+	path := filepath.Join(configDir, "config.toml")
+	var raw []byte
+	if info, err := os.Stat(path); err == nil && !info.IsDir() {
+		raw, _ = os.ReadFile(path)
+	}
+	var doc map[string]any
+	if len(raw) > 0 {
+		if _, err := toml.Decode(string(raw), &doc); err != nil {
+			doc = make(map[string]any)
+		}
+	} else {
+		doc = make(map[string]any)
+	}
+	httpDoc, ok := doc["http"].(map[string]any)
+	if !ok {
+		httpDoc = make(map[string]any)
+	}
+	entries := make([]map[string]any, 0, len(certs))
+	for _, cert := range certs {
+		entry := map[string]any{"host": cert.Host, "file": cert.File}
+		if cert.Type != "" {
+			entry["type"] = cert.Type
+		}
+		if cert.KeyFile != "" {
+			entry["key_file"] = cert.KeyFile
+		}
+		if cert.CAFile != "" {
+			entry["ca_file"] = cert.CAFile
+		}
+		if cert.Password != "" {
+			entry["password"] = cert.Password
+		}
+		if cert.PasswordEnv != "" {
+			entry["password_env"] = cert.PasswordEnv
+		}
+		entries = append(entries, entry)
+	}
+	httpDoc["client_certificates"] = entries
+	doc["http"] = httpDoc
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	if err := f.Chmod(0o600); err != nil {
+		return err
+	}
 	return toml.NewEncoder(f).Encode(doc)
 }
 

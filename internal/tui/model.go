@@ -47,6 +47,7 @@ const (
 	envMode
 	collectionPromptMode
 	scheduleMode
+	clientCertMode
 )
 
 // promptType identifies which collection prompt is active.
@@ -122,6 +123,11 @@ type errLoadMsg struct{ err error }
 type searchResultsMsg struct{ hits []*search.SearchHit }
 
 type viewerClipboardMsg struct{ err error }
+
+type curlClipboardMsg struct {
+	value string
+	err   error
+}
 
 // executionHistoryLoadedMsg carries persisted executions for a request.
 type executionHistoryLoadedMsg struct {
@@ -228,22 +234,22 @@ type Model struct {
 	preEditBody   string       // Body value saved when editing starts; restored on Esc
 
 	// --- Response state ---
-	response     *exec.ExecuteResult
-	responseTab  responseTabID
-	responseText scrollableText
-	viewerText  scrollableText
-	viewerCopy  string
-	viewerContent string
-	viewerFind  textinput.Model
-	viewerFindOpen bool
-	viewerLastMatch int
-	viewerMatches []int
-	lastTextClick time.Time
-	lastTextClickX int
-	lastTextClickY int
+	response            *exec.ExecuteResult
+	responseTab         responseTabID
+	responseText        scrollableText
+	viewerText          scrollableText
+	viewerCopy          string
+	viewerContent       string
+	viewerFind          textinput.Model
+	viewerFindOpen      bool
+	viewerLastMatch     int
+	viewerMatches       []int
+	lastTextClick       time.Time
+	lastTextClickX      int
+	lastTextClickY      int
 	lastTextClickSource string
-	executions   []*domain.Execution
-	execCursor   int
+	executions          []*domain.Execution
+	execCursor          int
 
 	// --- In-flight request ---
 	cancel  context.CancelFunc
@@ -266,6 +272,9 @@ type Model struct {
 
 	// --- Import modal ---
 	importPreview *curl.ImportResult
+	importInput   textarea.Model
+	importError   string
+	importID      string
 	importName    textinput.Model
 	importColID   string
 
@@ -277,6 +286,19 @@ type Model struct {
 	// --- Schedule modal ---
 	scheduleInput    textinput.Model
 	scheduleTimerSeq int
+
+	// --- Client certificate modal ---
+	clientCerts        []config.ClientCertificate
+	clientCertCursor   int
+	clientCertEditing  bool
+	clientCertField    int
+	clientCertHost     textinput.Model
+	clientCertFile     textinput.Model
+	clientCertType     textinput.Model
+	clientCertKeyFile  textinput.Model
+	clientCertCAFile   textinput.Model
+	clientCertPassword textinput.Model
+	clientCertError    string
 
 	// --- Body / Header inline editor ---
 	bodyTextarea     textarea.Model
@@ -298,7 +320,8 @@ type Model struct {
 	timing   *timing.Collector
 
 	// configDir is the directory where config.toml and the DB are stored.
-	configDir string
+	configDir          string
+	certificateManager CertificateManager
 	// --- Environment state ---
 	activeEnv      map[string]string // collectionID → envID
 	cachedEnvName  string            // cached name for the active env of the current collection
@@ -368,6 +391,9 @@ type Deps struct {
 	// ConfigDir is the directory where config.toml and the DB are stored.
 	// Used when persisting keybinding changes.
 	ConfigDir string
+	// CertificateManager reloads host-scoped client certificates after the
+	// certificate modal saves configuration.
+	CertificateManager CertificateManager
 	// ForceDim permanently forces a density tier (wide|narrow|tiny|absurd).
 	// DimAuto (zero) selects the tier from the terminal size.
 	ForceDim DimMode
@@ -391,12 +417,36 @@ func New(deps Deps) Model {
 	importName.Placeholder = "request name"
 	importName.CharLimit = 128
 
+	importTA := textarea.New()
+	importTA.Placeholder = "Paste a complete curl command..."
+	importTA.SetHeight(10)
+	importTA.CharLimit = 4 << 20
+
 	promptInput := textinput.New()
 	promptInput.CharLimit = 128
 
 	scheduleInput := textinput.New()
 	scheduleInput.Placeholder = "10m, in 1h, 2026-06-25 18:30"
 	scheduleInput.CharLimit = 64
+
+	clientCertHost := textinput.New()
+	clientCertHost.Placeholder = "api.example.com"
+	clientCertHost.CharLimit = 253
+	clientCertFile := textinput.New()
+	clientCertFile.Placeholder = "C:\\path\\client.p12 or client.pem"
+	clientCertFile.CharLimit = 2048
+	clientCertType := textinput.New()
+	clientCertType.Placeholder = "P12 or PEM"
+	clientCertType.CharLimit = 8
+	clientCertKeyFile := textinput.New()
+	clientCertKeyFile.Placeholder = "C:\\path\\client-key.pem (PEM)"
+	clientCertKeyFile.CharLimit = 2048
+	clientCertCAFile := textinput.New()
+	clientCertCAFile.Placeholder = "C:\\path\\ca.pem (optional)"
+	clientCertCAFile.CharLimit = 2048
+	clientCertPassword := textinput.New()
+	clientCertPassword.EchoMode = textinput.EchoPassword
+	clientCertPassword.CharLimit = 512
 
 	bodyTA := textarea.New()
 	bodyTA.Placeholder = "Enter request body..."
@@ -435,6 +485,7 @@ func New(deps Deps) Model {
 		searchInput:           searchInput,
 		viewerFind:            viewerFind,
 		importName:            importName,
+		importInput:           importTA,
 		promptInput:           promptInput,
 		bodyTextarea:          bodyTA,
 		requestText:           scrollableText{cache: &scrollableTextCache{}},
@@ -450,6 +501,7 @@ func New(deps Deps) Model {
 		debugLog:              deps.DebugLog,
 		timing:                collectorOrDefault(deps.Timing),
 		configDir:             deps.ConfigDir,
+		certificateManager:    deps.CertificateManager,
 		forceDim:              deps.ForceDim,
 		resolver:              resolverOrDefault(deps.Resolver, deps.Config),
 		envReader:             deps.EnvReader,
@@ -459,6 +511,12 @@ func New(deps Deps) Model {
 		activeEnv:             make(map[string]string),
 		now:                   now,
 		scheduleInput:         scheduleInput,
+		clientCertHost:        clientCertHost,
+		clientCertFile:        clientCertFile,
+		clientCertType:        clientCertType,
+		clientCertKeyFile:     clientCertKeyFile,
+		clientCertCAFile:      clientCertCAFile,
+		clientCertPassword:    clientCertPassword,
 		scheduleTimerSeq:      1,
 	}
 
