@@ -14,6 +14,7 @@ type Keybindings struct {
 	FocusResponse string `toml:"focus_response"`
 	PaneNext      string `toml:"pane_next"`
 	PanePrev      string `toml:"pane_prev"`
+	ImportCurl    string `toml:"import_curl"`
 
 	// Sidebar
 	SidebarDown       string `toml:"sidebar_down"`
@@ -35,6 +36,7 @@ type Keybindings struct {
 	EditAuth    string `toml:"edit_auth"`
 	ScheduleRun string `toml:"schedule_run"`
 	EnvOpen     string `toml:"env_open"`
+	ClientCerts string `toml:"client_certificates"`
 	EnvNext     string `toml:"env_next"`
 	EnvPrev     string `toml:"env_prev"`
 
@@ -103,6 +105,7 @@ type Keybindings struct {
 
 	// Import modal
 	ImportConfirm string `toml:"import_confirm"`
+	ImportParse   string `toml:"import_parse"`
 	ImportCancel  string `toml:"import_cancel"`
 }
 
@@ -148,7 +151,9 @@ func NewResolver(binds Keybindings) *Resolver {
 		binds.FocusResponse: ActionFocusResponse,
 		binds.PaneNext:      "pane_next",
 		binds.PanePrev:      "pane_prev",
+		binds.ImportCurl:    ActionImportCurl,
 		binds.EnvOpen:       ActionEnvOpen,
+		binds.ClientCerts:   ActionClientCerts,
 		binds.EnvNext:       "env_next",
 		binds.EnvPrev:       "env_prev",
 	}
@@ -222,6 +227,7 @@ func NewResolver(binds Keybindings) *Resolver {
 
 	// Import
 	import_ := map[string]string{
+		binds.ImportParse:   ActionImportParse,
 		binds.ImportConfirm: ActionConfirm,
 		binds.ImportCancel:  ActionCancel,
 	}
@@ -406,7 +412,8 @@ func Validate(binds Keybindings) map[string][]string {
 		{binds.Quit, "quit"}, {binds.Help, "help"}, {binds.Search, ActionSearch},
 		{binds.FocusSidebar, ActionFocusSidebar}, {binds.FocusRequest, ActionFocusRequest},
 		{binds.FocusResponse, ActionFocusResponse}, {binds.PaneNext, "pane_next"},
-		{binds.PanePrev, "pane_prev"},
+		{binds.PanePrev, "pane_prev"}, {binds.ImportCurl, ActionImportCurl},
+		{binds.ClientCerts, ActionClientCerts},
 	}
 	modes := [][]binding{
 		// normal mode panes
@@ -439,7 +446,8 @@ func Validate(binds Keybindings) map[string][]string {
 			{binds.HelpUp, "help_up"}, {binds.HelpEdit, "help_edit"},
 			{binds.HelpReset, "help_reset"}, {binds.HelpResetAll, "help_reset_all"},
 			{binds.HelpUnbind, "help_unbind"}},
-		{{binds.ImportConfirm, "import_confirm"}, {binds.ImportCancel, ActionImportCancel}},
+		{{binds.ImportParse, ActionImportParse}, {binds.ImportConfirm, "import_confirm"},
+			{binds.ImportCancel, ActionImportCancel}},
 		{{binds.BodySave, "body_save"}, {binds.BodyNewline, "body_newline"},
 			{binds.BodyCancel, "body_cancel"}},
 		{{binds.HeaderDown, "header_down"}, {binds.HeaderUp, "header_up"},

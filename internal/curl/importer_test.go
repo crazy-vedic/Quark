@@ -125,6 +125,7 @@ var corpus = []corpusCase{
 	{
 		name:            "@filename body",
 		input:           `curl -d @/etc/passwd https://api.example.com`,
+		wantErr:         true,
 		wantMethod:      "POST",
 		wantURL:         baseURL,
 		wantSecurity:    curl.Dangerous,
@@ -133,6 +134,7 @@ var corpus = []corpusCase{
 	{
 		name:            "@filename with --data-binary",
 		input:           `curl --data-binary @/tmp/file.json https://api.example.com`,
+		wantErr:         true,
 		wantMethod:      "GET", // no body inferred for @- or @file with data-binary
 		wantURL:         baseURL,
 		wantSecurity:    curl.Dangerous,
@@ -141,6 +143,7 @@ var corpus = []corpusCase{
 	{
 		name:            "--data-binary @- (stdin)",
 		input:           `curl --data-binary @- https://api.example.com`,
+		wantErr:         true,
 		wantURL:         baseURL,
 		wantSecurity:    curl.Dangerous,
 		wantWarnContain: "@filename detected: - (stdin)",
@@ -149,6 +152,7 @@ var corpus = []corpusCase{
 	{
 		name:            "shell expansion $( ) in body",
 		input:           `curl -d "$(cat ~/.ssh/id_rsa)" https://api.example.com`,
+		wantErr:         true,
 		wantURL:         baseURL,
 		wantSecurity:    curl.Dangerous,
 		wantWarnContain: "shell expansion",
@@ -156,6 +160,7 @@ var corpus = []corpusCase{
 	{
 		name:            "backtick shell expansion in body",
 		input:           "curl -d \"`cat /etc/passwd`\" https://api.example.com",
+		wantErr:         true,
 		wantURL:         baseURL,
 		wantSecurity:    curl.Dangerous,
 		wantWarnContain: "shell expansion",
@@ -239,18 +244,20 @@ var corpus = []corpusCase{
 	},
 	// --- Follow redirects ---
 	{
-		name:         "follow redirects -L",
-		input:        `curl -L https://api.example.com`,
-		wantMethod:   "GET",
-		wantURL:      baseURL,
-		wantSecurity: curl.Safe,
+		name:            "follow redirects -L",
+		input:           `curl -L https://api.example.com`,
+		wantMethod:      "GET",
+		wantURL:         baseURL,
+		wantSecurity:    curl.Review,
+		wantWarnContain: "redirect behavior",
 	},
 	{
-		name:         "follow redirects --location",
-		input:        `curl --location https://api.example.com`,
-		wantMethod:   "GET",
-		wantURL:      baseURL,
-		wantSecurity: curl.Safe,
+		name:            "follow redirects --location",
+		input:           `curl --location https://api.example.com`,
+		wantMethod:      "GET",
+		wantURL:         baseURL,
+		wantSecurity:    curl.Review,
+		wantWarnContain: "redirect behavior",
 	},
 	// --- data-urlencode ---
 	{
@@ -359,6 +366,7 @@ var corpus = []corpusCase{
 	{
 		name:            "@filename in --data",
 		input:           `curl --data @/home/user/.netrc https://api.example.com`,
+		wantErr:         true,
 		wantURL:         baseURL,
 		wantSecurity:    curl.Dangerous,
 		wantWarnContain: "@filename detected: /home/user/.netrc",
@@ -366,6 +374,7 @@ var corpus = []corpusCase{
 	{
 		name:         "safe body, dangerous inferred by filename",
 		input:        `curl -d @/tmp/safe.json https://api.example.com`,
+		wantErr:      true,
 		wantURL:      baseURL,
 		wantSecurity: curl.Dangerous,
 	},
@@ -441,7 +450,7 @@ func TestImporter_Corpus(t *testing.T) {
 				assert.Equal(t, tc.wantBody, result.Body, "body mismatch")
 			}
 			if tc.wantHeaderKey != "" {
-				assert.Equal(t, tc.wantHeaderVal, result.Headers[tc.wantHeaderKey],
+				assert.Equal(t, tc.wantHeaderVal, result.Headers.Get(tc.wantHeaderKey),
 					"header %q mismatch", tc.wantHeaderKey)
 			}
 			if tc.wantWarnContain != "" {
@@ -468,10 +477,11 @@ func TestImporter_Corpus(t *testing.T) {
 }
 
 func TestImporter_WarningSorted(t *testing.T) {
-	// A command with exactly one warning must return it sorted.
 	importer := curl.NewImporter()
-	result, err := importer.Parse(strings.NewReader(`curl -d @/etc/passwd https://api.example.com`))
+	result, err := importer.Parse(strings.NewReader(`curl --proxy http://proxy -L https://api.example.com`))
 	require.NoError(t, err)
-	require.Len(t, result.Warnings, 1)
-	assert.Equal(t, []string{"@filename detected: /etc/passwd"}, result.Warnings)
+	assert.Equal(t, []string{
+		"proxy configuration is not imported",
+		"redirect behavior is not imported; Quark's configured redirect policy applies",
+	}, result.Warnings)
 }

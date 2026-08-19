@@ -50,7 +50,9 @@ func runQuarkWithHomeEnv(
 	t.Helper()
 	cmd := exec.Command(binaryPath, args...)
 	cmd.Dir = home
-	env := append(os.Environ(), "HOME="+home)
+	// os.UserHomeDir uses USERPROFILE on Windows and HOME on Unix. Set both so
+	// the canonical binary and the test harness resolve the same isolated home.
+	env := append(os.Environ(), "HOME="+home, "USERPROFILE="+home)
 	env = append(env, extraEnv...)
 	cmd.Env = env
 	var stdoutBuf, stderrBuf bytes.Buffer

@@ -13,6 +13,9 @@ const (
 	ActionEditHeaders   = "edit_headers"
 	ActionScheduleRun   = "schedule_run"
 	ActionEnvOpen       = "env_open"
+	ActionClientCerts   = "client_certificates"
+	ActionImportCurl    = "import_curl"
+	ActionImportParse   = "import_parse"
 	ActionImportCancel  = "import_cancel"
 
 	ActionNavigateDown = "navigate_down"
