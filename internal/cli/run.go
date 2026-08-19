@@ -57,6 +57,11 @@ func NewRunCmd(st RunStore, e *exec.Executor) *cobra.Command {
 						return fmt.Errorf("run: execute: %w", err)
 					}
 					fmt.Fprintf(cmd.OutOrStdout(), "Status: %s\nSize:   %d bytes\nTime:   %v\n", result.Status, result.Size, result.Duration.Round(1000000))
+					ct := http.Header(result.Headers).Get("Content-Type")
+					if strings.Contains(ct, "application/json") && result.Body != nil {
+						fmt.Fprintln(cmd.OutOrStdout())
+						fmt.Fprintln(cmd.OutOrStdout(), string(result.Body))
+					}
 					return nil
 				}
 			}
