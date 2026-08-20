@@ -2457,9 +2457,11 @@ func (m Model) viewCollectionPromptModal() string {
 		var sb strings.Builder
 		title := "Delete Collection"
 		confirmAction := "sidebar_delete"
+		confirmLabel := helpLabelConfirm
 		if m.promptTargetCollectionID != "" {
 			title = "Delete Request"
 			confirmAction = keybindings.ActionDeleteRequest
+			confirmLabel = "continue"
 		}
 		sb.WriteString(titleStyle.Render(title) + "\n\n")
 		sb.WriteString("Delete " + lipgloss.NewStyle().Bold(true).Render(name) + "?\n\n")
@@ -2468,7 +2470,7 @@ func (m Model) viewCollectionPromptModal() string {
 			sb.WriteString(errorStyle.Render("✗ "+m.statusErr) + "\n\n")
 		}
 		sb.WriteString(mutedStyle.Render(m.renderHints([]hintItem{
-			{Label: helpLabelConfirm, Actions: []string{confirmAction}},
+			{Label: confirmLabel, Actions: []string{confirmAction}},
 			{Label: helpLabelCancel, Actions: []string{keybindings.ActionImportCancel}},
 		})))
 		box := lipgloss.NewStyle().
