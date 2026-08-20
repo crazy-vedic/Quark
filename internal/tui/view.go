@@ -2460,7 +2460,7 @@ func (m Model) viewCollectionPromptModal() string {
 		confirmLabel := helpLabelConfirm
 		if m.promptTargetCollectionID != "" {
 			title = "Delete Request"
-			confirmAction = keybindings.ActionDeleteRequest
+			confirmAction = "request_delete"
 			confirmLabel = "continue"
 		}
 		sb.WriteString(titleStyle.Render(title) + "\n\n")
