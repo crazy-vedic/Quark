@@ -238,6 +238,10 @@ func importSingleFile(
 		name = uniqueCollectionName(ctx, st, name)
 		logger.Logf("deduplicated name=%s", name)
 	}
+	// Read existing collections before opening the transaction. Store uses a
+	// single SQLite connection, so querying the store while tx is open would
+	// block waiting for the connection held by that transaction.
+	allCollections, _ := st.ListCollections(ctx)
 
 	logger.Logf("tx begin name=%s", name)
 	tx, err := st.BeginTransaction(ctx)
@@ -315,7 +319,6 @@ func importSingleFile(
 		groups = []postman.RequestGroup{{Requests: result.Requests}}
 	}
 	collectionsByPath := map[string]*domain.Collection{"": col}
-	allCollections, _ := st.ListCollections(ctx)
 	for _, group := range groups {
 		if group.Path == "" {
 			continue
