@@ -537,6 +537,8 @@ func (m Model) dispatchNormalAction(action string) (tea.Model, tea.Cmd) {
 // handleSidebarAction is the action-based version of handleSidebarKey.
 func (m Model) handleSidebarAction(action string) (tea.Model, tea.Cmd) {
 	switch action {
+	case keybindings.ActionDeleteRequest:
+		return m.handleRequestAction(action)
 	case "cursor_down":
 		return m.sidebarDown()
 	case "cursor_up":
@@ -603,7 +605,15 @@ func (m Model) handleSidebarAction(action string) (tea.Model, tea.Cmd) {
 func (m Model) handleRequestAction(action string) (tea.Model, tea.Cmd) {
 	switch action {
 	case keybindings.ActionDeleteRequest:
-		req := m.activePaneRequest()
+		var req *domain.Request
+		if m.focus == sidebarPane && m.reqCursor >= 0 {
+			colID := m.activeCollectionID()
+			if requests := m.collectionRequests[colID]; m.reqCursor < len(requests) {
+				req = requests[m.reqCursor]
+			}
+		} else {
+			req = m.activePaneRequest()
+		}
 		if req == nil || req.ID == "" {
 			return m.status("error", "Select a request first"), nil
 		}
