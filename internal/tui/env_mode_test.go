@@ -111,3 +111,45 @@ func TestView_EnvModal_ScrollsLongVariableLists(t *testing.T) {
 	assert.Contains(t, scrolled, "KEY_5")
 	assert.Contains(t, scrolled, "↑ more above")
 }
+
+func TestUpdate_EnvModal_TabsCycleAndCreateFromGlobal(t *testing.T) {
+	global := &domain.Environment{ID: "global", Name: "Global"}
+	global.SetVars(map[string]string{})
+	first := &domain.Environment{ID: "env-1", CollectionID: col1, Name: "default"}
+	first.SetVars(map[string]string{})
+	second := &domain.Environment{ID: "env-2", CollectionID: col1, Name: "dev"}
+	second.SetVars(map[string]string{})
+	reader := &fakeEnvReader{
+		global: global,
+		envs: map[string]*domain.Environment{
+			global.ID: global,
+			first.ID:  first,
+			second.ID: second,
+		},
+		byCol: map[string][]*domain.Environment{
+			col1: {first, second},
+		},
+	}
+
+	m := newModel(defaultConfig()).WithEnvReader(reader)
+	m = callUpdate(t, m, tea.WindowSizeMsg{Width: 100, Height: 30})
+	m = callUpdate(t, m, tui.CollectionsLoadedMsg([]*domain.Collection{{ID: col1, Name: "Alpha"}}))
+	m = m.WithFocus(tui.RequestPane)
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}})
+
+	assert.Equal(t, 0, m.EnvEditorTabIdx())
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyTab})
+	assert.Equal(t, 1, m.EnvEditorTabIdx())
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyTab})
+	assert.Equal(t, 2, m.EnvEditorTabIdx())
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyTab})
+	assert.Equal(t, 0, m.EnvEditorTabIdx())
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyShiftTab})
+	assert.Equal(t, 2, m.EnvEditorTabIdx())
+
+	// Uppercase A must also work while the Global tab is selected.
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyTab})
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'A'}})
+	assert.Equal(t, tui.CollectionPromptMode, m.Mode())
+	assert.Equal(t, tui.PromptAddEnv, m.PromptMode())
+}
