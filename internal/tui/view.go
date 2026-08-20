@@ -358,9 +358,9 @@ func (m Model) viewSidebar(w, h int) string {
 			}
 			innerW := max(1, w-2)
 			prefix := cursor + icon
-			nameWidth := max(1, innerW-lipgloss.Width(prefix)-2)
-			badge := "[" + truncate(col.Name, nameWidth) + "]"
-			line := prefix + lipgloss.NewStyle().Foreground(cyan).Render(badge)
+			nameWidth := max(1, innerW-lipgloss.Width(prefix))
+			name := truncate(col.Name, nameWidth)
+			line := prefix + lipgloss.NewStyle().Foreground(cyan).Render(name)
 			if row.colIndex == m.colCursor && m.reqCursor == -1 {
 				line = lipgloss.NewStyle().Foreground(blue).Bold(true).Render(line)
 			} else {

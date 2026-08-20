@@ -615,9 +615,10 @@ func TestView_SidebarNestedCollectionsUseChevronsAndBadges(t *testing.T) {
 	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("l")})
 
 	view := m.View()
-	assert.Contains(t, view, "▾ [AEF]")
-	assert.Contains(t, view, "  ▸ [Data Plane]")
-	assert.Contains(t, view, "▸ [Other Root]")
+	assert.Contains(t, view, "▾ AEF")
+	assert.Contains(t, view, "  ▸ Data Plane")
+	assert.Contains(t, view, "▸ Other Root")
+	assert.NotContains(t, view, "[AEF]")
 	assert.NotContains(t, view, "└─")
 }
 
