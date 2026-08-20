@@ -16,7 +16,8 @@ import (
 )
 
 // ImportCollection converts a Postman collection into Quark domain requests.
-// It flattens nested folders into request names with "/" separators.
+// It preserves nested folders as request groups. Requests retain their own
+// Postman item names; the CLI decides how groups map to stored collections.
 func ImportCollection(c *Collection) *ImportResult {
 	result := &ImportResult{
 		CollectionName: c.Info.Name,
@@ -27,13 +28,25 @@ func ImportCollection(c *Collection) *ImportResult {
 	}
 
 	var idx int
+	groups := make(map[string]*RequestGroup)
+	var groupOrder []string
+	getGroup := func(folderPath string) *RequestGroup {
+		if group, ok := groups[folderPath]; ok {
+			return group
+		}
+		group := &RequestGroup{Path: folderPath}
+		groups[folderPath] = group
+		groupOrder = append(groupOrder, folderPath)
+		return group
+	}
 	var walk func(items []Item, prefix string)
 	walk = func(items []Item, prefix string) {
 		for _, item := range items {
 			if item.Request != nil {
-				req, warnings := mapRequest(item, prefix, idx)
+				req, warnings := mapRequest(item, "", idx)
 				if req != nil {
 					result.Requests = append(result.Requests, req)
+					getGroup(prefix).Requests = append(getGroup(prefix).Requests, req)
 					result.Warnings = append(result.Warnings, warnings...)
 					idx++
 				}
@@ -44,12 +57,16 @@ func ImportCollection(c *Collection) *ImportResult {
 					newPrefix += "/"
 				}
 				newPrefix += item.Name
+				getGroup(newPrefix)
 				walk(item.Item, newPrefix)
 			}
 		}
 	}
 
 	walk(c.Item, "")
+	for _, folderPath := range groupOrder {
+		result.Groups = append(result.Groups, *groups[folderPath])
+	}
 
 	return result
 }

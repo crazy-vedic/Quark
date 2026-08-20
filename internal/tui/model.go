@@ -59,6 +59,7 @@ const (
 	promptRename
 	promptDeleteConfirm
 	promptDeleteTiny
+	promptDeleteRequestConfirm
 	promptAddRequest
 	promptAddEnv
 )
@@ -279,9 +280,10 @@ type Model struct {
 	importColID   string
 
 	// --- Collection prompt modal ---
-	promptMode     promptType
-	promptInput    textinput.Model
-	promptTargetID string // collection ID for rename/delete; empty for add
+	promptMode               promptType
+	promptInput              textinput.Model
+	promptTargetID           string // collection ID for rename/delete; empty for add
+	promptTargetCollectionID string // collection ID when the target is a request
 
 	// --- Schedule modal ---
 	scheduleInput    textinput.Model

@@ -788,7 +788,7 @@ func TestUpdate_CollectionPrompt_Rename_CancelOnEscape(t *testing.T) {
 func TestUpdate_CollectionPrompt_Delete_RequiresSelection(t *testing.T) {
 	m := newTestModel()
 	m = m.WithFocus(tui.SidebarPane)
-	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'D'}})
 
 	assert.Equal(
 		t,
@@ -805,7 +805,7 @@ func TestUpdate_CollectionPrompt_Delete_EntersPromptMode(t *testing.T) {
 	m = m.WithCollections([]*domain.Collection{{ID: "col-1", Name: "My Col"}})
 	m = m.WithColCursor(0)
 
-	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'D'}})
 	assert.Equal(
 		t,
 		tui.CollectionPromptMode,
@@ -821,7 +821,7 @@ func TestUpdate_CollectionPrompt_Delete_CancelOnEscape(t *testing.T) {
 	m = m.WithCollections([]*domain.Collection{{ID: "col-1", Name: "My Col"}})
 	m = m.WithColCursor(0)
 
-	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'D'}})
 	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyEsc})
 	assert.Equal(t, tui.NormalMode, m.Mode(), "Esc must cancel delete prompt")
 }
@@ -886,7 +886,7 @@ func TestUpdate_CollectionPrompt_Delete_TypingNoShowsError(t *testing.T) {
 	m = m.WithCollections([]*domain.Collection{{ID: "col-1", Name: "My Col"}})
 	m = m.WithColCursor(0)
 
-	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'D'}})
 	require.Equal(t, tui.CollectionPromptMode, m.Mode(), "pressing 'd' must enter prompt mode")
 
 	// In the tiny prompt, pressing any key other than 'd' just keeps the prompt open

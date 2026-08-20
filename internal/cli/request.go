@@ -25,7 +25,11 @@ func newRequestListCmd(r SearchStore) *cobra.Command {
 			if collectionID == "" {
 				return fmt.Errorf("--collection is required")
 			}
-			reqs, err := r.ListRequests(cmd.Context(), collectionID)
+			col, err := resolveCollectionReference(cmd.Context(), r, collectionID)
+			if err != nil {
+				return fmt.Errorf("request list: resolve collection: %w", err)
+			}
+			reqs, err := r.ListRequests(cmd.Context(), col.ID)
 			if err != nil {
 				return fmt.Errorf("request list: %w", err)
 			}
@@ -40,7 +44,7 @@ func newRequestListCmd(r SearchStore) *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&collectionID, "collection", "", "Collection ID")
+	cmd.Flags().StringVar(&collectionID, "collection", "", "Collection ID, name, or nested path")
 	_ = cmd.RegisterFlagCompletionFunc("collection", CompleteCollectionIDs(r.ListCollections))
 	return cmd
 }

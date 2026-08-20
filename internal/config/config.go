@@ -165,6 +165,14 @@ func Load(configDir string) (Config, error) {
 	}
 	if md.IsDefined("keybindings") {
 		cfg.Keybindings = mergeKeybindings(cfg.Keybindings, override.Keybindings)
+		// Migrate the old default where collection deletion used "d". The
+		// request-delete binding is new, so an old config has no explicit
+		// request_delete field and can safely adopt the split defaults.
+		if md.IsDefined("keybindings", "sidebar_delete") &&
+			!md.IsDefined("keybindings", "request_delete") &&
+			override.Keybindings.SidebarDelete == "d" {
+			cfg.Keybindings.SidebarDelete = "D"
+		}
 	}
 
 	return cfg, nil

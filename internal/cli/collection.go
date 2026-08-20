@@ -42,7 +42,13 @@ func newCollectionListCmd(s store.CollectionLister) *cobra.Command {
 				return nil
 			}
 			for _, c := range cols {
-				fmt.Fprintf(cmd.OutOrStdout(), "  %s  %s\n", c.ID[:8], c.Name)
+				name := c.Name
+				if resolver, ok := s.(collectionFullPathResolver); ok {
+					if fullPath, err := resolver.CollectionPath(cmd.Context(), c.ID); err == nil {
+						name = fullPath
+					}
+				}
+				fmt.Fprintf(cmd.OutOrStdout(), "  %s  %s\n", c.ID, name)
 			}
 			return nil
 		},

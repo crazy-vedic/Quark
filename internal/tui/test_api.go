@@ -72,13 +72,14 @@ const (
 	CollectionPromptMode = collectionPromptMode
 	ScheduleMode         = scheduleMode
 
-	PromptNone          = promptNone
-	PromptAdd           = promptAdd
-	PromptRename        = promptRename
-	PromptDeleteConfirm = promptDeleteConfirm
-	PromptDeleteTiny    = promptDeleteTiny
-	PromptAddRequest    = promptAddRequest
-	PromptAddEnv        = promptAddEnv
+	PromptNone                 = promptNone
+	PromptAdd                  = promptAdd
+	PromptRename               = promptRename
+	PromptDeleteConfirm        = promptDeleteConfirm
+	PromptDeleteTiny           = promptDeleteTiny
+	PromptDeleteRequestConfirm = promptDeleteRequestConfirm
+	PromptAddRequest           = promptAddRequest
+	PromptAddEnv               = promptAddEnv
 
 	BodyTab    = bodyTab
 	HeadersTab = headersTab

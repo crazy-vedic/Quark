@@ -2,8 +2,11 @@ package cli
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"testing"
 
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -37,6 +40,47 @@ func TestSafeManifestID(t *testing.T) {
 			assert.Equal(t, tt.valid, safeManifestID(tt.id))
 		})
 	}
+}
+
+func TestImportSingleFile_NestedFoldersDoesNotBlockStoreConnection(t *testing.T) {
+	st, err := store.New(filepath.Join(t.TempDir(), "quark.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, st.Close()) })
+
+	file := filepath.Join(t.TempDir(), "nested.postman_collection.json")
+	require.NoError(t, os.WriteFile(file, []byte(`{
+		"info": {"name": "API", "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"},
+		"item": [{"name": "Users", "item": [{"name": "Admin", "item": [{"name": "List", "request": {"method": "GET", "url": {"raw": "https://example.com/users"}}}]}]}]
+	}`), 0600))
+
+	cmd := &cobra.Command{}
+	globalAction := duplicateAction("")
+	stats, err := importSingleFile(
+		context.Background(),
+		cmd,
+		st,
+		file,
+		"",
+		"duplicate",
+		&globalAction,
+		NewDebugLogger(nil),
+	)
+	require.NoError(t, err)
+	require.Equal(t, 1, stats.imported)
+
+	cols, err := st.ListCollections(context.Background())
+	require.NoError(t, err)
+	paths := make(map[string]*domain.Collection)
+	for _, col := range cols {
+		path, err := st.CollectionPath(context.Background(), col.ID)
+		require.NoError(t, err)
+		paths[path] = col
+	}
+	require.Contains(t, paths, "API/Users/Admin")
+	requests, err := st.ListRequests(context.Background(), paths["API/Users/Admin"].ID)
+	require.NoError(t, err)
+	require.Len(t, requests, 1)
+	require.Equal(t, "List", requests[0].Name)
 }
 
 func TestDeduplicateImportedRequestNames(t *testing.T) {
