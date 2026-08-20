@@ -2433,6 +2433,10 @@ func (m Model) viewCollectionPromptModal() string {
 		title = "Delete Collection"
 		hint = "Type 'yes' to confirm"
 		boxColor = red
+	case promptDeleteRequestConfirm:
+		title = "Delete Request"
+		hint = "Type 'yes' to confirm"
+		boxColor = red
 	case promptDeleteTiny:
 		// Tiny confirmation: a compact yes/no-style prompt with no text input.
 		name := m.promptTargetID
