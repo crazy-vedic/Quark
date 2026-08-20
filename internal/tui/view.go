@@ -2436,26 +2436,39 @@ func (m Model) viewCollectionPromptModal() string {
 		hint = "Enter new name"
 	case promptDeleteConfirm:
 		title = "Delete Collection"
-		hint = "Type 'yes' to confirm"
-		boxColor = red
-	case promptDeleteRequestConfirm:
-		title = "Delete Request"
-		hint = "Type 'yes' to confirm"
+		hint = "Type 'delete' to confirm"
 		boxColor = red
 	case promptDeleteTiny:
-		// Tiny confirmation: a compact yes/no-style prompt with no text input.
+		// Tiny confirmation: repeat the request-delete key without text input.
 		name := m.promptTargetID
-		if col := m.selectedCollection(); col != nil {
-			name = col.Name
+		if m.promptTargetCollectionID == "" {
+			for _, col := range m.collections {
+				if col != nil && col.ID == m.promptTargetID {
+					name = col.Name
+					break
+				}
+			}
+			if name == m.promptTargetID {
+				if col := m.selectedCollection(); col != nil {
+					name = col.Name
+				}
+			}
 		}
 		var sb strings.Builder
-		sb.WriteString(titleStyle.Render("Delete Collection") + "\n\n")
+		title := "Delete Collection"
+		confirmAction := "sidebar_delete"
+		if m.promptTargetCollectionID != "" {
+			title = "Delete Request"
+			confirmAction = keybindings.ActionDeleteRequest
+		}
+		sb.WriteString(titleStyle.Render(title) + "\n\n")
 		sb.WriteString("Delete " + lipgloss.NewStyle().Bold(true).Render(name) + "?\n\n")
+		sb.WriteString(errorStyle.Render("This deletion is permanent and irreversible.") + "\n\n")
 		if m.statusErr != "" {
 			sb.WriteString(errorStyle.Render("✗ "+m.statusErr) + "\n\n")
 		}
 		sb.WriteString(mutedStyle.Render(m.renderHints([]hintItem{
-			{Label: helpLabelConfirm, Actions: []string{"sidebar_delete"}},
+			{Label: helpLabelConfirm, Actions: []string{confirmAction}},
 			{Label: helpLabelCancel, Actions: []string{keybindings.ActionImportCancel}},
 		})))
 		box := lipgloss.NewStyle().
@@ -2469,6 +2482,9 @@ func (m Model) viewCollectionPromptModal() string {
 
 	var sb strings.Builder
 	sb.WriteString(titleStyle.Render(title) + "\n\n")
+	if m.promptMode == promptDeleteConfirm {
+		sb.WriteString(errorStyle.Render("This deletion is permanent and irreversible.") + "\n\n")
+	}
 	sb.WriteString(m.promptInput.View() + "\n")
 	sb.WriteString(mutedStyle.Render("["+hint+"]") + "\n")
 
