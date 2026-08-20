@@ -35,13 +35,22 @@ func NewEnvCmd(st EnvStore) *cobra.Command {
 	}
 
 	listCmd := &cobra.Command{
-		Use:   "list [<collection-id>]",
+		Use:   "list [<collection>]",
 		Short: "List environments (all, or for a specific collection)",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			var collectionID string
 			if len(args) > 0 {
 				collectionID = args[0]
+			}
+			if collectionID != "" {
+				col, err := resolveCollectionReference(cmd.Context(), st, collectionID)
+				if err != nil {
+					// Preserve the established env list behavior: an unknown
+					// collection is an empty collection section, not a command error.
+					return envListGlobals(cmd.Context(), st, cmd.OutOrStdout())
+				}
+				collectionID = col.ID
 			}
 			return envList(cmd.Context(), st, collectionID, cmd.OutOrStdout())
 		},
@@ -52,11 +61,15 @@ func NewEnvCmd(st EnvStore) *cobra.Command {
 	cmd.AddCommand(listCmd)
 
 	createCmd := &cobra.Command{
-		Use:   "create <collection-id> <name>",
+		Use:   "create <collection> <name>",
 		Short: "Create a new environment for a collection",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return envCreate(cmd.Context(), st, args[0], args[1])
+			col, err := resolveCollectionReference(cmd.Context(), st, args[0])
+			if err != nil {
+				return fmt.Errorf("env create: resolve collection: %w", err)
+			}
+			return envCreate(cmd.Context(), st, col.ID, args[1])
 		},
 	}
 	if st != nil {
@@ -65,11 +78,15 @@ func NewEnvCmd(st EnvStore) *cobra.Command {
 	cmd.AddCommand(createCmd)
 
 	setCmd := &cobra.Command{
-		Use:   "set <collection-id> <env-name> <key> <value>",
+		Use:   "set <collection> <env-name> <key> <value>",
 		Short: "Set a key-value pair in an environment",
 		Args:  cobra.ExactArgs(4),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return envSet(cmd.Context(), st, args[0], args[1], args[2], args[3])
+			col, err := resolveCollectionReference(cmd.Context(), st, args[0])
+			if err != nil {
+				return fmt.Errorf("env set: resolve collection: %w", err)
+			}
+			return envSet(cmd.Context(), st, col.ID, args[1], args[2], args[3])
 		},
 	}
 	if st != nil {
@@ -90,11 +107,15 @@ func NewEnvCmd(st EnvStore) *cobra.Command {
 	})
 
 	deleteCmd := &cobra.Command{
-		Use:   "delete <collection-id> <env-name>",
+		Use:   "delete <collection> <env-name>",
 		Short: "Delete an environment",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return envDelete(cmd.Context(), st, args[0], args[1])
+			col, err := resolveCollectionReference(cmd.Context(), st, args[0])
+			if err != nil {
+				return fmt.Errorf("env delete: resolve collection: %w", err)
+			}
+			return envDelete(cmd.Context(), st, col.ID, args[1])
 		},
 	}
 	if st != nil {
@@ -106,11 +127,15 @@ func NewEnvCmd(st EnvStore) *cobra.Command {
 	cmd.AddCommand(deleteCmd)
 
 	activeCmd := &cobra.Command{
-		Use:   "active <collection-id> <env-name>",
+		Use:   "active <collection> <env-name>",
 		Short: "Set the active environment for a collection (used by TUI and quark run)",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return envActive(cmd.Context(), st, args[0], args[1], cmd.OutOrStdout())
+			col, err := resolveCollectionReference(cmd.Context(), st, args[0])
+			if err != nil {
+				return fmt.Errorf("env active: resolve collection: %w", err)
+			}
+			return envActive(cmd.Context(), st, col.ID, args[1], cmd.OutOrStdout())
 		},
 	}
 	if st != nil {
@@ -125,15 +150,8 @@ func NewEnvCmd(st EnvStore) *cobra.Command {
 }
 
 func envList(ctx context.Context, st EnvStore, collectionID string, w io.Writer) error {
-	// List global envs.
-	globals, err := st.ListEnvironments(ctx, "")
-	if err != nil {
-		return fmt.Errorf("list global envs: %w", err)
-	}
-	fmt.Fprintln(w, "Global environments:")
-	for _, e := range globals {
-		vars := e.Vars()
-		fmt.Fprintf(w, "  %s (%d vars)\n", e.Name, len(vars))
+	if err := envListGlobals(ctx, st, w); err != nil {
+		return err
 	}
 
 	if collectionID != "" {
@@ -179,6 +197,19 @@ func envList(ctx context.Context, st EnvStore, collectionID string, w io.Writer)
 			vars := e.Vars()
 			fmt.Fprintf(w, "  %s (%d vars)\n", e.Name, len(vars))
 		}
+	}
+	return nil
+}
+
+func envListGlobals(ctx context.Context, st EnvStore, w io.Writer) error {
+	globals, err := st.ListEnvironments(ctx, "")
+	if err != nil {
+		return fmt.Errorf("list global envs: %w", err)
+	}
+	fmt.Fprintln(w, "Global environments:")
+	for _, e := range globals {
+		vars := e.Vars()
+		fmt.Fprintf(w, "  %s (%d vars)\n", e.Name, len(vars))
 	}
 	return nil
 }

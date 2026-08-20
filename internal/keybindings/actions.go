@@ -11,6 +11,7 @@ const (
 	ActionSendRequest   = "send_request"
 	ActionEditBody      = "edit_body"
 	ActionEditHeaders   = "edit_headers"
+	ActionDeleteRequest = "delete_request"
 	ActionScheduleRun   = "schedule_run"
 	ActionEnvOpen       = "env_open"
 	ActionClientCerts   = "client_certificates"

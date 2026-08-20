@@ -112,6 +112,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// for the Enter handler on a request.
 		if m.activeCollectionID() == msg.collectionID {
 			m.requests = msg.requests
+			if m.activeRequest != nil {
+				found := false
+				for _, req := range msg.requests {
+					if req.ID == m.activeRequest.ID {
+						found = true
+						break
+					}
+				}
+				if !found {
+					m, _ = m.selectRequest(nil)
+				}
+			}
 		}
 		// Also try to load persisted active env for this collection.
 		if m.activeEnvStore != nil {
@@ -590,6 +602,15 @@ func (m Model) handleSidebarAction(action string) (tea.Model, tea.Cmd) {
 // handleRequestAction is the action-based version of handleRequestKey.
 func (m Model) handleRequestAction(action string) (tea.Model, tea.Cmd) {
 	switch action {
+	case keybindings.ActionDeleteRequest:
+		req := m.activePaneRequest()
+		if req == nil || req.ID == "" {
+			return m.status("error", "Select a request first"), nil
+		}
+		updated, cmd := m.enterCollectionPrompt(promptDeleteRequestConfirm, req.ID)
+		m = updated.(Model)
+		m.promptTargetCollectionID = req.CollectionID
+		return m, cmd
 	case keybindings.ActionEditURL:
 		return m.beginURLEdit()
 	case keybindings.ActionMethodNext:
@@ -1876,6 +1897,8 @@ func (m Model) enterCollectionPrompt(pt promptType, targetID string) (tea.Model,
 		m.promptInput.Placeholder = "Type 'yes' to confirm"
 	case promptDeleteTiny:
 		m.promptInput.Placeholder = "Press (d) again to confirm"
+	case promptDeleteRequestConfirm:
+		m.promptInput.Placeholder = "Type 'yes' to confirm"
 	}
 
 	m.promptInput.Focus()
@@ -1886,6 +1909,7 @@ func (m Model) closeCollectionPrompt() Model {
 	m.mode = normalMode
 	m.promptMode = promptNone
 	m.promptTargetID = ""
+	m.promptTargetCollectionID = ""
 	m.promptInput.SetValue("")
 	m.promptInput.Blur()
 	return m
@@ -1908,7 +1932,7 @@ func wrapPromptSuccess(cmd tea.Cmd) tea.Cmd {
 
 // handleCollectionPromptKey handles key input in the collection prompt overlay.
 func (m Model) handleCollectionPromptKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	// Tiny prompt: pressing 'd' again in the tiny delete confirmation immediately
+	// Tiny prompt: pressing the configured collection-delete key again in the tiny confirmation immediately
 	// deletes the collection without requiring Enter or a text input.
 	if m.promptMode == promptDeleteTiny && msg.String() == m.cfg.Keybindings.SidebarDelete {
 		if m.colWriter == nil {
@@ -1965,9 +1989,26 @@ func (m Model) handleCollectionPromptKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				)
 
 			case promptDeleteTiny:
-				// Handled in the outer switch by checking msg.String() == "d".
+				// Handled in the outer switch by checking the configured collection-delete key.
 				// This case is unreachable from Enter but kept for completeness.
 				return m, nil
+
+			case promptDeleteRequestConfirm:
+				if val != "yes" {
+					m = m.status("error", "Delete cancelled")
+					return m.closeCollectionPrompt(), nil
+				}
+				if m.writer == nil {
+					m = m.status("error", "Request writer not available")
+					return m, nil
+				}
+				return m, wrapPromptSuccess(deleteRequestCmd(
+					m.ctx,
+					m.writer,
+					m.promptTargetID,
+					m.promptTargetCollectionID,
+					m.reader,
+				))
 
 			case promptAddRequest:
 				if val == "" {
@@ -2056,5 +2097,27 @@ func deleteCollectionCmd(ctx context.Context, w store.CollectionWriter, id strin
 			return collectionSavedErrMsg{err: err}
 		}
 		return collectionSavedMsg{}
+	}
+}
+
+func deleteRequestCmd(
+	ctx context.Context,
+	w store.RequestWriter,
+	id string,
+	collectionID string,
+	r store.RequestReader,
+) tea.Cmd {
+	return func() tea.Msg {
+		if err := w.DeleteRequest(ctx, id); err != nil {
+			return collectionSavedErrMsg{err: err}
+		}
+		if r == nil {
+			return requestsLoadedMsg{collectionID: collectionID}
+		}
+		requests, err := r.ListRequests(ctx, collectionID)
+		if err != nil {
+			return collectionSavedErrMsg{err: fmt.Errorf("reload requests: %w", err)}
+		}
+		return requestsLoadedMsg{collectionID: collectionID, requests: requests}
 	}
 }

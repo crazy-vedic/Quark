@@ -195,13 +195,13 @@ func TestE2E_CollectionMgmt_DeletePrompt(t *testing.T) {
 	m = callUpdate(t, m, tea.WindowSizeMsg{Width: 100, Height: 30})
 	m = callUpdate(t, m, tui.CollectionsLoadedMsg([]*domain.Collection{col}))
 
-	// Press 'd' to delete the selected collection
-	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
+	// Press 'D' (Shift+D) to delete the selected collection.
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'D'}})
 	assert.Equal(t, tui.CollectionPromptMode, m.Mode(), "must enter collection prompt mode")
 	assert.Equal(t, tui.PromptDeleteTiny, m.PromptMode(), "must be promptDeleteTiny")
 	assertViewContains(t, m, "Delete Collection")
 	assertViewContains(t, m, "API")
-	assertViewContains(t, m, "[d] confirm")
+	assertViewContains(t, m, "[D] confirm")
 	assertViewContains(t, m, "[Esc] cancel")
 }
 
@@ -213,7 +213,7 @@ func TestE2E_CollectionMgmt_DeleteCancel(t *testing.T) {
 	m = callUpdate(t, m, tea.WindowSizeMsg{Width: 100, Height: 30})
 	m = callUpdate(t, m, tui.CollectionsLoadedMsg([]*domain.Collection{col}))
 
-	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'D'}})
 	require.Equal(t, tui.CollectionPromptMode, m.Mode())
 
 	// Esc cancels the delete prompt
@@ -236,12 +236,12 @@ func TestE2E_CollectionMgmt_DeleteConfirm(t *testing.T) {
 	m = callUpdate(t, m, tui.CollectionsLoadedMsg([]*domain.Collection{col}))
 
 	// Open delete prompt
-	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'D'}})
 	require.Equal(t, tui.CollectionPromptMode, m.Mode())
 
-	// Press 'd' again to confirm — dispatches async delete command.
+	// Press 'D' again to confirm — dispatches async delete command.
 	var cmd tea.Cmd
-	m, cmd = callUpdateWithCmd(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
+	m, cmd = callUpdateWithCmd(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'D'}})
 	msg := runCmd(t, cmd)
 	require.NotNil(t, msg)
 	m = callUpdate(t, m, msg)
@@ -263,10 +263,10 @@ func TestE2E_CollectionMgmt_DeleteWrongConfirm(t *testing.T) {
 	m = callUpdate(t, m, tui.CollectionsLoadedMsg([]*domain.Collection{col}))
 
 	// Open delete prompt
-	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'D'}})
 	require.Equal(t, tui.CollectionPromptMode, m.Mode())
 
-	// Press any key other than 'd' — should cancel the prompt (falls through to default handler).
+	// Press any key other than 'D' — should leave the prompt open.
 	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
 	assert.Equal(t, tui.CollectionPromptMode, m.Mode(), "must stay in prompt mode on wrong key")
 

@@ -59,7 +59,7 @@ func TestResolver_Default_Sidebar(t *testing.T) {
 		{"h", "collapse"},
 		{"a", "add_request"},
 		{"A", "add"},
-		{"d", "delete"},
+		{"D", "delete"},
 		{"r", "rename"},
 	}
 
@@ -89,6 +89,7 @@ func TestResolver_Default_RequestPane(t *testing.T) {
 		{"S", "schedule_run"},
 		{"b", "edit_body"},
 		{"h", "edit_headers"},
+		{"d", "delete_request"},
 	}
 
 	for _, tc := range tests {
