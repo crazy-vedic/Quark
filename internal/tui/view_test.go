@@ -636,6 +636,30 @@ func TestView_SidebarNestedCollectionBadgesFitAtNarrowWidth(t *testing.T) {
 	}
 }
 
+func TestView_SidebarSelectedRequestIsBold(t *testing.T) {
+	prev := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	t.Cleanup(func() { lipgloss.SetColorProfile(prev) })
+
+	m := newModel(defaultConfig()).
+		WithCollections([]*domain.Collection{{ID: "root", Name: "AEF"}}).
+		WithCollectionRequests(map[string][]*domain.Request{
+			"root": {{ID: "req-1", Name: "Selected Request", Method: "GET"}},
+		}).
+		WithFocus(tui.SidebarPane)
+	m = callUpdate(t, m, tea.WindowSizeMsg{Width: 80, Height: 20})
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("l")})
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
+
+	for _, line := range strings.Split(m.View(), "\n") {
+		if strings.Contains(line, "Selected Request") {
+			assert.Contains(t, line, "\x1b[1;")
+			return
+		}
+	}
+	t.Fatal("selected request row was not rendered")
+}
+
 // limitLines must never emit more visual rows than its budget. Regression test
 // for the bug where the appended "… N more lines" notice pushed clipped output
 // to maxRows+1 rows, overflowing the exactly-terminal-height layout and

@@ -380,7 +380,7 @@ func (m Model) viewSidebar(w, h int) string {
 			nameWidth := innerW - lipgloss.Width(cursor) - lipgloss.Width(badge) - 1
 			line := cursor + badge + " " + truncate(req.Name, nameWidth)
 			if isSelected {
-				line = lipgloss.NewStyle().Foreground(cyan).Render(line)
+				line = lipgloss.NewStyle().Foreground(cyan).Bold(true).Render(line)
 			} else {
 				line = mutedStyle.Render(line)
 			}
