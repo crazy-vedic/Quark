@@ -1932,7 +1932,7 @@ func wrapPromptSuccess(cmd tea.Cmd) tea.Cmd {
 
 // handleCollectionPromptKey handles key input in the collection prompt overlay.
 func (m Model) handleCollectionPromptKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	// Tiny prompt: pressing 'd' again in the tiny delete confirmation immediately
+	// Tiny prompt: pressing the configured collection-delete key again in the tiny confirmation immediately
 	// deletes the collection without requiring Enter or a text input.
 	if m.promptMode == promptDeleteTiny && msg.String() == m.cfg.Keybindings.SidebarDelete {
 		if m.colWriter == nil {
@@ -1989,7 +1989,7 @@ func (m Model) handleCollectionPromptKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				)
 
 			case promptDeleteTiny:
-				// Handled in the outer switch by checking msg.String() == "d".
+				// Handled in the outer switch by checking the configured collection-delete key.
 				// This case is unreachable from Enter but kept for completeness.
 				return m, nil
 
