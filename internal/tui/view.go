@@ -347,9 +347,14 @@ func (m Model) viewSidebar(w, h int) string {
 		switch row.kind {
 		case sidebarCollectionRow:
 			col := m.collections[row.colIndex]
-			cursor := "  "
+			indent := strings.Repeat("  ", row.depth)
+			branch := ""
+			if row.depth > 0 {
+				branch = "└─ "
+			}
+			cursor := indent + "  "
 			if row.colIndex == m.colCursor && m.reqCursor == -1 && m.focus == sidebarPane {
-				cursor = "▸ "
+				cursor = indent + "▸ "
 			}
 			expanded := m.expanded[col.ID]
 			icon := "▶ "
@@ -358,7 +363,7 @@ func (m Model) viewSidebar(w, h int) string {
 			}
 			innerW := max(1, w-2)
 			name := truncate(col.Name, innerW-4)
-			line := cursor + icon + name
+			line := cursor + branch + icon + name
 			if row.colIndex == m.colCursor && m.reqCursor == -1 {
 				line = lipgloss.NewStyle().Foreground(blue).Bold(true).Render(line)
 			} else {
@@ -369,9 +374,9 @@ func (m Model) viewSidebar(w, h int) string {
 			col := m.collections[row.colIndex]
 			req := m.collectionRequests[col.ID][row.reqIndex]
 			isSelected := row.colIndex == m.colCursor && row.reqIndex == m.reqCursor
-			cursor := "    "
+			cursor := strings.Repeat("  ", row.depth) + "  "
 			if isSelected {
-				cursor = "  ▸ "
+				cursor = strings.Repeat("  ", row.depth) + "▸ "
 			}
 			innerW := max(1, w-2)
 			badge := methodBadge(req.Method)
@@ -2431,26 +2436,41 @@ func (m Model) viewCollectionPromptModal() string {
 		hint = "Enter new name"
 	case promptDeleteConfirm:
 		title = "Delete Collection"
-		hint = "Type 'yes' to confirm"
-		boxColor = red
-	case promptDeleteRequestConfirm:
-		title = "Delete Request"
-		hint = "Type 'yes' to confirm"
+		hint = "Type 'delete' to confirm"
 		boxColor = red
 	case promptDeleteTiny:
-		// Tiny confirmation: a compact yes/no-style prompt with no text input.
+		// Tiny confirmation: repeat the request-delete key without text input.
 		name := m.promptTargetID
-		if col := m.selectedCollection(); col != nil {
-			name = col.Name
+		if m.promptTargetCollectionID == "" {
+			for _, col := range m.collections {
+				if col != nil && col.ID == m.promptTargetID {
+					name = col.Name
+					break
+				}
+			}
+			if name == m.promptTargetID {
+				if col := m.selectedCollection(); col != nil {
+					name = col.Name
+				}
+			}
 		}
 		var sb strings.Builder
-		sb.WriteString(titleStyle.Render("Delete Collection") + "\n\n")
+		title := "Delete Collection"
+		confirmAction := "sidebar_delete"
+		confirmLabel := helpLabelConfirm
+		if m.promptTargetCollectionID != "" {
+			title = "Delete Request"
+			confirmAction = "request_delete"
+			confirmLabel = "continue"
+		}
+		sb.WriteString(titleStyle.Render(title) + "\n\n")
 		sb.WriteString("Delete " + lipgloss.NewStyle().Bold(true).Render(name) + "?\n\n")
+		sb.WriteString(errorStyle.Render("This deletion is permanent and irreversible.") + "\n\n")
 		if m.statusErr != "" {
 			sb.WriteString(errorStyle.Render("✗ "+m.statusErr) + "\n\n")
 		}
 		sb.WriteString(mutedStyle.Render(m.renderHints([]hintItem{
-			{Label: helpLabelConfirm, Actions: []string{"sidebar_delete"}},
+			{Label: confirmLabel, Actions: []string{confirmAction}},
 			{Label: helpLabelCancel, Actions: []string{keybindings.ActionImportCancel}},
 		})))
 		box := lipgloss.NewStyle().
@@ -2464,6 +2484,9 @@ func (m Model) viewCollectionPromptModal() string {
 
 	var sb strings.Builder
 	sb.WriteString(titleStyle.Render(title) + "\n\n")
+	if m.promptMode == promptDeleteConfirm {
+		sb.WriteString(errorStyle.Render("This deletion is permanent and irreversible.") + "\n\n")
+	}
 	sb.WriteString(m.promptInput.View() + "\n")
 	sb.WriteString(mutedStyle.Render("["+hint+"]") + "\n")
 

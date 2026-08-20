@@ -812,7 +812,7 @@ func TestUpdate_CollectionPrompt_Delete_EntersPromptMode(t *testing.T) {
 		m.Mode(),
 		"pressing 'd' with a collection selected must enter prompt mode",
 	)
-	assert.Equal(t, tui.PromptDeleteTiny, m.PromptMode(), "prompt mode must be PromptDeleteTiny")
+	assert.Equal(t, tui.PromptDeleteConfirm, m.PromptMode(), "prompt mode must be PromptDeleteConfirm")
 }
 
 func TestUpdate_CollectionPrompt_Delete_CancelOnEscape(t *testing.T) {
@@ -838,15 +838,11 @@ func TestUpdate_CollectionPrompt_Delete_UsesConfiguredConfirmKey(t *testing.T) {
 	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
 	require.Equal(t, tui.CollectionPromptMode, m.Mode())
 
-	assert.Contains(t, m.View(), "[x] confirm")
+	assert.Contains(t, m.View(), "Type 'delete' to confirm")
 
-	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
-	assert.Equal(t, tui.NormalMode, m.Mode(), "configured delete key must confirm the tiny prompt")
-	assert.NotEmpty(
-		t,
-		m.StatusErr(),
-		"without a writer the prompt should still attempt deletion and surface an error",
-	)
+	m = m.WithPromptInputValue("delete")
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	assert.Equal(t, tui.CollectionPromptMode, m.Mode(), "confirmation should dispatch deletion asynchronously")
 }
 
 func TestUpdate_CollectionPrompt_UsesConfiguredConfirmAndCancelBindings(t *testing.T) {
@@ -889,22 +885,12 @@ func TestUpdate_CollectionPrompt_Delete_TypingNoShowsError(t *testing.T) {
 	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'D'}})
 	require.Equal(t, tui.CollectionPromptMode, m.Mode(), "pressing 'd' must enter prompt mode")
 
-	// In the tiny prompt, pressing any key other than 'd' just keeps the prompt open
-	// (the text input still receives the characters, but Enter is a no-op).
+	// The collection prompt requires the exact confirmation phrase.
 	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
 	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'o'}})
 	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyEnter})
-	assert.Equal(
-		t,
-		tui.CollectionPromptMode,
-		m.Mode(),
-		"pressing Enter with non-'d' must stay in prompt mode",
-	)
-	assert.Empty(t, m.StatusErr(), "no error shown for tiny prompt")
-
-	// Esc cancels the prompt and returns to normal mode.
-	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyEsc})
-	assert.Equal(t, tui.NormalMode, m.Mode(), "Esc must cancel delete prompt")
+	assert.Equal(t, tui.NormalMode, m.Mode(), "wrong confirmation must cancel delete prompt")
+	assert.Contains(t, m.StatusErr(), "cancelled")
 }
 
 func TestUpdate_PromptDeleteConfirm_TypingNo_Cancels(t *testing.T) {
@@ -944,7 +930,7 @@ func TestUpdate_PromptDeleteConfirm_CaseSensitive_Fails(t *testing.T) {
 	m = m.WithMode(tui.CollectionPromptMode).
 		WithPromptMode(tui.PromptDeleteConfirm).
 		WithPromptTargetID("col-1")
-	m = m.WithPromptInputValue("YES")
+	m = m.WithPromptInputValue("DELETE")
 
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	model, ok := updated.(tui.Model)

@@ -188,14 +188,14 @@ func (m Model) dispatchEnvAction(action string) (tea.Model, tea.Cmd) {
 	case keybindings.ActionCancel:
 		return m.closeEnvEditor(), nil
 	case "tab_prev":
-		if m.envEditor.tabIdx > 0 {
-			m.envEditor.tabIdx--
+		if len(m.envEditor.tabs) > 0 {
+			m.envEditor.tabIdx = (m.envEditor.tabIdx - 1 + len(m.envEditor.tabs)) % len(m.envEditor.tabs)
 			m = m.loadEnvEditorVars()
 		}
 		return m, nil
 	case "tab_next":
-		if m.envEditor.tabIdx < len(m.envEditor.tabs)-1 {
-			m.envEditor.tabIdx++
+		if len(m.envEditor.tabs) > 0 {
+			m.envEditor.tabIdx = (m.envEditor.tabIdx + 1) % len(m.envEditor.tabs)
 			m = m.loadEnvEditorVars()
 		}
 		return m, nil
@@ -265,13 +265,13 @@ func (m Model) envEditVar() (tea.Model, tea.Cmd) {
 }
 
 func (m Model) envCreateEnv() (tea.Model, tea.Cmd) {
-	tab := m.envEditor.tabs[m.envEditor.tabIdx]
-	if tab.IsGlobal {
-		return m, nil // no-op for global tab
+	collectionID := m.activeCollectionID()
+	if collectionID == "" {
+		return m, nil
 	}
 	m.mode = collectionPromptMode
 	m.promptMode = promptAddEnv
-	m.promptTargetID = tab.CollectionID
+	m.promptTargetID = collectionID
 	m.promptInput.SetValue("")
 	m.promptInput.Placeholder = "Environment name"
 	m.promptInput.Focus()
