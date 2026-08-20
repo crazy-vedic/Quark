@@ -347,9 +347,14 @@ func (m Model) viewSidebar(w, h int) string {
 		switch row.kind {
 		case sidebarCollectionRow:
 			col := m.collections[row.colIndex]
-			cursor := "  "
+			indent := strings.Repeat("  ", row.depth)
+			branch := ""
+			if row.depth > 0 {
+				branch = "└─ "
+			}
+			cursor := indent + "  "
 			if row.colIndex == m.colCursor && m.reqCursor == -1 && m.focus == sidebarPane {
-				cursor = "▸ "
+				cursor = indent + "▸ "
 			}
 			expanded := m.expanded[col.ID]
 			icon := "▶ "
@@ -358,7 +363,7 @@ func (m Model) viewSidebar(w, h int) string {
 			}
 			innerW := max(1, w-2)
 			name := truncate(col.Name, innerW-4)
-			line := cursor + icon + name
+			line := cursor + branch + icon + name
 			if row.colIndex == m.colCursor && m.reqCursor == -1 {
 				line = lipgloss.NewStyle().Foreground(blue).Bold(true).Render(line)
 			} else {
@@ -369,9 +374,9 @@ func (m Model) viewSidebar(w, h int) string {
 			col := m.collections[row.colIndex]
 			req := m.collectionRequests[col.ID][row.reqIndex]
 			isSelected := row.colIndex == m.colCursor && row.reqIndex == m.reqCursor
-			cursor := "    "
+			cursor := strings.Repeat("  ", row.depth) + "  "
 			if isSelected {
-				cursor = "  ▸ "
+				cursor = strings.Repeat("  ", row.depth) + "▸ "
 			}
 			innerW := max(1, w-2)
 			badge := methodBadge(req.Method)

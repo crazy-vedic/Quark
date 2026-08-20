@@ -96,7 +96,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleMouse(msg)
 
 	case collectionsLoadedMsg:
-		m.collections = msg.collections
+		m.collections = orderCollectionsTree(msg.collections)
 		m.colCursor = 0
 		// Auto-load requests for the first collection.
 		if len(m.collections) > 0 && m.reader != nil {
