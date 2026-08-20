@@ -348,22 +348,19 @@ func (m Model) viewSidebar(w, h int) string {
 		case sidebarCollectionRow:
 			col := m.collections[row.colIndex]
 			indent := strings.Repeat("  ", row.depth)
-			branch := ""
-			if row.depth > 0 {
-				branch = "└─ "
-			}
 			cursor := indent + "  "
 			if row.colIndex == m.colCursor && m.reqCursor == -1 && m.focus == sidebarPane {
 				cursor = indent + "▸ "
 			}
-			expanded := m.expanded[col.ID]
-			icon := "▶ "
-			if expanded {
-				icon = "▼ "
+			icon := "▸ "
+			if m.expanded[col.ID] {
+				icon = "▾ "
 			}
 			innerW := max(1, w-2)
-			name := truncate(col.Name, innerW-4)
-			line := cursor + branch + icon + name
+			prefix := cursor + icon
+			nameWidth := max(1, innerW-lipgloss.Width(prefix))
+			name := truncate(col.Name, nameWidth)
+			line := prefix + lipgloss.NewStyle().Foreground(cyan).Render(name)
 			if row.colIndex == m.colCursor && m.reqCursor == -1 {
 				line = lipgloss.NewStyle().Foreground(blue).Bold(true).Render(line)
 			} else {
@@ -383,7 +380,7 @@ func (m Model) viewSidebar(w, h int) string {
 			nameWidth := innerW - lipgloss.Width(cursor) - lipgloss.Width(badge) - 1
 			line := cursor + badge + " " + truncate(req.Name, nameWidth)
 			if isSelected {
-				line = lipgloss.NewStyle().Foreground(cyan).Render(line)
+				line = lipgloss.NewStyle().Foreground(cyan).Bold(true).Render(line)
 			} else {
 				line = mutedStyle.Render(line)
 			}

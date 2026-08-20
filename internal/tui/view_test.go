@@ -599,6 +599,67 @@ func TestView_SidebarIndicatorsFitInsidePane(t *testing.T) {
 	}
 }
 
+func TestView_SidebarNestedCollectionsUseChevronsAndBadges(t *testing.T) {
+	collections := []*domain.Collection{
+		{ID: "root", Name: "AEF"},
+		{ID: "child", Name: "Data Plane", ParentID: "root"},
+		{ID: "sibling", Name: "Other Root"},
+	}
+	m := newModel(defaultConfig()).
+		WithCollections(collections).
+		WithCollectionRequests(map[string][]*domain.Request{
+			"child": {{ID: "req-1", Name: "Single turn", Method: "POST"}},
+		}).
+		WithFocus(tui.SidebarPane)
+	m = callUpdate(t, m, tea.WindowSizeMsg{Width: 80, Height: 20})
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("l")})
+
+	view := m.View()
+	assert.Contains(t, view, "▾ AEF")
+	assert.Contains(t, view, "  ▸ Data Plane")
+	assert.Contains(t, view, "▸ Other Root")
+	assert.NotContains(t, view, "[AEF]")
+	assert.NotContains(t, view, "└─")
+}
+
+func TestView_SidebarNestedCollectionBadgesFitAtNarrowWidth(t *testing.T) {
+	m := newModel(defaultConfig()).
+		WithCollections([]*domain.Collection{
+			{ID: "root", Name: "A very long top-level collection name"},
+			{ID: "child", Name: "A very long nested collection name", ParentID: "root"},
+		}).
+		WithFocus(tui.SidebarPane)
+	m = callUpdate(t, m, tea.WindowSizeMsg{Width: 24, Height: 12})
+
+	for _, line := range strings.Split(m.View(), "\n") {
+		assert.LessOrEqual(t, lipgloss.Width(line), m.Width(), "sidebar row wrapped: %q", line)
+	}
+}
+
+func TestView_SidebarSelectedRequestIsBold(t *testing.T) {
+	prev := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	t.Cleanup(func() { lipgloss.SetColorProfile(prev) })
+
+	m := newModel(defaultConfig()).
+		WithCollections([]*domain.Collection{{ID: "root", Name: "AEF"}}).
+		WithCollectionRequests(map[string][]*domain.Request{
+			"root": {{ID: "req-1", Name: "Selected Request", Method: "GET"}},
+		}).
+		WithFocus(tui.SidebarPane)
+	m = callUpdate(t, m, tea.WindowSizeMsg{Width: 80, Height: 20})
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("l")})
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
+
+	for _, line := range strings.Split(m.View(), "\n") {
+		if strings.Contains(line, "Selected Request") {
+			assert.Contains(t, line, "\x1b[1;")
+			return
+		}
+	}
+	t.Fatal("selected request row was not rendered")
+}
+
 // limitLines must never emit more visual rows than its budget. Regression test
 // for the bug where the appended "… N more lines" notice pushed clipped output
 // to maxRows+1 rows, overflowing the exactly-terminal-height layout and
