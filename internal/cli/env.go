@@ -46,7 +46,9 @@ func NewEnvCmd(st EnvStore) *cobra.Command {
 			if collectionID != "" {
 				col, err := resolveCollectionReference(cmd.Context(), st, collectionID)
 				if err != nil {
-					return fmt.Errorf("env list: resolve collection: %w", err)
+					// Preserve the established env list behavior: an unknown
+					// collection is an empty collection section, not a command error.
+					return envListGlobals(cmd.Context(), st, cmd.OutOrStdout())
 				}
 				collectionID = col.ID
 			}
@@ -148,15 +150,8 @@ func NewEnvCmd(st EnvStore) *cobra.Command {
 }
 
 func envList(ctx context.Context, st EnvStore, collectionID string, w io.Writer) error {
-	// List global envs.
-	globals, err := st.ListEnvironments(ctx, "")
-	if err != nil {
-		return fmt.Errorf("list global envs: %w", err)
-	}
-	fmt.Fprintln(w, "Global environments:")
-	for _, e := range globals {
-		vars := e.Vars()
-		fmt.Fprintf(w, "  %s (%d vars)\n", e.Name, len(vars))
+	if err := envListGlobals(ctx, st, w); err != nil {
+		return err
 	}
 
 	if collectionID != "" {
@@ -202,6 +197,19 @@ func envList(ctx context.Context, st EnvStore, collectionID string, w io.Writer)
 			vars := e.Vars()
 			fmt.Fprintf(w, "  %s (%d vars)\n", e.Name, len(vars))
 		}
+	}
+	return nil
+}
+
+func envListGlobals(ctx context.Context, st EnvStore, w io.Writer) error {
+	globals, err := st.ListEnvironments(ctx, "")
+	if err != nil {
+		return fmt.Errorf("list global envs: %w", err)
+	}
+	fmt.Fprintln(w, "Global environments:")
+	for _, e := range globals {
+		vars := e.Vars()
+		fmt.Fprintf(w, "  %s (%d vars)\n", e.Name, len(vars))
 	}
 	return nil
 }
