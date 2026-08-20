@@ -27,18 +27,19 @@ type Keybindings struct {
 	SidebarAddRequest string `toml:"sidebar_add_request"`
 
 	// Request pane
-	EditURL     string `toml:"edit_url"`
-	MethodNext  string `toml:"method_next"`
-	MethodPrev  string `toml:"method_prev"`
-	SendRequest string `toml:"send_request"`
-	EditBody    string `toml:"edit_body"`
-	EditHeaders string `toml:"edit_headers"`
-	EditAuth    string `toml:"edit_auth"`
-	ScheduleRun string `toml:"schedule_run"`
-	EnvOpen     string `toml:"env_open"`
-	ClientCerts string `toml:"client_certificates"`
-	EnvNext     string `toml:"env_next"`
-	EnvPrev     string `toml:"env_prev"`
+	EditURL       string `toml:"edit_url"`
+	MethodNext    string `toml:"method_next"`
+	MethodPrev    string `toml:"method_prev"`
+	SendRequest   string `toml:"send_request"`
+	EditBody      string `toml:"edit_body"`
+	EditHeaders   string `toml:"edit_headers"`
+	RequestDelete string `toml:"request_delete"`
+	EditAuth      string `toml:"edit_auth"`
+	ScheduleRun   string `toml:"schedule_run"`
+	EnvOpen       string `toml:"env_open"`
+	ClientCerts   string `toml:"client_certificates"`
+	EnvNext       string `toml:"env_next"`
+	EnvPrev       string `toml:"env_prev"`
 
 	// Env editor
 	EnvSave            string `toml:"env_save"`
@@ -178,14 +179,15 @@ func NewResolver(binds Keybindings) *Resolver {
 
 	// Request pane
 	request := map[string]string{
-		binds.EditURL:     ActionEditURL,
-		binds.MethodNext:  ActionMethodNext,
-		binds.MethodPrev:  ActionMethodPrev,
-		binds.SendRequest: ActionSendRequest,
-		binds.EditBody:    ActionEditBody,
-		binds.EditHeaders: ActionEditHeaders,
-		binds.EditAuth:    "edit_auth",
-		binds.ScheduleRun: ActionScheduleRun,
+		binds.EditURL:       ActionEditURL,
+		binds.MethodNext:    ActionMethodNext,
+		binds.MethodPrev:    ActionMethodPrev,
+		binds.SendRequest:   ActionSendRequest,
+		binds.EditBody:      ActionEditBody,
+		binds.EditHeaders:   ActionEditHeaders,
+		binds.RequestDelete: ActionDeleteRequest,
+		binds.EditAuth:      "edit_auth",
+		binds.ScheduleRun:   ActionScheduleRun,
 	}
 	addAlias(request, "alt+enter", ActionSendRequest)
 
@@ -433,6 +435,7 @@ func Validate(binds Keybindings) map[string][]string {
 		{{binds.EditURL, ActionEditURL}, {binds.MethodNext, ActionMethodNext},
 			{binds.MethodPrev, ActionMethodPrev}, {binds.SendRequest, ActionSendRequest},
 			{binds.EditBody, ActionEditBody}, {binds.EditHeaders, ActionEditHeaders},
+			{binds.RequestDelete, ActionDeleteRequest},
 			{binds.EditAuth, "edit_auth"}, {binds.ScheduleRun, ActionScheduleRun}},
 		{{binds.ResponseDown, "response_down"}, {binds.ResponseUp, "response_up"},
 			{binds.ResponseRetry, "response_retry"},

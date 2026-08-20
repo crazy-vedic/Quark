@@ -238,6 +238,10 @@ func importSingleFile(
 		name = uniqueCollectionName(ctx, st, name)
 		logger.Logf("deduplicated name=%s", name)
 	}
+	// Read existing collections before opening the transaction. Store uses a
+	// single SQLite connection, so querying the store while tx is open would
+	// block waiting for the connection held by that transaction.
+	allCollections, _ := st.ListCollections(ctx)
 
 	logger.Logf("tx begin name=%s", name)
 	tx, err := st.BeginTransaction(ctx)
@@ -310,46 +314,80 @@ func importSingleFile(
 		}
 		logger.Logf("collection created id=%s name=%s", col.ID, col.Name)
 	}
-
-	requestsToSave := result.Requests
-	existingNames := make(map[string]bool)
-	if action == actionMerge {
-		existingReqs, _ := st.ListRequests(ctx, col.ID)
-		for _, r := range existingReqs {
-			existingNames[r.Name] = true
-		}
-		filtered := make([]*domain.Request, 0, len(result.Requests))
-		for _, req := range result.Requests {
-			if !existingNames[req.Name] {
-				filtered = append(filtered, req)
-			}
-		}
-		requestsToSave = filtered
-		logger.Logf(
-			"merge filtered existing=%d incoming=%d new=%d",
-			len(existingReqs),
-			len(result.Requests),
-			len(filtered),
-		)
+	groups := result.Groups
+	if len(groups) == 0 && len(result.Requests) > 0 {
+		groups = []postman.RequestGroup{{Requests: result.Requests}}
 	}
-	deduplicateImportedRequestNames(requestsToSave, existingNames)
+	collectionsByPath := map[string]*domain.Collection{"": col}
+	for _, group := range groups {
+		if group.Path == "" {
+			continue
+		}
+		parent := col
+		pathParts := strings.Split(group.Path, "/")
+		pathSoFar := ""
+		for _, part := range pathParts {
+			if pathSoFar == "" {
+				pathSoFar = part
+			} else {
+				pathSoFar += "/" + part
+			}
+			if existing, ok := collectionsByPath[pathSoFar]; ok {
+				parent = existing
+				continue
+			}
+			var child *domain.Collection
+			if action == actionMerge {
+				for _, candidate := range allCollections {
+					if candidate.ParentID == parent.ID && candidate.Name == part {
+						child = candidate
+						break
+					}
+				}
+			}
+			if child == nil {
+				child = &domain.Collection{Name: part, ParentID: parent.ID}
+				if err := tx.SaveCollection(ctx, child); err != nil {
+					return importStats{filePath: path, collectionName: name, err: err}, fmt.Errorf("save nested collection %q: %w", pathSoFar, err)
+				}
+			}
+			collectionsByPath[pathSoFar] = child
+			parent = child
+		}
+	}
 
 	imported := 0
-	for _, req := range requestsToSave {
-		req.CollectionID = col.ID
-		if err := tx.SaveRequest(ctx, req); err != nil {
-			logger.Logf("save request failed name=%s err=%v", req.Name, err)
-			return importStats{
-					filePath:       path,
-					collectionName: name,
-					err:            err,
-				}, fmt.Errorf(
-					"save request %q: %w",
-					req.Name,
-					err,
-				)
+	for _, group := range groups {
+		target := collectionsByPath[group.Path]
+		if target == nil {
+			continue
 		}
-		imported++
+		existingNames := make(map[string]bool)
+		if action == actionMerge {
+			existingReqs, _ := st.ListRequests(ctx, target.ID)
+			for _, existing := range existingReqs {
+				existingNames[existing.Name] = true
+			}
+		}
+		requestsToSave := append([]*domain.Request(nil), group.Requests...)
+		if action == actionMerge {
+			filtered := make([]*domain.Request, 0, len(requestsToSave))
+			for _, req := range requestsToSave {
+				if !existingNames[req.Name] {
+					filtered = append(filtered, req)
+				}
+			}
+			requestsToSave = filtered
+		}
+		deduplicateImportedRequestNames(requestsToSave, existingNames)
+		for _, req := range requestsToSave {
+			req.CollectionID = target.ID
+			if err := tx.SaveRequest(ctx, req); err != nil {
+				logger.Logf("save request failed name=%s err=%v", req.Name, err)
+				return importStats{filePath: path, collectionName: name, err: err}, fmt.Errorf("save request %q: %w", req.Name, err)
+			}
+			imported++
+		}
 	}
 	logger.Logf("saved requests count=%d", imported)
 

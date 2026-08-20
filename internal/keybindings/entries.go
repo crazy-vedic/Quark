@@ -36,7 +36,7 @@ var groups = []struct {
 	}},
 	{"Request", []string{
 		ActionEditURL, ActionMethodNext, ActionMethodPrev,
-		ActionSendRequest, ActionScheduleRun, ActionEditBody, ActionEditHeaders, "edit_auth",
+		ActionSendRequest, ActionScheduleRun, ActionEditBody, ActionEditHeaders, ActionDeleteRequest, "edit_auth",
 	}},
 	{"Body Editor", []string{
 		"body_save", "body_newline", "body_cancel",
