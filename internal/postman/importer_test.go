@@ -60,7 +60,10 @@ func TestImporter_NestedFolders(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "API", result.CollectionName)
 	assert.Len(t, result.Requests, 1)
-	assert.Equal(t, "Users/Create", result.Requests[0].Name)
+	assert.Equal(t, "Create", result.Requests[0].Name)
+	require.Len(t, result.Groups, 1)
+	assert.Equal(t, "Users", result.Groups[0].Path)
+	assert.Equal(t, "Create", result.Groups[0].Requests[0].Name)
 	assert.Equal(t, "POST", result.Requests[0].Method)
 	assert.Equal(t, "{\"name\":\"test\"}", result.Requests[0].Body)
 }
