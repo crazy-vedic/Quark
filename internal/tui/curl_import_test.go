@@ -67,24 +67,24 @@ func TestImportCurlKeyOpensDedicatedMultilineModal(t *testing.T) {
 	require.True(t, m.importInput.Focused())
 }
 
-func TestURLFieldNeverAutoImportsCurl(t *testing.T) {
+func TestURLFieldEnterRedirectsCurlToImporter(t *testing.T) {
 	importer := &pasteImporter{}
 	m := New(Deps{Importer: importer})
 	m.activeField = urlField
 	m.urlInput.Focus()
-	m.urlInput.SetValue("curl https://example.com")
+	raw := `curl https://example.com --header 'X-Test: one' \\
+  --data-urlencode 'name=value'`
+	m.urlInput.SetValue(raw)
 
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}, Paste: true})
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	var ok bool
 	m, ok = updated.(Model)
 	require.True(t, ok)
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	m, ok = updated.(Model)
-	require.True(t, ok)
 
-	require.Equal(t, normalMode, m.mode)
+	require.Equal(t, importMode, m.mode)
 	require.Equal(t, 0, importer.calls)
-	require.Contains(t, m.statusErr, "press I")
+	require.Equal(t, raw, m.importInput.Value())
+	require.True(t, m.importInput.Focused())
 }
 
 func TestCompleteClipboardValueParsesExactIAMCommand(t *testing.T) {

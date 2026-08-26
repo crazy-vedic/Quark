@@ -827,8 +827,11 @@ func (m Model) handleRequestKey(_ string, msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		var cmd tea.Cmd
 		m.urlInput, cmd = m.urlInput.Update(msg)
 		if msg.Type == tea.KeyEnter {
-			if strings.HasPrefix(strings.TrimSpace(m.urlInput.Value()), "curl") {
-				return m.status("error", "This looks like curl; press I to open the curl importer"), nil
+			raw := m.urlInput.Value()
+			if strings.HasPrefix(strings.TrimSpace(raw), "curl") {
+				m = m.openCurlImport()
+				m.importInput.SetValue(raw)
+				return m, textinput.Blink
 			}
 			return m.finishURLEdit()
 		}
