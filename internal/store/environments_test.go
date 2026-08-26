@@ -31,7 +31,7 @@ func TestEnvironmentSaveContract_StoreAndTransaction(t *testing.T) {
 			if mode == "transaction" {
 				tx, err := s.BeginTransaction(ctx)
 				require.NoError(t, err)
-				defer func() { _ = tx.Rollback() }()
+				defer tx.Rollback()
 				saver = tx
 			}
 
@@ -119,22 +119,11 @@ func createLegacyEnvironmentDB(t *testing.T, rows ...[3]string) string {
 	_, err = db.Exec(`
 CREATE TABLE schema_versions (version INTEGER PRIMARY KEY, applied_at DATETIME DEFAULT CURRENT_TIMESTAMP);
 INSERT INTO schema_versions(version) VALUES (8);
-CREATE TABLE collections (
-    id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT,
-    meta TEXT DEFAULT '{}', created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP, version INTEGER DEFAULT 1,
-    parent_id TEXT
-);
+CREATE TABLE collections (id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT, meta TEXT DEFAULT '{}', created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP, version INTEGER DEFAULT 1, parent_id TEXT);
 CREATE TABLE requests (id TEXT PRIMARY KEY, collection_id TEXT, name TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE executions (id TEXT PRIMARY KEY, request_id TEXT);
 CREATE TABLE scheduled_runs (id TEXT PRIMARY KEY, request_id TEXT);
-CREATE TABLE environments (
-    id TEXT PRIMARY KEY, collection_id TEXT, name TEXT NOT NULL,
-    data TEXT NOT NULL DEFAULT '{}', sort_order INTEGER DEFAULT 0,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(collection_id,name)
-);
+CREATE TABLE environments (id TEXT PRIMARY KEY, collection_id TEXT, name TEXT NOT NULL, data TEXT NOT NULL DEFAULT '{}', sort_order INTEGER DEFAULT 0, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP, UNIQUE(collection_id,name));
 CREATE TABLE collection_active_env (collection_id TEXT PRIMARY KEY, env_id TEXT NOT NULL, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP);
 `)
 	require.NoError(t, err)

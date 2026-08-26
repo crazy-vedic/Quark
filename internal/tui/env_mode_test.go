@@ -96,6 +96,7 @@ func TestUpdate_EnvModal_InheritedTabsAreReadOnlyAndEditCopiesToChildDefault(t *
 	view := m.View()
 	assert.Contains(t, view, "Root/default")
 	assert.Contains(t, view, "Root/Parent/default")
+	assert.Contains(t, view, "Root/Parent/Child/default")
 	assert.Contains(t, view, "read-only")
 
 	// Global add is rejected through the status line.
@@ -111,7 +112,6 @@ func TestUpdate_EnvModal_InheritedTabsAreReadOnlyAndEditCopiesToChildDefault(t *
 	assert.Len(t, vars, 1)
 	assert.Equal(t, "shared", vars[0].Key)
 	assert.False(t, vars[0].Saved)
-	assert.Contains(t, m.View(), "Root/Parent/Child/default")
 	childDefault, err := st.GetEnvironmentByName(ctx, child.ID, "default")
 	assert.NoError(t, err)
 	assert.NotContains(t, childDefault.Vars(), "shared", "copy must remain unsaved")

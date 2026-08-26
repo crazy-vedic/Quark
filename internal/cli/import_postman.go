@@ -26,8 +26,6 @@ const (
 	actionDuplicate duplicateAction = "duplicate"
 	actionMerge     duplicateAction = "merge"
 	actionSkip      duplicateAction = "skip"
-
-	globalEnvironmentDisplayName = "Global"
 )
 
 // ImportPostmanStore is the minimum interface NewImportPostmanCmd requires.
@@ -182,7 +180,6 @@ func NewImportPostmanCmd(st ImportPostmanStore, logger *DebugLogger) *cobra.Comm
 	return cmd
 }
 
-//nolint:gocyclo // Coordinates one atomic import across hierarchy, variables, and requests.
 func importSingleFile(
 	ctx context.Context,
 	cmd *cobra.Command,
@@ -689,7 +686,7 @@ func mergeParsedEnvironmentsIntoGlobal(
 	clone := *global
 	sources := make(map[string]string, len(vars))
 	for key := range vars {
-		sources[key] = globalEnvironmentDisplayName
+		sources[key] = "Global"
 	}
 	changed := false
 	var warnings []string

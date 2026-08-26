@@ -1427,7 +1427,7 @@ func (m Model) viewStatusBar(statusOverride string) string {
 			hintItem{Label: "new req", Actions: []string{"sidebar_add_request"}},
 			hintItem{Label: "new col", Actions: []string{"sidebar_add"}},
 			hintItem{Label: "rename", Actions: []string{"sidebar_rename"}},
-			hintItem{Label: deleteToken, Actions: []string{"sidebar_delete"}},
+			hintItem{Label: "delete", Actions: []string{"sidebar_delete"}},
 		)
 	}
 	// Build plain text first, then style after any truncation. Truncating
@@ -2326,14 +2326,24 @@ func (m Model) viewEnvModal() string {
 	var sb strings.Builder
 	sb.WriteString(titleStyle.Render("Environment Variables") + "\n\n")
 
-	// Tabs use a one-line viewport. Large inherited hierarchies can contain
-	// hundreds of tabs; allowing the full list to soft-wrap makes the modal
-	// taller than the terminal. Hidden tabs remain reachable with tab-prev/next.
-	sb.WriteString(renderEnvTabViewport(
-		m.envEditor.tabs,
-		m.envEditor.tabIdx,
-		max(1, m.envModalWidth()-4),
-	) + "\n\n")
+	// Tabs.
+	var tabParts []string
+	for i, t := range m.envEditor.tabs {
+		labelText := envTabLabel(t)
+		if t.ReadOnly {
+			labelText += " (read-only)"
+		}
+		label := fmt.Sprintf("[%s]", truncate(labelText, 32))
+		if i == m.envEditor.tabIdx {
+			label = lipgloss.NewStyle().Foreground(blue).Underline(true).Bold(true).Render(label)
+		} else if t.ReadOnly {
+			label = lipgloss.NewStyle().Foreground(yellow).Faint(true).Render(label)
+		} else {
+			label = mutedStyle.Render(label)
+		}
+		tabParts = append(tabParts, label)
+	}
+	sb.WriteString("  " + strings.Join(tabParts, "  ") + "\n\n")
 
 	// Variables.
 	if len(m.envEditor.vars) == 0 {
@@ -2398,100 +2408,20 @@ func (m Model) viewEnvModal() string {
 		{Label: "add var", Actions: []string{"env_add"}},
 		{Label: "new env", Actions: []string{"env_create"}},
 		{Label: "edit", Actions: []string{"env_edit"}},
-		{Label: deleteToken, Actions: []string{"env_delete"}},
+		{Label: "delete", Actions: []string{"env_delete"}},
 		{Label: "save", Actions: []string{"env_save"}},
 		{Label: helpLabelClose, Actions: []string{"env_cancel"}},
 	})))
 
-	content := clipToRows(
-		sb.String(),
-		max(1, m.envModalWidth()-4), // horizontal padding consumes two columns per side
-		max(1, m.envModalHeight()),
-	)
 	box := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(blue).
 		Padding(1, 2).
 		Width(m.envModalWidth()).
 		Height(m.envModalHeight()).
-		Render(content)
+		Render(sb.String())
 
 	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box)
-}
-
-func renderEnvTabViewport(tabs []envTab, activeIndex, maxWidth int) string {
-	if len(tabs) == 0 || maxWidth <= 0 {
-		return ""
-	}
-	activeIndex = max(0, min(activeIndex, len(tabs)-1))
-	// Leave room for the two-space indent and both overflow markers. Each label
-	// includes its brackets in this display-width budget.
-	labelWidth := min(34, max(3, maxWidth-10))
-	labels := make([]string, len(tabs))
-	for i, tab := range tabs {
-		text := envTabLabel(tab)
-		if tab.ReadOnly {
-			text += " (read-only)"
-		}
-		labels[i] = "[" + truncate(text, max(1, labelWidth-2)) + "]"
-	}
-
-	rowWidth := func(start, end int) int {
-		parts := end - start
-		width := 2 // indent
-		if start > 0 {
-			parts++
-			width++ // left ellipsis
-		}
-		if end < len(labels) {
-			parts++
-			width++ // right ellipsis
-		}
-		for _, label := range labels[start:end] {
-			width += lipgloss.Width(label)
-		}
-		if parts > 1 {
-			width += (parts - 1) * 2
-		}
-		return width
-	}
-
-	start, end := activeIndex, activeIndex+1
-	for {
-		expanded := false
-		if start > 0 && rowWidth(start-1, end) <= maxWidth {
-			start--
-			expanded = true
-		}
-		if end < len(labels) && rowWidth(start, end+1) <= maxWidth {
-			end++
-			expanded = true
-		}
-		if !expanded {
-			break
-		}
-	}
-
-	parts := make([]string, 0, end-start+2)
-	if start > 0 {
-		parts = append(parts, mutedStyle.Render("…"))
-	}
-	for i := start; i < end; i++ {
-		label := labels[i]
-		switch {
-		case i == activeIndex:
-			label = lipgloss.NewStyle().Foreground(blue).Underline(true).Bold(true).Render(label)
-		case tabs[i].ReadOnly:
-			label = lipgloss.NewStyle().Foreground(yellow).Faint(true).Render(label)
-		default:
-			label = mutedStyle.Render(label)
-		}
-		parts = append(parts, label)
-	}
-	if end < len(labels) {
-		parts = append(parts, mutedStyle.Render("…"))
-	}
-	return "  " + strings.Join(parts, "  ")
 }
 
 // viewCollectionPromptModal renders the centered collection prompt overlay.
