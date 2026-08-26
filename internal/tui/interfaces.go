@@ -18,6 +18,11 @@ type RequestExecutor interface {
 	Execute(ctx context.Context, req *domain.Request) (*exec.ExecuteResult, error)
 }
 
+// EnvironmentHierarchyReader provides environment data plus parent traversal.
+type EnvironmentHierarchyReader interface {
+	exec.EnvResolver
+}
+
 // RequestSearcher is a narrow interface for searching requests.
 // *search.Searcher satisfies this interface structurally.
 type RequestSearcher interface {

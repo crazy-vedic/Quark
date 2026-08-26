@@ -190,11 +190,11 @@ type Model struct {
 	writer          store.RequestWriter
 	colWriter       store.CollectionWriter // for add/rename/delete collections
 	executionReader store.ExecutionReader
-	executor        RequestExecutor         // narrow interface; *exec.Executor satisfies this
-	searcher        RequestSearcher         // narrow interface; *search.Searcher satisfies this
-	importer        CurlImporter            // narrow interface; *curl.Importer satisfies this
-	envReader       store.EnvironmentReader // narrow interface; *store.Store satisfies this
-	envWriter       store.EnvironmentWriter // narrow interface; *store.Store satisfies this
+	executor        RequestExecutor            // narrow interface; *exec.Executor satisfies this
+	searcher        RequestSearcher            // narrow interface; *search.Searcher satisfies this
+	importer        CurlImporter               // narrow interface; *curl.Importer satisfies this
+	envReader       EnvironmentHierarchyReader // narrow interface; *store.Store satisfies this
+	envWriter       store.EnvironmentWriter    // narrow interface; *store.Store satisfies this
 	activeEnvStore  store.ActiveEnvironmentStore
 	scheduler       store.ScheduledRunStore
 	cfg             config.Config
@@ -371,7 +371,7 @@ type Deps struct {
 	Writer          store.RequestWriter
 	ColWriter       store.CollectionWriter // for add/rename/delete collections
 	ExecutionReader store.ExecutionReader
-	EnvReader       store.EnvironmentReader
+	EnvReader       EnvironmentHierarchyReader
 	EnvWriter       store.EnvironmentWriter
 	ActiveEnvStore  store.ActiveEnvironmentStore
 	Scheduler       store.ScheduledRunStore
@@ -899,7 +899,7 @@ func executeDueScheduledRunsCmd(
 	lister store.CollectionLister,
 	reader store.RequestReader,
 	executor RequestExecutor,
-	envReader store.EnvironmentReader,
+	envReader EnvironmentHierarchyReader,
 	activeEnvStore store.ActiveEnvironmentStore,
 	activeEnv map[string]string,
 	now func() time.Time,
@@ -974,7 +974,7 @@ func executeDueScheduledRunsCmd(
 
 func interpolateScheduledRequest(
 	ctx context.Context,
-	envReader store.EnvironmentReader,
+	envReader EnvironmentHierarchyReader,
 	activeEnvStore store.ActiveEnvironmentStore,
 	activeEnv map[string]string,
 	req *domain.Request,
@@ -984,16 +984,18 @@ func interpolateScheduledRequest(
 	}
 	activeEnvID := activeEnv[req.CollectionID]
 	if activeEnvStore != nil {
-		if persistedID, err := activeEnvStore.GetActiveEnvironment(
+		persistedID, err := activeEnvStore.GetActiveEnvironment(
 			ctx,
 			req.CollectionID,
-		); err == nil {
-			activeEnvID = persistedID
+		)
+		if err != nil {
+			return nil, fmt.Errorf("get active environment: %w", err)
 		}
+		activeEnvID = persistedID
 	}
-	colEnv, globalEnv := exec.ResolveEnvVars(ctx, envReader, activeEnvID, req.CollectionID)
-	if colEnv == nil && globalEnv == nil {
-		return req, nil
+	colEnv, globalEnv, err := exec.ResolveEnvVars(ctx, envReader, activeEnvID, req.CollectionID)
+	if err != nil {
+		return nil, fmt.Errorf("resolve environments: %w", err)
 	}
 	return exec.InterpolateRequest(req, colEnv, globalEnv)
 }

@@ -23,8 +23,8 @@ type ScheduleStore interface {
 }
 
 type ScheduleEnvironmentStore interface {
-	store.EnvironmentReader
 	store.ActiveEnvironmentStore
+	exec.EnvResolver
 }
 
 type ScheduleRunStore interface {
@@ -143,21 +143,23 @@ func newScheduleRunDueCmd(st ScheduleStore, e *exec.Executor, now func() time.Ti
 				}
 				activeEnvID, err := st.GetActiveEnvironment(cmd.Context(), req.CollectionID)
 				if err != nil {
-					activeEnvID = ""
+					err = fmt.Errorf("get active environment: %w", err)
 				}
-				colEnv, globalEnv := exec.ResolveEnvVars(
-					cmd.Context(),
-					st,
-					activeEnvID,
-					req.CollectionID,
-				)
-				prepared, err := exec.InterpolateRequestWithOverrides(
-					req,
-					nil,
-					nil,
-					colEnv,
-					globalEnv,
-				)
+				var prepared *domain.Request
+				if err == nil {
+					var colEnv, globalEnv map[string]string
+					colEnv, globalEnv, err = exec.ResolveEnvVars(
+						cmd.Context(), st, activeEnvID, req.CollectionID,
+					)
+					if err != nil {
+						err = fmt.Errorf("resolve environments: %w", err)
+					}
+					if err == nil {
+						prepared, err = exec.InterpolateRequestWithOverrides(
+							req, nil, nil, colEnv, globalEnv,
+						)
+					}
+				}
 				if err == nil {
 					_, err = e.Execute(cmd.Context(), prepared)
 				}

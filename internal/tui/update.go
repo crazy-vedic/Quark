@@ -240,10 +240,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleHTTPErr(msg)
 	case envSavedMsg:
 		m = m.status("success", "Environment saved")
-		m.envEditor.dirty = false
-		// Mark all variables as saved so the unsaved indicator (*) disappears.
-		for i := range m.envEditor.vars {
-			m.envEditor.vars[i].Saved = true
+		if draft, ok := m.envEditor.drafts[msg.envID]; ok {
+			draft.dirty = false
+			for i := range draft.vars {
+				draft.vars[i].Saved = true
+			}
+			m.envEditor.drafts[msg.envID] = draft
+		}
+		if len(m.envEditor.tabs) > 0 && m.envEditor.tabs[m.envEditor.tabIdx].ID == msg.envID {
+			m.envEditor.dirty = false
+			for i := range m.envEditor.vars {
+				m.envEditor.vars[i].Saved = true
+			}
+			m = m.stashEnvDraft()
 		}
 		// Invalidate cached env name — saved env may be the active one.
 		m.cachedEnvColID = ""

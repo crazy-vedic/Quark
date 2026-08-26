@@ -124,7 +124,6 @@ func run() error {
 		}
 		executor := exec.New(httpTransport,
 			exec.WithTimeout(cfg.Timeout()),
-			exec.WithVariableResolver(makeVariableResolver(st)),
 			exec.WithExecutionWriter(st),
 		)
 		importer := curl.NewImporter()
@@ -708,19 +707,18 @@ func lazyKeybindingsCmd() *cobra.Command {
 	return cmd
 }
 
-// makeVariableResolver returns a VariableResolver that looks up environments
-// from the store. The active environment is the "default" env if present,
-// otherwise the first collection environment. Global environment is the
-// fallback for variables not found in the collection env.
+// makeVariableResolver returns the optional executor-level resolver for callers
+// that do not prepare requests before Execute. Production CLI/TUI paths resolve
+// explicitly once and therefore do not install this option.
 func makeVariableResolver(st *store.Store) exec.VariableResolver {
-	return func(collectionID string) (colEnv, globalEnv map[string]string) {
+	return func(collectionID string) (colEnv, globalEnv map[string]string, resolveErr error) {
 		ctx, cancel := context.WithTimeout(context.Background(), store.EnvDBTimeout)
 		defer cancel()
 
 		// Load the persisted active env for this collection (if any).
 		activeEnvID, err := st.GetActiveEnvironment(ctx, collectionID)
 		if err != nil {
-			activeEnvID = ""
+			return nil, nil, fmt.Errorf("get active environment: %w", err)
 		}
 		return exec.ResolveEnvVars(ctx, st, activeEnvID, collectionID)
 	}

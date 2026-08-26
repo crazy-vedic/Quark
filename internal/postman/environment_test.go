@@ -70,3 +70,19 @@ func TestEnvironment_ToMap_Empty(t *testing.T) {
 	m := env.ToMap()
 	assert.Empty(t, m)
 }
+
+func TestEnvironment_ToMap_FirstDuplicateWinsAndWarnsWithoutValues(t *testing.T) {
+	env := &Environment{Values: []EnvValue{
+		{Key: "key", Value: "first-secret", Enabled: true},
+		{Key: "key", Value: "later-secret", Enabled: true},
+		{Key: "", Value: "empty-secret", Enabled: true},
+	}}
+	vars, warnings := env.ToMapWithWarnings()
+	assert.Equal(t, "first-secret", vars["key"])
+	joined := strings.Join(warnings, " ")
+	assert.Contains(t, joined, `duplicate environment variable "key" ignored`)
+	assert.Contains(t, joined, "empty key")
+	assert.NotContains(t, joined, "first-secret")
+	assert.NotContains(t, joined, "later-secret")
+	assert.NotContains(t, joined, "empty-secret")
+}

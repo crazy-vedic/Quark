@@ -132,10 +132,15 @@ func NewImportPostmanCmd(st ImportPostmanStore, logger *DebugLogger) *cobra.Comm
 				totalWarnings += s.warnings
 				printImportResult(cmd, s)
 			}
+			totalWarnings += len(envResult.warnings)
+			totalErrors += len(envResult.errors)
 
 			// Print environment import results.
-			if envResult.imported > 0 || len(envResult.errors) > 0 {
+			if envResult.imported > 0 || len(envResult.errors) > 0 || len(envResult.warnings) > 0 {
 				fmt.Fprintf(cmd.OutOrStdout(), "\nEnvironments: %d imported", envResult.imported)
+				for _, warning := range envResult.warnings {
+					fmt.Fprintf(cmd.ErrOrStderr(), "\n  Warning: %s", warning)
+				}
 				if len(envResult.errors) > 0 {
 					fmt.Fprintf(cmd.OutOrStdout(), ", %d errors", len(envResult.errors))
 					for _, errMsg := range envResult.errors {
@@ -159,6 +164,9 @@ func NewImportPostmanCmd(st ImportPostmanStore, logger *DebugLogger) *cobra.Comm
 			} else {
 				logger.Logf("import complete imported=%d skipped=%d warnings=%d errors=%d envs=%d",
 					totalImported, totalSkipped, totalWarnings, totalErrors, envResult.imported)
+			}
+			if len(envResult.errors) > 0 {
+				return fmt.Errorf("import-postman: %d environment error(s)", len(envResult.errors))
 			}
 			return nil
 		},
@@ -242,6 +250,20 @@ func importSingleFile(
 	// single SQLite connection, so querying the store while tx is open would
 	// block waiting for the connection held by that transaction.
 	allCollections, _ := st.ListCollections(ctx)
+	existingRequestNamesByCollection := make(map[string]map[string]bool)
+	if action == actionMerge {
+		for _, existingCollection := range allCollections {
+			existingRequests, listErr := st.ListRequests(ctx, existingCollection.ID)
+			if listErr != nil {
+				continue
+			}
+			names := make(map[string]bool, len(existingRequests))
+			for _, existingRequest := range existingRequests {
+				names[existingRequest.Name] = true
+			}
+			existingRequestNamesByCollection[existingCollection.ID] = names
+		}
+	}
 
 	logger.Logf("tx begin name=%s", name)
 	tx, err := st.BeginTransaction(ctx)
@@ -277,8 +299,7 @@ func importSingleFile(
 
 	if action == actionMerge {
 		// Find existing collection by name or ID.
-		cols, _ := st.ListCollections(ctx)
-		for _, c := range cols {
+		for _, c := range allCollections {
 			if c.ID == existingID || c.Name == name {
 				col = c
 				break
@@ -356,6 +377,15 @@ func importSingleFile(
 		}
 	}
 
+	variableWarnings, err := mergeCollectionVariablesIntoRootDefault(
+		ctx, tx, col.ID, result.CollectionVariables,
+	)
+	if err != nil {
+		return importStats{filePath: path, collectionName: name, err: err}, fmt.Errorf("save collection variables: %w", err)
+	}
+	result.Warnings = append(result.Warnings, variableWarnings...)
+	sort.Strings(result.Warnings)
+
 	imported := 0
 	for _, group := range groups {
 		target := collectionsByPath[group.Path]
@@ -364,9 +394,8 @@ func importSingleFile(
 		}
 		existingNames := make(map[string]bool)
 		if action == actionMerge {
-			existingReqs, _ := st.ListRequests(ctx, target.ID)
-			for _, existing := range existingReqs {
-				existingNames[existing.Name] = true
+			for existingName := range existingRequestNamesByCollection[target.ID] {
+				existingNames[existingName] = true
 			}
 		}
 		requestsToSave := append([]*domain.Request(nil), group.Requests...)
@@ -416,6 +445,50 @@ func importSingleFile(
 	}, nil
 }
 
+func mergeCollectionVariablesIntoRootDefault(
+	ctx context.Context,
+	tx store.TransactionalWriter,
+	collectionID string,
+	incoming map[string]string,
+) ([]string, error) {
+	if len(incoming) == 0 {
+		return nil, nil
+	}
+	defaultEnvironment, err := tx.CreateDefaultEnvironment(ctx, collectionID)
+	if err != nil {
+		return nil, err
+	}
+	vars, err := defaultEnvironment.DecodeVars()
+	if err != nil {
+		return nil, fmt.Errorf("decode root default: %w", err)
+	}
+	keys := make([]string, 0, len(incoming))
+	for key := range incoming {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	var warnings []string
+	changed := false
+	for _, key := range keys {
+		value := incoming[key]
+		if existing, present := vars[key]; present {
+			if existing != value {
+				warnings = append(warnings, fmt.Sprintf("collection variable %q conflicts with root default; existing value kept", key))
+			}
+			continue
+		}
+		vars[key] = value
+		changed = true
+	}
+	if changed {
+		defaultEnvironment.SetVars(vars)
+		if err := tx.SaveEnvironment(ctx, defaultEnvironment); err != nil {
+			return nil, err
+		}
+	}
+	return warnings, nil
+}
+
 // deduplicateImportedRequestNames makes request names unique for one import
 // operation. The database constraint remains the final guard for all other
 // request writes; this only avoids rejecting valid Postman collections that
@@ -447,6 +520,18 @@ func deduplicateImportedRequestNames(requests []*domain.Request, existingNames m
 type envImportResult struct {
 	imported int
 	errors   []string
+	warnings []string
+}
+
+type parsedEnvironmentFile struct {
+	filename string
+	vars     map[string]string
+}
+
+type parsedEnvironmentResult struct {
+	files    []parsedEnvironmentFile
+	errors   []string
+	warnings []string
 }
 
 func importBulk(
@@ -513,20 +598,12 @@ func importBulk(
 		return nil, envImportResult{}, fmt.Errorf("no collection files found in %q", dir)
 	}
 
-	// Parse environment files.
-	envMap := parseEnvironmentsInDir(dir, logger)
+	// Parse standalone environments independently. They are merged only after
+	// every collection import has had a chance to complete.
+	parsedEnvironments := parseEnvironmentsInDir(dir, logger)
 
 	sort.Strings(files)
 	logger.Logf("found %d collection files", len(files))
-
-	// If we have parsed environment variables, merge them into the global
-	// environment so they are immediately available in the TUI and resolver.
-	if len(envMap) > 0 {
-		logger.Logf("merging %d environment file(s) into global env", len(envMap))
-		if err := mergeEnvironmentsIntoGlobal(ctx, st, envMap, logger); err != nil {
-			logger.Logf("merge into global env failed: %v", err)
-		}
-	}
 
 	var allStats []importStats
 	for _, f := range files {
@@ -546,74 +623,122 @@ func importBulk(
 		allStats = append(allStats, stat)
 	}
 
-	// Store environments in DB for each imported collection.
-	// Note: envMap is keyed by the original filename; we need to match by collection name.
-	// For now, we just create the environments in the DB.
-	var envResult envImportResult
-	if len(envMap) > 0 {
-		logger.Logf("found %d environment files, storing in DB", len(envMap))
-		for _, env := range envMap {
-			if err := st.SaveEnvironment(ctx, env); err != nil {
-				errMsg := fmt.Sprintf("save environment %q failed: %v", env.Name, err)
-				logger.Logf(errMsg)
-				envResult.errors = append(envResult.errors, errMsg)
-			} else {
-				envResult.imported++
-			}
+	envResult := envImportResult{
+		imported: len(parsedEnvironments.files),
+		errors:   append([]string(nil), parsedEnvironments.errors...),
+		warnings: append([]string(nil), parsedEnvironments.warnings...),
+	}
+	if len(parsedEnvironments.files) > 0 {
+		mergeWarnings, err := mergeParsedEnvironmentsIntoGlobal(ctx, st, parsedEnvironments.files, logger)
+		envResult.warnings = append(envResult.warnings, mergeWarnings...)
+		if err != nil {
+			envResult.imported = 0
+			errMsg := fmt.Sprintf("save standalone environments to Global failed: %v", err)
+			logger.Logf("%s", errMsg)
+			envResult.errors = append(envResult.errors, errMsg)
 		}
 	}
+	sort.Strings(envResult.errors)
+	sort.Strings(envResult.warnings)
 
 	return allStats, envResult, nil
 }
 
-// mergeEnvironmentsIntoGlobal merges all parsed Postman environment variables
-// into the existing global environment so they are immediately visible in the TUI
-// and available to the resolver.
+// mergeEnvironmentsIntoGlobal is retained for focused callers and tests. Input
+// order is authoritative after existing Global values.
 func mergeEnvironmentsIntoGlobal(
 	ctx context.Context,
 	st ImportPostmanStore,
 	envs []*domain.Environment,
 	logger *DebugLogger,
 ) error {
+	parsed := make([]parsedEnvironmentFile, 0, len(envs))
+	for _, environment := range envs {
+		if environment == nil {
+			continue
+		}
+		vars, err := environment.DecodeVars()
+		if err != nil {
+			return err
+		}
+		parsed = append(parsed, parsedEnvironmentFile{filename: environment.Name, vars: vars})
+	}
+	_, err := mergeParsedEnvironmentsIntoGlobal(ctx, st, parsed, logger)
+	return err
+}
+
+func mergeParsedEnvironmentsIntoGlobal(
+	ctx context.Context,
+	st ImportPostmanStore,
+	files []parsedEnvironmentFile,
+	logger *DebugLogger,
+) ([]string, error) {
 	global, err := st.GetGlobalEnvironment(ctx)
 	if err != nil {
 		logger.Logf("get global env failed: %v", err)
-		return err
+		return nil, err
 	}
 
-	vars := global.Vars()
-	if vars == nil {
-		vars = make(map[string]string)
+	vars, err := global.DecodeVars()
+	if err != nil {
+		return nil, fmt.Errorf("decode Global: %w", err)
 	}
-
-	for _, env := range envs {
-		for k, v := range env.Vars() {
-			vars[k] = v
+	clone := *global
+	sources := make(map[string]string, len(vars))
+	for key := range vars {
+		sources[key] = "Global"
+	}
+	changed := false
+	var warnings []string
+	for _, file := range files {
+		keys := make([]string, 0, len(file.vars))
+		for key := range file.vars {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		for _, key := range keys {
+			value := file.vars[key]
+			if existing, present := vars[key]; present {
+				if existing != value {
+					warnings = append(warnings, fmt.Sprintf("%s: variable %q conflicts with %s; existing value kept", file.filename, key, sources[key]))
+				}
+				continue
+			}
+			vars[key] = value
+			sources[key] = file.filename
+			changed = true
 		}
 	}
-
-	global.SetVars(vars)
-	if err := st.SaveEnvironment(ctx, global); err != nil {
-		logger.Logf("save merged global env failed: %v", err)
-		return err
+	if !changed {
+		return warnings, nil
 	}
-	logger.Logf("merged %d env file(s) into global env, %d vars total", len(envs), len(vars))
-	return nil
+	clone.SetVars(vars)
+	if err := st.SaveEnvironment(ctx, &clone); err != nil {
+		logger.Logf("save merged global env failed: %v", err)
+		return warnings, err
+	}
+	logger.Logf("merged %d environment file(s) into Global, %d variables total", len(files), len(vars))
+	return warnings, nil
 }
 
 // parseEnvironmentsInDir parses all .json files in the environment/ subdirectory.
 func parseEnvironmentsInDir(
 	dir string,
 	logger *DebugLogger,
-) []*domain.Environment {
+) parsedEnvironmentResult {
 	envDir := filepath.Join(dir, "environment")
 	entries, err := os.ReadDir(envDir)
 	if err != nil {
+		if os.IsNotExist(err) {
+			logger.Logf("no environment/ directory")
+			return parsedEnvironmentResult{}
+		}
 		logger.Logf("no environment/ directory: %v", err)
-		return nil
+		return parsedEnvironmentResult{errors: []string{fmt.Sprintf("read environment directory: %v", err)}}
 	}
 
-	var envs []*domain.Environment
+	sort.Slice(entries, func(i, j int) bool { return entries[i].Name() < entries[j].Name() })
+	var result parsedEnvironmentResult
 	for _, entry := range entries {
 		if entry.IsDir() {
 			continue
@@ -624,23 +749,26 @@ func parseEnvironmentsInDir(
 		path := filepath.Join(envDir, entry.Name())
 		f, err := os.Open(path)
 		if err != nil {
-			logger.Logf("open environment file failed: %s", path)
+			errMsg := fmt.Sprintf("%s: open failed: %v", entry.Name(), err)
+			logger.Logf("%s", errMsg)
+			result.errors = append(result.errors, errMsg)
 			continue
 		}
 		pmEnv, err := postman.ParseEnvironment(f)
 		f.Close()
 		if err != nil {
-			logger.Logf("parse environment file failed: %s: %v", path, err)
+			errMsg := fmt.Sprintf("%s: %v", entry.Name(), err)
+			logger.Logf("parse environment file failed: %s", entry.Name())
+			result.errors = append(result.errors, errMsg)
 			continue
 		}
-		data, _ := json.Marshal(pmEnv.ToMap())
-		env := &domain.Environment{
-			Name: pmEnv.Name,
-			Data: string(data),
+		vars, warnings := pmEnv.ToMapWithWarnings()
+		for _, warning := range warnings {
+			result.warnings = append(result.warnings, fmt.Sprintf("%s: %s", entry.Name(), warning))
 		}
-		envs = append(envs, env)
+		result.files = append(result.files, parsedEnvironmentFile{filename: entry.Name(), vars: vars})
 	}
-	return envs
+	return result
 }
 
 func resolveDuplicate(

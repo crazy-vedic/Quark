@@ -2,6 +2,9 @@ package store_test
 
 import (
 	"context"
+	"database/sql"
+	"errors"
+	"path/filepath"
 	"testing"
 
 	"github.com/google/uuid"
@@ -11,6 +14,164 @@ import (
 	"github.com/crazy-vedic/quark/internal/domain"
 	"github.com/crazy-vedic/quark/internal/store"
 )
+
+type environmentSaver interface {
+	SaveEnvironment(context.Context, *domain.Environment) error
+}
+
+func TestEnvironmentSaveContract_StoreAndTransaction(t *testing.T) {
+	for _, mode := range []string{"store", "transaction"} {
+		t.Run(mode, func(t *testing.T) {
+			s := newTestStore(t)
+			ctx := context.Background()
+			collection := &domain.Collection{ID: "collection", Name: "Collection"}
+			require.NoError(t, s.SaveCollection(ctx, collection))
+
+			var saver environmentSaver = s
+			if mode == "transaction" {
+				tx, err := s.BeginTransaction(ctx)
+				require.NoError(t, err)
+				defer tx.Rollback()
+				saver = tx
+			}
+
+			tests := []struct {
+				name string
+				env  *domain.Environment
+				want error
+			}{
+				{name: "nil", env: nil},
+				{name: "empty name", env: &domain.Environment{CollectionID: collection.ID, Name: "  ", Data: `{}`}},
+				{name: "missing collection", env: &domain.Environment{CollectionID: "missing", Name: "dev", Data: `{}`}, want: store.ErrNotFound},
+				{name: "malformed", env: &domain.Environment{CollectionID: collection.ID, Name: "dev", Data: `{`}, want: domain.ErrInvalidEnvironmentData},
+				{name: "array", env: &domain.Environment{CollectionID: collection.ID, Name: "dev", Data: `[]`}, want: domain.ErrInvalidEnvironmentData},
+				{name: "scalar", env: &domain.Environment{CollectionID: collection.ID, Name: "dev", Data: `true`}, want: domain.ErrInvalidEnvironmentData},
+				{name: "null", env: &domain.Environment{CollectionID: collection.ID, Name: "dev", Data: `null`}, want: domain.ErrInvalidEnvironmentData},
+				{name: "non-string", env: &domain.Environment{CollectionID: collection.ID, Name: "dev", Data: `{"port":8080}`}, want: domain.ErrInvalidEnvironmentData},
+				{name: "additional global", env: &domain.Environment{ID: "other-global", Name: "other", Data: `{}`}},
+			}
+			for _, tt := range tests {
+				t.Run(tt.name, func(t *testing.T) {
+					err := saver.SaveEnvironment(ctx, tt.env)
+					require.Error(t, err)
+					if tt.want != nil {
+						assert.True(t, errors.Is(err, tt.want), "error: %v", err)
+					}
+				})
+			}
+
+			valid := &domain.Environment{CollectionID: collection.ID, Name: "dev", Data: `{"key":"value"}`}
+			require.NoError(t, saver.SaveEnvironment(ctx, valid))
+			assert.NotEmpty(t, valid.ID)
+		})
+	}
+}
+
+func TestStore_EnvironmentOwnerCannotChange(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	first := &domain.Collection{ID: "first", Name: "First"}
+	second := &domain.Collection{ID: "second", Name: "Second"}
+	require.NoError(t, s.SaveCollection(ctx, first))
+	require.NoError(t, s.SaveCollection(ctx, second))
+	environment := &domain.Environment{ID: "dev", CollectionID: first.ID, Name: "dev", Data: `{}`}
+	require.NoError(t, s.SaveEnvironment(ctx, environment))
+
+	environment.CollectionID = second.ID
+	require.Error(t, s.SaveEnvironment(ctx, environment))
+	stored, err := s.GetEnvironment(ctx, environment.ID)
+	require.NoError(t, err)
+	assert.Equal(t, first.ID, stored.CollectionID)
+
+	global, err := s.GetGlobalEnvironment(ctx)
+	require.NoError(t, err)
+	global.CollectionID = first.ID
+	require.Error(t, s.SaveEnvironment(ctx, global))
+}
+
+func TestStore_SetActiveEnvironmentValidatesOwnership(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	first := &domain.Collection{ID: "first", Name: "First"}
+	second := &domain.Collection{ID: "second", Name: "Second"}
+	require.NoError(t, s.SaveCollection(ctx, first))
+	require.NoError(t, s.SaveCollection(ctx, second))
+	firstDefault, err := s.GetEnvironmentByName(ctx, first.ID, "default")
+	require.NoError(t, err)
+	require.NoError(t, s.SetActiveEnvironment(ctx, first.ID, firstDefault.ID))
+
+	assert.Error(t, s.SetActiveEnvironment(ctx, second.ID, firstDefault.ID))
+	assert.Error(t, s.SetActiveEnvironment(ctx, first.ID, "global"))
+	assert.ErrorIs(t, s.SetActiveEnvironment(ctx, first.ID, "missing"), store.ErrNotFound)
+}
+
+func TestStore_MigrationV9EnforcesSingleCollectionlessEnvironment(t *testing.T) {
+	s := newTestStore(t)
+	_, err := s.DB().Exec(`INSERT INTO environments (id, collection_id, name, data) VALUES ('extra-global', NULL, 'extra', '{}')`)
+	require.Error(t, err)
+}
+
+func createLegacyEnvironmentDB(t *testing.T, rows ...[3]string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "legacy.db")
+	db, err := sql.Open("sqlite", path)
+	require.NoError(t, err)
+	_, err = db.Exec(`
+CREATE TABLE schema_versions (version INTEGER PRIMARY KEY, applied_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+INSERT INTO schema_versions(version) VALUES (8);
+CREATE TABLE collections (id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT, meta TEXT DEFAULT '{}', created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP, version INTEGER DEFAULT 1, parent_id TEXT);
+CREATE TABLE requests (id TEXT PRIMARY KEY, collection_id TEXT, name TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE executions (id TEXT PRIMARY KEY, request_id TEXT);
+CREATE TABLE scheduled_runs (id TEXT PRIMARY KEY, request_id TEXT);
+CREATE TABLE environments (id TEXT PRIMARY KEY, collection_id TEXT, name TEXT NOT NULL, data TEXT NOT NULL DEFAULT '{}', sort_order INTEGER DEFAULT 0, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP, UNIQUE(collection_id,name));
+CREATE TABLE collection_active_env (collection_id TEXT PRIMARY KEY, env_id TEXT NOT NULL, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+`)
+	require.NoError(t, err)
+	for _, row := range rows {
+		_, err = db.Exec(`INSERT INTO environments(id, collection_id, name, data) VALUES (?, NULL, ?, ?)`, row[0], row[1], row[2])
+		require.NoError(t, err)
+	}
+	require.NoError(t, db.Close())
+	return path
+}
+
+func TestStore_MigrationV9MergesLegacyGlobalsDeterministically(t *testing.T) {
+	path := createLegacyEnvironmentDB(t,
+		[3]string{"global", "legacy-canonical", `{"keep":"canonical","shared":"canonical"}`},
+		[3]string{"legacy-a", "A", `{"first":"a","shared":"a"}`},
+		[3]string{"legacy-b", "B", `{"second":"b","first":"b"}`},
+	)
+	s, err := store.New(path)
+	require.NoError(t, err)
+	defer s.Close()
+	global, err := s.GetGlobalEnvironment(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, "global", global.ID)
+	assert.Equal(t, "global", global.Name)
+	assert.Equal(t, map[string]string{"keep": "canonical", "shared": "canonical", "first": "a", "second": "b"}, global.Vars())
+	var count int
+	require.NoError(t, s.DB().QueryRow(`SELECT COUNT(*) FROM environments WHERE collection_id IS NULL`).Scan(&count))
+	assert.Equal(t, 1, count)
+}
+
+func TestStore_MigrationV9InvalidLegacyDataRollsBack(t *testing.T) {
+	path := createLegacyEnvironmentDB(t,
+		[3]string{"global", "global", `{"safe":"yes"}`},
+		[3]string{"legacy-bad", "bad", `{"not-string":1}`},
+	)
+	_, err := store.New(path)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, domain.ErrInvalidEnvironmentData)
+
+	db, openErr := sql.Open("sqlite", path)
+	require.NoError(t, openErr)
+	defer db.Close()
+	var rowCount, version int
+	require.NoError(t, db.QueryRow(`SELECT COUNT(*) FROM environments WHERE collection_id IS NULL`).Scan(&rowCount))
+	require.NoError(t, db.QueryRow(`SELECT MAX(version) FROM schema_versions`).Scan(&version))
+	assert.Equal(t, 2, rowCount)
+	assert.Equal(t, 8, version)
+}
 
 // --- Global Environment ---
 

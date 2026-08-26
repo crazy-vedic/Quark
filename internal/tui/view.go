@@ -2329,9 +2329,15 @@ func (m Model) viewEnvModal() string {
 	// Tabs.
 	var tabParts []string
 	for i, t := range m.envEditor.tabs {
-		label := fmt.Sprintf("[%s]", t.Name)
+		labelText := envTabLabel(t)
+		if t.ReadOnly {
+			labelText += " (read-only)"
+		}
+		label := fmt.Sprintf("[%s]", truncate(labelText, 32))
 		if i == m.envEditor.tabIdx {
 			label = lipgloss.NewStyle().Foreground(blue).Underline(true).Bold(true).Render(label)
+		} else if t.ReadOnly {
+			label = lipgloss.NewStyle().Foreground(yellow).Faint(true).Render(label)
 		} else {
 			label = mutedStyle.Render(label)
 		}
@@ -2341,11 +2347,11 @@ func (m Model) viewEnvModal() string {
 
 	// Variables.
 	if len(m.envEditor.vars) == 0 {
-		sb.WriteString(
-			mutedStyle.Render(
-				"  No variables. Press "+m.renderHintKeys([]string{"env_add"}, false)+" to add.",
-			) + "\n",
-		)
+		emptyMessage := "  No variables. Press " + m.renderHintKeys([]string{"env_add"}, false) + " to add."
+		if m.currentEnvTabReadOnly() {
+			emptyMessage = "  No variables in this read-only environment."
+		}
+		sb.WriteString(mutedStyle.Render(emptyMessage) + "\n")
 	} else {
 		rows, selectedRow := buildEnvVarRows(m.envEditor.vars, m.envEditor.varCursor)
 		visible := m.envVisibleRows()
