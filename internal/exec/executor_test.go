@@ -24,6 +24,12 @@ type recordingExecutionWriter struct {
 	executions []*domain.Execution
 }
 
+type roundTripperFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripperFunc) RoundTrip(request *http.Request) (*http.Response, error) {
+	return f(request)
+}
+
 func (w *recordingExecutionWriter) SaveExecution(_ context.Context, ex *domain.Execution) error {
 	w.executions = append(w.executions, ex)
 	return nil
@@ -526,8 +532,8 @@ func TestExecutor_VariableResolver_SubstitutesURL(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	resolver := func(_ string) (map[string]string, map[string]string) {
-		return map[string]string{"path": "/api/v1/users"}, nil
+	resolver := func(_ string) (map[string]string, map[string]string, error) {
+		return map[string]string{"path": "/api/v1/users"}, nil, nil
 	}
 
 	transport := &http.Transport{}
@@ -553,8 +559,8 @@ func TestExecutor_VariableResolver_SubstitutesBody(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	resolver := func(_ string) (map[string]string, map[string]string) {
-		return map[string]string{"name": "Alice"}, nil
+	resolver := func(_ string) (map[string]string, map[string]string, error) {
+		return map[string]string{"name": "Alice"}, nil, nil
 	}
 
 	transport := &http.Transport{}
@@ -580,8 +586,8 @@ func TestExecutor_VariableResolver_SubstitutesHeaders(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	resolver := func(_ string) (map[string]string, map[string]string) {
-		return map[string]string{"token": "secret123"}, nil
+	resolver := func(_ string) (map[string]string, map[string]string, error) {
+		return map[string]string{"token": "secret123"}, nil, nil
 	}
 
 	transport := &http.Transport{}
@@ -607,8 +613,8 @@ func TestExecutor_VariableResolver_GlobalFallback(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	resolver := func(_ string) (map[string]string, map[string]string) {
-		return nil, map[string]string{"path": "/global/users"}
+	resolver := func(_ string) (map[string]string, map[string]string, error) {
+		return nil, map[string]string{"path": "/global/users"}, nil
 	}
 
 	transport := &http.Transport{}
@@ -626,8 +632,8 @@ func TestExecutor_VariableResolver_GlobalFallback(t *testing.T) {
 }
 
 func TestExecutor_VariableResolver_UnresolvedError(t *testing.T) {
-	resolver := func(_ string) (map[string]string, map[string]string) {
-		return nil, nil
+	resolver := func(_ string) (map[string]string, map[string]string, error) {
+		return nil, nil, nil
 	}
 
 	transport := &http.Transport{}
@@ -643,6 +649,23 @@ func TestExecutor_VariableResolver_UnresolvedError(t *testing.T) {
 	require.Error(t, err)
 	assert.ErrorIs(t, err, exec.ErrUnresolvedVariable)
 	assert.Contains(t, err.Error(), "host")
+}
+
+func TestExecutor_VariableResolver_ErrorPreventsDispatch(t *testing.T) {
+	resolverErr := errors.New("environment database unavailable")
+	resolver := func(_ string) (map[string]string, map[string]string, error) {
+		return nil, nil, resolverErr
+	}
+	dispatched := false
+	transport := roundTripperFunc(func(*http.Request) (*http.Response, error) {
+		dispatched = true
+		return nil, errors.New("must not dispatch")
+	})
+	e := newTestExecutor(transport, exec.WithVariableResolver(resolver))
+	_, err := e.Execute(context.Background(), &domain.Request{Method: "GET", URL: "https://example.test"})
+	require.Error(t, err)
+	assert.ErrorIs(t, err, resolverErr)
+	assert.False(t, dispatched)
 }
 
 func TestExecutor_VariableResolver_NoResolver_NoPlaceholders(t *testing.T) {

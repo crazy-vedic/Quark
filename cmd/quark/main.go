@@ -124,7 +124,6 @@ func run() error {
 		}
 		executor := exec.New(httpTransport,
 			exec.WithTimeout(cfg.Timeout()),
-			exec.WithVariableResolver(makeVariableResolver(st)),
 			exec.WithExecutionWriter(st),
 		)
 		importer := curl.NewImporter()
@@ -591,7 +590,8 @@ func lazyImportCmd(rt func() (*runtime, error)) *cobra.Command {
 }
 
 func lazyImportPostmanCmd(rt func() (*runtime, error)) *cobra.Command {
-	return &cobra.Command{
+	var collectionName, onDuplicate string
+	cmd := &cobra.Command{
 		Use:   "import-postman <collection.json|directory>",
 		Short: "Import a Postman Collection v2.1 JSON file or a bulk export directory",
 		Args:  cobra.ExactArgs(1),
@@ -600,9 +600,33 @@ func lazyImportPostmanCmd(rt func() (*runtime, error)) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return cli.NewImportPostmanCmd(r.st, cli.NewDebugLogger(nil)).RunE(cmd, args)
+			inner := cli.NewImportPostmanCmd(r.st, cli.NewDebugLogger(nil))
+			inner.SetContext(cmd.Context())
+			inner.SetIn(cmd.InOrStdin())
+			inner.SetOut(cmd.OutOrStdout())
+			inner.SetErr(cmd.ErrOrStderr())
+			inner.SetArgs([]string{
+				args[0],
+				"--collection-name", collectionName,
+				"--on-duplicate", onDuplicate,
+			})
+			return inner.Execute()
 		},
 	}
+	cmd.Flags().StringVarP(
+		&collectionName,
+		"collection-name",
+		"n",
+		"",
+		"Override the imported collection name",
+	)
+	cmd.Flags().StringVar(
+		&onDuplicate,
+		"on-duplicate",
+		"duplicate",
+		"Action when collection name already exists: replace, duplicate, merge, or skip",
+	)
+	return cmd
 }
 
 func lazyEnvCmd(rt func() (*runtime, error)) *cobra.Command {
@@ -706,22 +730,4 @@ func lazyKeybindingsCmd() *cobra.Command {
 		},
 	})
 	return cmd
-}
-
-// makeVariableResolver returns a VariableResolver that looks up environments
-// from the store. The active environment is the "default" env if present,
-// otherwise the first collection environment. Global environment is the
-// fallback for variables not found in the collection env.
-func makeVariableResolver(st *store.Store) exec.VariableResolver {
-	return func(collectionID string) (colEnv, globalEnv map[string]string) {
-		ctx, cancel := context.WithTimeout(context.Background(), store.EnvDBTimeout)
-		defer cancel()
-
-		// Load the persisted active env for this collection (if any).
-		activeEnvID, err := st.GetActiveEnvironment(ctx, collectionID)
-		if err != nil {
-			activeEnvID = ""
-		}
-		return exec.ResolveEnvVars(ctx, st, activeEnvID, collectionID)
-	}
 }

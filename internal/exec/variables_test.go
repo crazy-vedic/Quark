@@ -1,6 +1,7 @@
 package exec_test
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"testing"
@@ -11,6 +12,194 @@ import (
 	"github.com/crazy-vedic/quark/internal/domain"
 	"github.com/crazy-vedic/quark/internal/exec"
 )
+
+type hierarchyResolver struct {
+	collections   map[string]*domain.Collection
+	environments  map[string]*domain.Environment
+	byCollection  map[string][]*domain.Environment
+	global        *domain.Environment
+	collectionErr map[string]error
+	listErr       map[string]error
+}
+
+func (r *hierarchyResolver) GetCollection(_ context.Context, id string) (*domain.Collection, error) {
+	if err := r.collectionErr[id]; err != nil {
+		return nil, err
+	}
+	collection, ok := r.collections[id]
+	if !ok {
+		return nil, errors.New("collection missing")
+	}
+	return collection, nil
+}
+
+func (r *hierarchyResolver) GetEnvironment(_ context.Context, id string) (*domain.Environment, error) {
+	environment, ok := r.environments[id]
+	if !ok {
+		return nil, errors.New("environment missing")
+	}
+	return environment, nil
+}
+
+func (r *hierarchyResolver) GetGlobalEnvironment(context.Context) (*domain.Environment, error) {
+	if r.global == nil {
+		return nil, errors.New("Global missing")
+	}
+	return r.global, nil
+}
+
+func (r *hierarchyResolver) ListCollectionEnvironments(_ context.Context, id string) ([]*domain.Environment, error) {
+	if err := r.listErr[id]; err != nil {
+		return nil, err
+	}
+	return r.byCollection[id], nil
+}
+
+func testEnvironment(id, collectionID, name string, vars map[string]string) *domain.Environment {
+	environment := &domain.Environment{ID: id, CollectionID: collectionID, Name: name}
+	environment.SetVars(vars)
+	return environment
+}
+
+func newHierarchyResolver() *hierarchyResolver {
+	return &hierarchyResolver{
+		collections: make(map[string]*domain.Collection), environments: make(map[string]*domain.Environment),
+		byCollection: make(map[string][]*domain.Environment), collectionErr: make(map[string]error), listErr: make(map[string]error),
+		global: testEnvironment("global", "", "global", map[string]string{"shared": "global", "global-only": "yes"}),
+	}
+}
+
+func (r *hierarchyResolver) addCollection(id, parentID string, environments ...*domain.Environment) {
+	r.collections[id] = &domain.Collection{ID: id, ParentID: parentID, Name: id}
+	r.byCollection[id] = environments
+	for _, environment := range environments {
+		r.environments[environment.ID] = environment
+	}
+}
+
+func TestResolveEnvVars_HierarchyPrecedenceAndChildActiveName(t *testing.T) {
+	r := newHierarchyResolver()
+	r.addCollection("root", "",
+		testEnvironment("root-default", "root", "default", map[string]string{"shared": "root-default", "root-default": "yes"}),
+		testEnvironment("root-dev", "root", "dev", map[string]string{"shared": "root-dev", "root-dev": "yes"}),
+		testEnvironment("root-prod", "root", "prod", map[string]string{"ignored": "no"}),
+	)
+	r.addCollection("parent", "root",
+		testEnvironment("parent-default", "parent", "default", map[string]string{"shared": "parent-default"}),
+		testEnvironment("parent-dev", "parent", "dev", map[string]string{"shared": "parent-dev"}),
+	)
+	r.addCollection("child", "parent",
+		testEnvironment("child-default", "child", "default", map[string]string{"shared": "child-default", "empty": "base"}),
+		testEnvironment("child-dev", "child", "dev", map[string]string{"shared": "child-dev", "empty": ""}),
+	)
+
+	collectionVars, globalVars, err := exec.ResolveEnvVars(context.Background(), r, "child-dev", "child")
+	require.NoError(t, err)
+	assert.Equal(t, "child-dev", collectionVars["shared"])
+	assert.Equal(t, "", collectionVars["empty"])
+	assert.Equal(t, "yes", collectionVars["root-default"])
+	assert.Equal(t, "yes", collectionVars["root-dev"])
+	assert.NotContains(t, collectionVars, "ignored")
+	assert.Equal(t, "global", globalVars["shared"])
+
+	collectionVars["shared"] = "mutated"
+	again, _, err := exec.ResolveEnvVars(context.Background(), r, "child-dev", "child")
+	require.NoError(t, err)
+	assert.Equal(t, "child-dev", again["shared"], "resolved maps must not alias stored state")
+}
+
+func TestResolveEnvVars_AllSharedKeyPresenceCombinations(t *testing.T) {
+	for mask := 0; mask < 128; mask++ {
+		t.Run(fmt.Sprintf("mask_%03d", mask), func(t *testing.T) {
+			r := newHierarchyResolver()
+			if mask&1 == 0 {
+				r.global.SetVars(map[string]string{})
+			}
+			layers := make([]*domain.Environment, 0, 6)
+			for i, spec := range []struct{ id, owner, name string }{
+				{"root-default", "root", "default"}, {"root-active", "root", "dev"},
+				{"parent-default", "parent", "default"}, {"parent-active", "parent", "dev"},
+				{"child-default", "child", "default"}, {"child-active", "child", "dev"},
+			} {
+				vars := map[string]string{}
+				if mask&(1<<(i+1)) != 0 {
+					vars["shared"] = spec.id
+				}
+				layers = append(layers, testEnvironment(spec.id, spec.owner, spec.name, vars))
+			}
+			r.addCollection("root", "", layers[0], layers[1])
+			r.addCollection("parent", "root", layers[2], layers[3])
+			r.addCollection("child", "parent", layers[4], layers[5])
+			vars, global, err := exec.ResolveEnvVars(context.Background(), r, "child-active", "child")
+			require.NoError(t, err)
+			want, present := "", false
+			if mask&1 != 0 {
+				want, present = "global", true
+			}
+			for i, layer := range layers {
+				if mask&(1<<(i+1)) != 0 {
+					want, present = layer.ID, true
+				}
+			}
+			got, collectionPresent := vars["shared"]
+			switch {
+			case collectionPresent:
+				assert.Equal(t, want, got)
+			case present:
+				assert.Equal(t, want, global["shared"])
+			default:
+				assert.NotContains(t, global, "shared")
+			}
+		})
+	}
+}
+
+func TestResolveEnvVars_DeepHierarchy(t *testing.T) {
+	r := newHierarchyResolver()
+	parent := ""
+	for i := 0; i < 100; i++ {
+		id := fmt.Sprintf("level-%03d", i)
+		r.addCollection(id, parent, testEnvironment("default-"+id, id, "default", map[string]string{"depth": fmt.Sprint(i)}))
+		parent = id
+	}
+	vars, _, err := exec.ResolveEnvVars(context.Background(), r, "", parent)
+	require.NoError(t, err)
+	assert.Equal(t, "99", vars["depth"])
+}
+
+func TestResolveEnvVars_Failures(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(*hierarchyResolver)
+		active string
+		want   error
+	}{
+		{name: "missing default", mutate: func(r *hierarchyResolver) { r.byCollection["child"] = nil }, want: exec.ErrMissingDefaultEnvironment},
+		{name: "self cycle", mutate: func(r *hierarchyResolver) { r.collections["child"].ParentID = "child" }, want: exec.ErrCollectionHierarchy},
+		{name: "invalid data", mutate: func(r *hierarchyResolver) { r.byCollection["child"][0].Data = `{"bad":1}` }, want: domain.ErrInvalidEnvironmentData},
+		{name: "sibling active", mutate: func(r *hierarchyResolver) {
+			sibling := testEnvironment("sibling-dev", "sibling", "dev", map[string]string{})
+			r.environments[sibling.ID] = sibling
+		}, active: "sibling-dev", want: exec.ErrEnvironmentOwnership},
+		{name: "list failure", mutate: func(r *hierarchyResolver) { r.listErr["child"] = errors.New("read failed") }, want: exec.ErrEnvironmentResolution},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := newHierarchyResolver()
+			r.addCollection("child", "", testEnvironment("child-default", "child", "default", map[string]string{}))
+			tt.mutate(r)
+			_, _, err := exec.ResolveEnvVars(context.Background(), r, tt.active, "child")
+			assert.ErrorIs(t, err, tt.want)
+		})
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	r := newHierarchyResolver()
+	r.addCollection("child", "", testEnvironment("child-default", "child", "default", map[string]string{}))
+	_, _, err := exec.ResolveEnvVars(ctx, r, "", "child")
+	assert.ErrorIs(t, err, context.Canceled)
+}
 
 func TestInterpolateRequest_NilRequest(t *testing.T) {
 	_, err := exec.InterpolateRequest(nil, nil, nil)

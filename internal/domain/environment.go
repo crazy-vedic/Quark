@@ -2,8 +2,13 @@ package domain
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"time"
 )
+
+// ErrInvalidEnvironmentData classifies malformed environment variable data.
+var ErrInvalidEnvironmentData = errors.New("invalid environment data")
 
 // Environment stores a set of key-value variables for a collection.
 // CollectionID == "" means this is the global environment.
@@ -22,14 +27,31 @@ func (e *Environment) IsGlobal() bool {
 	return e.CollectionID == ""
 }
 
-// Vars decodes the Data JSON into a map.
-// Returns nil on invalid JSON or empty data.
+// DecodeVars strictly decodes Data as a JSON object containing only string values.
+// The returned map never aliases storage owned by the Environment.
+func (e *Environment) DecodeVars() (map[string]string, error) {
+	if e == nil {
+		return nil, fmt.Errorf("%w: nil environment", ErrInvalidEnvironmentData)
+	}
+	var vars map[string]string
+	if err := json.Unmarshal([]byte(e.Data), &vars); err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrInvalidEnvironmentData, err)
+	}
+	if vars == nil {
+		return nil, fmt.Errorf("%w: root must be an object", ErrInvalidEnvironmentData)
+	}
+	return vars, nil
+}
+
+// Vars decodes the Data JSON into a map. It is retained for display-oriented
+// callers; validation and execution paths must use DecodeVars so corruption is
+// never mistaken for an empty environment.
 func (e *Environment) Vars() map[string]string {
-	if e.Data == "" || e.Data == "{}" {
+	m, err := e.DecodeVars()
+	if err != nil {
 		return nil
 	}
-	var m map[string]string
-	if err := json.Unmarshal([]byte(e.Data), &m); err != nil {
+	if len(m) == 0 {
 		return nil
 	}
 	return m

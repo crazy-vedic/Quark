@@ -33,47 +33,11 @@ func (s *Store) BeginTransaction(ctx context.Context) (TransactionalWriter, erro
 
 // SaveCollection inserts or replaces a collection record within the transaction.
 func (t *Transaction) SaveCollection(ctx context.Context, c *domain.Collection) error {
-	if c.ID == "" {
-		c.ID = uuid.New().String()
+	if err := saveCollection(ctx, t.tx, c); err != nil {
+		return err
 	}
-	var repaired bool
-	c.Name, repaired = NormalizeName(c.Name)
-	if c.ParentID == c.ID && c.ParentID != "" {
-		return fmt.Errorf("store: collection cannot parent itself")
-	}
-	base := c.Name
-	for suffix := 1; repaired; suffix++ {
-		var n int
-		if c.ParentID == "" {
-			if err := t.tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM collections WHERE name=? AND id<>? AND parent_id IS NULL`, c.Name, c.ID).Scan(&n); err != nil {
-				return err
-			}
-		} else if err := t.tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM collections WHERE name=? AND id<>? AND parent_id=?`, c.Name, c.ID, c.ParentID).Scan(&n); err != nil {
-			return err
-		}
-		if n == 0 {
-			break
-		}
-		c.Name = fmt.Sprintf("%s-%d", base, suffix+1)
-	}
-	parent := sql.NullString{String: c.ParentID, Valid: c.ParentID != ""}
-	_, err := t.tx.ExecContext(ctx,
-		`INSERT INTO collections (id, name, description, meta, parent_id)
-		 VALUES (?, ?, ?, ?, ?)
-		 ON CONFLICT(id) DO UPDATE SET
-		   name=excluded.name,
-		   description=excluded.description,
-		   meta=excluded.meta,
-		   parent_id=excluded.parent_id,
-		   updated_at=CURRENT_TIMESTAMP,
-		   version=version+1`,
-		c.ID, c.Name, c.Description, c.Meta, parent,
-	)
-	if err != nil {
-		if isSQLiteUnique(err) {
-			return fmt.Errorf("store: save collection %q: %w", c.Name, ErrDuplicate)
-		}
-		return fmt.Errorf("store: save collection %q: %w", c.Name, err)
+	if _, err := createDefaultEnvironment(ctx, t.tx, c.ID); err != nil {
+		return fmt.Errorf("store: save collection %q: create default environment: %w", c.Name, err)
 	}
 	return nil
 }
@@ -145,27 +109,7 @@ func (t *Transaction) DeleteRequest(ctx context.Context, id string) error {
 
 // SaveEnvironment inserts or updates an environment within the transaction.
 func (t *Transaction) SaveEnvironment(ctx context.Context, env *domain.Environment) error {
-	if env.ID == "" {
-		env.ID = uuid.New().String()
-	}
-	_, err := t.tx.ExecContext(ctx,
-		`INSERT INTO environments (id, collection_id, name, data, sort_order)
-		 VALUES (?, ?, ?, ?, ?)
-		 ON CONFLICT(id) DO UPDATE SET
-		   collection_id=excluded.collection_id,
-		   name=excluded.name,
-		   data=excluded.data,
-		   sort_order=excluded.sort_order,
-		   updated_at=CURRENT_TIMESTAMP`,
-		env.ID, env.CollectionID, env.Name, env.Data, env.SortOrder,
-	)
-	if err != nil {
-		if isSQLiteUnique(err) {
-			return fmt.Errorf("store: save environment %q: %w", env.Name, ErrDuplicate)
-		}
-		return fmt.Errorf("store: save environment %q: %w", env.Name, err)
-	}
-	return nil
+	return saveEnvironment(ctx, t.tx, env)
 }
 
 // DeleteEnvironment deletes an environment within the transaction.
@@ -182,17 +126,7 @@ func (t *Transaction) CreateDefaultEnvironment(
 	ctx context.Context,
 	collectionID string,
 ) (*domain.Environment, error) {
-	env := &domain.Environment{
-		ID:           fmt.Sprintf("default-%s", collectionID),
-		CollectionID: collectionID,
-		Name:         "default",
-		Data:         "{}",
-		SortOrder:    0,
-	}
-	if err := t.SaveEnvironment(ctx, env); err != nil {
-		return nil, err
-	}
-	return env, nil
+	return createDefaultEnvironment(ctx, t.tx, collectionID)
 }
 
 // Commit persists all buffered operations.

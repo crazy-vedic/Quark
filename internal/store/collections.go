@@ -24,6 +24,33 @@ func NormalizeName(name string) (string, bool) {
 // Returns ErrDuplicate if another collection has the same name.
 // Auto-creates a default environment for the collection if it doesn't exist.
 func (s *Store) SaveCollection(ctx context.Context, c *domain.Collection) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("store: save collection: begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if err := saveCollection(ctx, tx, c); err != nil {
+		return err
+	}
+	if _, err := createDefaultEnvironment(ctx, tx, c.ID); err != nil {
+		return fmt.Errorf("store: save collection %q: create default environment: %w", c.Name, err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("store: save collection %q: commit: %w", c.Name, err)
+	}
+
+	if s.backupPath != "" {
+		if berr := s.backup(); berr != nil {
+			s.logger.Warn("store: backup failed", "err", berr)
+		}
+	}
+	return nil
+}
+
+func saveCollection(ctx context.Context, db environmentSQL, c *domain.Collection) error {
+	if c == nil {
+		return fmt.Errorf("store: save collection: nil collection")
+	}
 	if c.ID == "" {
 		c.ID = uuid.New().String()
 	}
@@ -44,9 +71,9 @@ func (s *Store) SaveCollection(ctx context.Context, c *domain.Collection) error 
 		q := `SELECT COUNT(*) FROM collections WHERE name = ? AND id <> ? AND ` + parentClause
 		var err error
 		if c.ParentID == "" {
-			err = s.db.QueryRowContext(ctx, q, c.Name, c.ID).Scan(&n)
+			err = db.QueryRowContext(ctx, q, c.Name, c.ID).Scan(&n)
 		} else {
-			err = s.db.QueryRowContext(ctx, q, c.Name, c.ID, c.ParentID).Scan(&n)
+			err = db.QueryRowContext(ctx, q, c.Name, c.ID, c.ParentID).Scan(&n)
 		}
 		if err != nil {
 			return fmt.Errorf("store: check collection name: %w", err)
@@ -58,7 +85,7 @@ func (s *Store) SaveCollection(ctx context.Context, c *domain.Collection) error 
 		c.Name = fmt.Sprintf("%s-%d", base, suffixNum)
 	}
 	parent := sql.NullString{String: c.ParentID, Valid: c.ParentID != ""}
-	_, err := s.db.ExecContext(ctx,
+	_, err := db.ExecContext(ctx,
 		`INSERT INTO collections (id, name, description, meta, parent_id)
 		 VALUES (?, ?, ?, ?, ?)
 		 ON CONFLICT(id) DO UPDATE SET
@@ -77,15 +104,6 @@ func (s *Store) SaveCollection(ctx context.Context, c *domain.Collection) error 
 		return fmt.Errorf("store: save collection %q: %w", c.Name, err)
 	}
 
-	// Auto-create default environment for new collections.
-	// Silently ignore duplicate errors (collection already had a default env).
-	_, _ = s.CreateDefaultEnvironment(ctx, c.ID)
-
-	if s.backupPath != "" {
-		if berr := s.backup(); berr != nil {
-			s.logger.Warn("store: backup failed", "err", berr)
-		}
-	}
 	return nil
 }
 

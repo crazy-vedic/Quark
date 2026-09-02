@@ -198,10 +198,10 @@ func TestE2E_CollectionMgmt_DeletePrompt(t *testing.T) {
 	// Press 'D' (Shift+D) to delete the selected collection.
 	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'D'}})
 	assert.Equal(t, tui.CollectionPromptMode, m.Mode(), "must enter collection prompt mode")
-	assert.Equal(t, tui.PromptDeleteTiny, m.PromptMode(), "must be promptDeleteTiny")
+	assert.Equal(t, tui.PromptDeleteConfirm, m.PromptMode(), "must be promptDeleteConfirm")
 	assertViewContains(t, m, "Delete Collection")
-	assertViewContains(t, m, "API")
-	assertViewContains(t, m, "[D] confirm")
+	assertViewContains(t, m, "Type 'delete' to confirm")
+	assertViewContains(t, m, "permanent and irreversible")
 	assertViewContains(t, m, "[Esc] cancel")
 }
 
@@ -239,9 +239,12 @@ func TestE2E_CollectionMgmt_DeleteConfirm(t *testing.T) {
 	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'D'}})
 	require.Equal(t, tui.CollectionPromptMode, m.Mode())
 
-	// Press 'D' again to confirm — dispatches async delete command.
+	// Type 'delete' and submit — dispatches async delete command.
 	var cmd tea.Cmd
-	m, cmd = callUpdateWithCmd(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'D'}})
+	for _, r := range "delete" {
+		m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+	}
+	m, cmd = callUpdateWithCmd(t, m, tea.KeyMsg{Type: tea.KeyEnter})
 	msg := runCmd(t, cmd)
 	require.NotNil(t, msg)
 	m = callUpdate(t, m, msg)
