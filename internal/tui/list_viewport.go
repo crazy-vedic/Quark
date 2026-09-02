@@ -4,9 +4,6 @@ import (
 	"sort"
 
 	"github.com/crazy-vedic/quark/internal/domain"
-)
-
-import (
 	"github.com/crazy-vedic/quark/internal/keybindings"
 	"github.com/crazy-vedic/quark/internal/search"
 )

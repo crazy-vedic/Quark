@@ -271,7 +271,7 @@ func (m Model) dispatchEnvAction(action string) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "add":
 		return m.envAddVar()
-	case "delete":
+	case deleteToken:
 		return m.envDeleteVar()
 	case "edit":
 		return m.envEditVar()

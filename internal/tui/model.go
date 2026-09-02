@@ -64,6 +64,8 @@ const (
 	promptAddEnv
 )
 
+const deleteToken = "delete"
+
 // helpEditState tracks the sub-state of the interactive help overlay.
 type helpEditState int
 

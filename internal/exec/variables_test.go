@@ -142,11 +142,12 @@ func TestResolveEnvVars_AllSharedKeyPresenceCombinations(t *testing.T) {
 				}
 			}
 			got, collectionPresent := vars["shared"]
-			if collectionPresent {
+			switch {
+			case collectionPresent:
 				assert.Equal(t, want, got)
-			} else if present {
+			case present:
 				assert.Equal(t, want, global["shared"])
-			} else {
+			default:
 				assert.NotContains(t, global, "shared")
 			}
 		})

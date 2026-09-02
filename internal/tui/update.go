@@ -594,7 +594,7 @@ func (m Model) handleSidebarAction(action string) (tea.Model, tea.Cmd) {
 			return m.status("error", "Select a collection first"), nil
 		}
 		return m.enterCollectionPrompt(promptAddRequest, colID)
-	case "delete":
+	case deleteToken:
 		colID := m.activeCollectionID()
 		if colID == "" {
 			return m.status("error", "Select a collection first"), nil
@@ -626,8 +626,7 @@ func (m Model) handleRequestAction(action string) (tea.Model, tea.Cmd) {
 		if req == nil || req.ID == "" {
 			return m.status("error", "Select a request first"), nil
 		}
-		updated, cmd := m.enterCollectionPrompt(promptDeleteTiny, req.ID)
-		m = updated.(Model)
+		m, cmd := m.enterCollectionPrompt(promptDeleteTiny, req.ID)
 		m.promptTargetCollectionID = req.CollectionID
 		return m, cmd
 	case keybindings.ActionEditURL:
@@ -1895,7 +1894,7 @@ func parseHeadersJSON(raw string) []headerPair {
 }
 
 // enterCollectionPrompt switches to collectionPromptMode with the given type and target.
-func (m Model) enterCollectionPrompt(pt promptType, targetID string) (tea.Model, tea.Cmd) {
+func (m Model) enterCollectionPrompt(pt promptType, targetID string) (Model, tea.Cmd) {
 	m.mode = collectionPromptMode
 	m.promptMode = pt
 	m.promptTargetID = targetID
@@ -2008,7 +2007,7 @@ func (m Model) handleCollectionPromptKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				return m, wrapPromptSuccess(saveCollectionCmd(m.ctx, m.colWriter, c))
 
 			case promptDeleteConfirm:
-				if val != "delete" {
+				if val != deleteToken {
 					m = m.status("error", "Delete cancelled")
 					return m.closeCollectionPrompt(), nil
 				}
