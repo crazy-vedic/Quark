@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -28,7 +29,11 @@ var binaryPath = func() string {
 	}
 	// tests/e2e/cli/ -> project root
 	root := filepath.Join(wd, "..", "..", "..")
-	return filepath.Join(root, "bin", "quark")
+	binaryName := "quark"
+	if runtime.GOOS == "windows" {
+		binaryName += ".exe"
+	}
+	return filepath.Join(root, "bin", binaryName)
 }()
 
 func runQuark(t *testing.T, args ...string) (string, string, int) {
