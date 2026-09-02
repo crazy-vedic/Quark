@@ -19,7 +19,11 @@ type collectionFullPathResolver interface {
 
 // resolveCollectionReference accepts a full ID, a unique ID prefix, a name,
 // or (when supported by the store) a nested path such as API/Users.
-func resolveCollectionReference(ctx context.Context, lister store.CollectionLister, reference string) (*domain.Collection, error) {
+func resolveCollectionReference(
+	ctx context.Context,
+	lister store.CollectionLister,
+	reference string,
+) (*domain.Collection, error) {
 	reference = strings.TrimSpace(reference)
 	if reference == "" {
 		return nil, fmt.Errorf("collection reference is required")

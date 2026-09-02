@@ -579,9 +579,9 @@ func CollectionSavedErrMsg(err error) tea.Msg {
 
 func (m Model) EnvEditor() envEditor { return m.envEditor }
 
-func (m Model) WithEnvReader(r store.EnvironmentReader) Model { m.envReader = r; return m }
-func (m Model) WithEnvWriter(w store.EnvironmentWriter) Model { m.envWriter = w; return m }
-func (m Model) WithColWriter(w store.CollectionWriter) Model  { m.colWriter = w; return m }
+func (m Model) WithEnvReader(r EnvironmentHierarchyReader) Model { m.envReader = r; return m }
+func (m Model) WithEnvWriter(w store.EnvironmentWriter) Model    { m.envWriter = w; return m }
+func (m Model) WithColWriter(w store.CollectionWriter) Model     { m.colWriter = w; return m }
 
 // Truncate / LimitLines / VisualRows expose view helpers for external tests.
 func Truncate(s string, maxCols int) string { return truncate(s, maxCols) }

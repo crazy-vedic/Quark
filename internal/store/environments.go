@@ -5,22 +5,74 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/google/uuid"
 
 	"github.com/crazy-vedic/quark/internal/domain"
 )
 
+type environmentSQL interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}
+
 // SaveEnvironment inserts or updates an environment record.
 func (s *Store) SaveEnvironment(ctx context.Context, env *domain.Environment) error {
+	return saveEnvironment(ctx, s.db, env)
+}
+
+func saveEnvironment(ctx context.Context, db environmentSQL, env *domain.Environment) error {
+	if env == nil {
+		return fmt.Errorf("store: save environment: nil environment")
+	}
+	if strings.TrimSpace(env.Name) == "" {
+		return fmt.Errorf("store: save environment: name cannot be empty")
+	}
+	if _, err := env.DecodeVars(); err != nil {
+		return fmt.Errorf("store: save environment %q: %w", env.Name, err)
+	}
+	if env.CollectionID == "" {
+		if env.ID != "global" || env.Name != "global" {
+			return fmt.Errorf("store: save environment %q: only canonical Global may be collection-less", env.Name)
+		}
+	} else {
+		var collectionExists int
+		if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM collections WHERE id = ?`, env.CollectionID).Scan(&collectionExists); err != nil {
+			return fmt.Errorf("store: validate environment collection %q: %w", env.CollectionID, err)
+		}
+		if collectionExists == 0 {
+			return fmt.Errorf("store: save environment %q: collection %q: %w", env.Name, env.CollectionID, ErrNotFound)
+		}
+	}
+
+	if env.ID != "" {
+		var previousCollection sql.NullString
+		err := db.QueryRowContext(ctx, `SELECT collection_id FROM environments WHERE id = ?`, env.ID).Scan(&previousCollection)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("store: validate environment %q owner: %w", env.Name, err)
+		}
+		if err == nil {
+			previous := ""
+			if previousCollection.Valid {
+				previous = previousCollection.String
+			}
+			if previous != env.CollectionID {
+				return fmt.Errorf("store: save environment %q: owner cannot change from %q to %q", env.Name, previous, env.CollectionID)
+			}
+		}
+	}
 	if env.ID == "" {
+		if env.CollectionID == "" {
+			return fmt.Errorf("store: save environment %q: canonical Global ID is required", env.Name)
+		}
 		env.ID = uuid.New().String()
 	}
 	var colID sql.NullString
 	if env.CollectionID != "" {
 		colID = sql.NullString{String: env.CollectionID, Valid: true}
 	}
-	_, err := s.db.ExecContext(ctx,
+	_, err := db.ExecContext(ctx,
 		`INSERT INTO environments (id, collection_id, name, data, sort_order)
 		 VALUES (?, ?, ?, ?, ?)
 		 ON CONFLICT(id) DO UPDATE SET
@@ -193,6 +245,21 @@ func (s *Store) CreateDefaultEnvironment(
 	ctx context.Context,
 	collectionID string,
 ) (*domain.Environment, error) {
+	return createDefaultEnvironment(ctx, s.db, collectionID)
+}
+
+func createDefaultEnvironment(
+	ctx context.Context,
+	db environmentSQL,
+	collectionID string,
+) (*domain.Environment, error) {
+	existing, err := getEnvironmentByName(ctx, db, collectionID, "default")
+	if err == nil {
+		return existing, nil
+	}
+	if !errors.Is(err, ErrNotFound) {
+		return nil, err
+	}
 	env := &domain.Environment{
 		ID:           fmt.Sprintf("default-%s", collectionID),
 		CollectionID: collectionID,
@@ -200,10 +267,27 @@ func (s *Store) CreateDefaultEnvironment(
 		Data:         "{}",
 		SortOrder:    0,
 	}
-	if err := s.SaveEnvironment(ctx, env); err != nil {
+	if err := saveEnvironment(ctx, db, env); err != nil {
+		if errors.Is(err, ErrDuplicate) {
+			return getEnvironmentByName(ctx, db, collectionID, "default")
+		}
 		return nil, err
 	}
 	return env, nil
+}
+
+func getEnvironmentByName(
+	ctx context.Context,
+	db environmentSQL,
+	collectionID, name string,
+) (*domain.Environment, error) {
+	var row *sql.Row
+	if collectionID == "" {
+		row = db.QueryRowContext(ctx, `SELECT id, collection_id, name, data, sort_order, created_at, updated_at FROM environments WHERE collection_id IS NULL AND name = ?`, name)
+	} else {
+		row = db.QueryRowContext(ctx, `SELECT id, collection_id, name, data, sort_order, created_at, updated_at FROM environments WHERE collection_id = ? AND name = ?`, collectionID, name)
+	}
+	return scanEnvironment(row)
 }
 
 // rowScanner abstracts *sql.Row and *sql.Rows so the scan logic can be shared.
@@ -231,7 +315,25 @@ func scanEnvironment(row rowScanner) (*domain.Environment, error) {
 
 // SetActiveEnvironment persists the active environment for a collection.
 func (s *Store) SetActiveEnvironment(ctx context.Context, collectionID, envID string) error {
-	_, err := s.db.ExecContext(ctx,
+	var owner sql.NullString
+	err := s.db.QueryRowContext(ctx, `SELECT collection_id FROM environments WHERE id = ?`, envID).Scan(&owner)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("store: set active env %q: %w", envID, ErrNotFound)
+		}
+		return fmt.Errorf("store: set active env %q: %w", envID, err)
+	}
+	if !owner.Valid || owner.String != collectionID {
+		return fmt.Errorf("store: set active env %q: environment does not belong to collection %q", envID, collectionID)
+	}
+	var collectionExists int
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM collections WHERE id = ?`, collectionID).Scan(&collectionExists); err != nil {
+		return fmt.Errorf("store: set active env: validate collection: %w", err)
+	}
+	if collectionExists == 0 {
+		return fmt.Errorf("store: set active env: collection %q: %w", collectionID, ErrNotFound)
+	}
+	_, err = s.db.ExecContext(ctx,
 		`INSERT INTO collection_active_env (collection_id, env_id) VALUES (?, ?)
 		 ON CONFLICT(collection_id) DO UPDATE SET env_id=excluded.env_id, updated_at=CURRENT_TIMESTAMP`,
 		collectionID, envID,

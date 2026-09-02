@@ -1,6 +1,7 @@
 package domain_test
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -21,6 +22,35 @@ func TestEnvironment_IsGlobal(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			e := &domain.Environment{CollectionID: tt.collectionID}
 			assert.Equal(t, tt.want, e.IsGlobal())
+		})
+	}
+}
+
+func TestEnvironment_DecodeVars_Strict(t *testing.T) {
+	tests := []struct {
+		name string
+		data string
+		want map[string]string
+	}{
+		{name: "empty object", data: `{}`, want: map[string]string{}},
+		{name: "strings", data: `{"unicode":"नमस्ते","empty":""}`, want: map[string]string{"unicode": "नमस्ते", "empty": ""}},
+		{name: "empty input", data: ""},
+		{name: "malformed", data: `{`},
+		{name: "array", data: `[]`},
+		{name: "scalar", data: `"value"`},
+		{name: "null", data: `null`},
+		{name: "non-string", data: `{"port":8080}`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			vars, err := (&domain.Environment{Data: tt.data}).DecodeVars()
+			if tt.want == nil {
+				assert.Error(t, err)
+				assert.True(t, errors.Is(err, domain.ErrInvalidEnvironmentData))
+				return
+			}
+			assert.NoError(t, err)
+			assert.Equal(t, tt.want, vars)
 		})
 	}
 }
@@ -72,4 +102,16 @@ func TestEnvironment_VarsRoundTrip(t *testing.T) {
 	e.SetVars(original)
 	got := e.Vars()
 	assert.Equal(t, original, got)
+}
+
+func FuzzEnvironmentDecodeVars(f *testing.F) {
+	for _, seed := range []string{`{}`, `{"key":"value"}`, `{"empty":""}`, `null`, `[]`, `{"number":1}`, `{`} {
+		f.Add(seed)
+	}
+	f.Fuzz(func(t *testing.T, data string) {
+		_, err := (&domain.Environment{Data: data}).DecodeVars()
+		if err != nil {
+			assert.ErrorIs(t, err, domain.ErrInvalidEnvironmentData)
+		}
+	})
 }

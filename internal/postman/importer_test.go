@@ -132,5 +132,38 @@ func TestImporter_VariablesInURL(t *testing.T) {
 	result, err := im.Parse(strings.NewReader(json))
 	require.NoError(t, err)
 	assert.Equal(t, "{{base_url}}/users", result.Requests[0].URL)
+	assert.Equal(t, map[string]string{"base_url": "https://api.example.com"}, result.CollectionVariables)
 	assert.Equal(t, postman.Safe, result.Security)
+}
+
+func TestImporter_CollectionVariablesScalarsDisabledEmptyAndDuplicates(t *testing.T) {
+	json := `{
+		"info": {"name": "Vars", "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"},
+		"variable": [
+			{"key":"string","value":"value"},
+			{"key":"number","value":42},
+			{"key":"boolean","value":true},
+			{"key":"null","value":null},
+			{"key":"disabled","value":"secret","disabled":true},
+			{"key":"","value":"ignored"},
+			{"key":"string","value":"later"}
+		],
+		"item": []
+	}`
+	result, err := postman.NewImporter().Parse(strings.NewReader(json))
+	require.NoError(t, err)
+	assert.Equal(t, map[string]string{
+		"string": "value", "number": "42", "boolean": "true", "null": "",
+	}, result.CollectionVariables)
+	assert.NotContains(t, result.CollectionVariables, "disabled")
+	assert.Contains(t, result.Warnings, "collection variable with empty key skipped")
+	assert.Contains(t, result.Warnings, `duplicate collection variable "string" ignored`)
+}
+
+func TestImporter_CollectionVariableRejectsNonScalarValue(t *testing.T) {
+	json := `{"info":{"name":"Vars","schema":"v2.1"},"variable":[{"key":"bad","value":{"nested":true}}],"item":[]}`
+	_, err := postman.NewImporter().Parse(strings.NewReader(json))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "expected a JSON scalar")
+	assert.NotContains(t, err.Error(), "nested")
 }

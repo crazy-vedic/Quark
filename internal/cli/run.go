@@ -17,8 +17,8 @@ import (
 type RunStore interface {
 	store.CollectionLister
 	store.RequestReader
-	store.EnvironmentReader
 	store.ActiveEnvironmentStore
+	exec.EnvResolver
 }
 
 type requestPathResolver interface {
@@ -46,13 +46,19 @@ func NewRunCmd(st RunStore, e *exec.Executor) *cobra.Command {
 					if err != nil {
 						return fmt.Errorf("run: %w", err)
 					}
-					activeEnvID, _ := st.GetActiveEnvironment(ctx, found.CollectionID)
-					colEnv, globalEnv := exec.ResolveEnvVars(
+					activeEnvID, err := st.GetActiveEnvironment(ctx, found.CollectionID)
+					if err != nil {
+						return fmt.Errorf("run: get active environment: %w", err)
+					}
+					colEnv, globalEnv, err := exec.ResolveEnvVars(
 						ctx,
 						st,
 						activeEnvID,
 						found.CollectionID,
 					)
+					if err != nil {
+						return fmt.Errorf("run: resolve environments: %w", err)
+					}
 					prepared, err := exec.InterpolateRequestWithOverrides(found, positionals, overrides, colEnv, globalEnv)
 					if err != nil {
 						return fmt.Errorf("run: interpolate: %w", err)
@@ -117,10 +123,13 @@ func NewRunCmd(st RunStore, e *exec.Executor) *cobra.Command {
 
 			activeEnvID, err := st.GetActiveEnvironment(ctx, collectionID)
 			if err != nil {
-				activeEnvID = ""
+				return fmt.Errorf("run: get active environment: %w", err)
 			}
-			colEnv, globalEnv := exec.ResolveEnvVars(
+			colEnv, globalEnv, err := exec.ResolveEnvVars(
 				ctx, st, activeEnvID, collectionID)
+			if err != nil {
+				return fmt.Errorf("run: resolve environments: %w", err)
+			}
 			prepared, err := exec.InterpolateRequestWithOverrides(
 				found,
 				positionals,
