@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -34,6 +35,15 @@ type envTab struct {
 	Name         string
 	IsGlobal     bool
 	CollectionID string
+	OwnerPath    string
+	ReadOnly     bool
+}
+
+type envDraft struct {
+	vars      []envVar
+	varCursor int
+	scroll    int
+	dirty     bool
 }
 
 // envEditor holds the state for the environment editor modal.
@@ -49,10 +59,12 @@ type envEditor struct {
 	editVal   textinput.Model
 	dirty     bool
 	saveErr   string
+	drafts    map[string]envDraft
+	childPath string
 }
 
 // envSavedMsg is sent when an environment is saved successfully.
-type envSavedMsg struct{}
+type envSavedMsg struct{ envID string }
 
 // envCreatedMsg is sent when a new environment is created successfully.
 type envCreatedMsg struct{}
@@ -87,30 +99,38 @@ func (m Model) openEnvEditor() (Model, tea.Cmd) {
 		return m, nil
 	}
 
-	// Load collection envs.
-	colEnvs, err := m.envReader.ListCollectionEnvironments(ctx, colID)
+	// Load the validated root-to-child hierarchy shared with runtime resolution.
+	scopes, err := exec.LoadEnvironmentHierarchy(ctx, m.envReader, colID)
 	if err != nil {
-		m = m.status("error", fmt.Sprintf("Load envs: %v", err))
+		m = m.status("error", fmt.Sprintf("Load env hierarchy: %v", err))
 		return m, nil
 	}
 
-	// Build tabs: global first, then collection envs.
+	// Build tabs: Global, each ancestor root-to-parent, then child-owned tabs.
 	tabs := []envTab{
-		{ID: globalEnv.ID, Name: "Global", IsGlobal: true},
+		{ID: globalEnv.ID, Name: "Global", IsGlobal: true, OwnerPath: "Global", ReadOnly: true},
 	}
-	for _, e := range colEnvs {
-		tabs = append(tabs, envTab{
-			ID:           e.ID,
-			Name:         e.Name,
-			CollectionID: e.CollectionID,
-		})
+	pathParts := make([]string, 0, len(scopes))
+	for scopeIndex, scope := range scopes {
+		pathParts = append(pathParts, scope.Collection.Name)
+		ownerPath := strings.Join(pathParts, "/")
+		readOnly := scopeIndex != len(scopes)-1
+		for _, e := range scope.Environments {
+			tabs = append(tabs, envTab{
+				ID:           e.ID,
+				Name:         e.Name,
+				CollectionID: e.CollectionID,
+				OwnerPath:    ownerPath,
+				ReadOnly:     readOnly,
+			})
+		}
 	}
 
 	// Select the active env tab.
 	activeID := m.activeEnv[colID]
 	tabIdx := 0
 	for i, t := range tabs {
-		if t.ID == activeID {
+		if !t.ReadOnly && t.ID == activeID {
 			tabIdx = i
 			break
 		}
@@ -118,9 +138,11 @@ func (m Model) openEnvEditor() (Model, tea.Cmd) {
 
 	m.mode = envMode
 	m.envEditor = envEditor{
-		active: true,
-		tabs:   tabs,
-		tabIdx: tabIdx,
+		active:    true,
+		tabs:      tabs,
+		tabIdx:    tabIdx,
+		drafts:    make(map[string]envDraft),
+		childPath: strings.Join(pathParts, "/"),
 	}
 
 	m = m.loadEnvEditorVars()
@@ -140,6 +162,14 @@ func (m Model) loadEnvEditorVars() Model {
 	}
 
 	tab := m.envEditor.tabs[m.envEditor.tabIdx]
+	if draft, ok := m.envEditor.drafts[tab.ID]; ok {
+		m.envEditor.vars = cloneEnvVars(draft.vars)
+		m.envEditor.varCursor = draft.varCursor
+		m.envEditor.scroll = draft.scroll
+		m.envEditor.dirty = draft.dirty
+		m.envEditor.saveErr = ""
+		return m
+	}
 	ctx, cancel := context.WithTimeout(m.ctx, envDBTimeout)
 	defer cancel()
 
@@ -149,7 +179,11 @@ func (m Model) loadEnvEditorVars() Model {
 		return m
 	}
 
-	vars := env.Vars()
+	vars, err := env.DecodeVars()
+	if err != nil {
+		m.envEditor.saveErr = fmt.Sprintf("Load env: %v", err)
+		return m
+	}
 	pairs := make([]envVar, 0, len(vars))
 	for k, v := range vars {
 		pairs = append(pairs, envVar{Key: k, Value: v, Saved: true})
@@ -164,7 +198,33 @@ func (m Model) loadEnvEditorVars() Model {
 	m.envEditor.scroll = 0
 	m.envEditor.dirty = false
 	m.envEditor.saveErr = ""
+	m = m.stashEnvDraft()
 	return m
+}
+
+func cloneEnvVars(vars []envVar) []envVar {
+	return append([]envVar(nil), vars...)
+}
+
+func (m Model) stashEnvDraft() Model {
+	if !m.envEditor.active || len(m.envEditor.tabs) == 0 || m.envEditor.tabIdx >= len(m.envEditor.tabs) {
+		return m
+	}
+	if m.envEditor.drafts == nil {
+		m.envEditor.drafts = make(map[string]envDraft)
+	}
+	tab := m.envEditor.tabs[m.envEditor.tabIdx]
+	m.envEditor.drafts[tab.ID] = envDraft{
+		vars: cloneEnvVars(m.envEditor.vars), varCursor: m.envEditor.varCursor,
+		scroll: m.envEditor.scroll, dirty: m.envEditor.dirty,
+	}
+	return m
+}
+
+func (m Model) switchEnvTab(index int) Model {
+	m = m.stashEnvDraft()
+	m.envEditor.tabIdx = index
+	return m.loadEnvEditorVars()
 }
 
 // handleEnvKey handles key presses in the env editor modal.
@@ -188,15 +248,13 @@ func (m Model) dispatchEnvAction(action string) (tea.Model, tea.Cmd) {
 	case keybindings.ActionCancel:
 		return m.closeEnvEditor(), nil
 	case "tab_prev":
-		if m.envEditor.tabIdx > 0 {
-			m.envEditor.tabIdx--
-			m = m.loadEnvEditorVars()
+		if len(m.envEditor.tabs) > 0 {
+			m = m.switchEnvTab((m.envEditor.tabIdx - 1 + len(m.envEditor.tabs)) % len(m.envEditor.tabs))
 		}
 		return m, nil
 	case "tab_next":
-		if m.envEditor.tabIdx < len(m.envEditor.tabs)-1 {
-			m.envEditor.tabIdx++
-			m = m.loadEnvEditorVars()
+		if len(m.envEditor.tabs) > 0 {
+			m = m.switchEnvTab((m.envEditor.tabIdx + 1) % len(m.envEditor.tabs))
 		}
 		return m, nil
 	case keybindings.ActionNavigateDown:
@@ -213,7 +271,7 @@ func (m Model) dispatchEnvAction(action string) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "add":
 		return m.envAddVar()
-	case "delete":
+	case deleteToken:
 		return m.envDeleteVar()
 	case "edit":
 		return m.envEditVar()
@@ -226,6 +284,9 @@ func (m Model) dispatchEnvAction(action string) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) envAddVar() (tea.Model, tea.Cmd) {
+	if m.currentEnvTabReadOnly() {
+		return m.readOnlyEnvWarning("add variables"), nil
+	}
 	m.envEditor.vars = append(m.envEditor.vars, envVar{Saved: false})
 	m.envEditor.varCursor = len(m.envEditor.vars) - 1
 	m = m.ensureEnvCursorVisible()
@@ -237,6 +298,9 @@ func (m Model) envAddVar() (tea.Model, tea.Cmd) {
 }
 
 func (m Model) envDeleteVar() (tea.Model, tea.Cmd) {
+	if m.currentEnvTabReadOnly() {
+		return m.readOnlyEnvWarning("delete variables"), nil
+	}
 	if len(m.envEditor.vars) > 0 && m.envEditor.varCursor < len(m.envEditor.vars) {
 		m.envEditor.vars = append(
 			m.envEditor.vars[:m.envEditor.varCursor],
@@ -252,6 +316,9 @@ func (m Model) envDeleteVar() (tea.Model, tea.Cmd) {
 }
 
 func (m Model) envEditVar() (tea.Model, tea.Cmd) {
+	if m.currentEnvTabReadOnly() {
+		return m.copyInheritedEnvVar()
+	}
 	if len(m.envEditor.vars) > 0 && m.envEditor.varCursor < len(m.envEditor.vars) {
 		m.envEditor.editing = true
 		m.envEditor.editKey = textinput.New()
@@ -264,14 +331,91 @@ func (m Model) envEditVar() (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m Model) envCreateEnv() (tea.Model, tea.Cmd) {
+func (m Model) currentEnvTabReadOnly() bool {
+	return len(m.envEditor.tabs) == 0 || m.envEditor.tabs[m.envEditor.tabIdx].ReadOnly
+}
+
+func (m Model) readOnlyEnvWarning(action string) Model {
 	tab := m.envEditor.tabs[m.envEditor.tabIdx]
+	return m.status("warn", fmt.Sprintf("Cannot %s in read-only env %q", action, envTabLabel(tab)))
+}
+
+func envTabLabel(tab envTab) string {
 	if tab.IsGlobal {
-		return m, nil // no-op for global tab
+		return "Global"
+	}
+	return tab.OwnerPath + "/" + tab.Name
+}
+
+func (m Model) copyInheritedEnvVar() (tea.Model, tea.Cmd) {
+	if len(m.envEditor.vars) == 0 || m.envEditor.varCursor >= len(m.envEditor.vars) {
+		return m, nil
+	}
+	inherited := m.envEditor.vars[m.envEditor.varCursor]
+	childID := m.activeCollectionID()
+	defaultIndex := -1
+	for i, tab := range m.envEditor.tabs {
+		if !tab.ReadOnly && tab.CollectionID == childID && tab.Name == defaultEnvironmentName {
+			defaultIndex = i
+			break
+		}
+	}
+	if defaultIndex < 0 {
+		if m.envWriter == nil {
+			return m.status("error", "Environment writer not available"), nil
+		}
+		ctx, cancel := context.WithTimeout(m.ctx, envDBTimeout)
+		defer cancel()
+		created, err := m.envWriter.CreateDefaultEnvironment(ctx, childID)
+		if err != nil {
+			return m.status("error", fmt.Sprintf("Create child default: %v", err)), nil
+		}
+		m.envEditor.tabs = append(m.envEditor.tabs, envTab{
+			ID: created.ID, Name: created.Name, CollectionID: childID,
+			OwnerPath: m.envEditor.childPath,
+		})
+		defaultIndex = len(m.envEditor.tabs) - 1
+	}
+
+	m = m.stashEnvDraft()
+	defaultTab := m.envEditor.tabs[defaultIndex]
+	if _, ok := m.envEditor.drafts[defaultTab.ID]; !ok {
+		currentIndex := m.envEditor.tabIdx
+		m.envEditor.tabIdx = defaultIndex
+		m = m.loadEnvEditorVars()
+		m.envEditor.tabIdx = currentIndex
+		m = m.loadEnvEditorVars()
+	}
+	defaultDraft := m.envEditor.drafts[defaultTab.ID]
+	for _, variable := range defaultDraft.vars {
+		if variable.Key == inherited.Key {
+			return m.status("warn", fmt.Sprintf("Key %q already exists in env %q", inherited.Key, envTabLabel(defaultTab))), nil
+		}
+	}
+
+	m = m.switchEnvTab(defaultIndex)
+	m.envEditor.vars = append(m.envEditor.vars, envVar{Key: inherited.Key, Value: inherited.Value, Saved: false})
+	m.envEditor.varCursor = len(m.envEditor.vars) - 1
+	m.envEditor.dirty = true
+	m = m.ensureEnvCursorVisible()
+	m.envEditor.editing = true
+	m.envEditor.editKey = textinput.New()
+	m.envEditor.editVal = textinput.New()
+	m.envEditor.editKey.SetValue(inherited.Key)
+	m.envEditor.editVal.SetValue(inherited.Value)
+	m.envEditor.editKey.Focus()
+	m = m.status("success", fmt.Sprintf("Copied key %q to env %q", inherited.Key, envTabLabel(defaultTab)))
+	return m, textinput.Blink
+}
+
+func (m Model) envCreateEnv() (tea.Model, tea.Cmd) {
+	collectionID := m.activeCollectionID()
+	if collectionID == "" {
+		return m, nil
 	}
 	m.mode = collectionPromptMode
 	m.promptMode = promptAddEnv
-	m.promptTargetID = tab.CollectionID
+	m.promptTargetID = collectionID
 	m.promptInput.SetValue("")
 	m.promptInput.Placeholder = "Environment name"
 	m.promptInput.Focus()
@@ -335,6 +479,12 @@ func (m Model) saveEnvEditor() (Model, tea.Cmd) {
 	}
 
 	tab := m.envEditor.tabs[m.envEditor.tabIdx]
+	if tab.ReadOnly {
+		return m.readOnlyEnvWarning("save changes"), nil
+	}
+	if tab.CollectionID != m.activeCollectionID() {
+		return m.status("warn", "Environment ownership changed; reopen the modal before saving"), nil
+	}
 	vars := make(map[string]string, len(m.envEditor.vars))
 	for _, v := range m.envEditor.vars {
 		if v.Key != "" {
@@ -355,7 +505,7 @@ func (m Model) saveEnvEditor() (Model, tea.Cmd) {
 		if err := m.envWriter.SaveEnvironment(ctx, env); err != nil {
 			return envSaveErrMsg{err: err}
 		}
-		return envSavedMsg{}
+		return envSavedMsg{envID: tab.ID}
 	}
 }
 
@@ -463,12 +613,12 @@ func (m Model) activeEnvName() string {
 // for env resolution (also used by the CLI executor's makeVariableResolver).
 func resolveEnvVars(
 	ctx context.Context,
-	envReader store.EnvironmentReader,
+	envReader EnvironmentHierarchyReader,
 	activeEnv map[string]string,
 	collectionID string,
-) (colEnv, globalEnv map[string]string) {
+) (colEnv, globalEnv map[string]string, err error) {
 	if envReader == nil {
-		return nil, nil
+		return nil, nil, nil
 	}
 	return exec.ResolveEnvVars(ctx, envReader, activeEnv[collectionID], collectionID)
 }
@@ -477,20 +627,21 @@ func resolveEnvVars(
 func dispatchWithEnvCmd(
 	ctx context.Context,
 	executor RequestExecutor,
-	envReader store.EnvironmentReader,
+	envReader EnvironmentHierarchyReader,
 	activeEnv map[string]string,
 	req *domain.Request,
 ) tea.Cmd {
 	return func() tea.Msg {
 		if envReader != nil {
-			colEnv, globalEnv := resolveEnvVars(ctx, envReader, activeEnv, req.CollectionID)
-			if colEnv != nil || globalEnv != nil {
-				interpolated, err := exec.InterpolateRequest(req, colEnv, globalEnv)
-				if err != nil {
-					return httpErrMsg{requestID: req.ID, err: err}
-				}
-				req = interpolated
+			colEnv, globalEnv, err := resolveEnvVars(ctx, envReader, activeEnv, req.CollectionID)
+			if err != nil {
+				return httpErrMsg{requestID: req.ID, err: fmt.Errorf("resolve environments: %w", err)}
 			}
+			interpolated, err := exec.InterpolateRequest(req, colEnv, globalEnv)
+			if err != nil {
+				return httpErrMsg{requestID: req.ID, err: err}
+			}
+			req = interpolated
 		}
 		result, err := executor.Execute(ctx, req)
 		if err != nil {

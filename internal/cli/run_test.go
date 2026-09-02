@@ -50,6 +50,15 @@ func (s *fakeRunStore) ListCollections(context.Context) ([]*domain.Collection, e
 	return s.collections, nil
 }
 
+func (s *fakeRunStore) GetCollection(_ context.Context, id string) (*domain.Collection, error) {
+	for _, collection := range s.collections {
+		if collection.ID == id {
+			return collection, nil
+		}
+	}
+	return nil, assert.AnError
+}
+
 func (s *fakeRunStore) GetRequest(_ context.Context, id string) (*domain.Request, error) {
 	for _, reqs := range s.requests {
 		for _, req := range reqs {
@@ -96,7 +105,15 @@ func (s *fakeRunStore) ListCollectionEnvironments(
 	_ context.Context,
 	collectionID string,
 ) ([]*domain.Environment, error) {
-	return s.envsByCol[collectionID], nil
+	if environments := s.envsByCol[collectionID]; len(environments) > 0 {
+		return environments, nil
+	}
+	return []*domain.Environment{{
+		ID:           "default-" + collectionID,
+		CollectionID: collectionID,
+		Name:         "default",
+		Data:         "{}",
+	}}, nil
 }
 
 func (s *fakeRunStore) ListAllEnvironments(context.Context) ([]*domain.Environment, error) {

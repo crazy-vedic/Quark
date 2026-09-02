@@ -197,6 +197,10 @@ ON collections(COALESCE(parent_id, ''), name);
 `,
 		downSQL: `DROP INDEX IF EXISTS idx_collections_sibling_name; DROP INDEX IF EXISTS idx_collections_parent;`,
 	},
+	{
+		version: 9,
+		name:    "canonical_global_environment",
+	},
 }
 
 // migrate runs all pending migrations in order.
@@ -275,6 +279,9 @@ func (s *Store) applyMigration(m migration) error {
 	if m.version == 8 {
 		return s.applyNestedCollectionsMigration(m)
 	}
+	if m.version == 9 {
+		return s.applyCanonicalGlobalEnvironmentMigration(m)
+	}
 	tx, err := s.db.Begin()
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
@@ -295,6 +302,75 @@ func (s *Store) applyMigration(m migration) error {
 		return fmt.Errorf("record version: %w", err)
 	}
 
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit: %w", err)
+	}
+	return nil
+}
+
+// applyCanonicalGlobalEnvironmentMigration consolidates legacy collection-less
+// rows into the canonical Global without ever exposing variable values.
+func (s *Store) applyCanonicalGlobalEnvironmentMigration(m migration) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	rows, err := tx.Query(`SELECT id, name, data FROM environments WHERE collection_id IS NULL ORDER BY CASE WHEN id = 'global' THEN 0 ELSE 1 END, created_at, id`)
+	if err != nil {
+		return fmt.Errorf("read legacy Global rows: %w", err)
+	}
+	type legacyGlobal struct {
+		id, name, data string
+	}
+	var globals []legacyGlobal
+	for rows.Next() {
+		var row legacyGlobal
+		if err := rows.Scan(&row.id, &row.name, &row.data); err != nil {
+			rows.Close()
+			return fmt.Errorf("scan legacy Global row: %w", err)
+		}
+		globals = append(globals, row)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return fmt.Errorf("read legacy Global rows: %w", err)
+	}
+	if err := rows.Close(); err != nil {
+		return fmt.Errorf("close legacy Global rows: %w", err)
+	}
+
+	merged := make(map[string]string)
+	for _, row := range globals {
+		environment := &domain.Environment{ID: row.id, Name: row.name, Data: row.data}
+		vars, decodeErr := environment.DecodeVars()
+		if decodeErr != nil {
+			return fmt.Errorf("validate legacy Global row %q: %w", row.id, decodeErr)
+		}
+		for key, value := range vars {
+			if _, exists := merged[key]; !exists {
+				merged[key] = value
+			}
+		}
+	}
+	canonical := &domain.Environment{ID: "global", Name: "global"}
+	canonical.SetVars(merged)
+	if _, err := tx.Exec(`INSERT INTO environments (id, collection_id, name, data, sort_order) VALUES ('global', NULL, 'global', ?, 0) ON CONFLICT(id) DO UPDATE SET collection_id=NULL, name='global', data=excluded.data, sort_order=0, updated_at=CURRENT_TIMESTAMP`, canonical.Data); err != nil {
+		return fmt.Errorf("write canonical Global: %w", err)
+	}
+	if _, err := tx.Exec(`DELETE FROM environments WHERE collection_id IS NULL AND id <> 'global'`); err != nil {
+		return fmt.Errorf("remove redundant Global rows: %w", err)
+	}
+	if _, err := tx.Exec(`DELETE FROM collection_active_env WHERE NOT EXISTS (SELECT 1 FROM collections c WHERE c.id = collection_active_env.collection_id) OR NOT EXISTS (SELECT 1 FROM environments e WHERE e.id = collection_active_env.env_id AND e.collection_id = collection_active_env.collection_id)`); err != nil {
+		return fmt.Errorf("remove invalid active environment mappings: %w", err)
+	}
+	if _, err := tx.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_environments_single_global ON environments((1)) WHERE collection_id IS NULL`); err != nil {
+		return fmt.Errorf("create Global uniqueness index: %w", err)
+	}
+	if _, err := tx.Exec(`INSERT INTO schema_versions (version) VALUES (?)`, m.version); err != nil {
+		return fmt.Errorf("record version: %w", err)
+	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit: %w", err)
 	}

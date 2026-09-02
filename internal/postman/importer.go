@@ -33,13 +33,14 @@ func (s SecurityLevel) String() string {
 
 // ImportResult holds the result of parsing a Postman collection.
 type ImportResult struct {
-	CollectionName string
-	Requests       []*domain.Request     // all requests, in Postman traversal order
-	Groups         []RequestGroup        // requests grouped by nested folder path
-	Environments   []*domain.Environment // environments to import (from Postman environment files)
-	Warnings       []string              // non-fatal issues (unsupported auth, body modes, etc.)
-	Security       SecurityLevel         // max security level across all requests
-	Skipped        int                   // number of requests skipped
+	CollectionName      string
+	CollectionVariables map[string]string     // root collection-scoped variables
+	Requests            []*domain.Request     // all requests, in Postman traversal order
+	Groups              []RequestGroup        // requests grouped by nested folder path
+	Environments        []*domain.Environment // retained for compatibility
+	Warnings            []string              // non-fatal issues (unsupported auth, body modes, etc.)
+	Security            SecurityLevel         // max security level across all requests
+	Skipped             int                   // number of requests skipped
 }
 
 // RequestGroup is a Postman folder path and the requests directly in it.
@@ -81,11 +82,12 @@ func (im *Importer) Parse(r io.Reader) (*ImportResult, error) {
 	result.Security = maxSecurity
 
 	return &ImportResult{
-		CollectionName: result.CollectionName,
-		Requests:       result.Requests,
-		Groups:         result.Groups,
-		Warnings:       result.Warnings,
-		Security:       maxSecurity,
+		CollectionName:      result.CollectionName,
+		CollectionVariables: result.CollectionVariables,
+		Requests:            result.Requests,
+		Groups:              result.Groups,
+		Warnings:            result.Warnings,
+		Security:            maxSecurity,
 	}, nil
 }
 

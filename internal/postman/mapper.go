@@ -20,7 +20,25 @@ import (
 // Postman item names; the CLI decides how groups map to stored collections.
 func ImportCollection(c *Collection) *ImportResult {
 	result := &ImportResult{
-		CollectionName: c.Info.Name,
+		CollectionName:      c.Info.Name,
+		CollectionVariables: make(map[string]string),
+	}
+	for _, variable := range c.Variable {
+		if variable.Disabled {
+			continue
+		}
+		if strings.TrimSpace(variable.Key) == "" {
+			result.Warnings = append(result.Warnings, "collection variable with empty key skipped")
+			continue
+		}
+		value := variable.Value.String()
+		if existing, duplicate := result.CollectionVariables[variable.Key]; duplicate {
+			if existing != value {
+				result.Warnings = append(result.Warnings, fmt.Sprintf("duplicate collection variable %q ignored", variable.Key))
+			}
+			continue
+		}
+		result.CollectionVariables[variable.Key] = value
 	}
 
 	if c.Info.Name == "" {

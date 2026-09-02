@@ -180,7 +180,7 @@ func TestE2E_EnvEditor_DeleteVariable(t *testing.T) {
 	assert.Len(t, m.EnvEditorVars(), 0, "variable must be deleted")
 }
 
-// TestE2E_EnvEditor_GlobalTabEdit verifies editing the global env tab.
+// TestE2E_EnvEditor_GlobalTabEdit verifies Global is read-only in the modal.
 func TestE2E_EnvEditor_GlobalTabEdit(t *testing.T) {
 	col := &domain.Collection{ID: "col-1", Name: "API"}
 	st := setupStore(t, col)
@@ -194,26 +194,15 @@ func TestE2E_EnvEditor_GlobalTabEdit(t *testing.T) {
 	require.Equal(t, tui.EnvMode, m.Mode())
 	assert.Equal(t, 0, m.EnvEditorTabIdx())
 
-	// Add a global variable.
+	// Add/save attempts are rejected without entering edit mode or writing.
 	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
-	for _, r := range "api_key" {
-		m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
-	}
-	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyTab})
-	for _, r := range "secret123" {
-		m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
-	}
-	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyEnter})
 	assert.False(t, m.EnvEditorEditing())
-
-	vars := m.EnvEditorVars()
-	require.Len(t, vars, 1)
-	assert.Equal(t, "api_key", vars[0].Key)
-	assert.Equal(t, "secret123", vars[0].Value)
-
-	// Save with 's' — no error reported.
+	assert.Contains(t, m.StatusErr(), "read-only")
 	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
-	assert.Empty(t, m.EnvEditorSaveErr(), "save must not error")
+	assert.Contains(t, m.StatusErr(), "read-only")
+	global, err := st.GetGlobalEnvironment(m.ModelCtx())
+	require.NoError(t, err)
+	assert.Empty(t, global.Vars())
 }
 
 func TestE2E_EnvEditor_CreateEnv_UsesUppercaseA(t *testing.T) {
@@ -349,8 +338,9 @@ func TestE2E_EnvEditor_UnsavedIndicator(t *testing.T) {
 	// Open env editor (Global tab).
 	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}})
 	require.Equal(t, tui.EnvMode, m.Mode())
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRight})
 
-	// Add a new global variable — it should be unsaved.
+	// Add a new child-default variable — it should be unsaved.
 	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
 	for _, r := range "token" {
 		m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})

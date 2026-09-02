@@ -15,9 +15,9 @@ import (
 )
 
 // VariableResolver resolves environment variables for a collection.
-// Returns (collectionEnv, globalEnv) or nil for each.
+// Returns (collectionEnv, globalEnv) or a resolution error.
 // The resolver is called synchronously during Execute, before building the HTTP request.
-type VariableResolver func(collectionID string) (colEnv, globalEnv map[string]string)
+type VariableResolver func(collectionID string) (colEnv, globalEnv map[string]string, err error)
 
 // Executor dispatches HTTP requests and returns structured results.
 type Executor struct {
@@ -79,7 +79,12 @@ func (e *Executor) Execute(ctx context.Context, req *domain.Request) (*ExecuteRe
 
 	// 2. Variable substitution (if resolver is configured).
 	if e.variableResolver != nil {
-		colEnv, globalEnv := e.variableResolver(req.CollectionID)
+		colEnv, globalEnv, err := e.variableResolver(req.CollectionID)
+		if err != nil {
+			wrapped := fmt.Errorf("exec: resolve variables: %w", err)
+			record(req, nil, wrapped)
+			return nil, wrapped
+		}
 		interpolated, err := InterpolateRequest(req, colEnv, globalEnv)
 		if err != nil {
 			if errors.Is(err, ErrUnresolvedVariable) {

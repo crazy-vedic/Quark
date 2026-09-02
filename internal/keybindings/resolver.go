@@ -169,6 +169,7 @@ func NewResolver(binds Keybindings) *Resolver {
 		binds.SidebarDelete:     "delete",
 		binds.SidebarRename:     "rename",
 		binds.SidebarAddRequest: "add_request",
+		binds.RequestDelete:     ActionDeleteRequest,
 	}
 	// Arrow-key aliases mirror the hardcoded fallbacks in handleSidebarKey.
 	addAlias(sidebar, "down", "cursor_down")

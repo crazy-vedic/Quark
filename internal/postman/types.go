@@ -26,9 +26,19 @@ func (s *scalarValue) UnmarshalJSON(data []byte) error {
 		*s = ""
 		return nil
 	}
-	// Store raw JSON text for bools, numbers, etc.
-	*s = scalarValue(string(data))
-	return nil
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.UseNumber()
+	var scalar any
+	if err := decoder.Decode(&scalar); err != nil {
+		return err
+	}
+	switch scalar.(type) {
+	case bool, json.Number:
+		*s = scalarValue(string(bytes.TrimSpace(data)))
+		return nil
+	default:
+		return fmt.Errorf("expected a JSON scalar")
+	}
 }
 
 func (s scalarValue) String() string { return string(s) }
@@ -163,9 +173,10 @@ type AuthParam struct {
 
 // Variable represents a collection variable.
 type Variable struct {
-	Key   string      `json:"key"`
-	Value scalarValue `json:"value"`
-	Type  string      `json:"type,omitempty"` // "string", "boolean", "number", "any"
+	Key      string      `json:"key"`
+	Value    scalarValue `json:"value"`
+	Type     string      `json:"type,omitempty"` // "string", "boolean", "number", "any"
+	Disabled bool        `json:"disabled,omitempty"`
 }
 
 // Response represents a saved response (not used for import, but kept for completeness).

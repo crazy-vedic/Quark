@@ -1,6 +1,32 @@
 package tui
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/stretchr/testify/require"
+
+	"github.com/crazy-vedic/quark/internal/domain"
+)
+
+func TestOrderCollectionsTreePlacesRootsBeforeDescendants(t *testing.T) {
+	collections := []*domain.Collection{
+		{ID: "child-b", Name: "Beta", ParentID: "root"},
+		{ID: "sibling", Name: "Sibling"},
+		{ID: "root", Name: "AEF"},
+		{ID: "child-a", Name: "Alpha", ParentID: "root"},
+	}
+
+	ordered := orderCollectionsTree(collections)
+	require.Equal(t, []string{"root", "child-a", "child-b", "sibling"}, collectionIDs(ordered))
+}
+
+func collectionIDs(collections []*domain.Collection) []string {
+	ids := make([]string, 0, len(collections))
+	for _, collection := range collections {
+		ids = append(ids, collection.ID)
+	}
+	return ids
+}
 
 func TestAdjustListViewport(t *testing.T) {
 	t.Parallel()

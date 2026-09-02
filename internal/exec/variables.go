@@ -13,8 +13,9 @@ import (
 )
 
 // EnvResolver is the minimum interface needed to resolve environment variables.
-// *store.Store and *store.Transaction satisfy this through duck typing.
+// *store.Store satisfies this through duck typing.
 type EnvResolver interface {
+	GetCollection(ctx context.Context, id string) (*domain.Collection, error)
 	GetEnvironment(ctx context.Context, id string) (*domain.Environment, error)
 	GetGlobalEnvironment(ctx context.Context) (*domain.Environment, error)
 	ListCollectionEnvironments(
@@ -26,6 +27,80 @@ type EnvResolver interface {
 // ErrUnresolvedVariable is returned when a {{VAR}} placeholder has no match
 // in the collection or global environment.
 var ErrUnresolvedVariable = errors.New("unresolved variable")
+
+var (
+	// ErrEnvironmentResolution classifies failures that occur before interpolation.
+	ErrEnvironmentResolution = errors.New("environment resolution")
+	// ErrCollectionHierarchy classifies missing, inconsistent, or cyclic ancestry.
+	ErrCollectionHierarchy = errors.New("invalid collection hierarchy")
+	// ErrEnvironmentOwnership classifies an environment returned for the wrong scope.
+	ErrEnvironmentOwnership = errors.New("invalid environment ownership")
+	// ErrMissingDefaultEnvironment classifies a violated collection invariant.
+	ErrMissingDefaultEnvironment = errors.New("missing default environment")
+)
+
+// EnvironmentScope is one validated collection layer and its environments.
+// LoadEnvironmentHierarchy returns scopes ordered from root to the requested child.
+type EnvironmentScope struct {
+	Collection   *domain.Collection
+	Environments []*domain.Environment
+}
+
+// LoadEnvironmentHierarchy loads and validates collection scopes from root to child.
+func LoadEnvironmentHierarchy(
+	ctx context.Context,
+	r EnvResolver,
+	collectionID string,
+) ([]EnvironmentScope, error) {
+	if r == nil {
+		return nil, fmt.Errorf("%w: nil resolver", ErrEnvironmentResolution)
+	}
+	if collectionID == "" {
+		return nil, fmt.Errorf("%w: empty collection ID", ErrCollectionHierarchy)
+	}
+
+	seen := make(map[string]struct{})
+	var reversed []EnvironmentScope
+	for currentID := collectionID; currentID != ""; {
+		if err := ctx.Err(); err != nil {
+			return nil, fmt.Errorf(
+				"%w: load collection %q: %w",
+				ErrEnvironmentResolution,
+				currentID,
+				err,
+			)
+		}
+		if _, ok := seen[currentID]; ok {
+			return nil, fmt.Errorf("%w: cycle at collection %q", ErrCollectionHierarchy, currentID)
+		}
+		seen[currentID] = struct{}{}
+
+		collection, err := r.GetCollection(ctx, currentID)
+		if err != nil {
+			return nil, fmt.Errorf("%w: get collection %q: %w", ErrCollectionHierarchy, currentID, err)
+		}
+		if collection == nil || collection.ID != currentID {
+			return nil, fmt.Errorf("%w: lookup for %q returned inconsistent collection", ErrCollectionHierarchy, currentID)
+		}
+		environments, err := r.ListCollectionEnvironments(ctx, currentID)
+		if err != nil {
+			return nil, fmt.Errorf("%w: list environments for collection %q: %w", ErrEnvironmentResolution, currentID, err)
+		}
+		for _, environment := range environments {
+			if environment == nil || environment.CollectionID != currentID {
+				return nil, fmt.Errorf("%w: collection %q returned an environment owned by another scope", ErrEnvironmentOwnership, currentID)
+			}
+		}
+		reversed = append(reversed, EnvironmentScope{Collection: collection, Environments: environments})
+		currentID = collection.ParentID
+	}
+
+	scopes := make([]EnvironmentScope, len(reversed))
+	for i := range reversed {
+		scopes[len(reversed)-1-i] = reversed[i]
+	}
+	return scopes, nil
+}
 
 // placeholderRE matches Postman-style {{VAR}} syntax.
 var placeholderRE = regexp.MustCompile(`\{\{([^}]+)\}\}`)
@@ -316,47 +391,89 @@ func firstPlaceholderInAuthConfig(authConfigJSON string) string {
 	return ""
 }
 
-// ResolveEnvVars resolves environment variables for a collection using the
-// standard fallback chain: explicit active env → "default" named env → first
-// collection env → nil. Returns (collectionEnv, globalEnv) maps. Both callers
-// (TUI env panel and CLI executor) use this single implementation.
+// ResolveEnvVars resolves environment variables using the child-owned active
+// environment name at every hierarchy level. The merge order is global, then
+// root-to-child default and matching named environments.
 func ResolveEnvVars(
 	ctx context.Context,
 	r EnvResolver,
 	activeEnvID, collectionID string,
-) (colEnv, globalEnv map[string]string) {
+) (colEnv, globalEnv map[string]string, err error) {
 	if r == nil {
-		return nil, nil
+		return nil, nil, fmt.Errorf("%w: nil resolver", ErrEnvironmentResolution)
 	}
 
-	// Global env.
 	global, err := r.GetGlobalEnvironment(ctx)
-	if err == nil {
-		globalEnv = global.Vars()
+	if err != nil {
+		return nil, nil, fmt.Errorf("%w: read Global: %w", ErrEnvironmentResolution, err)
+	}
+	if global == nil || !global.IsGlobal() {
+		return nil, nil, fmt.Errorf("%w: Global has invalid ownership", ErrEnvironmentOwnership)
+	}
+	globalEnv, err = global.DecodeVars()
+	if err != nil {
+		return nil, nil, fmt.Errorf("%w: decode Global: %w", ErrEnvironmentResolution, err)
 	}
 
-	// Active env by ID.
+	scopes, err := LoadEnvironmentHierarchy(ctx, r, collectionID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("%w: %w", ErrEnvironmentResolution, err)
+	}
+
+	activeName := ""
 	if activeEnvID != "" {
-		env, err := r.GetEnvironment(ctx, activeEnvID)
-		if err == nil {
-			colEnv = env.Vars()
-			return colEnv, globalEnv
+		active, activeErr := r.GetEnvironment(ctx, activeEnvID)
+		if activeErr != nil {
+			return nil, nil, fmt.Errorf("%w: read child active environment %q: %w", ErrEnvironmentResolution, activeEnvID, activeErr)
 		}
+		if active == nil || active.CollectionID != collectionID {
+			return nil, nil, fmt.Errorf("%w: active environment %q does not belong to child collection %q", ErrEnvironmentOwnership, activeEnvID, collectionID)
+		}
+		activeName = active.Name
 	}
 
-	// Fallback: prefer "default", then first env.
-	envs, err := r.ListCollectionEnvironments(ctx, collectionID)
-	if err == nil && len(envs) > 0 {
-		for _, e := range envs {
-			if e.Name == "default" {
-				colEnv = e.Vars()
-				return colEnv, globalEnv
+	colEnv = make(map[string]string)
+	for _, scope := range scopes {
+		byName := make(map[string][]*domain.Environment)
+		for _, environment := range scope.Environments {
+			byName[environment.Name] = append(byName[environment.Name], environment)
+		}
+		defaults := byName["default"]
+		if len(defaults) == 0 {
+			return nil, nil, fmt.Errorf("%w: collection %q", ErrMissingDefaultEnvironment, scope.Collection.ID)
+		}
+		if len(defaults) > 1 {
+			return nil, nil, fmt.Errorf("%w: duplicate default environments in collection %q", ErrEnvironmentResolution, scope.Collection.ID)
+		}
+		if err := mergeEnvironmentVars(colEnv, defaults[0], scope.Collection.ID); err != nil {
+			return nil, nil, err
+		}
+		if activeName == "" || activeName == "default" {
+			continue
+		}
+		matching := byName[activeName]
+		if len(matching) > 1 {
+			return nil, nil, fmt.Errorf("%w: duplicate environment %q in collection %q", ErrEnvironmentResolution, activeName, scope.Collection.ID)
+		}
+		if len(matching) == 1 {
+			if err := mergeEnvironmentVars(colEnv, matching[0], scope.Collection.ID); err != nil {
+				return nil, nil, err
 			}
 		}
-		colEnv = envs[0].Vars()
 	}
 
-	return colEnv, globalEnv
+	return colEnv, globalEnv, nil
+}
+
+func mergeEnvironmentVars(dst map[string]string, environment *domain.Environment, collectionID string) error {
+	vars, err := environment.DecodeVars()
+	if err != nil {
+		return fmt.Errorf("%w: decode environment %q in collection %q: %w", ErrEnvironmentResolution, environment.Name, collectionID, err)
+	}
+	for key, value := range vars {
+		dst[key] = value
+	}
+	return nil
 }
 
 // copyRequest returns a shallow copy of req. The string fields are immutable.

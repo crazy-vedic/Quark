@@ -58,6 +58,7 @@ func TestResolver_Default_Sidebar(t *testing.T) {
 		{"l", "expand"},
 		{"h", "collapse"},
 		{"a", "add_request"},
+		{"d", "delete_request"},
 		{"A", "add"},
 		{"D", "delete"},
 		{"r", "rename"},
