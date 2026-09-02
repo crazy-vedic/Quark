@@ -391,9 +391,27 @@ func TestImportBulk_StandaloneEnvironmentsMergeAfterCollectionsAndAggregateError
 	dir := t.TempDir()
 	require.NoError(t, os.MkdirAll(filepath.Join(dir, "collection"), 0700))
 	require.NoError(t, os.MkdirAll(filepath.Join(dir, "environment"), 0700))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "collection", "collection.json"), []byte(`{"info":{"name":"Imported","schema":"v2.1"},"item":[]}`), 0600))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "environment", "a.json"), []byte(`{"name":"A","values":[{"key":"shared","value":"first-secret","enabled":true},{"key":"existing","value":"import-secret","enabled":true}]}`), 0600))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "environment", "b.json"), []byte(`{"name":"B","values":[{"key":"shared","value":"later-secret","enabled":true}]}`), 0600))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(dir, "collection", "collection.json"),
+		[]byte(`{"info":{"name":"Imported","schema":"v2.1"},"item":[]}`),
+		0600,
+	))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(dir, "environment", "a.json"),
+		[]byte(`{
+			"name":"A",
+			"values":[
+				{"key":"shared","value":"first-secret","enabled":true},
+				{"key":"existing","value":"import-secret","enabled":true}
+			]
+		}`),
+		0600,
+	))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(dir, "environment", "b.json"),
+		[]byte(`{"name":"B","values":[{"key":"shared","value":"later-secret","enabled":true}]}`),
+		0600,
+	))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "environment", "z.json"), []byte(`not-json`), 0600))
 
 	stats, envResult, err := importBulk(ctx, &cobra.Command{}, st, dir, "", "duplicate", new(duplicateAction), NewDebugLogger(nil))

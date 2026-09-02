@@ -63,7 +63,12 @@ func LoadEnvironmentHierarchy(
 	var reversed []EnvironmentScope
 	for currentID := collectionID; currentID != ""; {
 		if err := ctx.Err(); err != nil {
-			return nil, fmt.Errorf("%w: load collection %q: %w", ErrEnvironmentResolution, currentID, err)
+			return nil, fmt.Errorf(
+				"%w: load collection %q: %w",
+				ErrEnvironmentResolution,
+				currentID,
+				err,
+			)
 		}
 		if _, ok := seen[currentID]; ok {
 			return nil, fmt.Errorf("%w: cycle at collection %q", ErrCollectionHierarchy, currentID)

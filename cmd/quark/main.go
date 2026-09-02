@@ -731,20 +731,3 @@ func lazyKeybindingsCmd() *cobra.Command {
 	})
 	return cmd
 }
-
-// makeVariableResolver returns the optional executor-level resolver for callers
-// that do not prepare requests before Execute. Production CLI/TUI paths resolve
-// explicitly once and therefore do not install this option.
-func makeVariableResolver(st *store.Store) exec.VariableResolver {
-	return func(collectionID string) (colEnv, globalEnv map[string]string, resolveErr error) {
-		ctx, cancel := context.WithTimeout(context.Background(), store.EnvDBTimeout)
-		defer cancel()
-
-		// Load the persisted active env for this collection (if any).
-		activeEnvID, err := st.GetActiveEnvironment(ctx, collectionID)
-		if err != nil {
-			return nil, nil, fmt.Errorf("get active environment: %w", err)
-		}
-		return exec.ResolveEnvVars(ctx, st, activeEnvID, collectionID)
-	}
-}

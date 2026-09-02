@@ -1427,7 +1427,7 @@ func (m Model) viewStatusBar(statusOverride string) string {
 			hintItem{Label: "new req", Actions: []string{"sidebar_add_request"}},
 			hintItem{Label: "new col", Actions: []string{"sidebar_add"}},
 			hintItem{Label: "rename", Actions: []string{"sidebar_rename"}},
-			hintItem{Label: "delete", Actions: []string{"sidebar_delete"}},
+			hintItem{Label: deleteToken, Actions: []string{"sidebar_delete"}},
 		)
 	}
 	// Build plain text first, then style after any truncation. Truncating
@@ -2398,7 +2398,7 @@ func (m Model) viewEnvModal() string {
 		{Label: "add var", Actions: []string{"env_add"}},
 		{Label: "new env", Actions: []string{"env_create"}},
 		{Label: "edit", Actions: []string{"env_edit"}},
-		{Label: "delete", Actions: []string{"env_delete"}},
+		{Label: deleteToken, Actions: []string{"env_delete"}},
 		{Label: "save", Actions: []string{"env_save"}},
 		{Label: helpLabelClose, Actions: []string{"env_cancel"}},
 	})))
