@@ -110,9 +110,12 @@ func saveCollection(ctx context.Context, db environmentSQL, c *domain.Collection
 // GetCollection returns the collection with the given ID.
 // Returns nil, ErrNotFound if no collection exists with that ID.
 func (s *Store) GetCollection(ctx context.Context, id string) (*domain.Collection, error) {
-	row := s.db.QueryRowContext(ctx,
+	row := s.db.QueryRowContext(
+		ctx,
 		`SELECT id, name, COALESCE(parent_id, ''), description, meta, created_at, updated_at, version
-		 FROM collections WHERE id = ?`, id)
+		 FROM collections WHERE id = ?`,
+		id,
+	)
 
 	c := &domain.Collection{}
 	err := row.Scan(&c.ID, &c.Name, &c.ParentID, &c.Description, &c.Meta,
@@ -146,10 +149,12 @@ func (s *Store) DeleteCollection(ctx context.Context, id string) error {
 // Returns nil, nil when no collections exist (not an empty slice).
 // Returns nil, err on failure — never returns partial results alongside error.
 func (s *Store) ListCollections(ctx context.Context) ([]*domain.Collection, error) {
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.db.QueryContext(
+		ctx,
 		`SELECT id, name, COALESCE(parent_id, ''), description, meta, created_at, updated_at, version
 		 FROM collections
-		 ORDER BY name ASC`)
+		 ORDER BY name ASC`,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("store: list collections: %w", err)
 	}
@@ -181,11 +186,18 @@ func (s *Store) ListRootCollections(ctx context.Context) ([]*domain.Collection, 
 }
 
 // ListChildCollections returns direct children sorted by name.
-func (s *Store) ListChildCollections(ctx context.Context, parentID string) ([]*domain.Collection, error) {
+func (s *Store) ListChildCollections(
+	ctx context.Context,
+	parentID string,
+) ([]*domain.Collection, error) {
 	return s.listCollectionsWhere(ctx, "parent_id = ?", parentID)
 }
 
-func (s *Store) listCollectionsWhere(ctx context.Context, where string, args ...any) ([]*domain.Collection, error) {
+func (s *Store) listCollectionsWhere(
+	ctx context.Context,
+	where string,
+	args ...any,
+) ([]*domain.Collection, error) {
 	const selectPrefix = `SELECT id, name, COALESCE(parent_id, ''), description, meta, created_at, updated_at, version FROM collections WHERE `
 	var query string
 	switch where {
@@ -204,7 +216,16 @@ func (s *Store) listCollectionsWhere(ctx context.Context, where string, args ...
 	var out []*domain.Collection
 	for rows.Next() {
 		c := &domain.Collection{}
-		if err := rows.Scan(&c.ID, &c.Name, &c.ParentID, &c.Description, &c.Meta, &c.CreatedAt, &c.UpdatedAt, &c.Version); err != nil {
+		if err := rows.Scan(
+			&c.ID,
+			&c.Name,
+			&c.ParentID,
+			&c.Description,
+			&c.Meta,
+			&c.CreatedAt,
+			&c.UpdatedAt,
+			&c.Version,
+		); err != nil {
 			return nil, err
 		}
 		out = append(out, c)
@@ -235,7 +256,12 @@ func (s *Store) MoveCollection(ctx context.Context, id, parentID string) error {
 		}
 		p = c.ParentID
 	}
-	_, err := s.db.ExecContext(ctx, `UPDATE collections SET parent_id = ?, updated_at=CURRENT_TIMESTAMP WHERE id = ?`, sql.NullString{String: parentID, Valid: parentID != ""}, id)
+	_, err := s.db.ExecContext(
+		ctx,
+		`UPDATE collections SET parent_id = ?, updated_at=CURRENT_TIMESTAMP WHERE id = ?`,
+		sql.NullString{String: parentID, Valid: parentID != ""},
+		id,
+	)
 	if err != nil {
 		if isSQLiteUnique(err) {
 			return fmt.Errorf("store: move collection %q: %w", id, ErrDuplicate)
@@ -265,7 +291,10 @@ func (s *Store) CollectionPath(ctx context.Context, id string) (string, error) {
 }
 
 // ResolveCollectionPath resolves a full collection path or a unique suffix.
-func (s *Store) ResolveCollectionPath(ctx context.Context, reference string) (*domain.Collection, error) {
+func (s *Store) ResolveCollectionPath(
+	ctx context.Context,
+	reference string,
+) (*domain.Collection, error) {
 	cols, err := s.ListCollections(ctx)
 	if err != nil {
 		return nil, err
@@ -296,11 +325,18 @@ func (s *Store) ResolveCollectionPath(ctx context.Context, reference string) (*d
 }
 
 // CountDescendants returns descendant collection and request counts.
-func (s *Store) CountDescendants(ctx context.Context, id string) (collections, requests int, err error) {
+func (s *Store) CountDescendants(
+	ctx context.Context,
+	id string,
+) (collections, requests int, err error) {
 	if _, err = s.GetCollection(ctx, id); err != nil {
 		return 0, 0, err
 	}
-	row := s.db.QueryRowContext(ctx, `WITH RECURSIVE tree(id) AS (SELECT id FROM collections WHERE id=? UNION ALL SELECT c.id FROM collections c JOIN tree t ON c.parent_id=t.id) SELECT (SELECT COUNT(*)-1 FROM tree), (SELECT COUNT(*) FROM requests WHERE collection_id IN (SELECT id FROM tree))`, id)
+	row := s.db.QueryRowContext(
+		ctx,
+		`WITH RECURSIVE tree(id) AS (SELECT id FROM collections WHERE id=? UNION ALL SELECT c.id FROM collections c JOIN tree t ON c.parent_id=t.id) SELECT (SELECT COUNT(*)-1 FROM tree), (SELECT COUNT(*) FROM requests WHERE collection_id IN (SELECT id FROM tree))`,
+		id,
+	)
 	err = row.Scan(&collections, &requests)
 	return
 }
