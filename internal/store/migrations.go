@@ -243,7 +243,24 @@ func (s *Store) repairEmptyRequestIDs() error {
 	}
 	defer func() { _ = tx.Rollback() }()
 	if _, err = tx.Exec(
-		`PRAGMA defer_foreign_keys = ON; CREATE TEMP TABLE IF NOT EXISTS request_id_repairs (old_id TEXT PRIMARY KEY, new_id TEXT NOT NULL); DELETE FROM request_id_repairs; INSERT INTO request_id_repairs (old_id, new_id) SELECT id, lower(hex(randomblob(16))) FROM requests WHERE id = ''; UPDATE executions SET request_id = (SELECT new_id FROM request_id_repairs WHERE old_id = executions.request_id) WHERE request_id IN (SELECT old_id FROM request_id_repairs); UPDATE scheduled_runs SET request_id = (SELECT new_id FROM request_id_repairs WHERE old_id = scheduled_runs.request_id) WHERE request_id IN (SELECT old_id FROM request_id_repairs); UPDATE requests SET id = (SELECT new_id FROM request_id_repairs WHERE old_id = requests.id) WHERE id IN (SELECT old_id FROM request_id_repairs); DROP TABLE request_id_repairs;`,
+		`PRAGMA defer_foreign_keys = ON;
+CREATE TEMP TABLE IF NOT EXISTS request_id_repairs (
+    old_id TEXT PRIMARY KEY,
+    new_id TEXT NOT NULL
+);
+DELETE FROM request_id_repairs;
+INSERT INTO request_id_repairs (old_id, new_id)
+SELECT id, lower(hex(randomblob(16))) FROM requests WHERE id = '';
+UPDATE executions
+SET request_id = (SELECT new_id FROM request_id_repairs WHERE old_id = executions.request_id)
+WHERE request_id IN (SELECT old_id FROM request_id_repairs);
+UPDATE scheduled_runs
+SET request_id = (SELECT new_id FROM request_id_repairs WHERE old_id = scheduled_runs.request_id)
+WHERE request_id IN (SELECT old_id FROM request_id_repairs);
+UPDATE requests
+SET id = (SELECT new_id FROM request_id_repairs WHERE old_id = requests.id)
+WHERE id IN (SELECT old_id FROM request_id_repairs);
+DROP TABLE request_id_repairs;`,
 	); err != nil {
 		return err
 	}
@@ -370,7 +387,14 @@ func (s *Store) applyCanonicalGlobalEnvironmentMigration(m migration) error {
 	canonical := &domain.Environment{ID: "global", Name: "global"}
 	canonical.SetVars(merged)
 	if _, err := tx.Exec(
-		`INSERT INTO environments (id, collection_id, name, data, sort_order) VALUES ('global', NULL, 'global', ?, 0) ON CONFLICT(id) DO UPDATE SET collection_id=NULL, name='global', data=excluded.data, sort_order=0, updated_at=CURRENT_TIMESTAMP`,
+		`INSERT INTO environments (id, collection_id, name, data, sort_order)
+VALUES ('global', NULL, 'global', ?, 0)
+ON CONFLICT(id) DO UPDATE SET
+    collection_id=NULL,
+    name='global',
+    data=excluded.data,
+    sort_order=0,
+    updated_at=CURRENT_TIMESTAMP`,
 		canonical.Data,
 	); err != nil {
 		return fmt.Errorf("write canonical Global: %w", err)
@@ -381,7 +405,14 @@ func (s *Store) applyCanonicalGlobalEnvironmentMigration(m migration) error {
 		return fmt.Errorf("remove redundant Global rows: %w", err)
 	}
 	if _, err := tx.Exec(
-		`DELETE FROM collection_active_env WHERE NOT EXISTS (SELECT 1 FROM collections c WHERE c.id = collection_active_env.collection_id) OR NOT EXISTS (SELECT 1 FROM environments e WHERE e.id = collection_active_env.env_id AND e.collection_id = collection_active_env.collection_id)`,
+		`DELETE FROM collection_active_env
+WHERE NOT EXISTS (
+    SELECT 1 FROM collections c WHERE c.id = collection_active_env.collection_id
+) OR NOT EXISTS (
+    SELECT 1 FROM environments e
+    WHERE e.id = collection_active_env.env_id
+      AND e.collection_id = collection_active_env.collection_id
+)`,
 	); err != nil {
 		return fmt.Errorf("remove invalid active environment mappings: %w", err)
 	}
