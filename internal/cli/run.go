@@ -54,7 +54,13 @@ func NewRunCmd(st RunStore, e *exec.Executor) *cobra.Command {
 					if err != nil {
 						return fmt.Errorf("run: resolve environments: %w", err)
 					}
-					prepared, err := exec.InterpolateRequestWithOverrides(found, positionals, overrides, colEnv, globalEnv)
+					prepared, err := exec.InterpolateRequestWithOverrides(
+						found,
+						positionals,
+						overrides,
+						colEnv,
+						globalEnv,
+					)
 					if err != nil {
 						return fmt.Errorf("run: interpolate: %w", err)
 					}
@@ -62,7 +68,13 @@ func NewRunCmd(st RunStore, e *exec.Executor) *cobra.Command {
 					if err != nil {
 						return fmt.Errorf("run: execute: %w", err)
 					}
-					fmt.Fprintf(cmd.OutOrStdout(), "Status: %s\nSize:   %d bytes\nTime:   %v\n", result.Status, result.Size, result.Duration.Round(1000000))
+					fmt.Fprintf(
+						cmd.OutOrStdout(),
+						"Status: %s\nSize:   %d bytes\nTime:   %v\n",
+						result.Status,
+						result.Size,
+						result.Duration.Round(1000000),
+					)
 					ct := http.Header(result.Headers).Get("Content-Type")
 					if strings.Contains(ct, "application/json") && result.Body != nil {
 						fmt.Fprintln(cmd.OutOrStdout())

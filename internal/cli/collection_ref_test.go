@@ -13,7 +13,9 @@ type collectionReferenceTestStore struct {
 	collections []*domain.Collection
 }
 
-func (s *collectionReferenceTestStore) ListCollections(context.Context) ([]*domain.Collection, error) {
+func (s *collectionReferenceTestStore) ListCollections(
+	context.Context,
+) ([]*domain.Collection, error) {
 	return s.collections, nil
 }
 
