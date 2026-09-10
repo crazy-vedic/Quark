@@ -755,75 +755,33 @@ func (m Model) retryableRawRequest() (*domain.Request, error) {
 // sidebarDown moves cursor down through the full sidebar tree.
 // Navigation goes: collection → (if expanded) its requests → next collection.
 func (m Model) sidebarDown() (tea.Model, tea.Cmd) {
-	if len(m.collections) == 0 {
+	rows, selected := m.buildSidebarRows()
+	if selected+1 >= len(rows) {
 		return m, nil
 	}
-	colID := m.activeCollectionID()
-	expanded := colID != "" && m.expanded[colID]
-
-	// If we're on the collection itself and it's expanded, enter its first request.
-	if m.reqCursor == -1 && expanded {
-		if reqs := m.collectionRequests[colID]; len(reqs) > 0 {
-			m.reqCursor = 0
-			m.requests = reqs
-			m = m.ensureSidebarCollectionVisible()
-			return m, nil
-		}
-	}
-	// If we're on a request and there are more requests below, move within requests.
-	if m.reqCursor >= 0 && m.reqCursor < len(m.requests)-1 {
-		m.reqCursor++
-		m = m.ensureSidebarCollectionVisible()
-		return m, nil
-	}
-	// At end of requests (or on unexpanded collection), move to next collection.
-	if m.colCursor < len(m.collections)-1 {
-		m.colCursor++
-		m.reqCursor = -1
-		m = m.ensureSidebarCollectionVisible()
-		// If the new collection is already expanded, load its requests into m.requests
-		// so Enter on a request works immediately.
-		newColID := m.activeCollectionID()
-		if newColID != "" && m.expanded[newColID] {
-			m.requests = m.collectionRequests[newColID]
-		}
-	}
-	return m, nil
+	return m.selectSidebarRow(rows[selected+1]), nil
 }
 
 // sidebarUp moves cursor up through the full sidebar tree.
 // Navigation goes: request → previous request (or collection) → previous collection's last request.
 func (m Model) sidebarUp() (tea.Model, tea.Cmd) {
-	if len(m.collections) == 0 {
+	rows, selected := m.buildSidebarRows()
+	if selected <= 0 || len(rows) == 0 {
 		return m, nil
 	}
-	// If we're on a request and not at the first one, move up within requests.
-	if m.reqCursor > 0 {
-		m.reqCursor--
-		m = m.ensureSidebarCollectionVisible()
-		return m, nil
+	return m.selectSidebarRow(rows[selected-1]), nil
+}
+
+func (m Model) selectSidebarRow(row sidebarRow) Model {
+	m.colCursor = row.colIndex
+	m.reqCursor = -1
+	if row.kind == sidebarRequestRow {
+		m.reqCursor = row.reqIndex
 	}
-	// If we're on the first request (or collection with no requests), go to collection itself.
-	if m.reqCursor == 0 {
-		m.reqCursor = -1
-		m = m.ensureSidebarCollectionVisible()
-		return m, nil
+	if row.colIndex >= 0 && row.colIndex < len(m.collections) {
+		m.requests = m.collectionRequests[m.collections[row.colIndex].ID]
 	}
-	// We're on a collection — move to previous collection.
-	if m.colCursor > 0 {
-		m.colCursor--
-		m = m.ensureSidebarCollectionVisible()
-		prevColID := m.activeCollectionID()
-		if prevColID != "" && m.expanded[prevColID] {
-			if reqs := m.collectionRequests[prevColID]; len(reqs) > 0 {
-				m.reqCursor = len(reqs) - 1
-				m.requests = reqs
-				return m, nil
-			}
-		}
-		m.reqCursor = -1
-	}
-	return m, nil
+	return m.ensureSidebarCollectionVisible()
 }
 
 // --- Request pane ---

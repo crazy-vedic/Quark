@@ -122,8 +122,12 @@ func (m Model) buildSidebarRows() ([]sidebarRow, int) {
 	rows := make([]sidebarRow, 0, len(m.collections))
 	selectedRow := 0
 	children := make(map[string][]int, len(m.collections))
+	byID := make(map[string]*domain.Collection, len(m.collections))
 	roots := make([]int, 0, len(m.collections))
 	for i, col := range m.collections {
+		if col != nil {
+			byID[col.ID] = col
+		}
 		if col == nil || col.ParentID == "" {
 			roots = append(roots, i)
 			continue
@@ -158,9 +162,9 @@ func (m Model) buildSidebarRows() ([]sidebarRow, int) {
 					selectedRow = len(rows) - 1
 				}
 			}
-		}
-		for _, childIdx := range children[col.ID] {
-			appendCollection(childIdx, depth+1, visiting)
+			for _, childIdx := range children[col.ID] {
+				appendCollection(childIdx, depth+1, visiting)
+			}
 		}
 		delete(visiting, colIdx)
 	}
@@ -168,7 +172,8 @@ func (m Model) buildSidebarRows() ([]sidebarRow, int) {
 		appendCollection(colIdx, 0, make(map[int]bool))
 	}
 	// Broken or cyclic parent references should remain visible instead of being
-	// silently dropped from the sidebar.
+	// silently dropped from the sidebar. Legitimate descendants hidden by a
+	// collapsed ancestor are deliberately excluded from this fallback.
 	for colIdx := range m.collections {
 		found := false
 		for _, row := range rows {
@@ -177,11 +182,27 @@ func (m Model) buildSidebarRows() ([]sidebarRow, int) {
 				break
 			}
 		}
-		if !found {
+		if !found && hasBrokenOrCyclicCollectionAncestry(m.collections[colIdx], byID) {
 			appendCollection(colIdx, 0, make(map[int]bool))
 		}
 	}
 	return rows, selectedRow
+}
+
+func hasBrokenOrCyclicCollectionAncestry(col *domain.Collection, byID map[string]*domain.Collection) bool {
+	seen := make(map[string]bool)
+	for col != nil && col.ParentID != "" {
+		if seen[col.ID] {
+			return true
+		}
+		seen[col.ID] = true
+		parent, ok := byID[col.ParentID]
+		if !ok {
+			return true
+		}
+		col = parent
+	}
+	return false
 }
 
 func orderCollectionsTree(collections []*domain.Collection) []*domain.Collection {
