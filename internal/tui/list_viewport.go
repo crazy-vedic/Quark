@@ -200,6 +200,33 @@ func (m Model) buildSidebarRows() ([]sidebarRow, int) {
 	return rows, selectedRow
 }
 
+// collapseCollectionSubtree closes a collection and all of its descendants.
+// Descendants may be hidden while their parent is collapsed, so walking the
+// collection tree rather than only the visible rows is intentional. Request
+// data remains cached so reopening a collection does not require a reload.
+func (m Model) collapseCollectionSubtree(collectionID string) {
+	children := make(map[string][]string, len(m.collections))
+	for _, col := range m.collections {
+		if col != nil && col.ParentID != "" {
+			children[col.ParentID] = append(children[col.ParentID], col.ID)
+		}
+	}
+
+	stack := []string{collectionID}
+	seen := make(map[string]bool)
+	for len(stack) > 0 {
+		last := len(stack) - 1
+		id := stack[last]
+		stack = stack[:last]
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
+		m.expanded[id] = false
+		stack = append(stack, children[id]...)
+	}
+}
+
 func hasBrokenOrCyclicCollectionAncestry(
 	col *domain.Collection,
 	byID map[string]*domain.Collection,

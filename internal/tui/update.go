@@ -595,8 +595,7 @@ func (m Model) handleSidebarAction(action string) (tea.Model, tea.Cmd) {
 	case "collapse":
 		colID := m.activeCollectionID()
 		if colID != "" {
-			m.expanded[colID] = false
-			delete(m.collectionRequests, colID)
+			m.collapseCollectionSubtree(colID)
 			m.reqCursor = -1
 		}
 		return m, nil

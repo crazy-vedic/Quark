@@ -465,8 +465,7 @@ func (m Model) toggleSidebarCollectionExpand(colIndex int) (Model, tea.Cmd) {
 
 	colID := m.collections[colIndex].ID
 	if m.expanded[colID] {
-		m.expanded[colID] = false
-		delete(m.collectionRequests, colID)
+		m.collapseCollectionSubtree(colID)
 		return m, nil
 	}
 
