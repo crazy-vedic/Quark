@@ -102,8 +102,20 @@ func TestUpdate_Mouse_ResponseTextWheelDoesNotCycleHistory(t *testing.T) {
 		longBody += fmt.Sprintf("line-%03d\n", i)
 	}
 	execs := []*domain.Execution{
-		{ID: "ex-0", RequestID: "req-1", StatusCode: 200, ResponseBody: longBody, ResponseHeaders: `{}`},
-		{ID: "ex-1", RequestID: "req-1", StatusCode: 200, ResponseBody: "older", ResponseHeaders: `{}`},
+		{
+			ID:              "ex-0",
+			RequestID:       "req-1",
+			StatusCode:      200,
+			ResponseBody:    longBody,
+			ResponseHeaders: `{}`,
+		},
+		{
+			ID:              "ex-1",
+			RequestID:       "req-1",
+			StatusCode:      200,
+			ResponseBody:    "older",
+			ResponseHeaders: `{}`,
+		},
 	}
 	m := resizedMouseUnitModel(t).
 		WithExecutions(execs).
@@ -212,7 +224,12 @@ func TestUpdate_Mouse_ResponseTextWheelWorksForRawTab(t *testing.T) {
 		X: x, Y: y, Action: tea.MouseActionPress, Button: tea.MouseButtonWheelDown,
 	})
 
-	assert.Greater(t, m.ResponseTextOffset(), 0, "raw response body should use the scrollable text component")
+	assert.Greater(
+		t,
+		m.ResponseTextOffset(),
+		0,
+		"raw response body should use the scrollable text component",
+	)
 	assert.Equal(t, 0, m.ExecCursor(), "raw text scrolling must not change history")
 }
 
@@ -253,10 +270,19 @@ func TestUpdate_ViewerOwnsTabAndFinderLifecycle(t *testing.T) {
 	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'f'}})
 	assert.True(t, m.ViewerFindOpen())
 	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyTab})
-	assert.False(t, m.ViewerFindOpen(), "Tab must close the viewer finder instead of changing panes")
+	assert.False(
+		t,
+		m.ViewerFindOpen(),
+		"Tab must close the viewer finder instead of changing panes",
+	)
 	assert.Equal(t, tui.ViewerMode, m.Mode())
 	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyTab})
-	assert.Equal(t, tui.NormalMode, m.Mode(), "Tab must close the viewer after the finder is closed")
+	assert.Equal(
+		t,
+		tui.NormalMode,
+		m.Mode(),
+		"Tab must close the viewer after the finder is closed",
+	)
 }
 
 func TestUpdate_ViewerScrollsAndIgnoresShiftMouse(t *testing.T) {
@@ -344,7 +370,12 @@ func TestUpdate_Mouse_RequestBodyWheelOnlyScrollsInsideEditor(t *testing.T) {
 	outside := callUpdate(t, m, tea.MouseMsg{
 		X: x - 1, Y: y, Action: tea.MouseActionPress, Button: tea.MouseButtonWheelUp,
 	})
-	assert.Equal(t, after, outside.ViewRequestPaneForTest(90, 18), "wheel outside request body should not move its editor")
+	assert.Equal(
+		t,
+		after,
+		outside.ViewRequestPaneForTest(90, 18),
+		"wheel outside request body should not move its editor",
+	)
 }
 
 func TestUpdate_Mouse_RequestBodyPreviewShowsExpectedLinesWhileScrolling(t *testing.T) {
@@ -377,7 +408,12 @@ func TestUpdate_Mouse_RequestBodyPreviewShowsExpectedLinesWhileScrolling(t *test
 		})
 	}
 	afterUp := m.ViewRequestPaneForTest(90, 18)
-	assert.Contains(t, afterUp, "BODY_LINE_000", "scrolling up should reveal the first body line again")
+	assert.Contains(
+		t,
+		afterUp,
+		"BODY_LINE_000",
+		"scrolling up should reveal the first body line again",
+	)
 	assert.Equal(t, 0, m.RequestTextOffset())
 }
 
@@ -413,7 +449,12 @@ func TestUpdate_Keyboard_ResponseTextScrollsBesideHistoryPopup(t *testing.T) {
 		WithFocus(tui.ResponsePane)
 	_ = m.View()
 	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyDown})
-	assert.Greater(t, m.ResponseTextOffset(), 0, "plain Down should scroll text even with history popup visible")
+	assert.Greater(
+		t,
+		m.ResponseTextOffset(),
+		0,
+		"plain Down should scroll text even with history popup visible",
+	)
 	assert.Equal(t, 2, m.ExecCursor(), "plain Down should not navigate history")
 }
 
@@ -442,8 +483,20 @@ func responseHistoryMouseModel(t *testing.T, body string) tui.Model {
 	t.Helper()
 	m := resizedMouseUnitModel(t).
 		WithExecutions([]*domain.Execution{
-			{ID: "ex-0", RequestID: "req-1", StatusCode: 200, ResponseBody: body, ResponseHeaders: `{}`},
-			{ID: "ex-1", RequestID: "req-1", StatusCode: 200, ResponseBody: "older", ResponseHeaders: `{}`},
+			{
+				ID:              "ex-0",
+				RequestID:       "req-1",
+				StatusCode:      200,
+				ResponseBody:    body,
+				ResponseHeaders: `{}`,
+			},
+			{
+				ID:              "ex-1",
+				RequestID:       "req-1",
+				StatusCode:      200,
+				ResponseBody:    "older",
+				ResponseHeaders: `{}`,
+			},
 		}).
 		WithExecCursor(0).
 		WithActiveField(tui.NoneField).

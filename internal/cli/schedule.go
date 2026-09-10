@@ -141,15 +141,11 @@ func newScheduleRunDueCmd(st ScheduleStore, e *exec.Executor, now func() time.Ti
 					fmt.Fprintf(cmd.OutOrStdout(), "failed %s: %v\n", shortScheduleID(run.ID), err)
 					continue
 				}
-				activeEnvID, err := st.GetActiveEnvironment(cmd.Context(), req.CollectionID)
-				if err != nil {
-					err = fmt.Errorf("get active environment: %w", err)
-				}
 				var prepared *domain.Request
 				if err == nil {
 					var colEnv, globalEnv map[string]string
 					colEnv, globalEnv, err = exec.ResolveEnvVars(
-						cmd.Context(), st, activeEnvID, req.CollectionID,
+						cmd.Context(), st, req.CollectionID,
 					)
 					if err != nil {
 						err = fmt.Errorf("resolve environments: %w", err)

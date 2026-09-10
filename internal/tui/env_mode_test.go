@@ -221,7 +221,12 @@ func TestUpdate_EnvModal_TabsCycleAndCreateFromGlobal(t *testing.T) {
 
 func TestUpdate_EnvModal_UnsavedDraftSurvivesTabNavigation(t *testing.T) {
 	global := &domain.Environment{ID: "global", Name: "Global", Data: `{}`}
-	childDefault := &domain.Environment{ID: "default", CollectionID: col1, Name: "default", Data: `{}`}
+	childDefault := &domain.Environment{
+		ID:           "default",
+		CollectionID: col1,
+		Name:         "default",
+		Data:         `{}`,
+	}
 	reader := &fakeEnvReader{
 		global: global,
 		envs:   map[string]*domain.Environment{global.ID: global, childDefault.ID: childDefault},

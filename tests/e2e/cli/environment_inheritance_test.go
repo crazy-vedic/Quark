@@ -70,10 +70,24 @@ func seedNestedEnvironmentFixture(
 	fixture.rootActive = saveNamedEnvironment(t, st, fixture.root.ID, "root-dev", "dev", nil)
 	fixture.parentActive = saveNamedEnvironment(t, st, fixture.parent.ID, "parent-dev", "dev", nil)
 	fixture.childActive = saveNamedEnvironment(t, st, fixture.child.ID, "child-dev", "dev", nil)
-	rootIgnored := saveNamedEnvironment(t, st, fixture.root.ID, "root-prod", "prod", map[string]string{"shared": "wrong-root-selection"})
-	parentIgnored := saveNamedEnvironment(t, st, fixture.parent.ID, "parent-prod", "prod", map[string]string{"shared": "wrong-parent-selection"})
-	require.NoError(t, st.SetActiveEnvironment(ctx, fixture.root.ID, rootIgnored.ID))
-	require.NoError(t, st.SetActiveEnvironment(ctx, fixture.parent.ID, parentIgnored.ID))
+	_ = saveNamedEnvironment(
+		t,
+		st,
+		fixture.root.ID,
+		"root-prod",
+		"prod",
+		map[string]string{"shared": "wrong-root-selection"},
+	)
+	_ = saveNamedEnvironment(
+		t,
+		st,
+		fixture.parent.ID,
+		"parent-prod",
+		"prod",
+		map[string]string{"shared": "wrong-parent-selection"},
+	)
+	require.NoError(t, st.SetActiveEnvironment(ctx, fixture.root.ID, fixture.rootActive.ID))
+	require.NoError(t, st.SetActiveEnvironment(ctx, fixture.parent.ID, fixture.parentActive.ID))
 	require.NoError(t, st.SetActiveEnvironment(ctx, fixture.child.ID, fixture.childActive.ID))
 
 	fixture.request = &domain.Request{
@@ -100,7 +114,12 @@ func saveNamedEnvironment(
 	return environment
 }
 
-func saveEnvironmentVars(t *testing.T, st *store.Store, environment *domain.Environment, vars map[string]string) {
+func saveEnvironmentVars(
+	t *testing.T,
+	st *store.Store,
+	environment *domain.Environment,
+	vars map[string]string,
+) {
 	t.Helper()
 	environment.SetVars(vars)
 	require.NoError(t, st.SaveEnvironment(context.Background(), environment))
@@ -227,13 +246,50 @@ func TestE2E_CLIBinary_NestedInheritanceActiveVariantsAndReopen(t *testing.T) {
 	fixture := seedNestedEnvironmentFixture(t, st, srv.URL+
 		"/execute/{{shared}}?g={{g}}&rd={{rd}}&ra={{ra|rd}}&pd={{pd}}&pa={{pa|pd}}&cd={{cd}}&ca={{ca|cd}}&empty={{empty}}")
 
-	saveEnvironmentVars(t, st, fixture.global, map[string]string{"g": "global", "shared": "global", "empty": "global-nonempty"})
-	saveEnvironmentVars(t, st, fixture.rootDefault, map[string]string{"rd": "root-default", "shared": "root-default"})
-	saveEnvironmentVars(t, st, fixture.rootActive, map[string]string{"ra": "root-dev", "shared": "root-dev"})
-	saveEnvironmentVars(t, st, fixture.parentDefault, map[string]string{"pd": "parent-default", "shared": "parent-default"})
-	saveEnvironmentVars(t, st, fixture.parentActive, map[string]string{"pa": "parent-dev", "shared": "parent-dev"})
-	_ = saveNamedEnvironment(t, st, fixture.parent.ID, "parent-Dev", "Dev", map[string]string{"pa": "wrong-case", "shared": "wrong-case"})
-	saveEnvironmentVars(t, st, fixture.childDefault, map[string]string{"cd": "child-default", "shared": "child-default"})
+	saveEnvironmentVars(
+		t,
+		st,
+		fixture.global,
+		map[string]string{"g": "global", "shared": "global", "empty": "global-nonempty"},
+	)
+	saveEnvironmentVars(
+		t,
+		st,
+		fixture.rootDefault,
+		map[string]string{"rd": "root-default", "shared": "root-default"},
+	)
+	saveEnvironmentVars(
+		t,
+		st,
+		fixture.rootActive,
+		map[string]string{"ra": "root-dev", "shared": "root-dev"},
+	)
+	saveEnvironmentVars(
+		t,
+		st,
+		fixture.parentDefault,
+		map[string]string{"pd": "parent-default", "shared": "parent-default"},
+	)
+	saveEnvironmentVars(
+		t,
+		st,
+		fixture.parentActive,
+		map[string]string{"pa": "parent-dev", "shared": "parent-dev"},
+	)
+	_ = saveNamedEnvironment(
+		t,
+		st,
+		fixture.parent.ID,
+		"parent-Dev",
+		"Dev",
+		map[string]string{"pa": "wrong-case", "shared": "wrong-case"},
+	)
+	saveEnvironmentVars(
+		t,
+		st,
+		fixture.childDefault,
+		map[string]string{"cd": "child-default", "shared": "child-default"},
+	)
 	saveEnvironmentVars(t, st, fixture.childActive, map[string]string{
 		"ca": "child-dev", "shared": "child-dev", "empty": "", "token": "child-token",
 	})
@@ -289,16 +345,19 @@ func TestE2E_CLIBinary_NestedInheritanceActiveVariantsAndReopen(t *testing.T) {
 	require.NoError(t, st.Close())
 	assertDevChain(t, runAndObserve("Child/Probe"), "root-default")
 
-	// Selecting child default applies defaults once and ignores every ancestor's
-	// independently persisted active selection.
+	// Selecting child default changes only the child's layer; the parent keeps
+	// its independently persisted active environment.
 	st, err = store.New(dbPath, store.WithCacheSize(100))
 	require.NoError(t, err)
-	require.NoError(t, st.SetActiveEnvironment(context.Background(), fixture.child.ID, fixture.childDefault.ID))
+	require.NoError(
+		t,
+		st.SetActiveEnvironment(context.Background(), fixture.child.ID, fixture.childDefault.ID),
+	)
 	require.NoError(t, st.Close())
 	got := runAndObserve("Child/Probe")
 	assert.Equal(t, "/execute/child-default", got.path)
 	assert.Contains(t, got.query, "ra=root-default")
-	assert.Contains(t, got.query, "pa=parent-default")
+	assert.Contains(t, got.query, "pa=parent-dev")
 	assert.Contains(t, got.query, "ca=child-default")
 	assert.Contains(t, got.query, "empty=global-nonempty")
 	assert.Equal(t, "Bearer child-default", got.headers.Get("Authorization"))
@@ -306,15 +365,22 @@ func TestE2E_CLIBinary_NestedInheritanceActiveVariantsAndReopen(t *testing.T) {
 	// A child-only active name is valid; absent ancestor matches are skipped.
 	st, err = store.New(dbPath, store.WithCacheSize(100))
 	require.NoError(t, err)
-	staging := saveNamedEnvironment(t, st, fixture.child.ID, "child-staging", "staging", map[string]string{
-		"ca": "child-staging", "shared": "child-staging", "token": "staging-token",
-	})
+	staging := saveNamedEnvironment(
+		t,
+		st,
+		fixture.child.ID,
+		"child-staging",
+		"staging",
+		map[string]string{
+			"ca": "child-staging", "shared": "child-staging", "token": "staging-token",
+		},
+	)
 	require.NoError(t, st.SetActiveEnvironment(context.Background(), fixture.child.ID, staging.ID))
 	require.NoError(t, st.Close())
 	got = runAndObserve("Child/Probe")
 	assert.Equal(t, "/execute/child-staging", got.path)
 	assert.Contains(t, got.query, "ra=root-default")
-	assert.Contains(t, got.query, "pa=parent-default")
+	assert.Contains(t, got.query, "pa=parent-dev")
 	assert.Contains(t, got.query, "ca=child-staging")
 	assert.Equal(t, "Bearer staging-token", got.headers.Get("Authorization"))
 
@@ -334,7 +400,8 @@ func TestE2E_CLIBinary_ResolutionFailuresPreventDispatch(t *testing.T) {
 		corrupt   func(*testing.T, *store.Store, nestedEnvironmentFixture)
 	}{
 		{
-			name: "parent-owned active selected by child", wantError: "invalid environment ownership",
+			name:      "parent-owned active selected by child",
+			wantError: "invalid environment ownership",
 			corrupt: func(t *testing.T, st *store.Store, f nestedEnvironmentFixture) {
 				_, err := st.DB().ExecContext(context.Background(),
 					`UPDATE collection_active_env SET env_id = ? WHERE collection_id = ?`,
@@ -373,10 +440,12 @@ func TestE2E_CLIBinary_ResolutionFailuresPreventDispatch(t *testing.T) {
 	for _, tc := range corruptions {
 		t.Run(tc.name, func(t *testing.T) {
 			var hits atomic.Int32
-			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-				hits.Add(1)
-				w.WriteHeader(http.StatusNoContent)
-			}))
+			srv := httptest.NewServer(
+				http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+					hits.Add(1)
+					w.WriteHeader(http.StatusNoContent)
+				}),
+			)
 			t.Cleanup(srv.Close)
 
 			home := t.TempDir()
@@ -451,7 +520,14 @@ func TestE2E_CLIBinary_ScheduledNestedInheritanceAndFailurePersistence(t *testin
 	require.NoError(t, st.Close())
 
 	stdout, stderr, code = runQuarkWithHome(t, home, "schedule", "run-due")
-	require.Equal(t, 0, code, "individual scheduled failures are persisted: stdout=%s stderr=%s", stdout, stderr)
+	require.Equal(
+		t,
+		0,
+		code,
+		"individual scheduled failures are persisted: stdout=%s stderr=%s",
+		stdout,
+		stderr,
+	)
 	assert.Contains(t, stdout, "failed")
 	assert.Equal(t, int32(1), hits.Load(), "resolution failure must prevent network dispatch")
 
@@ -466,7 +542,10 @@ func TestE2E_CLIBinary_ScheduledNestedInheritanceAndFailurePersistence(t *testin
 }
 
 func TestE2E_OptionalExecutorResolver_ResolvesOnceAndBlocksOnFailure(t *testing.T) {
-	st, err := store.New(filepath.Join(t.TempDir(), "executor-resolver.db"), store.WithCacheSize(100))
+	st, err := store.New(
+		filepath.Join(t.TempDir(), "executor-resolver.db"),
+		store.WithCacheSize(100),
+	)
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, st.Close()) })
 	fixture := seedNestedEnvironmentFixture(t, st, "https://example.test/{{shared}}")
@@ -476,11 +555,7 @@ func TestE2E_OptionalExecutorResolver_ResolvesOnceAndBlocksOnFailure(t *testing.
 	var resolutions atomic.Int32
 	resolver := func(collectionID string) (map[string]string, map[string]string, error) {
 		resolutions.Add(1)
-		activeID, err := st.GetActiveEnvironment(context.Background(), collectionID)
-		if err != nil {
-			return nil, nil, err
-		}
-		return quarkexec.ResolveEnvVars(context.Background(), st, activeID, collectionID)
+		return quarkexec.ResolveEnvVars(context.Background(), st, collectionID)
 	}
 	executor := quarkexec.New(transport, quarkexec.WithVariableResolver(resolver))
 	_, err = executor.Execute(context.Background(), fixture.request)
@@ -495,7 +570,12 @@ func TestE2E_OptionalExecutorResolver_ResolvesOnceAndBlocksOnFailure(t *testing.
 	_, err = executor.Execute(context.Background(), fixture.request)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, quarkexec.ErrMissingDefaultEnvironment)
-	assert.Equal(t, int32(2), resolutions.Load(), "one additional attempt must resolve exactly once")
+	assert.Equal(
+		t,
+		int32(2),
+		resolutions.Load(),
+		"one additional attempt must resolve exactly once",
+	)
 	calls, _ = transport.snapshot()
 	assert.Zero(t, calls)
 }

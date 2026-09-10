@@ -106,7 +106,11 @@ Maps Postman collection items to Quark requests:
 
 ### Environment Import (`postman/environment.go`)
 
-Bulk export directories may include `.postman_environment.json` files. Mapped to Quark `Environment` entities with variable key→value pairs.
+Bulk export directories may include Postman environment files. Named Postman
+environments are copied to each imported root collection as selectable Quark
+environments because a bulk export does not associate an environment with one
+collection. Explicit Postman globals merge into Quark's canonical Global
+environment. Disabled and invalid variables are skipped with redacted warnings.
 
 ### Transactions
 
