@@ -334,7 +334,14 @@ func (s *Store) CountDescendants(
 	}
 	row := s.db.QueryRowContext(
 		ctx,
-		`WITH RECURSIVE tree(id) AS (SELECT id FROM collections WHERE id=? UNION ALL SELECT c.id FROM collections c JOIN tree t ON c.parent_id=t.id) SELECT (SELECT COUNT(*)-1 FROM tree), (SELECT COUNT(*) FROM requests WHERE collection_id IN (SELECT id FROM tree))`,
+		`WITH RECURSIVE tree(id) AS (
+			SELECT id FROM collections WHERE id = ?
+			UNION ALL
+			SELECT c.id FROM collections c JOIN tree t ON c.parent_id = t.id
+		)
+		SELECT
+			(SELECT COUNT(*) - 1 FROM tree),
+			(SELECT COUNT(*) FROM requests WHERE collection_id IN (SELECT id FROM tree))`,
 		id,
 	)
 	err = row.Scan(&collections, &requests)

@@ -812,7 +812,12 @@ func TestUpdate_CollectionPrompt_Delete_EntersPromptMode(t *testing.T) {
 		m.Mode(),
 		"pressing 'd' with a collection selected must enter prompt mode",
 	)
-	assert.Equal(t, tui.PromptDeleteConfirm, m.PromptMode(), "prompt mode must be PromptDeleteConfirm")
+	assert.Equal(
+		t,
+		tui.PromptDeleteConfirm,
+		m.PromptMode(),
+		"prompt mode must be PromptDeleteConfirm",
+	)
 }
 
 func TestUpdate_CollectionPrompt_Delete_CancelOnEscape(t *testing.T) {
@@ -842,7 +847,12 @@ func TestUpdate_CollectionPrompt_Delete_UsesConfiguredConfirmKey(t *testing.T) {
 
 	m = m.WithPromptInputValue("delete")
 	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyEnter})
-	assert.Equal(t, tui.CollectionPromptMode, m.Mode(), "confirmation should dispatch deletion asynchronously")
+	assert.Equal(
+		t,
+		tui.CollectionPromptMode,
+		m.Mode(),
+		"confirmation should dispatch deletion asynchronously",
+	)
 }
 
 func TestUpdate_CollectionPrompt_UsesConfiguredConfirmAndCancelBindings(t *testing.T) {
