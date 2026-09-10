@@ -373,7 +373,15 @@ func importSingleFile(
 			if child == nil {
 				child = &domain.Collection{Name: part, ParentID: parent.ID}
 				if err := tx.SaveCollection(ctx, child); err != nil {
-					return importStats{filePath: path, collectionName: name, err: err}, fmt.Errorf("save nested collection %q: %w", pathSoFar, err)
+					return importStats{
+							filePath:       path,
+							collectionName: name,
+							err:            err,
+						}, fmt.Errorf(
+							"save nested collection %q: %w",
+							pathSoFar,
+							err,
+						)
 				}
 			}
 			collectionsByPath[pathSoFar] = child
@@ -385,7 +393,14 @@ func importSingleFile(
 		ctx, tx, col.ID, result.CollectionVariables,
 	)
 	if err != nil {
-		return importStats{filePath: path, collectionName: name, err: err}, fmt.Errorf("save collection variables: %w", err)
+		return importStats{
+				filePath:       path,
+				collectionName: name,
+				err:            err,
+			}, fmt.Errorf(
+				"save collection variables: %w",
+				err,
+			)
 	}
 	result.Warnings = append(result.Warnings, variableWarnings...)
 	sort.Strings(result.Warnings)
@@ -417,7 +432,15 @@ func importSingleFile(
 			req.CollectionID = target.ID
 			if err := tx.SaveRequest(ctx, req); err != nil {
 				logger.Logf("save request failed name=%s err=%v", req.Name, err)
-				return importStats{filePath: path, collectionName: name, err: err}, fmt.Errorf("save request %q: %w", req.Name, err)
+				return importStats{
+						filePath:       path,
+						collectionName: name,
+						err:            err,
+					}, fmt.Errorf(
+						"save request %q: %w",
+						req.Name,
+						err,
+					)
 			}
 			imported++
 		}
@@ -478,7 +501,13 @@ func mergeCollectionVariablesIntoRootDefault(
 		value := incoming[key]
 		if existing, present := vars[key]; present {
 			if existing != value {
-				warnings = append(warnings, fmt.Sprintf("collection variable %q conflicts with root default; existing value kept", key))
+				warnings = append(
+					warnings,
+					fmt.Sprintf(
+						"collection variable %q conflicts with root default; existing value kept",
+						key,
+					),
+				)
 			}
 			continue
 		}
@@ -661,11 +690,20 @@ func importBulk(
 				if stat.err != nil || stat.collectionID == "" {
 					continue
 				}
-				imported, warnings, err := importParsedEnvironmentsForCollection(ctx, st, stat.collectionID, collectionEnvironments)
+				imported, warnings, err := importParsedEnvironmentsForCollection(
+					ctx,
+					st,
+					stat.collectionID,
+					collectionEnvironments,
+				)
 				envResult.imported += imported
 				envResult.warnings = append(envResult.warnings, warnings...)
 				if err != nil {
-					errMsg := fmt.Sprintf("%s: save standalone environments: %v", stat.collectionName, err)
+					errMsg := fmt.Sprintf(
+						"%s: save standalone environments: %v",
+						stat.collectionName,
+						err,
+					)
 					logger.Logf("%s", errMsg)
 					envResult.errors = append(envResult.errors, errMsg)
 				}
@@ -776,7 +814,15 @@ func mergeParsedEnvironmentsIntoGlobal(
 			value := file.vars[key]
 			if existing, present := vars[key]; present {
 				if existing != value {
-					warnings = append(warnings, fmt.Sprintf("%s: variable %q conflicts with %s; existing value kept", file.filename, key, sources[key]))
+					warnings = append(
+						warnings,
+						fmt.Sprintf(
+							"%s: variable %q conflicts with %s; existing value kept",
+							file.filename,
+							key,
+							sources[key],
+						),
+					)
 				}
 				continue
 			}
@@ -793,7 +839,11 @@ func mergeParsedEnvironmentsIntoGlobal(
 		logger.Logf("save merged global env failed: %v", err)
 		return warnings, err
 	}
-	logger.Logf("merged %d environment file(s) into Global, %d variables total", len(files), len(vars))
+	logger.Logf(
+		"merged %d environment file(s) into Global, %d variables total",
+		len(files),
+		len(vars),
+	)
 	return warnings, nil
 }
 
@@ -810,7 +860,9 @@ func parseEnvironmentsInDir(
 			return parsedEnvironmentResult{}
 		}
 		logger.Logf("no environment/ directory: %v", err)
-		return parsedEnvironmentResult{errors: []string{fmt.Sprintf("read environment directory: %v", err)}}
+		return parsedEnvironmentResult{
+			errors: []string{fmt.Sprintf("read environment directory: %v", err)},
+		}
 	}
 
 	sort.Slice(entries, func(i, j int) bool { return entries[i].Name() < entries[j].Name() })
@@ -842,7 +894,15 @@ func parseEnvironmentsInDir(
 		for _, warning := range warnings {
 			result.warnings = append(result.warnings, fmt.Sprintf("%s: %s", entry.Name(), warning))
 		}
-		result.files = append(result.files, parsedEnvironmentFile{filename: entry.Name(), name: pmEnv.Name, scope: pmEnv.Scope, vars: vars})
+		result.files = append(
+			result.files,
+			parsedEnvironmentFile{
+				filename: entry.Name(),
+				name:     pmEnv.Name,
+				scope:    pmEnv.Scope,
+				vars:     vars,
+			},
+		)
 	}
 	return result
 }

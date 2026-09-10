@@ -78,21 +78,42 @@ func LoadEnvironmentHierarchy(
 
 		collection, err := r.GetCollection(ctx, currentID)
 		if err != nil {
-			return nil, fmt.Errorf("%w: get collection %q: %w", ErrCollectionHierarchy, currentID, err)
+			return nil, fmt.Errorf(
+				"%w: get collection %q: %w",
+				ErrCollectionHierarchy,
+				currentID,
+				err,
+			)
 		}
 		if collection == nil || collection.ID != currentID {
-			return nil, fmt.Errorf("%w: lookup for %q returned inconsistent collection", ErrCollectionHierarchy, currentID)
+			return nil, fmt.Errorf(
+				"%w: lookup for %q returned inconsistent collection",
+				ErrCollectionHierarchy,
+				currentID,
+			)
 		}
 		environments, err := r.ListCollectionEnvironments(ctx, currentID)
 		if err != nil {
-			return nil, fmt.Errorf("%w: list environments for collection %q: %w", ErrEnvironmentResolution, currentID, err)
+			return nil, fmt.Errorf(
+				"%w: list environments for collection %q: %w",
+				ErrEnvironmentResolution,
+				currentID,
+				err,
+			)
 		}
 		for _, environment := range environments {
 			if environment == nil || environment.CollectionID != currentID {
-				return nil, fmt.Errorf("%w: collection %q returned an environment owned by another scope", ErrEnvironmentOwnership, currentID)
+				return nil, fmt.Errorf(
+					"%w: collection %q returned an environment owned by another scope",
+					ErrEnvironmentOwnership,
+					currentID,
+				)
 			}
 		}
-		reversed = append(reversed, EnvironmentScope{Collection: collection, Environments: environments})
+		reversed = append(
+			reversed,
+			EnvironmentScope{Collection: collection, Environments: environments},
+		)
 		currentID = collection.ParentID
 	}
 
@@ -430,27 +451,51 @@ func ResolveEnvVars(
 		}
 		defaults := byName["default"]
 		if len(defaults) == 0 {
-			return nil, nil, fmt.Errorf("%w: collection %q", ErrMissingDefaultEnvironment, scope.Collection.ID)
+			return nil, nil, fmt.Errorf(
+				"%w: collection %q",
+				ErrMissingDefaultEnvironment,
+				scope.Collection.ID,
+			)
 		}
 		if len(defaults) > 1 {
-			return nil, nil, fmt.Errorf("%w: duplicate default environments in collection %q", ErrEnvironmentResolution, scope.Collection.ID)
+			return nil, nil, fmt.Errorf(
+				"%w: duplicate default environments in collection %q",
+				ErrEnvironmentResolution,
+				scope.Collection.ID,
+			)
 		}
 		if err := mergeEnvironmentVars(colEnv, defaults[0], scope.Collection.ID); err != nil {
 			return nil, nil, err
 		}
 		activeID, activeErr := r.GetActiveEnvironment(ctx, scope.Collection.ID)
 		if activeErr != nil {
-			return nil, nil, fmt.Errorf("%w: read active environment for collection %q: %w", ErrEnvironmentResolution, scope.Collection.ID, activeErr)
+			return nil, nil, fmt.Errorf(
+				"%w: read active environment for collection %q: %w",
+				ErrEnvironmentResolution,
+				scope.Collection.ID,
+				activeErr,
+			)
 		}
 		if activeID == "" {
 			continue
 		}
 		active, activeErr := r.GetEnvironment(ctx, activeID)
 		if activeErr != nil {
-			return nil, nil, fmt.Errorf("%w: read active environment %q for collection %q: %w", ErrEnvironmentResolution, activeID, scope.Collection.ID, activeErr)
+			return nil, nil, fmt.Errorf(
+				"%w: read active environment %q for collection %q: %w",
+				ErrEnvironmentResolution,
+				activeID,
+				scope.Collection.ID,
+				activeErr,
+			)
 		}
 		if active == nil || active.CollectionID != scope.Collection.ID {
-			return nil, nil, fmt.Errorf("%w: active environment %q does not belong to collection %q", ErrEnvironmentOwnership, activeID, scope.Collection.ID)
+			return nil, nil, fmt.Errorf(
+				"%w: active environment %q does not belong to collection %q",
+				ErrEnvironmentOwnership,
+				activeID,
+				scope.Collection.ID,
+			)
 		}
 		if active.Name != "default" {
 			if err := mergeEnvironmentVars(colEnv, active, scope.Collection.ID); err != nil {
@@ -462,10 +507,20 @@ func ResolveEnvVars(
 	return colEnv, globalEnv, nil
 }
 
-func mergeEnvironmentVars(dst map[string]string, environment *domain.Environment, collectionID string) error {
+func mergeEnvironmentVars(
+	dst map[string]string,
+	environment *domain.Environment,
+	collectionID string,
+) error {
 	vars, err := environment.DecodeVars()
 	if err != nil {
-		return fmt.Errorf("%w: decode environment %q in collection %q: %w", ErrEnvironmentResolution, environment.Name, collectionID, err)
+		return fmt.Errorf(
+			"%w: decode environment %q in collection %q: %w",
+			ErrEnvironmentResolution,
+			environment.Name,
+			collectionID,
+			err,
+		)
 	}
 	for key, value := range vars {
 		dst[key] = value
