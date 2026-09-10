@@ -64,7 +64,8 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 				m.bodyTextarea, cmd = m.bodyTextarea.Update(msg)
 				return m, cmd
 			}
-			if m.activeField == noneField && m.requestBodyPreviewRect(layout).contains(msg.X, msg.Y) {
+			if m.activeField == noneField &&
+				m.requestBodyPreviewRect(layout).contains(msg.X, msg.Y) {
 				timingSpan := m.timing.Track("tui.handle_request_wheel")
 				defer timingSpan.Done()
 				m.requestText.SetDebugLog(m.debugLog, "request")
@@ -79,7 +80,12 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 					delta = -3
 				}
 				if delta != 0 {
-					m.requestText.Scroll(delta, max(1, r.right-r.left+1), max(1, r.bottom-r.top+1), timingSpan)
+					m.requestText.Scroll(
+						delta,
+						max(1, r.right-r.left+1),
+						max(1, r.bottom-r.top+1),
+						timingSpan,
+					)
 				}
 				return m, nil
 			}
@@ -133,7 +139,8 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 
 func (m *Model) isDoubleTextClick(msg tea.MouseMsg, source string) bool {
 	now := m.now()
-	withinTime := m.lastTextClickSource == source && !m.lastTextClick.IsZero() && now.Sub(m.lastTextClick) <= viewerDoubleClickWindow*time.Millisecond
+	withinTime := m.lastTextClickSource == source && !m.lastTextClick.IsZero() &&
+		now.Sub(m.lastTextClick) <= viewerDoubleClickWindow*time.Millisecond
 	withinCell := viewerAbs(msg.X-m.lastTextClickX) <= 1 && viewerAbs(msg.Y-m.lastTextClickY) <= 1
 	m.lastTextClick = now
 	m.lastTextClickX = msg.X
@@ -180,7 +187,12 @@ func (m Model) requestBodyPreviewRect(layout normalLayout) layoutRect {
 	}
 	ll := m.requestPaneLineLayout(layout)
 	content := layout.requestContentRect()
-	return layoutRect{left: content.left, top: ll.editorContentY, right: content.right, bottom: ll.contentBottom}
+	return layoutRect{
+		left:   content.left,
+		top:    ll.editorContentY,
+		right:  content.right,
+		bottom: ll.contentBottom,
+	}
 }
 
 func (m Model) handleResponseClick(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
@@ -271,7 +283,12 @@ func (m Model) responseTextRect(layout normalLayout) layoutRect {
 		popupWidth := lipgloss.Width(popup)
 		bodyWidth := content.right - content.left + 1 - popupWidth - 4
 		if bodyWidth >= 18 {
-			return layoutRect{left: content.left, top: top, right: content.left + bodyWidth - 1, bottom: bottom}
+			return layoutRect{
+				left:   content.left,
+				top:    top,
+				right:  content.left + bodyWidth - 1,
+				bottom: bottom,
+			}
 		}
 		popupRows := lipgloss.Height(popup)
 		if popupRows < bodyLines {
@@ -448,8 +465,7 @@ func (m Model) toggleSidebarCollectionExpand(colIndex int) (Model, tea.Cmd) {
 
 	colID := m.collections[colIndex].ID
 	if m.expanded[colID] {
-		m.expanded[colID] = false
-		delete(m.collectionRequests, colID)
+		m.collapseCollectionSubtree(colID)
 		return m, nil
 	}
 

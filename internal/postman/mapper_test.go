@@ -106,7 +106,11 @@ func TestMapper_URLEncodedBody(t *testing.T) {
 	result, err := imp.Parse(strings.NewReader(jsonBody))
 	assert.NoError(t, err)
 	assert.Empty(t, result.Warnings)
-	assert.Equal(t, "grant_type=client+credentials&client_id={{client_id}}", result.Requests[0].Body)
+	assert.Equal(
+		t,
+		"grant_type=client+credentials&client_id={{client_id}}",
+		result.Requests[0].Body,
+	)
 	assert.Contains(t, result.Requests[0].Headers, `application/x-www-form-urlencoded`)
 }
 

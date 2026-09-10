@@ -38,7 +38,11 @@ type pasteImporter struct{ calls int }
 
 func (p *pasteImporter) Parse(_ io.Reader) (*curl.ImportResult, error) {
 	p.calls++
-	return &curl.ImportResult{Method: http.MethodPost, URL: "https://example.com", Headers: make(http.Header)}, nil
+	return &curl.ImportResult{
+		Method:  http.MethodPost,
+		URL:     "https://example.com",
+		Headers: make(http.Header),
+	}, nil
 }
 
 type importedCertificateManager struct{ cfg config.Config }
@@ -100,8 +104,16 @@ func TestCompleteClipboardValueParsesExactIAMCommand(t *testing.T) {
 	require.True(t, ok)
 	require.NotNil(t, m.importPreview)
 	require.Equal(t, http.MethodPost, m.importPreview.Method)
-	require.Equal(t, "https://access.dev.wealthcareadmin.com/access/connect/token", m.importPreview.URL)
-	require.Equal(t, "application/x-www-form-urlencoded", m.importPreview.Headers.Get("Content-Type"))
+	require.Equal(
+		t,
+		"https://access.dev.wealthcareadmin.com/access/connect/token",
+		m.importPreview.URL,
+	)
+	require.Equal(
+		t,
+		"application/x-www-form-urlencoded",
+		m.importPreview.Headers.Get("Content-Type"),
+	)
 	require.Contains(t, m.importPreview.Body, "user_id=3n1kl3DpdbiW3OANNDq6PA%3D%3D")
 	require.Contains(t, m.importPreview.Body, "scope=mbi_api%20offline_access")
 	require.Equal(t, "P12", m.importPreview.Certificate.Type)
@@ -122,7 +134,9 @@ func TestImportInputEnterInsertsNewlineWithoutPartialParse(t *testing.T) {
 
 func TestImportModalAllowsUppercaseIInCommandAndSaveName(t *testing.T) {
 	m := New(Deps{Importer: curl.NewImporter()}).openCurlImport()
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("curl https://example.com/I")})
+	updated, _ := m.Update(
+		tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("curl https://example.com/I")},
+	)
 	m = requireImportModel(t, updated)
 	require.Contains(t, m.importInput.Value(), "/I")
 
@@ -163,7 +177,11 @@ func TestImportConfirmationPersistsHeadersBodyAndCertificate(t *testing.T) {
 	cmd()
 
 	require.NotNil(t, writer.request)
-	require.JSONEq(t, `{"Content-Type":["application/x-www-form-urlencoded"],"X-Tag":["one","two"]}`, writer.request.Headers)
+	require.JSONEq(
+		t,
+		`{"Content-Type":["application/x-www-form-urlencoded"],"X-Tag":["one","two"]}`,
+		writer.request.Headers,
+	)
 	require.Equal(t, "user_id=abc&grant_type=Cert", writer.request.Body)
 	require.Len(t, manager.cfg.HTTP.ClientCertificates, 1)
 	cert := manager.cfg.HTTP.ClientCertificates[0]

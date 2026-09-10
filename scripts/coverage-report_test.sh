@@ -268,8 +268,8 @@ EOF
 
     # shellcheck disable=SC1090
     source "${state_dir}/state.env"
-    assert_eq "${COMMIT_SHA}" "abcde" \
-        "report title should show the configured commit SHA as exactly five chars"
+    assert_eq "${COMMIT_SHA}" "abcdef1" \
+        "report title should show the configured commit SHA as exactly seven chars"
     assert_eq "${COMMIT_URL}" "https://github.com/crazy-vedic/Quark/commit/abcdef1234567890" \
         "report title commit link should point at the configured commit SHA"
 

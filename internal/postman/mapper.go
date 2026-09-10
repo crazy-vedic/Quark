@@ -34,7 +34,10 @@ func ImportCollection(c *Collection) *ImportResult {
 		value := variable.Value.String()
 		if existing, duplicate := result.CollectionVariables[variable.Key]; duplicate {
 			if existing != value {
-				result.Warnings = append(result.Warnings, fmt.Sprintf("duplicate collection variable %q ignored", variable.Key))
+				result.Warnings = append(
+					result.Warnings,
+					fmt.Sprintf("duplicate collection variable %q ignored", variable.Key),
+				)
 			}
 			continue
 		}

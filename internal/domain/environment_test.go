@@ -33,7 +33,11 @@ func TestEnvironment_DecodeVars_Strict(t *testing.T) {
 		want map[string]string
 	}{
 		{name: "empty object", data: `{}`, want: map[string]string{}},
-		{name: "strings", data: `{"unicode":"नमस्ते","empty":""}`, want: map[string]string{"unicode": "नमस्ते", "empty": ""}},
+		{
+			name: "strings",
+			data: `{"unicode":"नमस्ते","empty":""}`,
+			want: map[string]string{"unicode": "नमस्ते", "empty": ""},
+		},
 		{name: "empty input", data: ""},
 		{name: "malformed", data: `{`},
 		{name: "array", data: `[]`},

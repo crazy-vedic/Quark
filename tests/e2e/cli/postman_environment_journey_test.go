@@ -73,7 +73,9 @@ func TestE2E_PostmanBulkImport_CompleteEnvironmentJourney(t *testing.T) {
 					"name": "Probe",
 					"request": map[string]any{
 						"method": "GET",
-						"url":    map[string]any{"raw": "{{base_url}}/postman/{{shared}}?number={{number}}&flag={{flag}}&nil={{nil_value}}&duplicate={{duplicate}}&global={{env_first}}&root={{root_only}}&parent={{parent_only}}&child={{child_only}}"},
+						"url": map[string]any{
+							"raw": "{{base_url}}/postman/{{shared}}?number={{number}}&flag={{flag}}&nil={{nil_value}}&duplicate={{duplicate}}&global={{env_first}}&root={{root_only}}&parent={{parent_only}}&child={{child_only}}",
+						},
 						"header": []map[string]any{{"key": "X-Shared", "value": "{{shared}}"}},
 					},
 				}},
@@ -89,7 +91,11 @@ func TestE2E_PostmanBulkImport_CompleteEnvironmentJourney(t *testing.T) {
 			{"key": "identical", "value": "same-value", "enabled": true},
 			{"key": "duplicate_in_file", "value": "first-within-file-secret", "enabled": true},
 			{"key": "duplicate_in_file", "value": "later-within-file-secret", "enabled": true},
-			{"key": "disabled_environment", "value": "disabled-environment-secret", "enabled": false},
+			{
+				"key":     "disabled_environment",
+				"value":   "disabled-environment-secret",
+				"enabled": false,
+			},
 			{"key": "", "value": "empty-environment-key-secret", "enabled": true},
 		},
 	})
@@ -101,10 +107,17 @@ func TestE2E_PostmanBulkImport_CompleteEnvironmentJourney(t *testing.T) {
 		},
 	})
 	writeJSONFile(t, filepath.Join(environmentDir, "c-unknown.json"), map[string]any{
-		"id": "c", "name": "C Unknown", "scope": "future-scope",
-		"values": []map[string]any{{"key": "unknown_scope_key", "value": "unknown-scope-value", "enabled": true}},
+		"id":    "c",
+		"name":  "C Unknown",
+		"scope": "future-scope",
+		"values": []map[string]any{
+			{"key": "unknown_scope_key", "value": "unknown-scope-value", "enabled": true},
+		},
 	})
-	require.NoError(t, os.WriteFile(filepath.Join(environmentDir, "z-malformed.json"), []byte(`{"name":`), 0o600))
+	require.NoError(
+		t,
+		os.WriteFile(filepath.Join(environmentDir, "z-malformed.json"), []byte(`{"name":`), 0o600),
+	)
 
 	stdout, stderr, code := runQuarkWithHome(t, home, "import-postman", exportDir)
 	assert.NotEqual(t, 0, code, "malformed environment must make the final result nonzero")
@@ -112,7 +125,6 @@ func TestE2E_PostmanBulkImport_CompleteEnvironmentJourney(t *testing.T) {
 	assert.Contains(t, combined, "Imported API")
 	assert.Contains(t, combined, "z-malformed.json")
 	assert.Contains(t, combined, "environment error")
-	assert.Contains(t, combined, `variable "env_first"`)
 	assert.Contains(t, combined, `duplicate collection variable "duplicate"`)
 	assert.Contains(t, combined, "empty key")
 	for _, secret := range []string{
@@ -144,9 +156,17 @@ func TestE2E_PostmanBulkImport_CompleteEnvironmentJourney(t *testing.T) {
 	assert.NotContains(t, rootDefault.Vars(), "")
 
 	for _, collection := range []*domain.Collection{parent, child} {
-		childDefault, getErr := st.GetEnvironmentByName(context.Background(), collection.ID, "default")
+		childDefault, getErr := st.GetEnvironmentByName(
+			context.Background(),
+			collection.ID,
+			"default",
+		)
 		require.NoError(t, getErr)
-		assert.Empty(t, childDefault.Vars(), "root collection variables must not be duplicated into descendants")
+		assert.Empty(
+			t,
+			childDefault.Vars(),
+			"root collection variables must not be duplicated into descendants",
+		)
 	}
 
 	global, err = st.GetGlobalEnvironment(context.Background())
@@ -154,12 +174,37 @@ func TestE2E_PostmanBulkImport_CompleteEnvironmentJourney(t *testing.T) {
 	globalVars := global.Vars()
 	assert.Equal(t, "local-existing-secret", globalVars["existing"])
 	assert.Equal(t, "same-value", globalVars["identical"])
-	assert.Equal(t, "first-environment-secret", globalVars["env_first"])
-	assert.Equal(t, "first-within-file-secret", globalVars["duplicate_in_file"])
-	assert.Equal(t, "unicode-value", globalVars["unicode_变量"])
-	assert.Equal(t, "unknown-scope-value", globalVars["unknown_scope_key"])
-	assert.NotContains(t, globalVars, "disabled_environment")
-	assert.NotContains(t, globalVars, "")
+	assert.Equal(
+		t,
+		"later-environment-secret",
+		globalVars["env_first"],
+		"explicit Postman globals retain global scope",
+	)
+
+	postmanA, err := st.GetEnvironmentByName(context.Background(), root.ID, "A Environment")
+	require.NoError(t, err)
+	assert.Equal(t, "first-environment-secret", postmanA.Vars()["env_first"])
+	assert.Equal(t, "first-within-file-secret", postmanA.Vars()["duplicate_in_file"])
+	assert.NotContains(t, postmanA.Vars(), "disabled_environment")
+	assert.NotContains(t, postmanA.Vars(), "")
+	assert.Equal(
+		t,
+		"unicode-value",
+		globalVars["unicode_变量"],
+		"explicit Postman globals retain global scope",
+	)
+	postmanC, err := st.GetEnvironmentByName(context.Background(), root.ID, "C Unknown")
+	require.NoError(t, err)
+	assert.Equal(t, "unknown-scope-value", postmanC.Vars()["unknown_scope_key"])
+	for _, collection := range []*domain.Collection{parent, child} {
+		_, getErr := st.GetEnvironmentByName(context.Background(), collection.ID, "A Environment")
+		assert.ErrorIs(
+			t,
+			getErr,
+			store.ErrNotFound,
+			"Postman environments belong to the imported root and inherit to descendants",
+		)
+	}
 
 	var globalRows, environmentRows int
 	require.NoError(t, st.DB().QueryRowContext(context.Background(),
@@ -167,25 +212,70 @@ func TestE2E_PostmanBulkImport_CompleteEnvironmentJourney(t *testing.T) {
 	require.NoError(t, st.DB().QueryRowContext(context.Background(),
 		`SELECT COUNT(*) FROM environments`).Scan(&environmentRows))
 	assert.Equal(t, 1, globalRows)
-	assert.Equal(t, 4, environmentRows, "standalone Postman environments must not create tabs or rows")
+	assert.Equal(
+		t,
+		6,
+		environmentRows,
+		"two named Postman environments must be selectable on the imported root",
+	)
 
 	parentDefault, err := st.GetEnvironmentByName(context.Background(), parent.ID, "default")
 	require.NoError(t, err)
 	childDefault, err := st.GetEnvironmentByName(context.Background(), child.ID, "default")
 	require.NoError(t, err)
-	parentDefault.SetVars(map[string]string{"parent_only": "parent-default-only", "shared": "parent-default"})
-	childDefault.SetVars(map[string]string{"child_only": "child-default-only", "shared": "child-default"})
+	parentDefault.SetVars(
+		map[string]string{"parent_only": "parent-default-only", "shared": "parent-default"},
+	)
+	childDefault.SetVars(
+		map[string]string{"child_only": "child-default-only", "shared": "child-default"},
+	)
 	require.NoError(t, st.SaveEnvironment(context.Background(), parentDefault))
 	require.NoError(t, st.SaveEnvironment(context.Background(), childDefault))
-	rootDev := saveNamedEnvironment(t, st, root.ID, "import-root-dev", "dev", map[string]string{"shared": "root-dev"})
-	parentDev := saveNamedEnvironment(t, st, parent.ID, "import-parent-dev", "dev", map[string]string{"shared": "parent-dev"})
-	childDev := saveNamedEnvironment(t, st, child.ID, "import-child-dev", "dev", map[string]string{"shared": "child-dev"})
-	rootOther := saveNamedEnvironment(t, st, root.ID, "import-root-other", "other", map[string]string{"shared": "wrong-root-active"})
-	parentOther := saveNamedEnvironment(t, st, parent.ID, "import-parent-other", "other", map[string]string{"shared": "wrong-parent-active"})
-	require.NoError(t, st.SetActiveEnvironment(context.Background(), root.ID, rootOther.ID))
+	rootDev := saveNamedEnvironment(
+		t,
+		st,
+		root.ID,
+		"import-root-dev",
+		"dev",
+		map[string]string{"shared": "root-dev"},
+	)
+	parentDev := saveNamedEnvironment(
+		t,
+		st,
+		parent.ID,
+		"import-parent-dev",
+		"dev",
+		map[string]string{"shared": "parent-dev"},
+	)
+	childDev := saveNamedEnvironment(
+		t,
+		st,
+		child.ID,
+		"import-child-dev",
+		"dev",
+		map[string]string{"shared": "child-dev"},
+	)
+	rootOther := saveNamedEnvironment(
+		t,
+		st,
+		root.ID,
+		"import-root-other",
+		"other",
+		map[string]string{"shared": "wrong-root-active"},
+	)
+	parentOther := saveNamedEnvironment(
+		t,
+		st,
+		parent.ID,
+		"import-parent-other",
+		"other",
+		map[string]string{"shared": "wrong-parent-active"},
+	)
+	require.NoError(t, st.SetActiveEnvironment(context.Background(), root.ID, postmanA.ID))
 	require.NoError(t, st.SetActiveEnvironment(context.Background(), parent.ID, parentOther.ID))
 	require.NoError(t, st.SetActiveEnvironment(context.Background(), child.ID, childDev.ID))
 	_ = rootDev
+	_ = rootOther
 	_ = parentDev
 	require.NoError(t, st.Close())
 
@@ -219,11 +309,55 @@ func TestE2E_PostmanCollectionVariables_DuplicateActions(t *testing.T) {
 		wantRequests int
 		wantRoots    int
 	}{
-		{name: "new", action: "duplicate", targetName: "API", wantConflict: "import-secret", wantAdded: "added-secret", wantRequests: 1, wantRoots: 1},
-		{name: "duplicate", action: "duplicate", seedExisting: true, targetName: "API 1", wantConflict: "import-secret", wantAdded: "added-secret", wantRequests: 1, wantRoots: 2},
-		{name: "replace", action: "replace", seedExisting: true, targetName: "API", wantConflict: "import-secret", wantAdded: "added-secret", wantRequests: 1, wantRoots: 1},
-		{name: "merge", action: "merge", seedExisting: true, targetName: "API", wantConflict: "local-secret", wantAdded: "added-secret", wantRequests: 1, wantRoots: 1},
-		{name: "skip", action: "skip", seedExisting: true, targetName: "API", wantConflict: "local-secret", wantAdded: "", wantRequests: 0, wantRoots: 1},
+		{
+			name:         "new",
+			action:       "duplicate",
+			targetName:   "API",
+			wantConflict: "import-secret",
+			wantAdded:    "added-secret",
+			wantRequests: 1,
+			wantRoots:    1,
+		},
+		{
+			name:         "duplicate",
+			action:       "duplicate",
+			seedExisting: true,
+			targetName:   "API 1",
+			wantConflict: "import-secret",
+			wantAdded:    "added-secret",
+			wantRequests: 1,
+			wantRoots:    2,
+		},
+		{
+			name:         "replace",
+			action:       "replace",
+			seedExisting: true,
+			targetName:   "API",
+			wantConflict: "import-secret",
+			wantAdded:    "added-secret",
+			wantRequests: 1,
+			wantRoots:    1,
+		},
+		{
+			name:         "merge",
+			action:       "merge",
+			seedExisting: true,
+			targetName:   "API",
+			wantConflict: "local-secret",
+			wantAdded:    "added-secret",
+			wantRequests: 1,
+			wantRoots:    1,
+		},
+		{
+			name:         "skip",
+			action:       "skip",
+			seedExisting: true,
+			targetName:   "API",
+			wantConflict: "local-secret",
+			wantAdded:    "",
+			wantRequests: 0,
+			wantRoots:    1,
+		},
 	}
 
 	for _, tc := range actions {
@@ -235,27 +369,49 @@ func TestE2E_PostmanCollectionVariables_DuplicateActions(t *testing.T) {
 			if tc.seedExisting {
 				existing := &domain.Collection{ID: "existing-api", Name: "API"}
 				require.NoError(t, st.SaveCollection(context.Background(), existing))
-				defaultEnvironment, getErr := st.GetEnvironmentByName(context.Background(), existing.ID, "default")
+				defaultEnvironment, getErr := st.GetEnvironmentByName(
+					context.Background(),
+					existing.ID,
+					"default",
+				)
 				require.NoError(t, getErr)
-				defaultEnvironment.SetVars(map[string]string{"conflict": "local-secret", "identical": "same-value"})
+				defaultEnvironment.SetVars(
+					map[string]string{"conflict": "local-secret", "identical": "same-value"},
+				)
 				require.NoError(t, st.SaveEnvironment(context.Background(), defaultEnvironment))
 			}
 			require.NoError(t, st.Close())
 
 			collectionFile := filepath.Join(t.TempDir(), "api.postman_collection.json")
 			writeJSONFile(t, collectionFile, map[string]any{
-				"info": map[string]any{"name": "API", "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"},
+				"info": map[string]any{
+					"name":   "API",
+					"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+				},
 				"variable": []map[string]any{
 					{"key": "conflict", "value": "import-secret"},
 					{"key": "identical", "value": "same-value"},
 					{"key": "added", "value": "added-secret"},
 				},
-				"item": []map[string]any{{
-					"name": "Request", "request": map[string]any{"method": "GET", "url": "https://example.test/{{added}}"},
-				}},
+				"item": []map[string]any{
+					{
+						"name": "Request",
+						"request": map[string]any{
+							"method": "GET",
+							"url":    "https://example.test/{{added}}",
+						},
+					},
+				},
 			})
 
-			stdout, stderr, code := runQuarkWithHome(t, home, "import-postman", collectionFile, "--on-duplicate", tc.action)
+			stdout, stderr, code := runQuarkWithHome(
+				t,
+				home,
+				"import-postman",
+				collectionFile,
+				"--on-duplicate",
+				tc.action,
+			)
 			require.Equal(t, 0, code, "stdout=%s stderr=%s", stdout, stderr)
 			combined := stdout + stderr
 			assert.NotContains(t, combined, "local-secret")
@@ -272,7 +428,11 @@ func TestE2E_PostmanCollectionVariables_DuplicateActions(t *testing.T) {
 			assert.Len(t, paths, tc.wantRoots)
 			target := paths[tc.targetName]
 			require.NotNil(t, target)
-			defaultEnvironment, getErr := st.GetEnvironmentByName(context.Background(), target.ID, "default")
+			defaultEnvironment, getErr := st.GetEnvironmentByName(
+				context.Background(),
+				target.ID,
+				"default",
+			)
 			require.NoError(t, getErr)
 			assert.Equal(t, tc.wantConflict, defaultEnvironment.Vars()["conflict"])
 			if tc.wantAdded == "" {

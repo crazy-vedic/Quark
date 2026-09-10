@@ -254,7 +254,11 @@ func (c *Collector) ReportTree(w io.Writer, limit int) {
 }
 
 func cloneNode(src *node) *node {
-	dst := &node{name: src.name, sample: src.sample, children: make(map[string]*node, len(src.children))}
+	dst := &node{
+		name:     src.name,
+		sample:   src.sample,
+		children: make(map[string]*node, len(src.children)),
+	}
 	for name, child := range src.children {
 		dst.children[name] = cloneNode(child)
 	}

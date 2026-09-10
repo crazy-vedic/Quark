@@ -984,18 +984,9 @@ func interpolateScheduledRequest(
 	if envReader == nil {
 		return req, nil
 	}
-	activeEnvID := activeEnv[req.CollectionID]
-	if activeEnvStore != nil {
-		persistedID, err := activeEnvStore.GetActiveEnvironment(
-			ctx,
-			req.CollectionID,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("get active environment: %w", err)
-		}
-		activeEnvID = persistedID
-	}
-	colEnv, globalEnv, err := exec.ResolveEnvVars(ctx, envReader, activeEnvID, req.CollectionID)
+	_ = activeEnvStore // Resolution reads every hierarchy level directly from envReader.
+	_ = activeEnv
+	colEnv, globalEnv, err := exec.ResolveEnvVars(ctx, envReader, req.CollectionID)
 	if err != nil {
 		return nil, fmt.Errorf("resolve environments: %w", err)
 	}

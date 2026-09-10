@@ -30,7 +30,8 @@ func TestImporter_ExactIAMMTLSCommand(t *testing.T) {
 	assert.Equal(t, http.MethodPost, result.Method)
 	assert.Equal(t, "https://access.dev.wealthcareadmin.com/access/connect/token", result.URL)
 	assert.Equal(t, "application/x-www-form-urlencoded", result.Headers.Get("Content-Type"))
-	assert.Equal(t,
+	assert.Equal(
+		t,
 		"user_id=3n1kl3DpdbiW3OANNDq6PA%3D%3D&grant_type=Cert&client_id=dapr_cron_job&scope=mbi_api%20offline_access%20bensoft_api%20openid%20profile",
 		result.Body,
 	)
@@ -88,21 +89,37 @@ func TestImporter_JSONGetAndPlatformContinuations(t *testing.T) {
 		command string
 		check   func(*testing.T, *curl.ImportResult)
 	}{
-		{"json", `curl --json '{"ok":true}' https://example.com`, func(t *testing.T, result *curl.ImportResult) {
-			assert.Equal(t, "application/json", result.Headers.Get("Content-Type"))
-			assert.Equal(t, "application/json", result.Headers.Get("Accept"))
-		}},
-		{"get data", `curl -G --data-urlencode 'q=two words' https://example.com/search`, func(t *testing.T, result *curl.ImportResult) {
-			assert.Equal(t, http.MethodGet, result.Method)
-			assert.Equal(t, "https://example.com/search?q=two%20words", result.URL)
-			assert.Empty(t, result.Body)
-		}},
-		{"PowerShell", "curl https://example.com `\r\n --header 'X-Shell: powershell'", func(t *testing.T, result *curl.ImportResult) {
-			assert.Equal(t, "powershell", result.Headers.Get("X-Shell"))
-		}},
-		{"cmd", "curl https://example.com ^\r\n --header \"X-Shell: cmd\"", func(t *testing.T, result *curl.ImportResult) {
-			assert.Equal(t, "cmd", result.Headers.Get("X-Shell"))
-		}},
+		{
+			"json",
+			`curl --json '{"ok":true}' https://example.com`,
+			func(t *testing.T, result *curl.ImportResult) {
+				assert.Equal(t, "application/json", result.Headers.Get("Content-Type"))
+				assert.Equal(t, "application/json", result.Headers.Get("Accept"))
+			},
+		},
+		{
+			"get data",
+			`curl -G --data-urlencode 'q=two words' https://example.com/search`,
+			func(t *testing.T, result *curl.ImportResult) {
+				assert.Equal(t, http.MethodGet, result.Method)
+				assert.Equal(t, "https://example.com/search?q=two%20words", result.URL)
+				assert.Empty(t, result.Body)
+			},
+		},
+		{
+			"PowerShell",
+			"curl https://example.com `\r\n --header 'X-Shell: powershell'",
+			func(t *testing.T, result *curl.ImportResult) {
+				assert.Equal(t, "powershell", result.Headers.Get("X-Shell"))
+			},
+		},
+		{
+			"cmd",
+			"curl https://example.com ^\r\n --header \"X-Shell: cmd\"",
+			func(t *testing.T, result *curl.ImportResult) {
+				assert.Equal(t, "cmd", result.Headers.Get("X-Shell"))
+			},
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

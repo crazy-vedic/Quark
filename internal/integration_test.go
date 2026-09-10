@@ -164,11 +164,22 @@ func TestRoundTrip_NestedEnvironmentResolutionPersistsAcrossReopen(t *testing.T)
 			"shared": collection.ID + "-default", collection.ID + "-default": "present",
 		})
 		require.NoError(t, st.SaveEnvironment(ctx, defaultEnvironment))
-		dev := &domain.Environment{ID: collection.ID + "-dev", CollectionID: collection.ID, Name: "dev"}
-		dev.SetVars(map[string]string{"shared": collection.ID + "-dev", collection.ID + "-dev": "present"})
+		dev := &domain.Environment{
+			ID:           collection.ID + "-dev",
+			CollectionID: collection.ID,
+			Name:         "dev",
+		}
+		dev.SetVars(
+			map[string]string{"shared": collection.ID + "-dev", collection.ID + "-dev": "present"},
+		)
 		require.NoError(t, st.SaveEnvironment(ctx, dev))
 		if collection.ID != child.ID {
-			prod := &domain.Environment{ID: collection.ID + "-prod", CollectionID: collection.ID, Name: "prod", Data: `{"must-not-appear":"ignored"}`}
+			prod := &domain.Environment{
+				ID:           collection.ID + "-prod",
+				CollectionID: collection.ID,
+				Name:         "prod",
+				Data:         `{"must-not-appear":"ignored"}`,
+			}
 			require.NoError(t, st.SaveEnvironment(ctx, prod))
 			require.NoError(t, st.SetActiveEnvironment(ctx, collection.ID, prod.ID))
 		}
@@ -180,16 +191,21 @@ func TestRoundTrip_NestedEnvironmentResolutionPersistsAcrossReopen(t *testing.T)
 	require.NoError(t, st.SetActiveEnvironment(ctx, child.ID, child.ID+"-dev"))
 
 	assertResolved := func(t *testing.T, current *store.Store) {
-		activeID, activeErr := current.GetActiveEnvironment(ctx, child.ID)
-		require.NoError(t, activeErr)
-		collectionVars, globalVars, resolveErr := exec.ResolveEnvVars(ctx, current, activeID, child.ID)
+		collectionVars, globalVars, resolveErr := exec.ResolveEnvVars(ctx, current, child.ID)
 		require.NoError(t, resolveErr)
 		assert.Equal(t, "child-dev", collectionVars["shared"])
-		for _, key := range []string{"root-default", "root-dev", "parent-default", "parent-dev", "child-default", "child-dev"} {
+		for _, key := range []string{"root-default", "parent-default", "child-default", "child-dev"} {
 			assert.Equal(t, "present", collectionVars[key])
 		}
 		assert.Equal(t, "present", globalVars["global"])
-		assert.NotContains(t, collectionVars, "must-not-appear", "ancestor active selections must be ignored")
+		assert.Equal(
+			t,
+			"ignored",
+			collectionVars["must-not-appear"],
+			"each ancestor's active environment must contribute",
+		)
+		assert.NotContains(t, collectionVars, "root-dev")
+		assert.NotContains(t, collectionVars, "parent-dev")
 	}
 	assertResolved(t, st)
 	require.NoError(t, st.Close())
