@@ -46,14 +46,9 @@ func NewRunCmd(st RunStore, e *exec.Executor) *cobra.Command {
 					if err != nil {
 						return fmt.Errorf("run: %w", err)
 					}
-					activeEnvID, err := st.GetActiveEnvironment(ctx, found.CollectionID)
-					if err != nil {
-						return fmt.Errorf("run: get active environment: %w", err)
-					}
 					colEnv, globalEnv, err := exec.ResolveEnvVars(
 						ctx,
 						st,
-						activeEnvID,
 						found.CollectionID,
 					)
 					if err != nil {
@@ -121,12 +116,8 @@ func NewRunCmd(st RunStore, e *exec.Executor) *cobra.Command {
 				return fmt.Errorf("run: %w", err)
 			}
 
-			activeEnvID, err := st.GetActiveEnvironment(ctx, collectionID)
-			if err != nil {
-				return fmt.Errorf("run: get active environment: %w", err)
-			}
 			colEnv, globalEnv, err := exec.ResolveEnvVars(
-				ctx, st, activeEnvID, collectionID)
+				ctx, st, collectionID)
 			if err != nil {
 				return fmt.Errorf("run: resolve environments: %w", err)
 			}

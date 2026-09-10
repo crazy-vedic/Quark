@@ -91,6 +91,39 @@ func TestImportSingleFile_NestedFoldersDoesNotBlockStoreConnection(t *testing.T)
 	require.Equal(t, "List", requests[0].Name)
 }
 
+func TestImportParsedEnvironmentsForCollection_PreservesNamedEnvironmentsAndLocalData(t *testing.T) {
+	st, err := store.New(filepath.Join(t.TempDir(), "quark.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, st.Close()) })
+	ctx := context.Background()
+	collection := &domain.Collection{ID: "api", Name: "API"}
+	require.NoError(t, st.SaveCollection(ctx, collection))
+	local := &domain.Environment{ID: "local-dev", CollectionID: collection.ID, Name: "Development"}
+	local.SetVars(map[string]string{"url": "http://local"})
+	require.NoError(t, st.SaveEnvironment(ctx, local))
+
+	imported, warnings, err := importParsedEnvironmentsForCollection(ctx, st, collection.ID, []parsedEnvironmentFile{
+		{filename: "development.json", name: "Development", vars: map[string]string{"url": "https://dev.example"}},
+		{filename: "production.json", name: "Production", vars: map[string]string{"url": "https://api.example", "token": "secret"}},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, 1, imported)
+	assert.Len(t, warnings, 1)
+	assert.Contains(t, warnings[0], "Development")
+	assert.NotContains(t, warnings[0], "http://local")
+	assert.NotContains(t, warnings[0], "https://dev.example")
+
+	development, err := st.GetEnvironmentByName(ctx, collection.ID, "Development")
+	require.NoError(t, err)
+	assert.Equal(t, map[string]string{"url": "http://local"}, development.Vars())
+	production, err := st.GetEnvironmentByName(ctx, collection.ID, "Production")
+	require.NoError(t, err)
+	assert.Equal(t, map[string]string{"url": "https://api.example", "token": "secret"}, production.Vars())
+	global, err := st.GetGlobalEnvironment(ctx)
+	require.NoError(t, err)
+	assert.Empty(t, global.Vars(), "Postman environment values must not leak into Global")
+}
+
 func TestDeduplicateImportedRequestNames(t *testing.T) {
 	requests := []*domain.Request{
 		{Name: "New Request"},
@@ -378,7 +411,7 @@ func TestImportSingleFile_MergeCollectionVariablesPreservesLocalValues(t *testin
 	assert.Equal(t, map[string]string{"conflict": "local-secret", "same": "same", "added": "new"}, stored.Vars())
 }
 
-func TestImportBulk_StandaloneEnvironmentsMergeAfterCollectionsAndAggregateErrors(t *testing.T) {
+func TestImportBulk_StandaloneEnvironmentsRemainSelectableAndAggregateErrors(t *testing.T) {
 	st, err := store.New(filepath.Join(t.TempDir(), "quark.db"))
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, st.Close()) })
@@ -423,7 +456,16 @@ func TestImportBulk_StandaloneEnvironmentsMergeAfterCollectionsAndAggregateError
 	merged, err := st.GetGlobalEnvironment(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, "global-secret", merged.Vars()["existing"])
-	assert.Equal(t, "first-secret", merged.Vars()["shared"])
+	assert.NotContains(t, merged.Vars(), "shared")
+	collection, err := st.ResolveCollectionPath(ctx, "Imported")
+	require.NoError(t, err)
+	first, err := st.GetEnvironmentByName(ctx, collection.ID, "A")
+	require.NoError(t, err)
+	assert.Equal(t, "first-secret", first.Vars()["shared"])
+	assert.Equal(t, "import-secret", first.Vars()["existing"])
+	second, err := st.GetEnvironmentByName(ctx, collection.ID, "B")
+	require.NoError(t, err)
+	assert.Equal(t, "later-secret", second.Vars()["shared"])
 	output := strings.Join(append(envResult.warnings, envResult.errors...), " ")
 	for _, secret := range []string{"global-secret", "import-secret", "first-secret", "later-secret"} {
 		assert.NotContains(t, output, secret)

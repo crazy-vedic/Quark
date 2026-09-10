@@ -112,7 +112,6 @@ func TestE2E_PostmanBulkImport_CompleteEnvironmentJourney(t *testing.T) {
 	assert.Contains(t, combined, "Imported API")
 	assert.Contains(t, combined, "z-malformed.json")
 	assert.Contains(t, combined, "environment error")
-	assert.Contains(t, combined, `variable "env_first"`)
 	assert.Contains(t, combined, `duplicate collection variable "duplicate"`)
 	assert.Contains(t, combined, "empty key")
 	for _, secret := range []string{
@@ -154,12 +153,22 @@ func TestE2E_PostmanBulkImport_CompleteEnvironmentJourney(t *testing.T) {
 	globalVars := global.Vars()
 	assert.Equal(t, "local-existing-secret", globalVars["existing"])
 	assert.Equal(t, "same-value", globalVars["identical"])
-	assert.Equal(t, "first-environment-secret", globalVars["env_first"])
-	assert.Equal(t, "first-within-file-secret", globalVars["duplicate_in_file"])
-	assert.Equal(t, "unicode-value", globalVars["unicode_变量"])
-	assert.Equal(t, "unknown-scope-value", globalVars["unknown_scope_key"])
-	assert.NotContains(t, globalVars, "disabled_environment")
-	assert.NotContains(t, globalVars, "")
+	assert.Equal(t, "later-environment-secret", globalVars["env_first"], "explicit Postman globals retain global scope")
+
+	postmanA, err := st.GetEnvironmentByName(context.Background(), root.ID, "A Environment")
+	require.NoError(t, err)
+	assert.Equal(t, "first-environment-secret", postmanA.Vars()["env_first"])
+	assert.Equal(t, "first-within-file-secret", postmanA.Vars()["duplicate_in_file"])
+	assert.NotContains(t, postmanA.Vars(), "disabled_environment")
+	assert.NotContains(t, postmanA.Vars(), "")
+	assert.Equal(t, "unicode-value", globalVars["unicode_变量"], "explicit Postman globals retain global scope")
+	postmanC, err := st.GetEnvironmentByName(context.Background(), root.ID, "C Unknown")
+	require.NoError(t, err)
+	assert.Equal(t, "unknown-scope-value", postmanC.Vars()["unknown_scope_key"])
+	for _, collection := range []*domain.Collection{parent, child} {
+		_, getErr := st.GetEnvironmentByName(context.Background(), collection.ID, "A Environment")
+		assert.ErrorIs(t, getErr, store.ErrNotFound, "Postman environments belong to the imported root and inherit to descendants")
+	}
 
 	var globalRows, environmentRows int
 	require.NoError(t, st.DB().QueryRowContext(context.Background(),
@@ -167,7 +176,7 @@ func TestE2E_PostmanBulkImport_CompleteEnvironmentJourney(t *testing.T) {
 	require.NoError(t, st.DB().QueryRowContext(context.Background(),
 		`SELECT COUNT(*) FROM environments`).Scan(&environmentRows))
 	assert.Equal(t, 1, globalRows)
-	assert.Equal(t, 4, environmentRows, "standalone Postman environments must not create tabs or rows")
+	assert.Equal(t, 6, environmentRows, "two named Postman environments must be selectable on the imported root")
 
 	parentDefault, err := st.GetEnvironmentByName(context.Background(), parent.ID, "default")
 	require.NoError(t, err)
@@ -182,10 +191,11 @@ func TestE2E_PostmanBulkImport_CompleteEnvironmentJourney(t *testing.T) {
 	childDev := saveNamedEnvironment(t, st, child.ID, "import-child-dev", "dev", map[string]string{"shared": "child-dev"})
 	rootOther := saveNamedEnvironment(t, st, root.ID, "import-root-other", "other", map[string]string{"shared": "wrong-root-active"})
 	parentOther := saveNamedEnvironment(t, st, parent.ID, "import-parent-other", "other", map[string]string{"shared": "wrong-parent-active"})
-	require.NoError(t, st.SetActiveEnvironment(context.Background(), root.ID, rootOther.ID))
+	require.NoError(t, st.SetActiveEnvironment(context.Background(), root.ID, postmanA.ID))
 	require.NoError(t, st.SetActiveEnvironment(context.Background(), parent.ID, parentOther.ID))
 	require.NoError(t, st.SetActiveEnvironment(context.Background(), child.ID, childDev.ID))
 	_ = rootDev
+	_ = rootOther
 	_ = parentDev
 	require.NoError(t, st.Close())
 

@@ -18,6 +18,7 @@ type EnvResolver interface {
 	GetCollection(ctx context.Context, id string) (*domain.Collection, error)
 	GetEnvironment(ctx context.Context, id string) (*domain.Environment, error)
 	GetGlobalEnvironment(ctx context.Context) (*domain.Environment, error)
+	GetActiveEnvironment(ctx context.Context, collectionID string) (string, error)
 	ListCollectionEnvironments(
 		ctx context.Context,
 		collectionID string,
@@ -391,13 +392,14 @@ func firstPlaceholderInAuthConfig(authConfigJSON string) string {
 	return ""
 }
 
-// ResolveEnvVars resolves environment variables using the child-owned active
-// environment name at every hierarchy level. The merge order is global, then
-// root-to-child default and matching named environments.
+// ResolveEnvVars resolves environment variables with each collection's own
+// active environment. The merge order is Global, then, from root to child,
+// each collection's default environment followed by its active environment.
+// A missing active selection means that collection contributes only default.
 func ResolveEnvVars(
 	ctx context.Context,
 	r EnvResolver,
-	activeEnvID, collectionID string,
+	collectionID string,
 ) (colEnv, globalEnv map[string]string, err error) {
 	if r == nil {
 		return nil, nil, fmt.Errorf("%w: nil resolver", ErrEnvironmentResolution)
@@ -420,18 +422,6 @@ func ResolveEnvVars(
 		return nil, nil, fmt.Errorf("%w: %w", ErrEnvironmentResolution, err)
 	}
 
-	activeName := ""
-	if activeEnvID != "" {
-		active, activeErr := r.GetEnvironment(ctx, activeEnvID)
-		if activeErr != nil {
-			return nil, nil, fmt.Errorf("%w: read child active environment %q: %w", ErrEnvironmentResolution, activeEnvID, activeErr)
-		}
-		if active == nil || active.CollectionID != collectionID {
-			return nil, nil, fmt.Errorf("%w: active environment %q does not belong to child collection %q", ErrEnvironmentOwnership, activeEnvID, collectionID)
-		}
-		activeName = active.Name
-	}
-
 	colEnv = make(map[string]string)
 	for _, scope := range scopes {
 		byName := make(map[string][]*domain.Environment)
@@ -448,15 +438,22 @@ func ResolveEnvVars(
 		if err := mergeEnvironmentVars(colEnv, defaults[0], scope.Collection.ID); err != nil {
 			return nil, nil, err
 		}
-		if activeName == "" || activeName == "default" {
+		activeID, activeErr := r.GetActiveEnvironment(ctx, scope.Collection.ID)
+		if activeErr != nil {
+			return nil, nil, fmt.Errorf("%w: read active environment for collection %q: %w", ErrEnvironmentResolution, scope.Collection.ID, activeErr)
+		}
+		if activeID == "" {
 			continue
 		}
-		matching := byName[activeName]
-		if len(matching) > 1 {
-			return nil, nil, fmt.Errorf("%w: duplicate environment %q in collection %q", ErrEnvironmentResolution, activeName, scope.Collection.ID)
+		active, activeErr := r.GetEnvironment(ctx, activeID)
+		if activeErr != nil {
+			return nil, nil, fmt.Errorf("%w: read active environment %q for collection %q: %w", ErrEnvironmentResolution, activeID, scope.Collection.ID, activeErr)
 		}
-		if len(matching) == 1 {
-			if err := mergeEnvironmentVars(colEnv, matching[0], scope.Collection.ID); err != nil {
+		if active == nil || active.CollectionID != scope.Collection.ID {
+			return nil, nil, fmt.Errorf("%w: active environment %q does not belong to collection %q", ErrEnvironmentOwnership, activeID, scope.Collection.ID)
+		}
+		if active.Name != "default" {
+			if err := mergeEnvironmentVars(colEnv, active, scope.Collection.ID); err != nil {
 				return nil, nil, err
 			}
 		}

@@ -614,13 +614,13 @@ func (m Model) activeEnvName() string {
 func resolveEnvVars(
 	ctx context.Context,
 	envReader EnvironmentHierarchyReader,
-	activeEnv map[string]string,
+	_ map[string]string,
 	collectionID string,
 ) (colEnv, globalEnv map[string]string, err error) {
 	if envReader == nil {
 		return nil, nil, nil
 	}
-	return exec.ResolveEnvVars(ctx, envReader, activeEnv[collectionID], collectionID)
+	return exec.ResolveEnvVars(ctx, envReader, collectionID)
 }
 
 // dispatchWithEnvCmd dispatches an HTTP request with variable substitution.

@@ -104,12 +104,14 @@ Applied to URL, headers, and body.
 3. Collection environment (active env vars)
 4. Global environment vars
 
-`ResolveEnvVars(ctx, st, activeEnvID, collectionID)` implements the chain:
+`ResolveEnvVars(ctx, st, collectionID)` walks root-to-child and implements the chain:
 
-- Active env (from `collection_active_env`) if set
-- Else `default` env for collection
-- Else first collection environment
-- Global env as fallback for vars not in collection env
+- Global environment
+- For each collection in the hierarchy: its `default` environment
+- For each collection in the hierarchy: its own active environment, if set
+
+More-specific child values override parent values. Global values remain the
+fallback for variables not defined by any collection layer.
 
 Unresolved variables → `ErrUnresolvedVariable`.
 

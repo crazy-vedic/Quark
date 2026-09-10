@@ -132,7 +132,9 @@ Supported duplicate actions:
 - Collections and requests
 - HTTP method, URL, headers, and body
 - Common auth styles that can be mapped into Quark requests
-- Environment files found in a bulk export directory
+- Environment files found in a bulk export directory. Postman environments are
+  preserved by name as selectable environments on each imported root collection;
+  explicit Postman globals are merged into Quark's Global environment.
 
 ### 4. Recommended migration flow
 
@@ -150,6 +152,9 @@ quark run "Collection Name/Request Name"
 
 - Quark is local-first: imported data is stored in `~/.quark/quark.db`
 - If your Postman requests depend on `{{variables}}`, importing the bulk export directory is best because Quark can also import environment files from it
+- Select the desired imported environment for the root collection with
+  `quark env active <collection-id> <environment-name>` before running a request;
+  descendants inherit that root selection and can also have their own active environment
 - If a request needs cleanup after import, you can edit URL, body, headers, auth, and environments directly in the TUI
 
 ---

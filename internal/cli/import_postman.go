@@ -42,6 +42,7 @@ type ImportPostmanStore interface {
 type importStats struct {
 	filePath       string
 	collectionName string
+	collectionID   string
 	imported       int
 	total          int
 	warnings       int
@@ -439,6 +440,7 @@ func importSingleFile(
 	return importStats{
 		filePath:       path,
 		collectionName: name,
+		collectionID:   col.ID,
 		imported:       imported,
 		total:          len(result.Requests),
 		warnings:       len(result.Warnings),
@@ -528,6 +530,8 @@ type envImportResult struct {
 
 type parsedEnvironmentFile struct {
 	filename string
+	name     string
+	scope    string
 	vars     map[string]string
 }
 
@@ -601,8 +605,10 @@ func importBulk(
 		return nil, envImportResult{}, fmt.Errorf("no collection files found in %q", dir)
 	}
 
-	// Parse standalone environments independently. They are merged only after
-	// every collection import has had a chance to complete.
+	// A Postman export has no reliable collection-to-environment binding, so
+	// standalone environments are preserved as selectable environments on every
+	// imported root collection. Explicit Postman globals retain their broader
+	// scope by importing into Quark's canonical Global environment.
 	parsedEnvironments := parseEnvironmentsInDir(dir, logger)
 
 	sort.Strings(files)
@@ -627,24 +633,91 @@ func importBulk(
 	}
 
 	envResult := envImportResult{
-		imported: len(parsedEnvironments.files),
 		errors:   append([]string(nil), parsedEnvironments.errors...),
 		warnings: append([]string(nil), parsedEnvironments.warnings...),
 	}
 	if len(parsedEnvironments.files) > 0 {
-		mergeWarnings, err := mergeParsedEnvironmentsIntoGlobal(ctx, st, parsedEnvironments.files, logger)
-		envResult.warnings = append(envResult.warnings, mergeWarnings...)
-		if err != nil {
-			envResult.imported = 0
-			errMsg := fmt.Sprintf("save standalone environments to Global failed: %v", err)
-			logger.Logf("%s", errMsg)
-			envResult.errors = append(envResult.errors, errMsg)
+		var globals, collectionEnvironments []parsedEnvironmentFile
+		for _, file := range parsedEnvironments.files {
+			if strings.EqualFold(file.scope, "global") {
+				globals = append(globals, file)
+			} else {
+				collectionEnvironments = append(collectionEnvironments, file)
+			}
+		}
+		if len(globals) > 0 {
+			warnings, err := mergeParsedEnvironmentsIntoGlobal(ctx, st, globals, logger)
+			envResult.warnings = append(envResult.warnings, warnings...)
+			if err != nil {
+				errMsg := fmt.Sprintf("save Postman globals: %v", err)
+				logger.Logf("%s", errMsg)
+				envResult.errors = append(envResult.errors, errMsg)
+			} else {
+				envResult.imported += len(globals)
+			}
+		}
+		if len(collectionEnvironments) > 0 {
+			for _, stat := range allStats {
+				if stat.err != nil || stat.collectionID == "" {
+					continue
+				}
+				imported, warnings, err := importParsedEnvironmentsForCollection(ctx, st, stat.collectionID, collectionEnvironments)
+				envResult.imported += imported
+				envResult.warnings = append(envResult.warnings, warnings...)
+				if err != nil {
+					errMsg := fmt.Sprintf("%s: save standalone environments: %v", stat.collectionName, err)
+					logger.Logf("%s", errMsg)
+					envResult.errors = append(envResult.errors, errMsg)
+				}
+			}
 		}
 	}
 	sort.Strings(envResult.errors)
 	sort.Strings(envResult.warnings)
 
 	return allStats, envResult, nil
+}
+
+// importParsedEnvironmentsForCollection preserves Postman environments as
+// collection-owned selectable environments. Existing local environments are
+// never overwritten during an import; their values win and a redacted warning
+// explains why a source environment was not replaced.
+func importParsedEnvironmentsForCollection(
+	ctx context.Context,
+	st ImportPostmanStore,
+	collectionID string,
+	files []parsedEnvironmentFile,
+) (int, []string, error) {
+	existing, err := st.ListCollectionEnvironments(ctx, collectionID)
+	if err != nil {
+		return 0, nil, fmt.Errorf("list existing environments: %w", err)
+	}
+	byName := make(map[string]*domain.Environment, len(existing))
+	for _, environment := range existing {
+		if environment != nil {
+			byName[environment.Name] = environment
+		}
+	}
+
+	imported := 0
+	var warnings []string
+	for _, file := range files {
+		if _, exists := byName[file.name]; exists {
+			warnings = append(warnings, fmt.Sprintf(
+				"%s: environment %q already exists for this collection; local environment kept",
+				file.filename, file.name,
+			))
+			continue
+		}
+		environment := &domain.Environment{CollectionID: collectionID, Name: file.name}
+		environment.SetVars(file.vars)
+		if err := st.SaveEnvironment(ctx, environment); err != nil {
+			return imported, warnings, fmt.Errorf("save environment %q: %w", file.name, err)
+		}
+		byName[file.name] = environment
+		imported++
+	}
+	return imported, warnings, nil
 }
 
 // mergeEnvironmentsIntoGlobal is retained for focused callers and tests. Input
@@ -769,7 +842,7 @@ func parseEnvironmentsInDir(
 		for _, warning := range warnings {
 			result.warnings = append(result.warnings, fmt.Sprintf("%s: %s", entry.Name(), warning))
 		}
-		result.files = append(result.files, parsedEnvironmentFile{filename: entry.Name(), vars: vars})
+		result.files = append(result.files, parsedEnvironmentFile{filename: entry.Name(), name: pmEnv.Name, scope: pmEnv.Scope, vars: vars})
 	}
 	return result
 }

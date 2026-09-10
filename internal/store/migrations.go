@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"github.com/crazy-vedic/quark/internal/domain"
 )
@@ -343,7 +344,15 @@ func (s *Store) applyCanonicalGlobalEnvironmentMigration(m migration) error {
 
 	merged := make(map[string]string)
 	for _, row := range globals {
-		environment := &domain.Environment{ID: row.id, Name: row.name, Data: row.data}
+		// Earlier releases allowed an empty TEXT value even though the schema
+		// declared a JSON-object default. Treat it as the empty object so a
+		// perfectly usable legacy database can be upgraded. Non-empty malformed
+		// data remains an explicit, rollback-safe migration failure.
+		data := row.data
+		if strings.TrimSpace(data) == "" {
+			data = "{}"
+		}
+		environment := &domain.Environment{ID: row.id, Name: row.name, Data: data}
 		vars, decodeErr := environment.DecodeVars()
 		if decodeErr != nil {
 			return fmt.Errorf("validate legacy Global row %q: %w", row.id, decodeErr)

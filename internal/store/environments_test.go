@@ -165,6 +165,24 @@ func TestStore_MigrationV9MergesLegacyGlobalsDeterministically(t *testing.T) {
 	assert.Equal(t, 1, count)
 }
 
+func TestStore_MigrationV9NormalizesEmptyLegacyGlobalData(t *testing.T) {
+	path := createLegacyEnvironmentDB(t,
+		[3]string{"global", "global", ""},
+		[3]string{"legacy", "legacy", `{"kept":"value"}`},
+	)
+	s, err := store.New(path)
+	require.NoError(t, err)
+	defer s.Close()
+
+	global, err := s.GetGlobalEnvironment(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, map[string]string{"kept": "value"}, global.Vars())
+	assert.Equal(t, "global", global.ID)
+	var version int
+	require.NoError(t, s.DB().QueryRow(`SELECT MAX(version) FROM schema_versions`).Scan(&version))
+	assert.Equal(t, 9, version)
+}
+
 func TestStore_MigrationV9InvalidLegacyDataRollsBack(t *testing.T) {
 	path := createLegacyEnvironmentDB(t,
 		[3]string{"global", "global", `{"safe":"yes"}`},
