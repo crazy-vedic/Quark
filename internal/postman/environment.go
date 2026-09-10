@@ -58,7 +58,10 @@ func (e *Environment) ToMapWithWarnings() (map[string]string, []string) {
 		}
 		if existing, duplicate := m[v.Key]; duplicate {
 			if existing != v.Value {
-				warnings = append(warnings, fmt.Sprintf("duplicate environment variable %q ignored", v.Key))
+				warnings = append(
+					warnings,
+					fmt.Sprintf("duplicate environment variable %q ignored", v.Key),
+				)
 			}
 			continue
 		}
