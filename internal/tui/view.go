@@ -1918,12 +1918,18 @@ func (m Model) viewImportModal() string {
 	sb.WriteString(titleStyle.Render("Import curl command") + "\n\n")
 	innerW := max(20, min(m.width-8, 96)-4)
 	if m.importPreview == nil {
-		sb.WriteString(mutedStyle.Render("Paste the complete command below. Enter inserts a newline.") + "\n\n")
+		sb.WriteString(
+			mutedStyle.Render(
+				"Paste the complete command below. Enter inserts a newline.",
+			) + "\n\n",
+		)
 		sb.WriteString(m.importInput.View() + "\n")
 		if m.importError != "" {
 			sb.WriteString("\n" + errorStyle.Render("✗ "+stripANSI(m.importError)) + "\n")
 		}
-		sb.WriteString("\n" + mutedStyle.Render("Ctrl+V: read clipboard   Ctrl+S: parse   Esc: cancel"))
+		sb.WriteString(
+			"\n" + mutedStyle.Render("Ctrl+V: read clipboard   Ctrl+S: parse   Esc: cancel"),
+		)
 		box := lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(blue).
@@ -1969,7 +1975,12 @@ func (m Model) viewImportModal() string {
 		fmt.Fprintf(&sb, "Body (%d bytes):\n%s\n", len(p.Body), clipToRows(body, innerW, 6))
 	}
 	if p.Certificate != nil {
-		fmt.Fprintf(&sb, "mTLS:     %s %s\n", p.Certificate.Type, truncate(p.Certificate.File, max(1, innerW-12)))
+		fmt.Fprintf(
+			&sb,
+			"mTLS:     %s %s\n",
+			p.Certificate.Type,
+			truncate(p.Certificate.File, max(1, innerW-12)),
+		)
 		if p.Certificate.KeyFile != "" {
 			fmt.Fprintf(&sb, "Key:      %s\n", truncate(p.Certificate.KeyFile, max(1, innerW-12)))
 		}
@@ -2337,7 +2348,10 @@ func (m Model) viewEnvModal() string {
 
 	// Variables.
 	if len(m.envEditor.vars) == 0 {
-		emptyMessage := "  No variables. Press " + m.renderHintKeys([]string{"env_add"}, false) + " to add."
+		emptyMessage := "  No variables. Press " + m.renderHintKeys(
+			[]string{"env_add"},
+			false,
+		) + " to add."
 		if m.currentEnvTabReadOnly() {
 			emptyMessage = "  No variables in this read-only environment."
 		}

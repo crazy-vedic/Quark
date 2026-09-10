@@ -20,6 +20,61 @@ func TestOrderCollectionsTreePlacesRootsBeforeDescendants(t *testing.T) {
 	require.Equal(t, []string{"root", "child-a", "child-b", "sibling"}, collectionIDs(ordered))
 }
 
+func TestBuildSidebarRows_HidesEntireCollapsedSubtree(t *testing.T) {
+	m := Model{
+		collections: []*domain.Collection{
+			{ID: "root", Name: "Root"},
+			{ID: "child", Name: "Child", ParentID: "root"},
+			{ID: "grandchild", Name: "Grandchild", ParentID: "child"},
+			{ID: "sibling", Name: "Sibling"},
+		},
+		expanded: map[string]bool{"root": false, "child": true, "grandchild": true},
+		collectionRequests: map[string][]*domain.Request{
+			"child": {{ID: "child-request", Name: "Hidden request"}},
+		},
+	}
+
+	rows, _ := m.buildSidebarRows()
+	require.Equal(t, []sidebarRow{
+		{kind: sidebarCollectionRow, colIndex: 0, reqIndex: -1, depth: 0},
+		{kind: sidebarCollectionRow, colIndex: 3, reqIndex: -1, depth: 0},
+	}, rows)
+
+	m.expanded["root"] = true
+	m.expanded["child"] = false
+	rows, _ = m.buildSidebarRows()
+	require.Equal(t, []sidebarRow{
+		{kind: sidebarCollectionRow, colIndex: 0, reqIndex: -1, depth: 0},
+		{kind: sidebarCollectionRow, colIndex: 1, reqIndex: -1, depth: 1},
+		{kind: sidebarCollectionRow, colIndex: 3, reqIndex: -1, depth: 0},
+	}, rows)
+}
+
+func TestCollapseCollectionSubtreeClosesNestedCollections(t *testing.T) {
+	m := Model{
+		collections: []*domain.Collection{
+			{ID: "root", Name: "Root"},
+			{ID: "child", Name: "Child", ParentID: "root"},
+			{ID: "grandchild", Name: "Grandchild", ParentID: "child"},
+		},
+		expanded: map[string]bool{
+			"root": true, "child": true, "grandchild": true,
+		},
+		collectionRequests: map[string][]*domain.Request{
+			"root":       {{ID: "root-request"}},
+			"child":      {{ID: "child-request"}},
+			"grandchild": {{ID: "grandchild-request"}},
+		},
+	}
+
+	m.collapseCollectionSubtree("root")
+
+	require.False(t, m.expanded["root"])
+	require.False(t, m.expanded["child"])
+	require.False(t, m.expanded["grandchild"])
+	require.Len(t, m.collectionRequests, 3)
+}
+
 func collectionIDs(collections []*domain.Collection) []string {
 	ids := make([]string, 0, len(collections))
 	for _, collection := range collections {

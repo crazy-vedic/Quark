@@ -27,7 +27,13 @@ func TestNestedCollections_SiblingNamesAndPaths(t *testing.T) {
 	require.NoError(t, s.SaveCollection(ctx, child))
 	assert.Equal(t, "left/leaf", mustCollectionPath(t, s, child.ID))
 
-	req := &domain.Request{ID: "req", CollectionID: child.ID, Name: "get", Method: "GET", URL: "https://example.test"}
+	req := &domain.Request{
+		ID:           "req",
+		CollectionID: child.ID,
+		Name:         "get",
+		Method:       "GET",
+		URL:          "https://example.test",
+	}
 	require.NoError(t, s.SaveRequest(ctx, req))
 	_, err = s.ResolveRequestPath(ctx, "leaf/get")
 	require.NoError(t, err)
@@ -76,7 +82,19 @@ func TestNestedCollections_AmbiguousReference(t *testing.T) {
 		child := &domain.Collection{ID: id, Name: "leaf", ParentID: parent.ID}
 		require.NoError(t, s.SaveCollection(ctx, parent))
 		require.NoError(t, s.SaveCollection(ctx, child))
-		require.NoError(t, s.SaveRequest(ctx, &domain.Request{ID: "req-" + id, CollectionID: id, Name: "same", Method: "GET", URL: "https://example.test"}))
+		require.NoError(
+			t,
+			s.SaveRequest(
+				ctx,
+				&domain.Request{
+					ID:           "req-" + id,
+					CollectionID: id,
+					Name:         "same",
+					Method:       "GET",
+					URL:          "https://example.test",
+				},
+			),
+		)
 	}
 	_, err = s.ResolveRequestPath(ctx, "same")
 	var ambiguous *store.AmbiguousPathError

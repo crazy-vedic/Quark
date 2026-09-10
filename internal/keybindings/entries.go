@@ -34,10 +34,20 @@ var groups = []struct {
 		"env_add", "env_delete", "env_edit",
 		"env_edit_confirm", "env_edit_switch_field",
 	}},
-	{"Request", []string{
-		ActionEditURL, ActionMethodNext, ActionMethodPrev,
-		ActionSendRequest, ActionScheduleRun, ActionEditBody, ActionEditHeaders, ActionDeleteRequest, "edit_auth",
-	}},
+	{
+		"Request",
+		[]string{
+			ActionEditURL,
+			ActionMethodNext,
+			ActionMethodPrev,
+			ActionSendRequest,
+			ActionScheduleRun,
+			ActionEditBody,
+			ActionEditHeaders,
+			ActionDeleteRequest,
+			"edit_auth",
+		},
+	},
 	{"Body Editor", []string{
 		"body_save", "body_newline", "body_cancel",
 	}},

@@ -47,9 +47,13 @@ func TestNewLoadsPKCS12ChainAndRoutesByHost(t *testing.T) {
 func TestNewReadsPasswordFromEnvironment(t *testing.T) {
 	p12Path := writeTestPKCS12(t, "from-env")
 	cfg := config.Default(t.TempDir())
-	cfg.HTTP.ClientCertificates = []config.ClientCertificate{{
-		Host: "api.example.com", File: p12Path, PasswordEnv: "QUARK_TEST_CERT_PASSWORD", // #nosec G101 -- fixture is an environment-variable name.
-	}}
+	cfg.HTTP.ClientCertificates = []config.ClientCertificate{
+		{
+			Host:        "api.example.com",
+			File:        p12Path,
+			PasswordEnv: "QUARK_TEST_CERT_PASSWORD", // #nosec G101 -- fixture is an environment-variable name.
+		},
+	}
 
 	_, err := New(cfg)
 	require.ErrorContains(t, err, "password environment variable")
@@ -135,8 +139,24 @@ func writeTestPEM(t *testing.T) (string, string) {
 	dir := t.TempDir()
 	certPath := filepath.Join(dir, "client.pem")
 	keyPath := filepath.Join(dir, "client-key.pem")
-	require.NoError(t, os.WriteFile(certPath, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}), 0o600))
-	require.NoError(t, os.WriteFile(keyPath, pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)}), 0o600))
+	require.NoError(
+		t,
+		os.WriteFile(
+			certPath,
+			pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}),
+			0o600,
+		),
+	)
+	require.NoError(
+		t,
+		os.WriteFile(
+			keyPath,
+			pem.EncodeToMemory(
+				&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)},
+			),
+			0o600,
+		),
+	)
 	return certPath, keyPath
 }
 

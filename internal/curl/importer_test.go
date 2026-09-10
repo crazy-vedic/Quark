@@ -478,7 +478,9 @@ func TestImporter_Corpus(t *testing.T) {
 
 func TestImporter_WarningSorted(t *testing.T) {
 	importer := curl.NewImporter()
-	result, err := importer.Parse(strings.NewReader(`curl --proxy http://proxy -L https://api.example.com`))
+	result, err := importer.Parse(
+		strings.NewReader(`curl --proxy http://proxy -L https://api.example.com`),
+	)
 	require.NoError(t, err)
 	assert.Equal(t, []string{
 		"proxy configuration is not imported",

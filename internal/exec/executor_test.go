@@ -662,7 +662,10 @@ func TestExecutor_VariableResolver_ErrorPreventsDispatch(t *testing.T) {
 		return nil, errors.New("must not dispatch")
 	})
 	e := newTestExecutor(transport, exec.WithVariableResolver(resolver))
-	_, err := e.Execute(context.Background(), &domain.Request{Method: "GET", URL: "https://example.test"})
+	_, err := e.Execute(
+		context.Background(),
+		&domain.Request{Method: "GET", URL: "https://example.test"},
+	)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, resolverErr)
 	assert.False(t, dispatched)
