@@ -24,7 +24,10 @@ type hierarchyResolver struct {
 	activeByCol   map[string]string
 }
 
-func (r *hierarchyResolver) GetCollection(_ context.Context, id string) (*domain.Collection, error) {
+func (r *hierarchyResolver) GetCollection(
+	_ context.Context,
+	id string,
+) (*domain.Collection, error) {
 	if err := r.collectionErr[id]; err != nil {
 		return nil, err
 	}
@@ -35,7 +38,10 @@ func (r *hierarchyResolver) GetCollection(_ context.Context, id string) (*domain
 	return collection, nil
 }
 
-func (r *hierarchyResolver) GetEnvironment(_ context.Context, id string) (*domain.Environment, error) {
+func (r *hierarchyResolver) GetEnvironment(
+	_ context.Context,
+	id string,
+) (*domain.Environment, error) {
 	environment, ok := r.environments[id]
 	if !ok {
 		return nil, errors.New("environment missing")
@@ -50,14 +56,20 @@ func (r *hierarchyResolver) GetGlobalEnvironment(context.Context) (*domain.Envir
 	return r.global, nil
 }
 
-func (r *hierarchyResolver) GetActiveEnvironment(_ context.Context, collectionID string) (string, error) {
+func (r *hierarchyResolver) GetActiveEnvironment(
+	_ context.Context,
+	collectionID string,
+) (string, error) {
 	if err := r.activeErr[collectionID]; err != nil {
 		return "", err
 	}
 	return r.activeByCol[collectionID], nil
 }
 
-func (r *hierarchyResolver) ListCollectionEnvironments(_ context.Context, id string) ([]*domain.Environment, error) {
+func (r *hierarchyResolver) ListCollectionEnvironments(
+	_ context.Context,
+	id string,
+) ([]*domain.Environment, error) {
 	if err := r.listErr[id]; err != nil {
 		return nil, err
 	}
@@ -72,13 +84,30 @@ func testEnvironment(id, collectionID, name string, vars map[string]string) *dom
 
 func newHierarchyResolver() *hierarchyResolver {
 	return &hierarchyResolver{
-		collections: make(map[string]*domain.Collection), environments: make(map[string]*domain.Environment),
-		byCollection: make(map[string][]*domain.Environment), collectionErr: make(map[string]error), listErr: make(map[string]error), activeErr: make(map[string]error), activeByCol: make(map[string]string),
-		global: testEnvironment("global", "", "global", map[string]string{"shared": "global", "global-only": "yes"}),
+		collections: make(
+			map[string]*domain.Collection,
+		),
+		environments: make(map[string]*domain.Environment),
+		byCollection: make(
+			map[string][]*domain.Environment,
+		),
+		collectionErr: make(map[string]error),
+		listErr:       make(map[string]error),
+		activeErr:     make(map[string]error),
+		activeByCol:   make(map[string]string),
+		global: testEnvironment(
+			"global",
+			"",
+			"global",
+			map[string]string{"shared": "global", "global-only": "yes"},
+		),
 	}
 }
 
-func (r *hierarchyResolver) addCollection(id, parentID string, environments ...*domain.Environment) {
+func (r *hierarchyResolver) addCollection(
+	id, parentID string,
+	environments ...*domain.Environment,
+) {
 	r.collections[id] = &domain.Collection{ID: id, ParentID: parentID, Name: id}
 	r.byCollection[id] = environments
 	for _, environment := range environments {
@@ -88,18 +117,49 @@ func (r *hierarchyResolver) addCollection(id, parentID string, environments ...*
 
 func TestResolveEnvVars_HierarchyPrecedenceAndIndependentActiveEnvironments(t *testing.T) {
 	r := newHierarchyResolver()
-	r.addCollection("root", "",
-		testEnvironment("root-default", "root", "default", map[string]string{"shared": "root-default", "root-default": "yes"}),
-		testEnvironment("root-dev", "root", "dev", map[string]string{"shared": "root-dev", "root-dev": "yes"}),
+	r.addCollection(
+		"root",
+		"",
+		testEnvironment(
+			"root-default",
+			"root",
+			"default",
+			map[string]string{"shared": "root-default", "root-default": "yes"},
+		),
+		testEnvironment(
+			"root-dev",
+			"root",
+			"dev",
+			map[string]string{"shared": "root-dev", "root-dev": "yes"},
+		),
 		testEnvironment("root-prod", "root", "prod", map[string]string{"root-prod": "yes"}),
 	)
-	r.addCollection("parent", "root",
-		testEnvironment("parent-default", "parent", "default", map[string]string{"shared": "parent-default"}),
+	r.addCollection(
+		"parent",
+		"root",
+		testEnvironment(
+			"parent-default",
+			"parent",
+			"default",
+			map[string]string{"shared": "parent-default"},
+		),
 		testEnvironment("parent-dev", "parent", "dev", map[string]string{"shared": "parent-dev"}),
 	)
-	r.addCollection("child", "parent",
-		testEnvironment("child-default", "child", "default", map[string]string{"shared": "child-default", "empty": "base"}),
-		testEnvironment("child-dev", "child", "dev", map[string]string{"shared": "child-dev", "empty": ""}),
+	r.addCollection(
+		"child",
+		"parent",
+		testEnvironment(
+			"child-default",
+			"child",
+			"default",
+			map[string]string{"shared": "child-default", "empty": "base"},
+		),
+		testEnvironment(
+			"child-dev",
+			"child",
+			"dev",
+			map[string]string{"shared": "child-dev", "empty": ""},
+		),
 	)
 	r.activeByCol["root"] = "root-prod"
 	r.activeByCol["child"] = "child-dev"
@@ -174,7 +234,16 @@ func TestResolveEnvVars_DeepHierarchy(t *testing.T) {
 	parent := ""
 	for i := 0; i < 100; i++ {
 		id := fmt.Sprintf("level-%03d", i)
-		r.addCollection(id, parent, testEnvironment("default-"+id, id, "default", map[string]string{"depth": fmt.Sprint(i)}))
+		r.addCollection(
+			id,
+			parent,
+			testEnvironment(
+				"default-"+id,
+				id,
+				"default",
+				map[string]string{"depth": fmt.Sprint(i)},
+			),
+		)
 		parent = id
 	}
 	vars, _, err := exec.ResolveEnvVars(context.Background(), r, parent)
@@ -188,21 +257,45 @@ func TestResolveEnvVars_Failures(t *testing.T) {
 		mutate func(*hierarchyResolver)
 		want   error
 	}{
-		{name: "missing default", mutate: func(r *hierarchyResolver) { r.byCollection["child"] = nil }, want: exec.ErrMissingDefaultEnvironment},
-		{name: "self cycle", mutate: func(r *hierarchyResolver) { r.collections["child"].ParentID = "child" }, want: exec.ErrCollectionHierarchy},
-		{name: "invalid data", mutate: func(r *hierarchyResolver) { r.byCollection["child"][0].Data = `{"bad":1}` }, want: domain.ErrInvalidEnvironmentData},
+		{
+			name:   "missing default",
+			mutate: func(r *hierarchyResolver) { r.byCollection["child"] = nil },
+			want:   exec.ErrMissingDefaultEnvironment,
+		},
+		{
+			name:   "self cycle",
+			mutate: func(r *hierarchyResolver) { r.collections["child"].ParentID = "child" },
+			want:   exec.ErrCollectionHierarchy,
+		},
+		{
+			name:   "invalid data",
+			mutate: func(r *hierarchyResolver) { r.byCollection["child"][0].Data = `{"bad":1}` },
+			want:   domain.ErrInvalidEnvironmentData,
+		},
 		{name: "sibling active", mutate: func(r *hierarchyResolver) {
 			sibling := testEnvironment("sibling-dev", "sibling", "dev", map[string]string{})
 			r.environments[sibling.ID] = sibling
 			r.activeByCol["child"] = "sibling-dev"
 		}, want: exec.ErrEnvironmentOwnership},
-		{name: "active lookup failure", mutate: func(r *hierarchyResolver) { r.activeErr["child"] = errors.New("read failed") }, want: exec.ErrEnvironmentResolution},
-		{name: "list failure", mutate: func(r *hierarchyResolver) { r.listErr["child"] = errors.New("read failed") }, want: exec.ErrEnvironmentResolution},
+		{
+			name:   "active lookup failure",
+			mutate: func(r *hierarchyResolver) { r.activeErr["child"] = errors.New("read failed") },
+			want:   exec.ErrEnvironmentResolution,
+		},
+		{
+			name:   "list failure",
+			mutate: func(r *hierarchyResolver) { r.listErr["child"] = errors.New("read failed") },
+			want:   exec.ErrEnvironmentResolution,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			r := newHierarchyResolver()
-			r.addCollection("child", "", testEnvironment("child-default", "child", "default", map[string]string{}))
+			r.addCollection(
+				"child",
+				"",
+				testEnvironment("child-default", "child", "default", map[string]string{}),
+			)
 			tt.mutate(r)
 			_, _, err := exec.ResolveEnvVars(context.Background(), r, "child")
 			assert.ErrorIs(t, err, tt.want)
@@ -212,7 +305,11 @@ func TestResolveEnvVars_Failures(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	r := newHierarchyResolver()
-	r.addCollection("child", "", testEnvironment("child-default", "child", "default", map[string]string{}))
+	r.addCollection(
+		"child",
+		"",
+		testEnvironment("child-default", "child", "default", map[string]string{}),
+	)
 	_, _, err := exec.ResolveEnvVars(ctx, r, "child")
 	assert.ErrorIs(t, err, context.Canceled)
 }

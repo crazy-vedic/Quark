@@ -89,7 +89,10 @@ func (r *fakeEnvReader) GetGlobalEnvironment(context.Context) (*domain.Environme
 	return r.global, nil
 }
 
-func (r *fakeEnvReader) GetActiveEnvironment(_ context.Context, collectionID string) (string, error) {
+func (r *fakeEnvReader) GetActiveEnvironment(
+	_ context.Context,
+	collectionID string,
+) (string, error) {
 	return r.active[collectionID], nil
 }
 

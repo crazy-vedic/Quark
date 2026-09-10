@@ -150,14 +150,25 @@ func (m Model) buildSidebarRows() ([]sidebarRow, int) {
 		}
 		visiting[colIdx] = true
 		col := m.collections[colIdx]
-		rows = append(rows, sidebarRow{kind: sidebarCollectionRow, colIndex: colIdx, reqIndex: -1, depth: depth})
+		rows = append(
+			rows,
+			sidebarRow{kind: sidebarCollectionRow, colIndex: colIdx, reqIndex: -1, depth: depth},
+		)
 		if m.colCursor == colIdx && m.reqCursor == -1 {
 			selectedRow = len(rows) - 1
 		}
 		if m.expanded[col.ID] {
 			reqs := m.collectionRequests[col.ID]
 			for reqIdx := range reqs {
-				rows = append(rows, sidebarRow{kind: sidebarRequestRow, colIndex: colIdx, reqIndex: reqIdx, depth: depth + 1})
+				rows = append(
+					rows,
+					sidebarRow{
+						kind:     sidebarRequestRow,
+						colIndex: colIdx,
+						reqIndex: reqIdx,
+						depth:    depth + 1,
+					},
+				)
 				if m.colCursor == colIdx && m.reqCursor == reqIdx {
 					selectedRow = len(rows) - 1
 				}
@@ -189,7 +200,10 @@ func (m Model) buildSidebarRows() ([]sidebarRow, int) {
 	return rows, selectedRow
 }
 
-func hasBrokenOrCyclicCollectionAncestry(col *domain.Collection, byID map[string]*domain.Collection) bool {
+func hasBrokenOrCyclicCollectionAncestry(
+	col *domain.Collection,
+	byID map[string]*domain.Collection,
+) bool {
 	seen := make(map[string]bool)
 	for col != nil && col.ParentID != "" {
 		if seen[col.ID] {

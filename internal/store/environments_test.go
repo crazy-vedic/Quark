@@ -41,14 +41,56 @@ func TestEnvironmentSaveContract_StoreAndTransaction(t *testing.T) {
 				want error
 			}{
 				{name: "nil", env: nil},
-				{name: "empty name", env: &domain.Environment{CollectionID: collection.ID, Name: "  ", Data: `{}`}},
-				{name: "missing collection", env: &domain.Environment{CollectionID: "missing", Name: "dev", Data: `{}`}, want: store.ErrNotFound},
-				{name: "malformed", env: &domain.Environment{CollectionID: collection.ID, Name: "dev", Data: `{`}, want: domain.ErrInvalidEnvironmentData},
-				{name: "array", env: &domain.Environment{CollectionID: collection.ID, Name: "dev", Data: `[]`}, want: domain.ErrInvalidEnvironmentData},
-				{name: "scalar", env: &domain.Environment{CollectionID: collection.ID, Name: "dev", Data: `true`}, want: domain.ErrInvalidEnvironmentData},
-				{name: "null", env: &domain.Environment{CollectionID: collection.ID, Name: "dev", Data: `null`}, want: domain.ErrInvalidEnvironmentData},
-				{name: "non-string", env: &domain.Environment{CollectionID: collection.ID, Name: "dev", Data: `{"port":8080}`}, want: domain.ErrInvalidEnvironmentData},
-				{name: "additional global", env: &domain.Environment{ID: "other-global", Name: "other", Data: `{}`}},
+				{
+					name: "empty name",
+					env:  &domain.Environment{CollectionID: collection.ID, Name: "  ", Data: `{}`},
+				},
+				{
+					name: "missing collection",
+					env:  &domain.Environment{CollectionID: "missing", Name: "dev", Data: `{}`},
+					want: store.ErrNotFound,
+				},
+				{
+					name: "malformed",
+					env:  &domain.Environment{CollectionID: collection.ID, Name: "dev", Data: `{`},
+					want: domain.ErrInvalidEnvironmentData,
+				},
+				{
+					name: "array",
+					env:  &domain.Environment{CollectionID: collection.ID, Name: "dev", Data: `[]`},
+					want: domain.ErrInvalidEnvironmentData,
+				},
+				{
+					name: "scalar",
+					env: &domain.Environment{
+						CollectionID: collection.ID,
+						Name:         "dev",
+						Data:         `true`,
+					},
+					want: domain.ErrInvalidEnvironmentData,
+				},
+				{
+					name: "null",
+					env: &domain.Environment{
+						CollectionID: collection.ID,
+						Name:         "dev",
+						Data:         `null`,
+					},
+					want: domain.ErrInvalidEnvironmentData,
+				},
+				{
+					name: "non-string",
+					env: &domain.Environment{
+						CollectionID: collection.ID,
+						Name:         "dev",
+						Data:         `{"port":8080}`,
+					},
+					want: domain.ErrInvalidEnvironmentData,
+				},
+				{
+					name: "additional global",
+					env:  &domain.Environment{ID: "other-global", Name: "other", Data: `{}`},
+				},
 			}
 			for _, tt := range tests {
 				t.Run(tt.name, func(t *testing.T) {
@@ -60,7 +102,11 @@ func TestEnvironmentSaveContract_StoreAndTransaction(t *testing.T) {
 				})
 			}
 
-			valid := &domain.Environment{CollectionID: collection.ID, Name: "dev", Data: `{"key":"value"}`}
+			valid := &domain.Environment{
+				CollectionID: collection.ID,
+				Name:         "dev",
+				Data:         `{"key":"value"}`,
+			}
 			require.NoError(t, saver.SaveEnvironment(ctx, valid))
 			assert.NotEmpty(t, valid.ID)
 		})
@@ -107,7 +153,8 @@ func TestStore_SetActiveEnvironmentValidatesOwnership(t *testing.T) {
 
 func TestStore_MigrationV9EnforcesSingleCollectionlessEnvironment(t *testing.T) {
 	s := newTestStore(t)
-	_, err := s.DB().Exec(`INSERT INTO environments (id, collection_id, name, data) VALUES ('extra-global', NULL, 'extra', '{}')`)
+	_, err := s.DB().
+		Exec(`INSERT INTO environments (id, collection_id, name, data) VALUES ('extra-global', NULL, 'extra', '{}')`)
 	require.Error(t, err)
 }
 
@@ -139,7 +186,12 @@ CREATE TABLE collection_active_env (collection_id TEXT PRIMARY KEY, env_id TEXT 
 `)
 	require.NoError(t, err)
 	for _, row := range rows {
-		_, err = db.Exec(`INSERT INTO environments(id, collection_id, name, data) VALUES (?, NULL, ?, ?)`, row[0], row[1], row[2])
+		_, err = db.Exec(
+			`INSERT INTO environments(id, collection_id, name, data) VALUES (?, NULL, ?, ?)`,
+			row[0],
+			row[1],
+			row[2],
+		)
 		require.NoError(t, err)
 	}
 	require.NoError(t, db.Close())
@@ -159,9 +211,18 @@ func TestStore_MigrationV9MergesLegacyGlobalsDeterministically(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "global", global.ID)
 	assert.Equal(t, "global", global.Name)
-	assert.Equal(t, map[string]string{"keep": "canonical", "shared": "canonical", "first": "a", "second": "b"}, global.Vars())
+	assert.Equal(
+		t,
+		map[string]string{"keep": "canonical", "shared": "canonical", "first": "a", "second": "b"},
+		global.Vars(),
+	)
 	var count int
-	require.NoError(t, s.DB().QueryRow(`SELECT COUNT(*) FROM environments WHERE collection_id IS NULL`).Scan(&count))
+	require.NoError(
+		t,
+		s.DB().
+			QueryRow(`SELECT COUNT(*) FROM environments WHERE collection_id IS NULL`).
+			Scan(&count),
+	)
 	assert.Equal(t, 1, count)
 }
 
@@ -196,7 +257,11 @@ func TestStore_MigrationV9InvalidLegacyDataRollsBack(t *testing.T) {
 	require.NoError(t, openErr)
 	defer db.Close()
 	var rowCount, version int
-	require.NoError(t, db.QueryRow(`SELECT COUNT(*) FROM environments WHERE collection_id IS NULL`).Scan(&rowCount))
+	require.NoError(
+		t,
+		db.QueryRow(`SELECT COUNT(*) FROM environments WHERE collection_id IS NULL`).
+			Scan(&rowCount),
+	)
 	require.NoError(t, db.QueryRow(`SELECT MAX(version) FROM schema_versions`).Scan(&version))
 	assert.Equal(t, 2, rowCount)
 	assert.Equal(t, 8, version)

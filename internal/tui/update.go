@@ -35,7 +35,13 @@ func (m Model) debugCurl(format string, args ...interface{}) {
 	if importID == "" {
 		importID = "-"
 	}
-	fmt.Fprintf(m.debugLog, "[%s] CURL_IMPORT id=%s %s\n", time.Now().Format("15:04:05.000"), importID, fmt.Sprintf(format, args...))
+	fmt.Fprintf(
+		m.debugLog,
+		"[%s] CURL_IMPORT id=%s %s\n",
+		time.Now().Format("15:04:05.000"),
+		importID,
+		fmt.Sprintf(format, args...),
+	)
 }
 
 func debugHeaderKeys(headers http.Header) string {
@@ -421,7 +427,8 @@ func (m Model) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleRequestKey("", msg)
 	}
 	if m.focus == responsePane && isResponseHistoryKey(msg) {
-		if msg.Type == tea.KeyShiftDown || msg.Type == tea.KeyPgDown || msg.String() == "shift+pgdown" {
+		if msg.Type == tea.KeyShiftDown || msg.Type == tea.KeyPgDown ||
+			msg.String() == "shift+pgdown" {
 			return m.handleResponseAction("history_next", timingSpan)
 		}
 		return m.handleResponseAction("history_prev", timingSpan)
@@ -439,11 +446,17 @@ func (m Model) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if msg.Type == tea.KeyPgUp || msg.Type == tea.KeyPgDown {
 				delta *= max(1, r.bottom-r.top)
 			}
-			m.requestText.Scroll(delta, max(1, r.right-r.left+1), max(1, r.bottom-r.top+1), timingSpan)
+			m.requestText.Scroll(
+				delta,
+				max(1, r.right-r.left+1),
+				max(1, r.bottom-r.top+1),
+				timingSpan,
+			)
 		}
 		return m, nil
 	}
-	if m.focus == responsePane && (msg.Type == tea.KeyUp || msg.Type == tea.KeyDown || msg.Type == tea.KeyPgUp || msg.Type == tea.KeyPgDown) {
+	if m.focus == responsePane &&
+		(msg.Type == tea.KeyUp || msg.Type == tea.KeyDown || msg.Type == tea.KeyPgUp || msg.Type == tea.KeyPgDown) {
 		m.responseText.SetDebugLog(m.debugLog, "response")
 		m.responseText.SetTiming(m.timing)
 		m.setResponseTextContent(timingSpan)
@@ -469,7 +482,8 @@ func (m Model) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func isVerticalScrollKey(msg tea.KeyMsg) bool {
-	return msg.Type == tea.KeyUp || msg.Type == tea.KeyDown || msg.Type == tea.KeyPgUp || msg.Type == tea.KeyPgDown
+	return msg.Type == tea.KeyUp || msg.Type == tea.KeyDown || msg.Type == tea.KeyPgUp ||
+		msg.Type == tea.KeyPgDown
 }
 
 func isResponseHistoryKey(msg tea.KeyMsg) bool {
@@ -794,7 +808,10 @@ func (m Model) handleRequestKey(_ string, msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.urlInput, cmd = m.urlInput.Update(msg)
 		if msg.Type == tea.KeyEnter {
 			if strings.HasPrefix(strings.TrimSpace(m.urlInput.Value()), "curl") {
-				return m.status("error", "This looks like curl; press I to open the curl importer"), nil
+				return m.status(
+					"error",
+					"This looks like curl; press I to open the curl importer",
+				), nil
 			}
 			return m.finishURLEdit()
 		}
@@ -838,9 +855,23 @@ func (m Model) triggerCurlImport(raw string) (Model, tea.Cmd) {
 		m.importError = err.Error()
 		return m, nil
 	}
-	m.debugCurl("parse success method=%s url=%q header_count=%d header_keys=%q body_len=%d warning_count=%d", result.Method, result.URL, len(result.Headers), debugHeaderKeys(result.Headers), len(result.Body), len(result.Warnings))
+	m.debugCurl(
+		"parse success method=%s url=%q header_count=%d header_keys=%q body_len=%d warning_count=%d",
+		result.Method,
+		result.URL,
+		len(result.Headers),
+		debugHeaderKeys(result.Headers),
+		len(result.Body),
+		len(result.Warnings),
+	)
 	if result.Certificate != nil {
-		m.debugCurl("certificate type=%s file=%q key_file=%q ca_file=%q", result.Certificate.Type, result.Certificate.File, result.Certificate.KeyFile, result.Certificate.CAFile)
+		m.debugCurl(
+			"certificate type=%s file=%q key_file=%q ca_file=%q",
+			result.Certificate.Type,
+			result.Certificate.File,
+			result.Certificate.KeyFile,
+			result.Certificate.CAFile,
+		)
 	}
 	return m.openImport(result)
 }
@@ -1138,7 +1169,13 @@ func (m Model) executeSelectedCommand() (tea.Model, tea.Cmd) {
 }
 
 func (m Model) openImport(preview *curl.ImportResult) (Model, tea.Cmd) {
-	m.debugCurl("open import modal method=%s url=%q header_count=%d body_len=%d", preview.Method, preview.URL, len(preview.Headers), len(preview.Body))
+	m.debugCurl(
+		"open import modal method=%s url=%q header_count=%d body_len=%d",
+		preview.Method,
+		preview.URL,
+		len(preview.Headers),
+		len(preview.Body),
+	)
 	m.importPreview = preview
 	m.importError = ""
 	m.importColID = m.activeCollectionID()
@@ -1448,7 +1485,10 @@ func (m Model) handleImportKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			var saveCmd tea.Cmd
 			if m.importPreview.Certificate != nil {
 				var certErr error
-				m, certErr = m.persistImportedCertificate(m.importPreview.Certificate, m.importPreview.URL)
+				m, certErr = m.persistImportedCertificate(
+					m.importPreview.Certificate,
+					m.importPreview.URL,
+				)
 				if certErr != nil {
 					m.importError = "Certificate configuration failed: " + certErr.Error()
 					m.debugCurl("confirm certificate failed: %v", certErr)
@@ -1463,7 +1503,10 @@ func (m Model) handleImportKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				headersJSON, err := json.Marshal(m.importPreview.Headers)
 				if err != nil {
 					m.debugCurl("confirm failed marshaling headers: %v", err)
-					return m.status("error", "Failed to marshal imported headers: "+err.Error()), nil
+					return m.status(
+						"error",
+						"Failed to marshal imported headers: "+err.Error(),
+					), nil
 				}
 				req := &domain.Request{
 					CollectionID: m.importColID,
@@ -1473,7 +1516,14 @@ func (m Model) handleImportKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					Headers:      string(headersJSON),
 					Body:         m.importPreview.Body,
 				}
-				m.debugCurl("confirm save name=%q method=%s url=%q header_names=%q body_len=%d", name, req.Method, req.URL, debugHeaderKeys(m.importPreview.Headers), len(req.Body))
+				m.debugCurl(
+					"confirm save name=%q method=%s url=%q header_names=%q body_len=%d",
+					name,
+					req.Method,
+					req.URL,
+					debugHeaderKeys(m.importPreview.Headers),
+					len(req.Body),
+				)
 				saveCmd = saveRequestCmdWithRollback(m.ctx, m.writer, m.reader, req, func() {
 					_ = m.writer.DeleteRequest(m.ctx, req.ID)
 					_ = config.SaveClientCertificates(m.configDir, previousCerts)
@@ -1506,7 +1556,10 @@ func (m Model) handleImportKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-func (m Model) persistImportedCertificate(spec *curl.CertificateSpec, rawURL string) (Model, error) {
+func (m Model) persistImportedCertificate(
+	spec *curl.CertificateSpec,
+	rawURL string,
+) (Model, error) {
 	parsedURL, err := url.Parse(rawURL)
 	if err != nil || parsedURL.Hostname() == "" {
 		return m, fmt.Errorf("cannot determine request hostname")

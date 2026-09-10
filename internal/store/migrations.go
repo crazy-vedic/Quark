@@ -242,7 +242,9 @@ func (s *Store) repairEmptyRequestIDs() error {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	if _, err = tx.Exec(`PRAGMA defer_foreign_keys = ON; CREATE TEMP TABLE IF NOT EXISTS request_id_repairs (old_id TEXT PRIMARY KEY, new_id TEXT NOT NULL); DELETE FROM request_id_repairs; INSERT INTO request_id_repairs (old_id, new_id) SELECT id, lower(hex(randomblob(16))) FROM requests WHERE id = ''; UPDATE executions SET request_id = (SELECT new_id FROM request_id_repairs WHERE old_id = executions.request_id) WHERE request_id IN (SELECT old_id FROM request_id_repairs); UPDATE scheduled_runs SET request_id = (SELECT new_id FROM request_id_repairs WHERE old_id = scheduled_runs.request_id) WHERE request_id IN (SELECT old_id FROM request_id_repairs); UPDATE requests SET id = (SELECT new_id FROM request_id_repairs WHERE old_id = requests.id) WHERE id IN (SELECT old_id FROM request_id_repairs); DROP TABLE request_id_repairs;`); err != nil {
+	if _, err = tx.Exec(
+		`PRAGMA defer_foreign_keys = ON; CREATE TEMP TABLE IF NOT EXISTS request_id_repairs (old_id TEXT PRIMARY KEY, new_id TEXT NOT NULL); DELETE FROM request_id_repairs; INSERT INTO request_id_repairs (old_id, new_id) SELECT id, lower(hex(randomblob(16))) FROM requests WHERE id = ''; UPDATE executions SET request_id = (SELECT new_id FROM request_id_repairs WHERE old_id = executions.request_id) WHERE request_id IN (SELECT old_id FROM request_id_repairs); UPDATE scheduled_runs SET request_id = (SELECT new_id FROM request_id_repairs WHERE old_id = scheduled_runs.request_id) WHERE request_id IN (SELECT old_id FROM request_id_repairs); UPDATE requests SET id = (SELECT new_id FROM request_id_repairs WHERE old_id = requests.id) WHERE id IN (SELECT old_id FROM request_id_repairs); DROP TABLE request_id_repairs;`,
+	); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -318,7 +320,9 @@ func (s *Store) applyCanonicalGlobalEnvironmentMigration(m migration) error {
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	rows, err := tx.Query(`SELECT id, name, data FROM environments WHERE collection_id IS NULL ORDER BY CASE WHEN id = 'global' THEN 0 ELSE 1 END, created_at, id`)
+	rows, err := tx.Query(
+		`SELECT id, name, data FROM environments WHERE collection_id IS NULL ORDER BY CASE WHEN id = 'global' THEN 0 ELSE 1 END, created_at, id`,
+	)
 	if err != nil {
 		return fmt.Errorf("read legacy Global rows: %w", err)
 	}
@@ -365,19 +369,31 @@ func (s *Store) applyCanonicalGlobalEnvironmentMigration(m migration) error {
 	}
 	canonical := &domain.Environment{ID: "global", Name: "global"}
 	canonical.SetVars(merged)
-	if _, err := tx.Exec(`INSERT INTO environments (id, collection_id, name, data, sort_order) VALUES ('global', NULL, 'global', ?, 0) ON CONFLICT(id) DO UPDATE SET collection_id=NULL, name='global', data=excluded.data, sort_order=0, updated_at=CURRENT_TIMESTAMP`, canonical.Data); err != nil {
+	if _, err := tx.Exec(
+		`INSERT INTO environments (id, collection_id, name, data, sort_order) VALUES ('global', NULL, 'global', ?, 0) ON CONFLICT(id) DO UPDATE SET collection_id=NULL, name='global', data=excluded.data, sort_order=0, updated_at=CURRENT_TIMESTAMP`,
+		canonical.Data,
+	); err != nil {
 		return fmt.Errorf("write canonical Global: %w", err)
 	}
-	if _, err := tx.Exec(`DELETE FROM environments WHERE collection_id IS NULL AND id <> 'global'`); err != nil {
+	if _, err := tx.Exec(
+		`DELETE FROM environments WHERE collection_id IS NULL AND id <> 'global'`,
+	); err != nil {
 		return fmt.Errorf("remove redundant Global rows: %w", err)
 	}
-	if _, err := tx.Exec(`DELETE FROM collection_active_env WHERE NOT EXISTS (SELECT 1 FROM collections c WHERE c.id = collection_active_env.collection_id) OR NOT EXISTS (SELECT 1 FROM environments e WHERE e.id = collection_active_env.env_id AND e.collection_id = collection_active_env.collection_id)`); err != nil {
+	if _, err := tx.Exec(
+		`DELETE FROM collection_active_env WHERE NOT EXISTS (SELECT 1 FROM collections c WHERE c.id = collection_active_env.collection_id) OR NOT EXISTS (SELECT 1 FROM environments e WHERE e.id = collection_active_env.env_id AND e.collection_id = collection_active_env.collection_id)`,
+	); err != nil {
 		return fmt.Errorf("remove invalid active environment mappings: %w", err)
 	}
-	if _, err := tx.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_environments_single_global ON environments((1)) WHERE collection_id IS NULL`); err != nil {
+	if _, err := tx.Exec(
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_environments_single_global ON environments((1)) WHERE collection_id IS NULL`,
+	); err != nil {
 		return fmt.Errorf("create Global uniqueness index: %w", err)
 	}
-	if _, err := tx.Exec(`INSERT INTO schema_versions (version) VALUES (?)`, m.version); err != nil {
+	if _, err := tx.Exec(
+		`INSERT INTO schema_versions (version) VALUES (?)`,
+		m.version,
+	); err != nil {
 		return fmt.Errorf("record version: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
@@ -390,7 +406,9 @@ func (s *Store) applyCanonicalGlobalEnvironmentMigration(m migration) error {
 // before nesting no longer retain the old global UNIQUE(name) constraint.
 // It also repairs slash-containing legacy names before paths are exposed.
 func (s *Store) applyNestedCollectionsMigration(m migration) error {
-	if _, err := s.db.Exec(`PRAGMA foreign_keys = OFF; PRAGMA legacy_alter_table = ON`); err != nil {
+	if _, err := s.db.Exec(
+		`PRAGMA foreign_keys = OFF; PRAGMA legacy_alter_table = ON`,
+	); err != nil {
 		return err
 	}
 	tx, err := s.db.Begin()
@@ -408,7 +426,9 @@ func (s *Store) applyNestedCollectionsMigration(m migration) error {
 )`); err != nil {
 		return err
 	}
-	rows, err := tx.Query(`SELECT id, name, description, meta, created_at, updated_at, version FROM collections_legacy`)
+	rows, err := tx.Query(
+		`SELECT id, name, description, meta, created_at, updated_at, version FROM collections_legacy`,
+	)
 	if err != nil {
 		return err
 	}
@@ -417,7 +437,15 @@ func (s *Store) applyNestedCollectionsMigration(m migration) error {
 	for rows.Next() {
 		var c domain.Collection
 		var description, meta sql.NullString
-		if err := rows.Scan(&c.ID, &c.Name, &description, &meta, &c.CreatedAt, &c.UpdatedAt, &c.Version); err != nil {
+		if err := rows.Scan(
+			&c.ID,
+			&c.Name,
+			&description,
+			&meta,
+			&c.CreatedAt,
+			&c.UpdatedAt,
+			&c.Version,
+		); err != nil {
 			return err
 		}
 		c.Description, c.Meta = description.String, meta.String
@@ -427,7 +455,16 @@ func (s *Store) applyNestedCollectionsMigration(m migration) error {
 			c.Name = fmt.Sprintf("%s-%d", base, i)
 		}
 		names[c.Name] = true
-		if _, err := tx.Exec(`INSERT INTO collections (id,name,description,meta,created_at,updated_at,version,parent_id) VALUES (?,?,?,?,?,?,?,NULL)`, c.ID, c.Name, c.Description, c.Meta, c.CreatedAt, c.UpdatedAt, c.Version); err != nil {
+		if _, err := tx.Exec(
+			`INSERT INTO collections (id,name,description,meta,created_at,updated_at,version,parent_id) VALUES (?,?,?,?,?,?,?,NULL)`,
+			c.ID,
+			c.Name,
+			c.Description,
+			c.Meta,
+			c.CreatedAt,
+			c.UpdatedAt,
+			c.Version,
+		); err != nil {
 			return err
 		}
 	}
@@ -435,10 +472,14 @@ func (s *Store) applyNestedCollectionsMigration(m migration) error {
 		return err
 	}
 	rows.Close()
-	if _, err = tx.Exec(`DROP TABLE collections_legacy; CREATE INDEX idx_collections_parent ON collections(parent_id,name); CREATE UNIQUE INDEX idx_collections_sibling_name ON collections(COALESCE(parent_id,''),name)`); err != nil {
+	if _, err = tx.Exec(
+		`DROP TABLE collections_legacy; CREATE INDEX idx_collections_parent ON collections(parent_id,name); CREATE UNIQUE INDEX idx_collections_sibling_name ON collections(COALESCE(parent_id,''),name)`,
+	); err != nil {
 		return err
 	}
-	requestRows, err := tx.Query(`SELECT id, collection_id, name FROM requests ORDER BY collection_id, created_at, id`)
+	requestRows, err := tx.Query(
+		`SELECT id, collection_id, name FROM requests ORDER BY collection_id, created_at, id`,
+	)
 	if err != nil {
 		return err
 	}
@@ -453,7 +494,8 @@ func (s *Store) applyNestedCollectionsMigration(m migration) error {
 			base := name
 			for i := 2; ; i++ {
 				var count int
-				if err := tx.QueryRow(`SELECT COUNT(*) FROM requests WHERE collection_id=? AND name=? AND id<>?`, collectionID, name, id).Scan(&count); err != nil {
+				if err := tx.QueryRow(`SELECT COUNT(*) FROM requests WHERE collection_id=? AND name=? AND id<>?`, collectionID, name, id).
+					Scan(&count); err != nil {
 					requestRows.Close()
 					return err
 				}

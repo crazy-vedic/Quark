@@ -207,7 +207,8 @@ func cloneEnvVars(vars []envVar) []envVar {
 }
 
 func (m Model) stashEnvDraft() Model {
-	if !m.envEditor.active || len(m.envEditor.tabs) == 0 || m.envEditor.tabIdx >= len(m.envEditor.tabs) {
+	if !m.envEditor.active || len(m.envEditor.tabs) == 0 ||
+		m.envEditor.tabIdx >= len(m.envEditor.tabs) {
 		return m
 	}
 	if m.envEditor.drafts == nil {
@@ -249,7 +250,9 @@ func (m Model) dispatchEnvAction(action string) (tea.Model, tea.Cmd) {
 		return m.closeEnvEditor(), nil
 	case "tab_prev":
 		if len(m.envEditor.tabs) > 0 {
-			m = m.switchEnvTab((m.envEditor.tabIdx - 1 + len(m.envEditor.tabs)) % len(m.envEditor.tabs))
+			m = m.switchEnvTab(
+				(m.envEditor.tabIdx - 1 + len(m.envEditor.tabs)) % len(m.envEditor.tabs),
+			)
 		}
 		return m, nil
 	case "tab_next":
@@ -389,12 +392,22 @@ func (m Model) copyInheritedEnvVar() (tea.Model, tea.Cmd) {
 	defaultDraft := m.envEditor.drafts[defaultTab.ID]
 	for _, variable := range defaultDraft.vars {
 		if variable.Key == inherited.Key {
-			return m.status("warn", fmt.Sprintf("Key %q already exists in env %q", inherited.Key, envTabLabel(defaultTab))), nil
+			return m.status(
+				"warn",
+				fmt.Sprintf(
+					"Key %q already exists in env %q",
+					inherited.Key,
+					envTabLabel(defaultTab),
+				),
+			), nil
 		}
 	}
 
 	m = m.switchEnvTab(defaultIndex)
-	m.envEditor.vars = append(m.envEditor.vars, envVar{Key: inherited.Key, Value: inherited.Value, Saved: false})
+	m.envEditor.vars = append(
+		m.envEditor.vars,
+		envVar{Key: inherited.Key, Value: inherited.Value, Saved: false},
+	)
 	m.envEditor.varCursor = len(m.envEditor.vars) - 1
 	m.envEditor.dirty = true
 	m = m.ensureEnvCursorVisible()
@@ -404,7 +417,10 @@ func (m Model) copyInheritedEnvVar() (tea.Model, tea.Cmd) {
 	m.envEditor.editKey.SetValue(inherited.Key)
 	m.envEditor.editVal.SetValue(inherited.Value)
 	m.envEditor.editKey.Focus()
-	m = m.status("success", fmt.Sprintf("Copied key %q to env %q", inherited.Key, envTabLabel(defaultTab)))
+	m = m.status(
+		"success",
+		fmt.Sprintf("Copied key %q to env %q", inherited.Key, envTabLabel(defaultTab)),
+	)
 	return m, textinput.Blink
 }
 
@@ -483,7 +499,10 @@ func (m Model) saveEnvEditor() (Model, tea.Cmd) {
 		return m.readOnlyEnvWarning("save changes"), nil
 	}
 	if tab.CollectionID != m.activeCollectionID() {
-		return m.status("warn", "Environment ownership changed; reopen the modal before saving"), nil
+		return m.status(
+			"warn",
+			"Environment ownership changed; reopen the modal before saving",
+		), nil
 	}
 	vars := make(map[string]string, len(m.envEditor.vars))
 	for _, v := range m.envEditor.vars {
@@ -635,7 +654,10 @@ func dispatchWithEnvCmd(
 		if envReader != nil {
 			colEnv, globalEnv, err := resolveEnvVars(ctx, envReader, activeEnv, req.CollectionID)
 			if err != nil {
-				return httpErrMsg{requestID: req.ID, err: fmt.Errorf("resolve environments: %w", err)}
+				return httpErrMsg{
+					requestID: req.ID,
+					err:       fmt.Errorf("resolve environments: %w", err),
+				}
 			}
 			interpolated, err := exec.InterpolateRequest(req, colEnv, globalEnv)
 			if err != nil {
