@@ -132,7 +132,11 @@ func TestImporter_VariablesInURL(t *testing.T) {
 	result, err := im.Parse(strings.NewReader(json))
 	require.NoError(t, err)
 	assert.Equal(t, "{{base_url}}/users", result.Requests[0].URL)
-	assert.Equal(t, map[string]string{"base_url": "https://api.example.com"}, result.CollectionVariables)
+	assert.Equal(
+		t,
+		map[string]string{"base_url": "https://api.example.com"},
+		result.CollectionVariables,
+	)
 	assert.Equal(t, postman.Safe, result.Security)
 }
 
