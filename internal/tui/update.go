@@ -1033,7 +1033,7 @@ func (m Model) openHelp() Model {
 	m.helpSearch = false
 	m.searchInput.Blur()
 	m.searchInput.SetValue("")
-	m.searchInput.Placeholder = "search requests..."
+	m.searchInput.Placeholder = "search requests (optional)..."
 	return m
 }
 
@@ -1047,13 +1047,14 @@ func (m Model) closeHelp() Model {
 	m.helpSearch = false
 	m.searchInput.Blur()
 	m.searchInput.SetValue("")
-	m.searchInput.Placeholder = "search requests..."
+	m.searchInput.Placeholder = "search requests (optional)..."
 	return m
 }
 
 func (m Model) openSearch() (Model, tea.Cmd) {
 	m.mode = searchMode
 	m.searchInput.SetValue("")
+	m.searchInput.Placeholder = "search requests (optional)..."
 	m.searchInput.Focus()
 	m.searchResults = nil
 	m.commands = nil
@@ -1061,7 +1062,8 @@ func (m Model) openSearch() (Model, tea.Cmd) {
 	m.searchScroll = 0
 	m.searchCancel = nil
 	m.searched = false
-	return m, textinput.Blink
+	searchM, searchCmd := m.dispatchSearch("")
+	return searchM, tea.Batch(textinput.Blink, searchCmd)
 }
 
 func (m Model) closeSearch() Model {
@@ -1072,6 +1074,7 @@ func (m Model) closeSearch() Model {
 	m.mode = normalMode
 	m.searchInput.Blur()
 	m.searchInput.SetValue("")
+	m.searchInput.Placeholder = "search requests (optional)..."
 	m.searchResults = nil
 	m.commands = nil
 	m.searchCursor = 0
@@ -1493,7 +1496,7 @@ func (m Model) handleHelpKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case keybindings.ActionSearch:
 			m.helpSearch = true
 			m.searchInput.SetValue("")
-			m.searchInput.Placeholder = "search keybindings..."
+			m.searchInput.Placeholder = "search keybindings (optional)..."
 			m.searchInput.Focus()
 			m.helpCursor = 0
 			m.helpScrollOffset = 0

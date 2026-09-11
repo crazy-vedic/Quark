@@ -417,7 +417,7 @@ func New(deps Deps) Model {
 	urlInput.CharLimit = 2048
 
 	searchInput := textinput.New()
-	searchInput.Placeholder = "search requests..."
+	searchInput.Placeholder = "search requests (optional)..."
 	searchInput.CharLimit = 256
 
 	viewerFind := textinput.New()
