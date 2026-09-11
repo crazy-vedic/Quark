@@ -152,6 +152,18 @@ quark run "Collection Name/Request Name"
 - If your Postman requests depend on `{{variables}}`, importing the bulk export directory is best because Quark can also import environment files from it
 - If a request needs cleanup after import, you can edit URL, body, headers, auth, and environments directly in the TUI
 
+### File-backed request values
+
+In the TUI Body or Headers editor, enter `@path/to/file` as the complete body
+or header value. Quark reads the file when the request is sent, so the saved
+request keeps the reference and picks up later file changes. Files are limited
+to 10 MiB; missing or unreadable files fail before any network request is made.
+
+`Host`, `Content-Length`, `Transfer-Encoding`, and `Connection` headers are
+applied to their corresponding HTTP request fields. Other headers, including
+`Content-Type` and `Content-Encoding`, remain declarations: Quark does not
+silently transform the body based on them.
+
 ---
 
 ## Development

@@ -1,6 +1,7 @@
 package exec
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -9,6 +10,8 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/crazy-vedic/quark/internal/domain"
@@ -158,9 +161,9 @@ func buildHTTPRequest(ctx context.Context, req *domain.Request) (*http.Request, 
 		)
 	}
 
-	var body io.Reader
-	if req.Body != "" {
-		body = newStringReader(req.Body)
+	body, err := requestBodyReader(req.Body)
+	if err != nil {
+		return nil, err
 	}
 
 	httpReq, err := http.NewRequestWithContext(ctx, req.Method, req.URL, body)
@@ -179,10 +182,18 @@ func buildHTTPRequest(ctx context.Context, req *domain.Request) (*http.Request, 
 		} else {
 			for key, values := range headers {
 				for _, value := range values {
+					value, err := resolveHeaderFile(value)
+					if err != nil {
+						return nil, fmt.Errorf("exec: header %q: %w", key, err)
+					}
 					httpReq.Header.Add(key, value)
 				}
 			}
 		}
+	}
+
+	if err := applySpecialRequestHeaders(httpReq); err != nil {
+		return nil, err
 	}
 
 	if err := applyRequestAuth(httpReq, req); err != nil {
@@ -190,6 +201,95 @@ func buildHTTPRequest(ctx context.Context, req *domain.Request) (*http.Request, 
 	}
 
 	return httpReq, nil
+}
+
+const maxRequestFileSize = 10 << 20
+
+// requestBodyReader expands the exact @path form used by the Body editor.
+// Keeping the reference in domain.Request means saved requests remain small
+// and continue to follow changes to the referenced file.
+func requestBodyReader(body string) (io.Reader, error) {
+	if body == "" {
+		return nil, nil
+	}
+	if !strings.HasPrefix(body, "@") || len(body) == 1 {
+		return newStringReader(body), nil
+	}
+
+	data, err := readRequestFile(strings.TrimPrefix(body, "@"))
+	if err != nil {
+		return nil, fmt.Errorf("read body file %q: %w", strings.TrimPrefix(body, "@"), err)
+	}
+	return bytes.NewReader(data), nil
+}
+
+func resolveHeaderFile(value string) (string, error) {
+	if !strings.HasPrefix(value, "@") || len(value) == 1 {
+		return value, nil
+	}
+	data, err := readRequestFile(strings.TrimPrefix(value, "@"))
+	if err != nil {
+		return "", fmt.Errorf("read file %q: %w", strings.TrimPrefix(value, "@"), err)
+	}
+	return string(data), nil
+}
+
+func readRequestFile(path string) ([]byte, error) {
+	if strings.TrimSpace(path) == "" {
+		return nil, errors.New("file path is empty")
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	data, err := io.ReadAll(io.LimitReader(f, maxRequestFileSize+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(data) > maxRequestFileSize {
+		return nil, fmt.Errorf("file exceeds %d MiB limit", maxRequestFileSize/(1<<20))
+	}
+	return data, nil
+}
+
+// applySpecialRequestHeaders maps headers that net/http treats as Request
+// fields. Leaving them in Header alone makes them ineffective or produces a
+// different wire request than the user entered.
+func applySpecialRequestHeaders(req *http.Request) error {
+	if host := req.Header.Get("Host"); host != "" {
+		req.Host = host
+		req.Header.Del("Host")
+	}
+	if rawLength := req.Header.Get("Content-Length"); rawLength != "" {
+		length, err := strconv.ParseInt(strings.TrimSpace(rawLength), 10, 64)
+		if err != nil || length < 0 {
+			return fmt.Errorf("exec: invalid Content-Length %q", rawLength)
+		}
+		req.ContentLength = length
+		req.Header.Del("Content-Length")
+	}
+	if transfer := req.Header.Get("Transfer-Encoding"); transfer != "" {
+		var encodings []string
+		for _, value := range strings.Split(transfer, ",") {
+			value = strings.TrimSpace(strings.ToLower(value))
+			if value == "" {
+				continue
+			}
+			if value != "chunked" && value != "identity" {
+				return fmt.Errorf("exec: unsupported Transfer-Encoding %q", value)
+			}
+			encodings = append(encodings, value)
+		}
+		req.TransferEncoding = encodings
+		req.Header.Del("Transfer-Encoding")
+	}
+	if connection := req.Header.Get("Connection"); strings.EqualFold(strings.TrimSpace(connection), "close") {
+		req.Close = true
+		req.Header.Del("Connection")
+	}
+	return nil
 }
 
 // readResponse reads the response body, streaming to /tmp if over threshold.
