@@ -2,6 +2,7 @@ package tui
 
 import (
 	"sort"
+	"strings"
 
 	"github.com/crazy-vedic/quark/internal/domain"
 	"github.com/crazy-vedic/quark/internal/keybindings"
@@ -319,24 +320,95 @@ func orderCollectionsTree(collections []*domain.Collection) []*domain.Collection
 }
 
 type searchRow struct {
-	hit *search.SearchHit
+	kind     searchRowKind
+	group    string
+	hit      *search.SearchHit
+	hitIndex int
 }
 
-func buildSearchRows(hits []*search.SearchHit, selected int) ([]searchRow, int) {
-	rows := make([]searchRow, 0, len(hits))
-	for _, hit := range hits {
-		rows = append(rows, searchRow{hit: hit})
-	}
-	if len(rows) == 0 {
+type searchRowKind int
+
+const (
+	searchGroupRow searchRowKind = iota
+	searchSpacerRow
+	searchRequestRow
+)
+
+func (m Model) buildSearchRows(hits []*search.SearchHit, selected int) ([]searchRow, int) {
+	rows := make([]searchRow, 0, len(hits)*2)
+	if len(hits) == 0 {
 		return rows, 0
 	}
-	if selected < 0 {
-		selected = 0
+
+	groups := make([]string, 0)
+	groupSeen := make(map[string]bool)
+	groupForHit := make([]string, len(hits))
+	for i, hit := range hits {
+		group := m.searchHitTopLevelGroup(hit)
+		groupForHit[i] = group
+		if !groupSeen[group] {
+			groupSeen[group] = true
+			groups = append(groups, group)
+		}
 	}
-	if selected >= len(rows) {
-		selected = len(rows) - 1
+
+	selected = max(0, min(selected, len(hits)-1))
+	selectedRow := 0
+	for groupIndex, group := range groups {
+		if groupIndex > 0 {
+			rows = append(rows, searchRow{kind: searchSpacerRow})
+		}
+		rows = append(rows, searchRow{kind: searchGroupRow, group: group})
+		for hitIndex, hit := range hits {
+			if groupForHit[hitIndex] != group {
+				continue
+			}
+			rowIndex := len(rows)
+			rows = append(rows, searchRow{
+				kind:     searchRequestRow,
+				hit:      hit,
+				hitIndex: hitIndex,
+			})
+			if hitIndex == selected {
+				selectedRow = rowIndex
+			}
+		}
 	}
-	return rows, selected
+	return rows, selectedRow
+}
+
+func (m Model) searchHitTopLevelGroup(hit *search.SearchHit) string {
+	if hit == nil || hit.Request == nil {
+		return "Other requests"
+	}
+	collectionID := hit.Request.CollectionID
+	if collectionID == "" && hit.Collection != nil {
+		collectionID = hit.Collection.ID
+	}
+
+	byID := make(map[string]*domain.Collection, len(m.collections))
+	for _, col := range m.collections {
+		if col != nil {
+			byID[col.ID] = col
+		}
+	}
+	current := byID[collectionID]
+	seen := make(map[string]bool)
+	for current != nil && current.ParentID != "" && !seen[current.ID] {
+		seen[current.ID] = true
+		parent := byID[current.ParentID]
+		if parent == nil {
+			break
+		}
+		current = parent
+	}
+	if current != nil && strings.TrimSpace(current.Name) != "" {
+		return current.Name
+	}
+	if hit.Collection != nil && strings.TrimSpace(hit.Collection.Name) != "" {
+		return hit.Collection.Name
+	}
+	return "Other requests"
 }
 
 type envVarRow struct {

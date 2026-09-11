@@ -1547,10 +1547,11 @@ func (m Model) searchVisibleRows() int {
 }
 
 func (m Model) ensureSearchCursorVisible() Model {
+	rows, selectedRow := m.buildSearchRows(m.searchResults, m.searchCursor)
 	m.searchScroll = adjustListViewport(listViewport{
 		Scroll:      m.searchScroll,
-		SelectedRow: m.searchCursor,
-		TotalRows:   len(m.searchResults),
+		SelectedRow: selectedRow,
+		TotalRows:   len(rows),
 		VisibleRows: m.searchVisibleRows(),
 	})
 	return m
@@ -1606,7 +1607,7 @@ func (m Model) viewSearchModal() string {
 			sb.WriteString(mutedStyle.Render("  No results."))
 		}
 	default:
-		rows, selectedRow := buildSearchRows(m.searchResults, m.searchCursor)
+		rows, selectedRow := m.buildSearchRows(m.searchResults, m.searchCursor)
 		visible := m.searchVisibleRows()
 		start := min(m.searchScroll, max(0, len(rows)-visible))
 		end := min(len(rows), start+visible)
@@ -1615,21 +1616,29 @@ func (m Model) viewSearchModal() string {
 			sb.WriteString(mutedStyle.Render("  ↑ more above") + "\n")
 		}
 		for i := start; i < end; i++ {
-			hit := rows[i].hit
-			cursor := "  "
-			if i == selectedRow {
-				cursor = "▸ "
+			row := rows[i]
+			switch row.kind {
+			case searchSpacerRow:
+				sb.WriteString("\n")
+			case searchGroupRow:
+				sb.WriteString(lipgloss.NewStyle().Bold(true).Foreground(yellow).Render(row.group) + "\n")
+			case searchRequestRow:
+				hit := row.hit
+				cursor := "  "
+				if i == selectedRow {
+					cursor = "▸ "
+				}
+				prefix := cursor + methodBadge(hit.Request.Method) + " "
+				line := prefix + m.renderSearchHit(
+					hit,
+					query,
+					max(1, contentWidth-lipgloss.Width(prefix)),
+				)
+				if i == selectedRow {
+					line = lipgloss.NewStyle().Foreground(blue).Bold(true).Render(line)
+				}
+				sb.WriteString(line + "\n")
 			}
-			prefix := cursor + methodBadge(hit.Request.Method) + " "
-			line := prefix + m.renderSearchHit(
-				hit,
-				query,
-				max(1, contentWidth-lipgloss.Width(prefix)),
-			)
-			if i == selectedRow {
-				line = lipgloss.NewStyle().Foreground(blue).Bold(true).Render(line)
-			}
-			sb.WriteString(line + "\n")
 		}
 		if end < len(rows) {
 			sb.WriteString(mutedStyle.Render("  ↓ more below") + "\n")
