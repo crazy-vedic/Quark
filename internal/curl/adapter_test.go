@@ -6,6 +6,8 @@ import (
 	"mime"
 	"mime/multipart"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -47,6 +49,42 @@ func TestImporter_RepeatedHeadersArePreserved(t *testing.T) {
 	))
 	require.NoError(t, err)
 	assert.Equal(t, []string{"one", "two"}, result.Headers.Values("X-Tag"))
+}
+
+func TestImporter_ReadsBodyFile(t *testing.T) {
+	dir := t.TempDir()
+	bodyPath := filepath.Join(dir, "payload.json")
+	require.NoError(t, os.WriteFile(bodyPath, []byte(`{"from":"file"}`), 0o600))
+
+	result, err := curl.NewImporter().Parse(strings.NewReader(
+		`curl --data-binary @` + bodyPath + ` https://api.example.com`,
+	))
+	require.NoError(t, err)
+	assert.Equal(t, `{"from":"file"}`, result.Body)
+	assert.Equal(t, curl.Dangerous, result.Security)
+}
+
+func TestImporter_RejectsMissingOrOversizedBodyFiles(t *testing.T) {
+	_, err := curl.NewImporter().Parse(strings.NewReader(
+		`curl --data @/definitely/missing/quark-body.json https://api.example.com`,
+	))
+	assert.ErrorContains(t, err, "read body file")
+
+	dir := t.TempDir()
+	bodyPath := filepath.Join(dir, "large.bin")
+	require.NoError(t, os.WriteFile(bodyPath, make([]byte, 10<<20+1), 0o600))
+	_, err = curl.NewImporter().Parse(strings.NewReader(
+		`curl --data @` + bodyPath + ` https://api.example.com`,
+	))
+	assert.ErrorContains(t, err, "exceeds")
+}
+
+func TestImporter_DataRawKeepsAtPrefixLiteral(t *testing.T) {
+	result, err := curl.NewImporter().Parse(strings.NewReader(
+		`curl --data-raw @payload.json https://api.example.com`,
+	))
+	require.NoError(t, err)
+	assert.Equal(t, "@payload.json", result.Body)
 }
 
 func TestImporter_PEMKeyAndCA(t *testing.T) {

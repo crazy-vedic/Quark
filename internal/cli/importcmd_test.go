@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -50,6 +52,22 @@ func TestImportCurlPersistsHeadersAndBody(t *testing.T) {
 		`{"Content-Type":["application/x-www-form-urlencoded"],"X-Tag":["one","two"]}`,
 		writer.saved.Headers,
 	)
+}
+
+func TestImportCurlPersistsFileBackedBodyContents(t *testing.T) {
+	bodyPath := filepath.Join(t.TempDir(), "payload.json")
+	require.NoError(t, os.WriteFile(bodyPath, []byte(`{"from":"file"}`), 0o600))
+
+	writer := &importRequestWriter{}
+	cmd := newImportCurlCmd(writer, curl.NewImporter())
+	cmd.SetArgs([]string{
+		`curl --data-binary @` + bodyPath + ` https://example.com`,
+		"--collection", "collection-1", "--name", "Imported",
+	})
+
+	require.NoError(t, cmd.Execute())
+	require.NotNil(t, writer.saved)
+	require.Equal(t, `{"from":"file"}`, writer.saved.Body)
 }
 
 func TestImportCurlPersistsCertificateThroughConfiguredSaver(t *testing.T) {

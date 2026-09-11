@@ -232,8 +232,9 @@ func TestUpdate_RequestsLoaded_DoesNotResetCursor(t *testing.T) {
 	m = callUpdate(t, m, tui.RequestsLoadedMsg(col1, []*domain.Request{
 		{ID: "r1", Name: "A", Method: "GET"},
 	}))
-	// reqCursor stays at -1 (on the collection) until user navigates into requests.
-	assert.Equal(t, -1, m.ReqCursor())
+	// Startup selects the first visible request automatically.
+	assert.Equal(t, 0, m.ReqCursor())
+	assert.Equal(t, "r1", m.ActiveRequest().ID)
 }
 
 // --- errLoadMsg ---

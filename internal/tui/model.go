@@ -119,6 +119,11 @@ type requestsLoadedMsg struct {
 	requests     []*domain.Request
 }
 
+// lastRequestLoadedMsg carries the request remembered from the previous TUI session.
+type lastRequestLoadedMsg struct {
+	request *domain.Request
+}
+
 // errLoadMsg carries a data-loading error.
 type errLoadMsg struct{ err error }
 
@@ -216,6 +221,7 @@ type Model struct {
 	helpEditAction   string
 	helpEditErrMsg   string
 	helpScrollOffset int
+	helpSearch       bool
 
 	// --- Sidebar state ---
 	collections   []*domain.Collection
@@ -226,7 +232,8 @@ type Model struct {
 	sidebarOffset int // BUG-011: scroll offset for long collection lists
 	// collectionRequests stores loaded requests for all expanded collections.
 	// Key is collection ID; value is the list of requests.
-	collectionRequests map[string][]*domain.Request
+	collectionRequests      map[string][]*domain.Request
+	initialSelectionPending bool
 
 	// --- Request pane state ---
 	activeRequest *domain.Request // currently selected request (template)
@@ -410,7 +417,7 @@ func New(deps Deps) Model {
 	urlInput.CharLimit = 2048
 
 	searchInput := textinput.New()
-	searchInput.Placeholder = "search requests..."
+	searchInput.Placeholder = "search requests (optional)..."
 	searchInput.CharLimit = 256
 
 	viewerFind := textinput.New()
@@ -474,54 +481,55 @@ func New(deps Deps) Model {
 	}
 
 	m := Model{
-		lister:                deps.Lister,
-		reader:                deps.Reader,
-		writer:                deps.Writer,
-		colWriter:             deps.ColWriter,
-		executionReader:       deps.ExecutionReader,
-		executor:              deps.Executor,
-		searcher:              deps.Searcher,
-		importer:              deps.Importer,
-		cfg:                   deps.Config,
-		ctx:                   rootCtx,
-		method:                deps.Config.UI.DefaultMethod,
-		urlInput:              urlInput,
-		searchInput:           searchInput,
-		viewerFind:            viewerFind,
-		importName:            importName,
-		importInput:           importTA,
-		promptInput:           promptInput,
-		bodyTextarea:          bodyTA,
-		requestText:           scrollableText{cache: &scrollableTextCache{}},
-		responseText:          scrollableText{cache: &scrollableTextCache{}},
-		viewerText:            scrollableText{cache: &scrollableTextCache{}},
-		headerKeyInput:        headerKeyInput,
-		headerValueInput:      headerValueInput,
-		expanded:              make(map[string]bool),
-		collectionRequests:    make(map[string][]*domain.Request),
-		requestValidationErrs: make(map[string]string),
-		reqCursor:             -1, // start on collection, not on a request
-		focus:                 sidebarPane,
-		debugLog:              deps.DebugLog,
-		timing:                collectorOrDefault(deps.Timing),
-		configDir:             deps.ConfigDir,
-		certificateManager:    deps.CertificateManager,
-		forceDim:              deps.ForceDim,
-		resolver:              resolverOrDefault(deps.Resolver, deps.Config),
-		envReader:             deps.EnvReader,
-		envWriter:             deps.EnvWriter,
-		activeEnvStore:        deps.ActiveEnvStore,
-		scheduler:             deps.Scheduler,
-		activeEnv:             make(map[string]string),
-		now:                   now,
-		scheduleInput:         scheduleInput,
-		clientCertHost:        clientCertHost,
-		clientCertFile:        clientCertFile,
-		clientCertType:        clientCertType,
-		clientCertKeyFile:     clientCertKeyFile,
-		clientCertCAFile:      clientCertCAFile,
-		clientCertPassword:    clientCertPassword,
-		scheduleTimerSeq:      1,
+		lister:                  deps.Lister,
+		reader:                  deps.Reader,
+		writer:                  deps.Writer,
+		colWriter:               deps.ColWriter,
+		executionReader:         deps.ExecutionReader,
+		executor:                deps.Executor,
+		searcher:                deps.Searcher,
+		importer:                deps.Importer,
+		cfg:                     deps.Config,
+		ctx:                     rootCtx,
+		method:                  deps.Config.UI.DefaultMethod,
+		urlInput:                urlInput,
+		searchInput:             searchInput,
+		viewerFind:              viewerFind,
+		importName:              importName,
+		importInput:             importTA,
+		promptInput:             promptInput,
+		bodyTextarea:            bodyTA,
+		requestText:             scrollableText{cache: &scrollableTextCache{}},
+		responseText:            scrollableText{cache: &scrollableTextCache{}},
+		viewerText:              scrollableText{cache: &scrollableTextCache{}},
+		headerKeyInput:          headerKeyInput,
+		headerValueInput:        headerValueInput,
+		expanded:                make(map[string]bool),
+		collectionRequests:      make(map[string][]*domain.Request),
+		initialSelectionPending: true,
+		requestValidationErrs:   make(map[string]string),
+		reqCursor:               -1, // start on collection, not on a request
+		focus:                   sidebarPane,
+		debugLog:                deps.DebugLog,
+		timing:                  collectorOrDefault(deps.Timing),
+		configDir:               deps.ConfigDir,
+		certificateManager:      deps.CertificateManager,
+		forceDim:                deps.ForceDim,
+		resolver:                resolverOrDefault(deps.Resolver, deps.Config),
+		envReader:               deps.EnvReader,
+		envWriter:               deps.EnvWriter,
+		activeEnvStore:          deps.ActiveEnvStore,
+		scheduler:               deps.Scheduler,
+		activeEnv:               make(map[string]string),
+		now:                     now,
+		scheduleInput:           scheduleInput,
+		clientCertHost:          clientCertHost,
+		clientCertFile:          clientCertFile,
+		clientCertType:          clientCertType,
+		clientCertKeyFile:       clientCertKeyFile,
+		clientCertCAFile:        clientCertCAFile,
+		clientCertPassword:      clientCertPassword,
+		scheduleTimerSeq:        1,
 	}
 
 	// Detect tmux/screen keybinding conflicts.
@@ -590,6 +598,19 @@ func loadRequestsCmd(ctx context.Context, reader store.RequestReader, collection
 			return errLoadMsg{err: err}
 		}
 		return requestsLoadedMsg{collectionID: collectionID, requests: reqs}
+	}
+}
+
+func loadLastRequestCmd(ctx context.Context, reader store.RequestReader, requestID string) tea.Cmd {
+	return func() tea.Msg {
+		if reader == nil || requestID == "" {
+			return lastRequestLoadedMsg{}
+		}
+		req, err := reader.GetRequest(ctx, requestID)
+		if err != nil {
+			return lastRequestLoadedMsg{}
+		}
+		return lastRequestLoadedMsg{request: req}
 	}
 }
 
@@ -1119,6 +1140,10 @@ func (m Model) selectRequest(req *domain.Request) (Model, tea.Cmd) {
 
 	m.urlInput.SetValue(req.URL)
 	m.method = req.Method
+	m.cfg.UI.LastRequestID = req.ID
+	if m.configDir != "" {
+		_ = config.SaveLastRequestID(m.configDir, req.ID)
+	}
 
 	if req.ID != previousID {
 		if m.response != nil {

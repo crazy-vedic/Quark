@@ -481,6 +481,9 @@ func (m Model) viewRequestPane(w, h int) string {
 	var urlDisplay string
 	if m.activeField == urlField {
 		urlDisplay = m.urlInput.View()
+		if suggestion := m.urlSuggestion(m.urlInput.Value()); suggestion != "" {
+			urlDisplay += mutedStyle.Render(completionSuffix(m.urlInput.Value(), suggestion))
+		}
 	} else {
 		urlVal := m.urlInput.Value()
 		if urlVal == "" {
@@ -543,6 +546,11 @@ func (m Model) viewRequestPane(w, h int) string {
 		if m.headerEditing {
 			preview.WriteString("Key:\n")
 			preview.WriteString(m.headerKeyInput.View() + "\n\n")
+			if m.headerKeyInput.Focused() {
+				if suggestion := headerNameSuggestion(m.headerKeyInput.Value()); suggestion != "" {
+					preview.WriteString(mutedStyle.Render("  Tab → "+suggestion) + "\n")
+				}
+			}
 			preview.WriteString("Value:\n")
 			preview.WriteString(m.headerValueInput.View() + "\n")
 			if m.headerKeyInput.Focused() {
@@ -583,6 +591,16 @@ func (m Model) viewRequestPane(w, h int) string {
 	case m.activeRequest != nil:
 		// The read-only preview is formatted lazily by requestText below.
 		content = ""
+	default:
+		content = mutedStyle.Render(
+			"No request selected.\n\n" +
+				"Get started by importing a curl command with " +
+				m.renderHintKeys([]string{keybindings.ActionImportCurl}, false) +
+				", or create a collection with " +
+				m.renderHintKeys([]string{"sidebar_add"}, false) +
+				" and add a request with " +
+				m.renderHintKeys([]string{"sidebar_add_request"}, false) + ".",
+		)
 	}
 
 	// Responsive key hints — shorten at narrow terminals, then hard-clamp to one
@@ -1529,10 +1547,11 @@ func (m Model) searchVisibleRows() int {
 }
 
 func (m Model) ensureSearchCursorVisible() Model {
+	rows, selectedRow := m.buildSearchRows(m.searchResults, m.searchCursor)
 	m.searchScroll = adjustListViewport(listViewport{
 		Scroll:      m.searchScroll,
-		SelectedRow: m.searchCursor,
-		TotalRows:   len(m.searchResults),
+		SelectedRow: selectedRow,
+		TotalRows:   len(rows),
 		VisibleRows: m.searchVisibleRows(),
 	})
 	return m
@@ -1588,7 +1607,7 @@ func (m Model) viewSearchModal() string {
 			sb.WriteString(mutedStyle.Render("  No results."))
 		}
 	default:
-		rows, selectedRow := buildSearchRows(m.searchResults, m.searchCursor)
+		rows, selectedRow := m.buildSearchRows(m.searchResults, m.searchCursor)
 		visible := m.searchVisibleRows()
 		start := min(m.searchScroll, max(0, len(rows)-visible))
 		end := min(len(rows), start+visible)
@@ -1597,21 +1616,29 @@ func (m Model) viewSearchModal() string {
 			sb.WriteString(mutedStyle.Render("  ↑ more above") + "\n")
 		}
 		for i := start; i < end; i++ {
-			hit := rows[i].hit
-			cursor := "  "
-			if i == selectedRow {
-				cursor = "▸ "
+			row := rows[i]
+			switch row.kind {
+			case searchSpacerRow:
+				sb.WriteString("\n")
+			case searchGroupRow:
+				sb.WriteString(lipgloss.NewStyle().Bold(true).Foreground(yellow).Render(row.group) + "\n")
+			case searchRequestRow:
+				hit := row.hit
+				cursor := "  "
+				if i == selectedRow {
+					cursor = "▸ "
+				}
+				prefix := cursor + methodBadge(hit.Request.Method) + " "
+				line := prefix + m.renderSearchHit(
+					hit,
+					query,
+					max(1, contentWidth-lipgloss.Width(prefix)),
+				)
+				if i == selectedRow {
+					line = lipgloss.NewStyle().Foreground(blue).Bold(true).Render(line)
+				}
+				sb.WriteString(line + "\n")
 			}
-			prefix := cursor + methodBadge(hit.Request.Method) + " "
-			line := prefix + m.renderSearchHit(
-				hit,
-				query,
-				max(1, contentWidth-lipgloss.Width(prefix)),
-			)
-			if i == selectedRow {
-				line = lipgloss.NewStyle().Foreground(blue).Bold(true).Render(line)
-			}
-			sb.WriteString(line + "\n")
 		}
 		if end < len(rows) {
 			sb.WriteString(mutedStyle.Render("  ↓ more below") + "\n")
@@ -1754,6 +1781,9 @@ func highlightSearchMatch(text, query string, base, match lipgloss.Style) string
 
 func (m Model) viewHelp() string {
 	entries := keybindings.ListEntries(m.cfg.Keybindings)
+	if m.helpSearch {
+		entries = filterKeybindingEntries(entries, m.searchInput.Value())
+	}
 	rows, selectedRow := buildHelpRows(entries, m.helpCursor)
 
 	// --- Height budget ---
@@ -1775,6 +1805,9 @@ func (m Model) viewHelp() string {
 	// Do not force a minimum taller than the terminal — Place would overflow.
 	// Everything except the entry-list content:
 	overhead := 2 /*title+blank*/ + 2 /*indicators*/ + 2 /*bottom hint*/ + 4 /*border+padding*/
+	if m.helpSearch {
+		overhead += 2 /*search input*/
+	}
 	if m.helpEditState == helpRecording {
 		overhead += 2
 	}
@@ -1804,6 +1837,9 @@ func (m Model) viewHelp() string {
 
 	var sb strings.Builder
 	sb.WriteString(titleStyle.Render("Keyboard Reference") + "\n\n")
+	if m.helpSearch {
+		sb.WriteString(m.searchInput.View() + "\n\n")
+	}
 
 	if m.helpEditState == helpConfirmResetAll {
 		diffs := helpResetAllDiffs(m.cfg.Keybindings)
@@ -1843,6 +1879,9 @@ func (m Model) viewHelp() string {
 
 	start := min(m.helpScrollOffset, max(0, len(rows)-maxLines))
 	end := min(len(rows), start+maxLines)
+	if len(rows) == 0 {
+		sb.WriteString(mutedStyle.Render("  No keybindings match.") + "\n")
+	}
 	for i := start; i < end; i++ {
 		row := rows[i]
 		switch row.kind {
@@ -1891,13 +1930,21 @@ func (m Model) viewHelp() string {
 
 	// Bottom hint.
 	if m.helpEditState == helpViewing {
-		sb.WriteString("\n" + mutedStyle.Render("  "+m.renderHints([]hintItem{
+		hints := []hintItem{
 			{Label: "navigate", Actions: []string{"help_up", "help_down"}},
 			{Label: "edit", Actions: []string{"help_edit"}},
 			{Label: "reset one", Actions: []string{"help_reset"}},
 			{Label: "reset all", Actions: []string{"help_reset_all"}},
-			{Label: helpLabelClose, Actions: []string{"help_close"}},
-		})))
+		}
+		if m.helpSearch {
+			hints = append(hints, hintItem{Label: helpLabelClose, Actions: []string{"help_close"}})
+		} else {
+			hints = append(hints,
+				hintItem{Label: "search", Actions: []string{"search"}},
+				hintItem{Label: helpLabelClose, Actions: []string{"help_close"}},
+			)
+		}
+		sb.WriteString("\n" + mutedStyle.Render("  "+m.renderHints(hints)))
 	}
 
 	box := lipgloss.NewStyle().

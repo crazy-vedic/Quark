@@ -5,6 +5,8 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -227,6 +229,44 @@ func TestNewRunCmd_ExecutesWithPositionalsNamedVarsAndEnvFallback(t *testing.T) 
 	assert.Equal(t, "Bearer cli-token", transport.lastHeaders.Get("Authorization"))
 	assert.Contains(t, out.String(), "Status: 200 OK")
 	assert.Contains(t, out.String(), `{"ok":true}`)
+}
+
+func TestNewRunCmd_ResolvesFileBackedValuesAndFormatsJSON(t *testing.T) {
+	collectionID := "col-1"
+	tmp := t.TempDir()
+	bodyPath := filepath.Join(tmp, "payload.json")
+	headerPath := filepath.Join(tmp, "token.txt")
+	require.NoError(t, os.WriteFile(bodyPath, []byte(`{"name":"quark"}`), 0o600))
+	require.NoError(t, os.WriteFile(headerPath, []byte("file-token"), 0o600))
+
+	st := &fakeRunStore{
+		collections: []*domain.Collection{{ID: collectionID, Name: "API"}},
+		globalEnv:   &domain.Environment{ID: "global", Name: "Global", Data: "{}"},
+		requests: map[string][]*domain.Request{
+			collectionID: {{
+				ID:           "req-1",
+				CollectionID: collectionID,
+				Name:         "upload",
+				Method:       "POST",
+				URL:          "https://example.test/upload",
+				Body:         "@" + bodyPath,
+				Headers:      `{"Content-Type":"application/json","X-Token":"@` + headerPath + `"}`,
+			}},
+		},
+	}
+	transport := &recordingRoundTripper{response: &http.Response{
+		StatusCode: 200,
+		Status:     "200 OK",
+		Header:     http.Header{},
+		Body:       io.NopCloser(bytes.NewBufferString("ok")),
+	}}
+
+	cmd := NewRunCmd(st, exec.New(transport))
+	cmd.SetArgs([]string{"API/upload"})
+	cmd.SetContext(context.Background())
+	require.NoError(t, cmd.Execute())
+	require.Equal(t, "{\n  \"name\": \"quark\"\n}", transport.lastBody)
+	require.Equal(t, "file-token", transport.lastHeaders.Get("X-Token"))
 }
 
 func TestNewRunCmd_FallbackUsesEnvWhenPositionalMissing(t *testing.T) {
