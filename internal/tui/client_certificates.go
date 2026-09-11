@@ -194,7 +194,12 @@ func (m Model) saveClientCert() (tea.Model, tea.Cmd) {
 	}
 	next := append([]config.ClientCertificate(nil), m.clientCerts...)
 	entry := config.ClientCertificate{
-		Host: host, File: file, Type: certType, KeyFile: keyFile, CAFile: caFile, Password: password,
+		Host:     host,
+		File:     file,
+		Type:     certType,
+		KeyFile:  keyFile,
+		CAFile:   caFile,
+		Password: password,
 	}
 	updated := false
 	for i := range next {
@@ -305,7 +310,19 @@ func (m Model) viewClientCertModal() string {
 	if m.clientCertError != "" {
 		sb.WriteString("\n" + errorStyle.Render("✗ "+m.clientCertError) + "\n")
 	}
-	sb.WriteString("\n" + mutedStyle.Render("a add   e/Enter edit   d delete   j/k move   Esc close"))
-	box := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(blue).Padding(1, 2).Width(max(1, min(m.width-4, 110)))
-	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box.Render(sb.String()))
+	sb.WriteString(
+		"\n" + mutedStyle.Render("a add   e/Enter edit   d delete   j/k move   Esc close"),
+	)
+	box := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(blue).
+		Padding(1, 2).
+		Width(max(1, min(m.width-4, 110)))
+	return lipgloss.Place(
+		m.width,
+		m.height,
+		lipgloss.Center,
+		lipgloss.Center,
+		box.Render(sb.String()),
+	)
 }

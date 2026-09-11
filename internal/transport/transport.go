@@ -189,7 +189,10 @@ func loadPKCS12(item config.ClientCertificate) (tls.Certificate, error) {
 	if item.PasswordEnv != "" {
 		password = os.Getenv(item.PasswordEnv)
 		if password == "" {
-			return tls.Certificate{}, fmt.Errorf("password environment variable %q is empty", item.PasswordEnv)
+			return tls.Certificate{}, fmt.Errorf(
+				"password environment variable %q is empty",
+				item.PasswordEnv,
+			)
 		}
 	}
 	privateKey, certificate, chain, err := pkcs12.DecodeChain(data, password)
@@ -198,7 +201,9 @@ func loadPKCS12(item config.ClientCertificate) (tls.Certificate, error) {
 	}
 	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certificate.Raw})
 	for _, ca := range chain {
-		certPEM = append(certPEM, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: ca.Raw})...)
+		certPEM = append(
+			certPEM,
+			pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: ca.Raw})...)
 	}
 	keyDER, err := x509.MarshalPKCS8PrivateKey(privateKey)
 	if err != nil {

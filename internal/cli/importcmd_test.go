@@ -45,19 +45,27 @@ func TestImportCurlPersistsHeadersAndBody(t *testing.T) {
 	require.NoError(t, cmd.Execute())
 	require.NotNil(t, writer.saved)
 	require.Equal(t, "q=two%20words", writer.saved.Body)
-	require.JSONEq(t, `{"Content-Type":["application/x-www-form-urlencoded"],"X-Tag":["one","two"]}`, writer.saved.Headers)
+	require.JSONEq(
+		t,
+		`{"Content-Type":["application/x-www-form-urlencoded"],"X-Tag":["one","two"]}`,
+		writer.saved.Headers,
+	)
 }
 
 func TestImportCurlPersistsCertificateThroughConfiguredSaver(t *testing.T) {
 	writer := &importRequestWriter{}
 	var savedSpec *curl.CertificateSpec
 	var savedURL string
-	cmd := newImportCurlCmd(writer, curl.NewImporter(), func(_ context.Context, spec *curl.CertificateSpec, rawURL string) error {
-		copy := *spec
-		savedSpec = &copy
-		savedURL = rawURL
-		return nil
-	})
+	cmd := newImportCurlCmd(
+		writer,
+		curl.NewImporter(),
+		func(_ context.Context, spec *curl.CertificateSpec, rawURL string) error {
+			copy := *spec
+			savedSpec = &copy
+			savedURL = rawURL
+			return nil
+		},
+	)
 	cmd.SetArgs([]string{
 		`curl --cert-type P12 --cert 'client.p12:literal' https://example.com`,
 		"--collection", "collection-1", "--name", "Imported",
@@ -66,17 +74,27 @@ func TestImportCurlPersistsCertificateThroughConfiguredSaver(t *testing.T) {
 	require.NoError(t, cmd.Execute())
 	require.NotNil(t, writer.saved)
 	require.Equal(t, "https://example.com", savedURL)
-	require.Equal(t, &curl.CertificateSpec{File: "client.p12", Type: "P12", Password: "literal"}, savedSpec)
+	require.Equal(
+		t,
+		&curl.CertificateSpec{File: "client.p12", Type: "P12", Password: "literal"},
+		savedSpec,
+	)
 }
 
 func TestImportCurlSavesRequestBeforeCertificate(t *testing.T) {
 	writer := &failingImportRequestWriter{}
 	saverCalled := false
-	cmd := newImportCurlCmd(writer, curl.NewImporter(), func(context.Context, *curl.CertificateSpec, string) error {
-		saverCalled = true
-		return nil
-	})
-	cmd.SetArgs([]string{`curl --cert client.pem https://example.com`, "--collection", "c", "--name", "n"})
+	cmd := newImportCurlCmd(
+		writer,
+		curl.NewImporter(),
+		func(context.Context, *curl.CertificateSpec, string) error {
+			saverCalled = true
+			return nil
+		},
+	)
+	cmd.SetArgs(
+		[]string{`curl --cert client.pem https://example.com`, "--collection", "c", "--name", "n"},
+	)
 	require.Error(t, cmd.Execute())
 	require.False(t, saverCalled, "certificate must not be persisted when request save fails")
 }

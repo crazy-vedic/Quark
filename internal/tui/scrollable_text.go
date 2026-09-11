@@ -46,16 +46,32 @@ func (s *scrollableText) SetTiming(collector *timing.Collector) {
 	s.timing = collector
 }
 
-func (s *scrollableText) logTiming(event string, started time.Time, width, height int, extra string) {
+func (s *scrollableText) logTiming(
+	event string,
+	started time.Time,
+	width, height int,
+	extra string,
+) {
 	if s.debugLog == nil {
 		return
 	}
 	cache := s.ensureCache()
 	wrappedLines := len(cache.wrapped[width])
-	fmt.Fprintf(s.debugLog,
+	fmt.Fprintf(
+		s.debugLog,
 		"[%s] scrollable_%s component=%s duration=%s bytes=%d width=%d height=%d offset=%d wrapped_lines=%d cached_widths=%d %s\n",
-		time.Now().Format("15:04:05.000"), event, s.debugName, time.Since(started),
-		len(cache.content), width, height, s.offset, wrappedLines, len(cache.wrapped), extra)
+		time.Now().Format("15:04:05.000"),
+		event,
+		s.debugName,
+		time.Since(started),
+		len(cache.content),
+		width,
+		height,
+		s.offset,
+		wrappedLines,
+		len(cache.wrapped),
+		extra,
+	)
 }
 
 func (s *scrollableText) SetContent(content string) {
@@ -72,7 +88,11 @@ func (s *scrollableText) SetContent(content string) {
 // SetFormattedContent caches the result of format for a logical source. This
 // keeps expensive formatting (for example JSON pretty-printing and syntax
 // highlighting) out of repeated scroll/update/render cycles.
-func (s *scrollableText) SetFormattedContent(sourceKey string, format func() string, parent ...*timing.Span) {
+func (s *scrollableText) SetFormattedContent(
+	sourceKey string,
+	format func() string,
+	parent ...*timing.Span,
+) {
 	cache := s.ensureCache()
 	if cache.formatted && cache.sourceKey == sourceKey {
 		return
@@ -110,7 +130,13 @@ func (s *scrollableText) Scroll(delta, width, height int, parent ...*timing.Span
 	span := s.timing.Track("scrollable.scroll."+s.debugName, timingParent(parent))
 	defer span.Done()
 	if width <= 0 || height <= 0 {
-		s.logTiming("scroll", started, width, height, fmt.Sprintf("delta=%d result=invalid_viewport", delta))
+		s.logTiming(
+			"scroll",
+			started,
+			width,
+			height,
+			fmt.Sprintf("delta=%d result=invalid_viewport", delta),
+		)
 		return
 	}
 	lines := s.lines(width, span)
@@ -125,7 +151,13 @@ func (s *scrollableText) Scroll(delta, width, height int, parent ...*timing.Span
 	if s.offset > maxOffset {
 		s.offset = maxOffset
 	}
-	s.logTiming("scroll", started, width, height, fmt.Sprintf("delta=%d max_offset=%d", delta, maxOffset))
+	s.logTiming(
+		"scroll",
+		started,
+		width,
+		height,
+		fmt.Sprintf("delta=%d max_offset=%d", delta, maxOffset),
+	)
 }
 
 func (s scrollableText) View(width, height int, parent ...*timing.Span) string {

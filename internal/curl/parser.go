@@ -85,35 +85,136 @@ var supportedOptions = map[string]optionDefinition{
 	"-e":               {kind: optionReferer, hasValue: true},
 	"--referer":        {kind: optionReferer, hasValue: true},
 
-	"-L":                 {kind: optionIgnore, warning: "redirect behavior is not imported; Quark's configured redirect policy applies"},
-	"--location":         {kind: optionIgnore, warning: "redirect behavior is not imported; Quark's configured redirect policy applies"},
-	"--location-trusted": {kind: optionIgnore, warning: "trusted redirect behavior is not imported"},
-	"--compressed":       {kind: optionIgnore, warning: "compression behavior is delegated to Quark's HTTP transport"},
-	"-f":                 {kind: optionIgnore, warning: "curl failure/output behavior is not imported"},
-	"--fail":             {kind: optionIgnore, warning: "curl failure/output behavior is not imported"},
-	"--fail-with-body":   {kind: optionIgnore, warning: "curl failure/output behavior is not imported"},
-	"-s":                 {kind: optionIgnore, warning: "curl terminal output behavior is not imported"},
-	"--silent":           {kind: optionIgnore, warning: "curl terminal output behavior is not imported"},
-	"-S":                 {kind: optionIgnore, warning: "curl terminal output behavior is not imported"},
-	"--show-error":       {kind: optionIgnore, warning: "curl terminal output behavior is not imported"},
-	"-v":                 {kind: optionIgnore, warning: "curl verbose output behavior is not imported"},
-	"--verbose":          {kind: optionIgnore, warning: "curl verbose output behavior is not imported"},
-	"-k":                 {kind: optionIgnore, warning: "TLS verification override is not imported"},
-	"--insecure":         {kind: optionIgnore, warning: "TLS verification override is not imported"},
-	"-x":                 {kind: optionIgnore, hasValue: true, warning: "proxy configuration is not imported"},
-	"--proxy":            {kind: optionIgnore, hasValue: true, warning: "proxy configuration is not imported"},
-	"--resolve":          {kind: optionIgnore, hasValue: true, warning: "DNS override is not imported"},
-	"--connect-to":       {kind: optionIgnore, hasValue: true, warning: "connection routing override is not imported"},
-	"--interface":        {kind: optionIgnore, hasValue: true, warning: "interface binding is not imported"},
-	"--retry":            {kind: optionIgnore, hasValue: true, warning: "retry behavior is not imported"},
-	"--retry-delay":      {kind: optionIgnore, hasValue: true, warning: "retry behavior is not imported"},
-	"--connect-timeout":  {kind: optionIgnore, hasValue: true, warning: "timeout behavior is not imported"},
-	"-m":                 {kind: optionIgnore, hasValue: true, warning: "timeout behavior is not imported"},
-	"--max-time":         {kind: optionIgnore, hasValue: true, warning: "timeout behavior is not imported"},
-	"-o":                 {kind: optionIgnore, hasValue: true, warning: "output file behavior is not imported"},
-	"--output":           {kind: optionIgnore, hasValue: true, warning: "output file behavior is not imported"},
-	"-c":                 {kind: optionIgnore, hasValue: true, warning: "cookie-jar persistence is not imported"},
-	"--cookie-jar":       {kind: optionIgnore, hasValue: true, warning: "cookie-jar persistence is not imported"},
+	"-L": {
+		kind:    optionIgnore,
+		warning: "redirect behavior is not imported; Quark's configured redirect policy applies",
+	},
+	"--location": {
+		kind:    optionIgnore,
+		warning: "redirect behavior is not imported; Quark's configured redirect policy applies",
+	},
+	"--location-trusted": {
+		kind:    optionIgnore,
+		warning: "trusted redirect behavior is not imported",
+	},
+	"--compressed": {
+		kind:    optionIgnore,
+		warning: "compression behavior is delegated to Quark's HTTP transport",
+	},
+	"-f": {
+		kind:    optionIgnore,
+		warning: "curl failure/output behavior is not imported",
+	},
+	"--fail": {
+		kind:    optionIgnore,
+		warning: "curl failure/output behavior is not imported",
+	},
+	"--fail-with-body": {
+		kind:    optionIgnore,
+		warning: "curl failure/output behavior is not imported",
+	},
+	"-s": {
+		kind:    optionIgnore,
+		warning: "curl terminal output behavior is not imported",
+	},
+	"--silent": {
+		kind:    optionIgnore,
+		warning: "curl terminal output behavior is not imported",
+	},
+	"-S": {
+		kind:    optionIgnore,
+		warning: "curl terminal output behavior is not imported",
+	},
+	"--show-error": {
+		kind:    optionIgnore,
+		warning: "curl terminal output behavior is not imported",
+	},
+	"-v": {
+		kind:    optionIgnore,
+		warning: "curl verbose output behavior is not imported",
+	},
+	"--verbose": {
+		kind:    optionIgnore,
+		warning: "curl verbose output behavior is not imported",
+	},
+	"-k": {
+		kind:    optionIgnore,
+		warning: "TLS verification override is not imported",
+	},
+	"--insecure": {
+		kind:    optionIgnore,
+		warning: "TLS verification override is not imported",
+	},
+	"-x": {
+		kind:     optionIgnore,
+		hasValue: true,
+		warning:  "proxy configuration is not imported",
+	},
+	"--proxy": {
+		kind:     optionIgnore,
+		hasValue: true,
+		warning:  "proxy configuration is not imported",
+	},
+	"--resolve": {
+		kind:     optionIgnore,
+		hasValue: true,
+		warning:  "DNS override is not imported",
+	},
+	"--connect-to": {
+		kind:     optionIgnore,
+		hasValue: true,
+		warning:  "connection routing override is not imported",
+	},
+	"--interface": {
+		kind:     optionIgnore,
+		hasValue: true,
+		warning:  "interface binding is not imported",
+	},
+	"--retry": {
+		kind:     optionIgnore,
+		hasValue: true,
+		warning:  "retry behavior is not imported",
+	},
+	"--retry-delay": {
+		kind:     optionIgnore,
+		hasValue: true,
+		warning:  "retry behavior is not imported",
+	},
+	"--connect-timeout": {
+		kind:     optionIgnore,
+		hasValue: true,
+		warning:  "timeout behavior is not imported",
+	},
+	"-m": {
+		kind:     optionIgnore,
+		hasValue: true,
+		warning:  "timeout behavior is not imported",
+	},
+	"--max-time": {
+		kind:     optionIgnore,
+		hasValue: true,
+		warning:  "timeout behavior is not imported",
+	},
+	"-o": {
+		kind:     optionIgnore,
+		hasValue: true,
+		warning:  "output file behavior is not imported",
+	},
+	"--output": {
+		kind:     optionIgnore,
+		hasValue: true,
+		warning:  "output file behavior is not imported",
+	},
+	"-c": {
+		kind:     optionIgnore,
+		hasValue: true,
+		warning:  "cookie-jar persistence is not imported",
+	},
+	"--cookie-jar": {
+		kind:     optionIgnore,
+		hasValue: true,
+		warning:  "cookie-jar persistence is not imported",
+	},
 }
 
 type formField struct {
@@ -154,7 +255,10 @@ func parseCommand(command string) (*ImportResult, error) {
 		}
 		if !strings.HasPrefix(token, "-") || token == "-" {
 			if result.URL != "" {
-				return nil, fmt.Errorf("curl: multiple URLs or unexpected positional argument %q", token)
+				return nil, fmt.Errorf(
+					"curl: multiple URLs or unexpected positional argument %q",
+					token,
+				)
 			}
 			result.URL = token
 			continue
@@ -212,7 +316,9 @@ func parseCommand(command string) (*ImportResult, error) {
 			upgradeSecurityTo(result)
 		case optionJSON:
 			if len(fields) != 0 || strings.HasPrefix(value, "@") {
-				return nil, errors.New("curl: file-backed JSON and mixed multipart bodies are not imported")
+				return nil, errors.New(
+					"curl: file-backed JSON and mixed multipart bodies are not imported",
+				)
 			}
 			bodyMode = "json"
 			bodyParts = append(bodyParts, value)
@@ -228,7 +334,10 @@ func parseCommand(command string) (*ImportResult, error) {
 			fields = append(fields, field)
 			upgradeSecurityTo(result)
 		case optionUser:
-			result.Headers.Set("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(value)))
+			result.Headers.Set(
+				"Authorization",
+				"Basic "+base64.StdEncoding.EncodeToString([]byte(value)),
+			)
 			upgradeSecurityTo(result)
 		case optionCookie:
 			if strings.HasPrefix(value, "@") {
@@ -294,16 +403,31 @@ func parseCommand(command string) (*ImportResult, error) {
 			return nil, formErr
 		}
 		result.Body = body
-		autoContentType = setDefaultHeader(result.Headers, suppressedHeaders, "Content-Type", contentType)
+		autoContentType = setDefaultHeader(
+			result.Headers,
+			suppressedHeaders,
+			"Content-Type",
+			contentType,
+		)
 	} else {
 		result.Body = strings.Join(bodyParts, "&")
 		if result.Body != "" {
 			contentType := "application/x-www-form-urlencoded"
 			if bodyMode == "json" {
 				contentType = "application/json"
-				autoAccept = setDefaultHeader(result.Headers, suppressedHeaders, "Accept", "application/json")
+				autoAccept = setDefaultHeader(
+					result.Headers,
+					suppressedHeaders,
+					"Accept",
+					"application/json",
+				)
 			}
-			autoContentType = setDefaultHeader(result.Headers, suppressedHeaders, "Content-Type", contentType)
+			autoContentType = setDefaultHeader(
+				result.Headers,
+				suppressedHeaders,
+				"Content-Type",
+				contentType,
+			)
 		}
 	}
 
@@ -341,7 +465,8 @@ func parseCommand(command string) (*ImportResult, error) {
 
 func shellWords(command string) ([]string, error) {
 	command = strings.TrimSpace(normalizeContinuations(command))
-	file, err := syntax.NewParser(syntax.Variant(syntax.LangBash)).Parse(strings.NewReader(command), "curl")
+	file, err := syntax.NewParser(syntax.Variant(syntax.LangBash)).
+		Parse(strings.NewReader(command), "curl")
 	if err != nil {
 		return nil, fmt.Errorf("curl: shell syntax: %w", err)
 	}
@@ -349,7 +474,9 @@ func shellWords(command string) ([]string, error) {
 		return nil, errors.New("curl: exactly one command is required")
 	}
 	stmt := file.Stmts[0]
-	if stmt.Negated || stmt.Background || stmt.Coprocess || stmt.Disown || stmt.Semicolon.IsValid() || len(stmt.Redirs) != 0 {
+	if stmt.Negated || stmt.Background || stmt.Coprocess || stmt.Disown ||
+		stmt.Semicolon.IsValid() ||
+		len(stmt.Redirs) != 0 {
 		return nil, errors.New("curl: shell control operators and redirections are not imported")
 	}
 	call, ok := stmt.Cmd.(*syntax.CallExpr)
@@ -364,7 +491,8 @@ func shellWords(command string) ([]string, error) {
 		}
 		words = append(words, literal)
 	}
-	if len(words) == 0 || (strings.ToLower(words[0]) != "curl" && strings.ToLower(words[0]) != "curl.exe") {
+	if len(words) == 0 ||
+		(strings.ToLower(words[0]) != "curl" && strings.ToLower(words[0]) != "curl.exe") {
 		return nil, errors.New("curl: command must start with curl or curl.exe")
 	}
 	return words[1:], nil
@@ -393,7 +521,8 @@ func normalizeContinuations(command string) string {
 			i += 2
 			continue
 		}
-		if ch == '\\' && i+2 < len(command) && command[i+1] == '\r' && command[i+2] == '\n' && !inSingle {
+		if ch == '\\' && i+2 < len(command) && command[i+1] == '\r' && command[i+2] == '\n' &&
+			!inSingle {
 			out.WriteString("\\\n")
 			i += 2
 			continue
@@ -443,7 +572,8 @@ func decodeLiteral(value string, doubleQuoted bool) string {
 			continue
 		}
 		next := value[i+1]
-		if !doubleQuoted || next == '$' || next == '`' || next == '"' || next == '\\' || next == '\n' {
+		if !doubleQuoted || next == '$' || next == '`' || next == '"' || next == '\\' ||
+			next == '\n' {
 			i++
 			if next != '\n' {
 				out.WriteByte(next)

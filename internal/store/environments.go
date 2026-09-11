@@ -34,21 +34,35 @@ func saveEnvironment(ctx context.Context, db environmentSQL, env *domain.Environ
 	}
 	if env.CollectionID == "" {
 		if env.ID != "global" || env.Name != "global" {
-			return fmt.Errorf("store: save environment %q: only canonical Global may be collection-less", env.Name)
+			return fmt.Errorf(
+				"store: save environment %q: only canonical Global may be collection-less",
+				env.Name,
+			)
 		}
 	} else {
 		var collectionExists int
-		if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM collections WHERE id = ?`, env.CollectionID).Scan(&collectionExists); err != nil {
-			return fmt.Errorf("store: validate environment collection %q: %w", env.CollectionID, err)
+		if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM collections WHERE id = ?`, env.CollectionID).
+			Scan(&collectionExists); err != nil {
+			return fmt.Errorf(
+				"store: validate environment collection %q: %w",
+				env.CollectionID,
+				err,
+			)
 		}
 		if collectionExists == 0 {
-			return fmt.Errorf("store: save environment %q: collection %q: %w", env.Name, env.CollectionID, ErrNotFound)
+			return fmt.Errorf(
+				"store: save environment %q: collection %q: %w",
+				env.Name,
+				env.CollectionID,
+				ErrNotFound,
+			)
 		}
 	}
 
 	if env.ID != "" {
 		var previousCollection sql.NullString
-		err := db.QueryRowContext(ctx, `SELECT collection_id FROM environments WHERE id = ?`, env.ID).Scan(&previousCollection)
+		err := db.QueryRowContext(ctx, `SELECT collection_id FROM environments WHERE id = ?`, env.ID).
+			Scan(&previousCollection)
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return fmt.Errorf("store: validate environment %q owner: %w", env.Name, err)
 		}
@@ -58,13 +72,21 @@ func saveEnvironment(ctx context.Context, db environmentSQL, env *domain.Environ
 				previous = previousCollection.String
 			}
 			if previous != env.CollectionID {
-				return fmt.Errorf("store: save environment %q: owner cannot change from %q to %q", env.Name, previous, env.CollectionID)
+				return fmt.Errorf(
+					"store: save environment %q: owner cannot change from %q to %q",
+					env.Name,
+					previous,
+					env.CollectionID,
+				)
 			}
 		}
 	}
 	if env.ID == "" {
 		if env.CollectionID == "" {
-			return fmt.Errorf("store: save environment %q: canonical Global ID is required", env.Name)
+			return fmt.Errorf(
+				"store: save environment %q: canonical Global ID is required",
+				env.Name,
+			)
 		}
 		env.ID = uuid.New().String()
 	}
@@ -283,9 +305,18 @@ func getEnvironmentByName(
 ) (*domain.Environment, error) {
 	var row *sql.Row
 	if collectionID == "" {
-		row = db.QueryRowContext(ctx, `SELECT id, collection_id, name, data, sort_order, created_at, updated_at FROM environments WHERE collection_id IS NULL AND name = ?`, name)
+		row = db.QueryRowContext(
+			ctx,
+			`SELECT id, collection_id, name, data, sort_order, created_at, updated_at FROM environments WHERE collection_id IS NULL AND name = ?`,
+			name,
+		)
 	} else {
-		row = db.QueryRowContext(ctx, `SELECT id, collection_id, name, data, sort_order, created_at, updated_at FROM environments WHERE collection_id = ? AND name = ?`, collectionID, name)
+		row = db.QueryRowContext(
+			ctx,
+			`SELECT id, collection_id, name, data, sort_order, created_at, updated_at FROM environments WHERE collection_id = ? AND name = ?`,
+			collectionID,
+			name,
+		)
 	}
 	return scanEnvironment(row)
 }
@@ -316,7 +347,8 @@ func scanEnvironment(row rowScanner) (*domain.Environment, error) {
 // SetActiveEnvironment persists the active environment for a collection.
 func (s *Store) SetActiveEnvironment(ctx context.Context, collectionID, envID string) error {
 	var owner sql.NullString
-	err := s.db.QueryRowContext(ctx, `SELECT collection_id FROM environments WHERE id = ?`, envID).Scan(&owner)
+	err := s.db.QueryRowContext(ctx, `SELECT collection_id FROM environments WHERE id = ?`, envID).
+		Scan(&owner)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return fmt.Errorf("store: set active env %q: %w", envID, ErrNotFound)
@@ -324,10 +356,15 @@ func (s *Store) SetActiveEnvironment(ctx context.Context, collectionID, envID st
 		return fmt.Errorf("store: set active env %q: %w", envID, err)
 	}
 	if !owner.Valid || owner.String != collectionID {
-		return fmt.Errorf("store: set active env %q: environment does not belong to collection %q", envID, collectionID)
+		return fmt.Errorf(
+			"store: set active env %q: environment does not belong to collection %q",
+			envID,
+			collectionID,
+		)
 	}
 	var collectionExists int
-	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM collections WHERE id = ?`, collectionID).Scan(&collectionExists); err != nil {
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM collections WHERE id = ?`, collectionID).
+		Scan(&collectionExists); err != nil {
 		return fmt.Errorf("store: set active env: validate collection: %w", err)
 	}
 	if collectionExists == 0 {

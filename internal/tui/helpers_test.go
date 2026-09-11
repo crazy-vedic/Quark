@@ -68,6 +68,7 @@ type fakeEnvReader struct {
 	envs   map[string]*domain.Environment
 	byCol  map[string][]*domain.Environment
 	cols   map[string]*domain.Collection
+	active map[string]string
 }
 
 func (r *fakeEnvReader) GetCollection(_ context.Context, id string) (*domain.Collection, error) {
@@ -86,6 +87,13 @@ func (r *fakeEnvReader) GetEnvironment(_ context.Context, id string) (*domain.En
 
 func (r *fakeEnvReader) GetGlobalEnvironment(context.Context) (*domain.Environment, error) {
 	return r.global, nil
+}
+
+func (r *fakeEnvReader) GetActiveEnvironment(
+	_ context.Context,
+	collectionID string,
+) (string, error) {
+	return r.active[collectionID], nil
 }
 
 func (r *fakeEnvReader) ListEnvironments(

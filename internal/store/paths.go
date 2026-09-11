@@ -17,7 +17,11 @@ type AmbiguousPathError struct {
 }
 
 func (e *AmbiguousPathError) Error() string {
-	return fmt.Sprintf("store: ambiguous reference %q (matches: %s)", e.Reference, strings.Join(e.Matches, ", "))
+	return fmt.Sprintf(
+		"store: ambiguous reference %q (matches: %s)",
+		e.Reference,
+		strings.Join(e.Matches, ", "),
+	)
 }
 
 // ResolveRequestPath resolves a full path or the shortest unique suffix.
@@ -34,7 +38,10 @@ func (s *Store) ResolveRequestPath(ctx context.Context, reference string) (*doma
 		}
 		pathCache[c.ID] = path
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT id, collection_id, name, method, url, headers, auth_type, auth_config, body, sort_order, enabled, created_at, updated_at FROM requests`)
+	rows, err := s.db.QueryContext(
+		ctx,
+		`SELECT id, collection_id, name, method, url, headers, auth_type, auth_config, body, sort_order, enabled, created_at, updated_at FROM requests`,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("store: resolve request: %w", err)
 	}
@@ -44,7 +51,21 @@ func (s *Store) ResolveRequestPath(ctx context.Context, reference string) (*doma
 	for rows.Next() {
 		r := &domain.Request{}
 		var body sql.NullString
-		if err := rows.Scan(&r.ID, &r.CollectionID, &r.Name, &r.Method, &r.URL, &r.Headers, &r.AuthType, &r.AuthConfig, &body, &r.SortOrder, &r.Enabled, &r.CreatedAt, &r.UpdatedAt); err != nil {
+		if err := rows.Scan(
+			&r.ID,
+			&r.CollectionID,
+			&r.Name,
+			&r.Method,
+			&r.URL,
+			&r.Headers,
+			&r.AuthType,
+			&r.AuthConfig,
+			&body,
+			&r.SortOrder,
+			&r.Enabled,
+			&r.CreatedAt,
+			&r.UpdatedAt,
+		); err != nil {
 			return nil, err
 		}
 		r.Body = body.String
@@ -53,7 +74,8 @@ func (s *Store) ResolveRequestPath(ctx context.Context, reference string) (*doma
 			return nil, fmt.Errorf("store: request collection %q: %w", r.CollectionID, ErrNotFound)
 		}
 		full := p + "/" + r.Name
-		if reference == full || strings.HasSuffix(full, "/"+reference) || (reference == r.Name && strings.Count(full, "/") == 1) {
+		if reference == full || strings.HasSuffix(full, "/"+reference) ||
+			(reference == r.Name && strings.Count(full, "/") == 1) {
 			matches = append(matches, r)
 			paths = append(paths, full)
 		}

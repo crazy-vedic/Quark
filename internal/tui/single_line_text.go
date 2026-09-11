@@ -13,6 +13,7 @@ func singleLineInputWarning(value string) string {
 		return ""
 	}
 	return warnStyle.Render(fmt.Sprintf(
-		"  Large single-line input (%d characters). Consider an environment variable and reference it here.", count,
+		"  Large single-line input (%d characters). Consider an environment variable and reference it here.",
+		count,
 	))
 }
