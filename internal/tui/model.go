@@ -221,6 +221,7 @@ type Model struct {
 	helpEditAction   string
 	helpEditErrMsg   string
 	helpScrollOffset int
+	helpSearch       bool
 
 	// --- Sidebar state ---
 	collections   []*domain.Collection

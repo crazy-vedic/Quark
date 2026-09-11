@@ -1030,6 +1030,10 @@ func debugRuneCodes(runes []rune) string {
 
 func (m Model) openHelp() Model {
 	m.mode = helpMode
+	m.helpSearch = false
+	m.searchInput.Blur()
+	m.searchInput.SetValue("")
+	m.searchInput.Placeholder = "search requests..."
 	return m
 }
 
@@ -1040,6 +1044,10 @@ func (m Model) closeHelp() Model {
 	m.helpEditState = helpViewing
 	m.helpEditAction = ""
 	m.helpEditErrMsg = ""
+	m.helpSearch = false
+	m.searchInput.Blur()
+	m.searchInput.SetValue("")
+	m.searchInput.Placeholder = "search requests..."
 	return m
 }
 
@@ -1346,9 +1354,65 @@ func (m Model) adjustHelpScroll(entries []keybindings.Entry, direction int) Mode
 	return m
 }
 
+func filterKeybindingEntries(entries []keybindings.Entry, query string) []keybindings.Entry {
+	query = strings.ToLower(strings.TrimSpace(query))
+	if query == "" {
+		return entries
+	}
+	filtered := make([]keybindings.Entry, 0, len(entries))
+	for _, entry := range entries {
+		if strings.Contains(strings.ToLower(entry.Action), query) ||
+			strings.Contains(strings.ToLower(helpActionLabel(entry.Action)), query) ||
+			strings.Contains(strings.ToLower(entry.Key), query) ||
+			strings.Contains(strings.ToLower(entry.Group), query) {
+			filtered = append(filtered, entry)
+		}
+	}
+	return filtered
+}
+
 // --- Help overlay ---
 
 func (m Model) handleHelpKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Search is an inline, live filter over the keybinding reference.
+	if m.helpSearch {
+		if action, ok := m.resolver.Resolve(2, 0, msg); ok {
+			switch action {
+			case keybindings.ActionSearch:
+				return m, nil
+			case keybindings.ActionClose:
+				m.helpSearch = false
+				m.searchInput.Blur()
+				m.searchInput.SetValue("")
+				m.helpCursor = 0
+				m.helpScrollOffset = 0
+				return m, nil
+			case keybindings.ActionNavigateUp, keybindings.ActionNavigateDown:
+				// Let printable navigation keys (often j/k) become part of the
+				// query. Arrow keys remain available for moving through matches.
+				if msg.Type != tea.KeyRunes {
+					entries := filterKeybindingEntries(keybindings.ListEntries(m.cfg.Keybindings), m.searchInput.Value())
+					if action == keybindings.ActionNavigateUp && m.helpCursor > 0 {
+						m.helpCursor--
+					}
+					if action == keybindings.ActionNavigateDown && m.helpCursor < len(entries)-1 {
+						m.helpCursor++
+					}
+					direction := 1
+					if action == keybindings.ActionNavigateUp {
+						direction = -1
+					}
+					return m.adjustHelpScroll(entries, direction), nil
+				}
+			}
+		}
+		var inputCmd tea.Cmd
+		m.searchInput, inputCmd = m.searchInput.Update(msg)
+		m.helpCursor = 0
+		m.helpScrollOffset = 0
+		return m, inputCmd
+	}
+
 	// Handle recording state first — capture the next keypress.
 	if m.helpEditState == helpRecording {
 		switch msg.String() {
@@ -1426,6 +1490,14 @@ func (m Model) handleHelpKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	if action, ok := m.resolver.Resolve(2, 0, msg); ok {
 		switch action {
+		case keybindings.ActionSearch:
+			m.helpSearch = true
+			m.searchInput.SetValue("")
+			m.searchInput.Placeholder = "search keybindings..."
+			m.searchInput.Focus()
+			m.helpCursor = 0
+			m.helpScrollOffset = 0
+			return m, textinput.Blink
 		case "quit":
 			return m, tea.Quit
 		case keybindings.ActionClose:

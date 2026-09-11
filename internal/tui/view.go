@@ -1772,6 +1772,9 @@ func highlightSearchMatch(text, query string, base, match lipgloss.Style) string
 
 func (m Model) viewHelp() string {
 	entries := keybindings.ListEntries(m.cfg.Keybindings)
+	if m.helpSearch {
+		entries = filterKeybindingEntries(entries, m.searchInput.Value())
+	}
 	rows, selectedRow := buildHelpRows(entries, m.helpCursor)
 
 	// --- Height budget ---
@@ -1793,6 +1796,9 @@ func (m Model) viewHelp() string {
 	// Do not force a minimum taller than the terminal — Place would overflow.
 	// Everything except the entry-list content:
 	overhead := 2 /*title+blank*/ + 2 /*indicators*/ + 2 /*bottom hint*/ + 4 /*border+padding*/
+	if m.helpSearch {
+		overhead += 2 /*search input*/
+	}
 	if m.helpEditState == helpRecording {
 		overhead += 2
 	}
@@ -1822,6 +1828,9 @@ func (m Model) viewHelp() string {
 
 	var sb strings.Builder
 	sb.WriteString(titleStyle.Render("Keyboard Reference") + "\n\n")
+	if m.helpSearch {
+		sb.WriteString(m.searchInput.View() + "\n\n")
+	}
 
 	if m.helpEditState == helpConfirmResetAll {
 		diffs := helpResetAllDiffs(m.cfg.Keybindings)
@@ -1861,6 +1870,9 @@ func (m Model) viewHelp() string {
 
 	start := min(m.helpScrollOffset, max(0, len(rows)-maxLines))
 	end := min(len(rows), start+maxLines)
+	if len(rows) == 0 {
+		sb.WriteString(mutedStyle.Render("  No keybindings match.") + "\n")
+	}
 	for i := start; i < end; i++ {
 		row := rows[i]
 		switch row.kind {
@@ -1909,13 +1921,21 @@ func (m Model) viewHelp() string {
 
 	// Bottom hint.
 	if m.helpEditState == helpViewing {
-		sb.WriteString("\n" + mutedStyle.Render("  "+m.renderHints([]hintItem{
+		hints := []hintItem{
 			{Label: "navigate", Actions: []string{"help_up", "help_down"}},
 			{Label: "edit", Actions: []string{"help_edit"}},
 			{Label: "reset one", Actions: []string{"help_reset"}},
 			{Label: "reset all", Actions: []string{"help_reset_all"}},
-			{Label: helpLabelClose, Actions: []string{"help_close"}},
-		})))
+		}
+		if m.helpSearch {
+			hints = append(hints, hintItem{Label: helpLabelClose, Actions: []string{"help_close"}})
+		} else {
+			hints = append(hints,
+				hintItem{Label: "search", Actions: []string{"search"}},
+				hintItem{Label: helpLabelClose, Actions: []string{"help_close"}},
+			)
+		}
+		sb.WriteString("\n" + mutedStyle.Render("  "+m.renderHints(hints)))
 	}
 
 	box := lipgloss.NewStyle().
