@@ -1818,6 +1818,11 @@ func (m Model) handleHeadersFieldKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m Model) handleHeaderFieldEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if msg.Type == tea.KeyTab {
 		if m.headerKeyInput.Focused() {
+			if suggestion := headerNameSuggestion(m.headerKeyInput.Value()); suggestion != "" {
+				m.headerKeyInput.SetValue(suggestion)
+				m.headerKeyInput.SetCursor(len([]rune(suggestion)))
+				return m, nil
+			}
 			m.headerKeyInput.Blur()
 			m.headerValueInput.Focus()
 		} else {

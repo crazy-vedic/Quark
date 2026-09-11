@@ -543,6 +543,11 @@ func (m Model) viewRequestPane(w, h int) string {
 		if m.headerEditing {
 			preview.WriteString("Key:\n")
 			preview.WriteString(m.headerKeyInput.View() + "\n\n")
+			if m.headerKeyInput.Focused() {
+				if suggestion := headerNameSuggestion(m.headerKeyInput.Value()); suggestion != "" {
+					preview.WriteString(mutedStyle.Render("  Tab → "+suggestion) + "\n")
+				}
+			}
 			preview.WriteString("Value:\n")
 			preview.WriteString(m.headerValueInput.View() + "\n")
 			if m.headerKeyInput.Focused() {
