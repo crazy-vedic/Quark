@@ -98,7 +98,32 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case collectionsLoadedMsg:
 		m.collections = orderCollectionsTree(msg.collections)
 		m.colCursor = 0
+		m.reqCursor = -1
+		if m.cfg.UI.LastRequestID != "" && m.reader != nil {
+			return m, loadLastRequestCmd(m.ctx, m.reader, m.cfg.UI.LastRequestID)
+		}
 		// Auto-load requests for the first collection.
+		if len(m.collections) > 0 && m.reader != nil {
+			id := m.collections[0].ID
+			m.expanded[id] = true
+			return m, loadRequestsCmd(m.ctx, m.reader, id)
+		}
+		return m, nil
+
+	case lastRequestLoadedMsg:
+		if msg.request != nil {
+			for idx, col := range m.collections {
+				if col != nil && col.ID == msg.request.CollectionID {
+					m.colCursor = idx
+					m.reqCursor = -1
+					m.expanded[col.ID] = true
+					return m, loadRequestsCmd(m.ctx, m.reader, col.ID)
+				}
+			}
+		}
+		// The remembered request may have been deleted. Start from the first
+		// visible collection and let requestsLoadedMsg choose its first request.
+		m.cfg.UI.LastRequestID = ""
 		if len(m.collections) > 0 && m.reader != nil {
 			id := m.collections[0].ID
 			m.expanded[id] = true
@@ -112,6 +137,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// for the Enter handler on a request.
 		if m.activeCollectionID() == msg.collectionID {
 			m.requests = msg.requests
+			if m.initialSelectionPending {
+				m.initialSelectionPending = false
+				if len(msg.requests) > 0 {
+					m.reqCursor = 0
+					if m.cfg.UI.LastRequestID != "" {
+						for idx, req := range msg.requests {
+							if req != nil && req.ID == m.cfg.UI.LastRequestID {
+								m.reqCursor = idx
+								break
+							}
+						}
+					}
+					m, _ = m.selectRequest(msg.requests[m.reqCursor])
+				}
+			}
 			if m.activeRequest != nil {
 				found := false
 				for _, req := range msg.requests {

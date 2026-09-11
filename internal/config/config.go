@@ -31,9 +31,10 @@ type Keybindings = keybindings.Keybindings
 
 // UI configures appearance and editing.
 type UI struct {
-	Theme         string `toml:"theme"`          // auto | dark | light | transparent
-	DefaultMethod string `toml:"default_method"` // GET
-	Editor        string `toml:"editor"`         // empty = $EDITOR, fallback vim
+	Theme         string `toml:"theme"`                     // auto | dark | light | transparent
+	DefaultMethod string `toml:"default_method"`            // GET
+	Editor        string `toml:"editor"`                    // empty = $EDITOR, fallback vim
+	LastRequestID string `toml:"last_request_id,omitempty"` // last request opened in the TUI
 }
 
 // HTTP configures request defaults.
@@ -139,6 +140,9 @@ func Load(configDir string) (Config, error) {
 	if md.IsDefined("ui", "editor") {
 		cfg.UI.Editor = override.UI.Editor
 	}
+	if md.IsDefined("ui", "last_request_id") {
+		cfg.UI.LastRequestID = override.UI.LastRequestID
+	}
 	if md.IsDefined("http", "timeout") {
 		cfg.HTTP.Timeout = override.HTTP.Timeout
 	}
@@ -176,6 +180,43 @@ func Load(configDir string) (Config, error) {
 	}
 
 	return cfg, nil
+}
+
+// SaveLastRequestID persists the request opened most recently in the TUI,
+// preserving all other config.toml sections and values.
+func SaveLastRequestID(configDir, requestID string) error {
+	if err := os.MkdirAll(configDir, 0o700); err != nil {
+		return err
+	}
+	path := filepath.Join(configDir, "config.toml")
+	var raw []byte
+	if info, err := os.Stat(path); err == nil && !info.IsDir() {
+		raw, _ = os.ReadFile(path)
+	}
+	var doc map[string]any
+	if len(raw) > 0 {
+		if _, err := toml.Decode(string(raw), &doc); err != nil {
+			return fmt.Errorf("decode config.toml: %w", err)
+		}
+	} else {
+		doc = make(map[string]any)
+	}
+	uiDoc, ok := doc["ui"].(map[string]any)
+	if !ok {
+		uiDoc = make(map[string]any)
+	}
+	if requestID == "" {
+		delete(uiDoc, "last_request_id")
+	} else {
+		uiDoc["last_request_id"] = requestID
+	}
+	doc["ui"] = uiDoc
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	return toml.NewEncoder(f).Encode(doc)
 }
 
 // mergeKeybindings copies non-empty fields from src into dst.

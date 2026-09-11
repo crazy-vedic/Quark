@@ -588,6 +588,16 @@ func (m Model) viewRequestPane(w, h int) string {
 	case m.activeRequest != nil:
 		// The read-only preview is formatted lazily by requestText below.
 		content = ""
+	default:
+		content = mutedStyle.Render(
+			"No request selected.\n\n" +
+				"Get started by importing a curl command with " +
+				m.renderHintKeys([]string{keybindings.ActionImportCurl}, false) +
+				", or create a collection with " +
+				m.renderHintKeys([]string{"sidebar_add"}, false) +
+				" and add a request with " +
+				m.renderHintKeys([]string{"sidebar_add_request"}, false) + ".",
+		)
 	}
 
 	// Responsive key hints — shorten at narrow terminals, then hard-clamp to one
