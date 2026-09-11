@@ -14,6 +14,11 @@ import (
 
 type startupRequestReader struct {
 	requests map[string][]*domain.Request
+	history  map[string][]*domain.Execution
+}
+
+func (r startupRequestReader) ListExecutionsByRequest(_ context.Context, requestID string) ([]*domain.Execution, error) {
+	return r.history[requestID], nil
 }
 
 func (r startupRequestReader) GetRequest(_ context.Context, id string) (*domain.Request, error) {
@@ -75,6 +80,32 @@ func TestStartupSelectsFirstRequestWhenNoRequestWasPersisted(t *testing.T) {
 
 	if m.activeRequest == nil || m.activeRequest.ID != first.ID {
 		t.Fatalf("active request = %v, want %q", m.activeRequest, first.ID)
+	}
+}
+
+func TestStartupSelectionLoadsExecutionHistory(t *testing.T) {
+	col := &domain.Collection{ID: "col", Name: "Collection"}
+	req := &domain.Request{ID: "req", CollectionID: col.ID, Name: "Request", Method: "GET", URL: "https://example.com"}
+	execution := &domain.Execution{ID: "ex", RequestID: req.ID, StatusCode: 200}
+	reader := startupRequestReader{
+		requests: map[string][]*domain.Request{col.ID: {req}},
+		history:  map[string][]*domain.Execution{req.ID: {execution}},
+	}
+	m := New(Deps{Reader: reader, ExecutionReader: reader, Config: config.Default(t.TempDir())})
+
+	updated, cmd := m.Update(collectionsLoadedMsg{collections: []*domain.Collection{col}})
+	m = updated.(Model)
+	updated, cmd = m.Update(cmd())
+	m = updated.(Model)
+	updated, cmd = m.Update(cmd())
+	m = updated.(Model)
+	if cmd != nil {
+		updated, _ = m.Update(cmd())
+		m = updated.(Model)
+	}
+
+	if len(m.executions) != 1 || m.executions[0].ID != execution.ID {
+		t.Fatalf("startup execution history = %#v, want %q", m.executions, execution.ID)
 	}
 }
 

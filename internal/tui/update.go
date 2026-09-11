@@ -133,6 +133,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case requestsLoadedMsg:
 		m.collectionRequests[msg.collectionID] = msg.requests
+		var historyCmd tea.Cmd
 		// If this is the currently selected collection, also set m.requests
 		// for the Enter handler on a request.
 		if m.activeCollectionID() == msg.collectionID {
@@ -149,7 +150,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 							}
 						}
 					}
-					m, _ = m.selectRequest(msg.requests[m.reqCursor])
+					m, historyCmd = m.selectRequest(msg.requests[m.reqCursor])
 				}
 			}
 			if m.activeRequest != nil {
@@ -167,9 +168,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		// Also try to load persisted active env for this collection.
 		if m.activeEnvStore != nil {
-			return m, loadActiveEnvCmd(m.ctx, m.activeEnvStore, msg.collectionID)
+			return m, tea.Batch(historyCmd, loadActiveEnvCmd(m.ctx, m.activeEnvStore, msg.collectionID))
 		}
-		return m, nil
+		return m, historyCmd
 
 	case errLoadMsg:
 		m.err = fmt.Errorf("load: %w", msg.err)
