@@ -638,6 +638,7 @@ func (m Model) handleSidebarAction(action string) (tea.Model, tea.Cmd) {
 		if colID != "" {
 			m.collapseCollectionSubtree(colID)
 			m.reqCursor = -1
+			m, _ = m.selectRequest(nil)
 		}
 		return m, nil
 	case "add":
