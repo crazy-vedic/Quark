@@ -158,9 +158,9 @@ func (m Model) buildSidebarRows() ([]sidebarRow, int) {
 					selectedRow = len(rows) - 1
 				}
 			}
-		}
-		for _, childIdx := range children[col.ID] {
-			appendCollection(childIdx, depth+1, visiting)
+			for _, childIdx := range children[col.ID] {
+				appendCollection(childIdx, depth+1, visiting)
+			}
 		}
 		delete(visiting, colIdx)
 	}
@@ -170,6 +170,20 @@ func (m Model) buildSidebarRows() ([]sidebarRow, int) {
 	// Broken or cyclic parent references should remain visible instead of being
 	// silently dropped from the sidebar.
 	for colIdx := range m.collections {
+		// A valid child whose parent is collapsed is intentionally absent from
+		// rows; it must not be re-added by the malformed-tree fallback below.
+		parentExists := false
+		if m.collections[colIdx] != nil && m.collections[colIdx].ParentID != "" {
+			for _, parent := range m.collections {
+				if parent != nil && parent.ID == m.collections[colIdx].ParentID {
+					parentExists = true
+					break
+				}
+			}
+		}
+		if parentExists {
+			continue
+		}
 		found := false
 		for _, row := range rows {
 			if row.kind == sidebarCollectionRow && row.colIndex == colIdx {

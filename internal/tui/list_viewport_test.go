@@ -20,6 +20,39 @@ func TestOrderCollectionsTreePlacesRootsBeforeDescendants(t *testing.T) {
 	require.Equal(t, []string{"root", "child-a", "child-b", "sibling"}, collectionIDs(ordered))
 }
 
+func TestBuildSidebarRowsHidesChildrenWhenParentIsCollapsed(t *testing.T) {
+	m := Model{
+		collections: []*domain.Collection{
+			{ID: "root", Name: "AEF"},
+			{ID: "child", Name: "Control Plane", ParentID: "root"},
+		},
+		expanded:  map[string]bool{"root": false},
+		colCursor: 0,
+		reqCursor: -1,
+	}
+
+	rows, _ := m.buildSidebarRows()
+	if len(rows) != 1 || rows[0].colIndex != 0 {
+		t.Fatalf("collapsed sidebar rows = %#v, want only root collection", rows)
+	}
+}
+
+func TestBuildSidebarRowsShowsChildrenWhenParentIsExpanded(t *testing.T) {
+	m := Model{
+		collections: []*domain.Collection{
+			{ID: "root", Name: "AEF"},
+			{ID: "child", Name: "Control Plane", ParentID: "root"},
+		},
+		expanded:  map[string]bool{"root": true},
+		reqCursor: -1,
+	}
+
+	rows, _ := m.buildSidebarRows()
+	if len(rows) != 2 || rows[1].colIndex != 1 || rows[1].depth != 1 {
+		t.Fatalf("expanded sidebar rows = %#v, want root and child", rows)
+	}
+}
+
 func collectionIDs(collections []*domain.Collection) []string {
 	ids := make([]string, 0, len(collections))
 	for _, collection := range collections {
