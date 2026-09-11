@@ -872,6 +872,13 @@ func (m Model) handleRequestKey(_ string, msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// Inline field routing — when active, all keys go to the field.
 	switch m.activeField {
 	case urlField:
+		if msg.Type == tea.KeyTab {
+			if suggestion := m.urlSuggestion(m.urlInput.Value()); suggestion != "" {
+				m.urlInput.SetValue(suggestion)
+				m.urlInput.SetCursor(len([]rune(suggestion)))
+				return m, nil
+			}
+		}
 		var cmd tea.Cmd
 		m.urlInput, cmd = m.urlInput.Update(msg)
 		if msg.Type == tea.KeyEnter {
@@ -1865,6 +1872,10 @@ func (m Model) handleHeaderFieldEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			m.headerKeyInput.Blur()
 			m.headerValueInput.Focus()
+		} else if suggestion := headerValueSuggestion(m.headerKeyInput.Value(), m.headerValueInput.Value()); suggestion != "" {
+			m.headerValueInput.SetValue(suggestion)
+			m.headerValueInput.SetCursor(len([]rune(suggestion)))
+			return m, nil
 		} else {
 			m.headerValueInput.Blur()
 			m.headerKeyInput.Focus()

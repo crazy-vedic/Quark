@@ -515,6 +515,9 @@ func (m Model) viewRequestPane(w, h int) string {
 			if warning := singleLineInputWarning(m.urlInput.Value()); warning != "" {
 				top = append(top, warning)
 			}
+			if suggestion := m.urlSuggestion(m.urlInput.Value()); suggestion != "" {
+				top = append(top, mutedStyle.Render("  Tab → "+suggestion))
+			}
 		}
 	}
 
