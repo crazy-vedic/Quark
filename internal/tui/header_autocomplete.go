@@ -128,3 +128,10 @@ func variableCompletion(input string, names []string) string {
 	}
 	return ""
 }
+
+func completionSuffix(input, suggestion string) string {
+	if len(suggestion) <= len(input) || !strings.EqualFold(suggestion[:len(input)], input) {
+		return ""
+	}
+	return suggestion[len(input):]
+}

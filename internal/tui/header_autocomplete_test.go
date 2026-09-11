@@ -52,3 +52,9 @@ func TestURLSuggestionUsesLoadedRequests(t *testing.T) {
 		t.Fatalf("urlSuggestion = %q, want loaded request URL", got)
 	}
 }
+
+func TestCompletionSuffix(t *testing.T) {
+	if got := completionSuffix("https://api.example.com/u", "https://api.example.com/users"); got != "sers" {
+		t.Fatalf("completionSuffix = %q, want sers", got)
+	}
+}

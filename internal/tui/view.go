@@ -481,6 +481,9 @@ func (m Model) viewRequestPane(w, h int) string {
 	var urlDisplay string
 	if m.activeField == urlField {
 		urlDisplay = m.urlInput.View()
+		if suggestion := m.urlSuggestion(m.urlInput.Value()); suggestion != "" {
+			urlDisplay += mutedStyle.Render(completionSuffix(m.urlInput.Value(), suggestion))
+		}
 	} else {
 		urlVal := m.urlInput.Value()
 		if urlVal == "" {
@@ -514,9 +517,6 @@ func (m Model) viewRequestPane(w, h int) string {
 		if m.activeField == urlField {
 			if warning := singleLineInputWarning(m.urlInput.Value()); warning != "" {
 				top = append(top, warning)
-			}
-			if suggestion := m.urlSuggestion(m.urlInput.Value()); suggestion != "" {
-				top = append(top, mutedStyle.Render("  Tab → "+suggestion))
 			}
 		}
 	}
