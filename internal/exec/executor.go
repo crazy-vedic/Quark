@@ -3,10 +3,12 @@ package exec
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"log/slog"
+	"mime"
 	"net/http"
 	"net/url"
 	"os"
@@ -161,34 +163,45 @@ func buildHTTPRequest(ctx context.Context, req *domain.Request) (*http.Request, 
 		)
 	}
 
-	body, err := requestBodyReader(req.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	httpReq, err := http.NewRequestWithContext(ctx, req.Method, req.URL, body)
-	if err != nil {
-		return nil, err
-	}
-
-	// Parse and apply headers stored as a JSON object in the DB.
+	// Resolve header file references before preparing the body because
+	// Content-Type controls body preparation.
+	headers := make(http.Header)
 	if req.Headers != "" && req.Headers != "{}" {
-		headers, err := parseHeaders(req.Headers)
+		parsedHeaders, err := parseHeaders(req.Headers)
 		if err != nil {
 			// Malformed JSON in the headers column — warn and continue without
 			// headers rather than silently sending the request with none applied.
 			slog.Warn("exec: failed to parse request headers; sending without headers",
 				"request_id", req.ID, "err", err)
 		} else {
-			for key, values := range headers {
+			for key, values := range parsedHeaders {
 				for _, value := range values {
 					value, err := resolveHeaderFile(value)
 					if err != nil {
 						return nil, fmt.Errorf("exec: header %q: %w", key, err)
 					}
-					httpReq.Header.Add(key, value)
+					headers.Add(key, value)
 				}
 			}
+		}
+	}
+
+	body, err := requestBodyValue(req.Body, headers.Get("Content-Type"))
+	if err != nil {
+		return nil, err
+	}
+
+	var bodyReader io.Reader
+	if body != "" {
+		bodyReader = newStringReader(body)
+	}
+	httpReq, err := http.NewRequestWithContext(ctx, req.Method, req.URL, bodyReader)
+	if err != nil {
+		return nil, err
+	}
+	for key, values := range headers {
+		for _, value := range values {
+			httpReq.Header.Add(key, value)
 		}
 	}
 
@@ -208,19 +221,41 @@ const maxRequestFileSize = 10 << 20
 // requestBodyReader expands the exact @path form used by the Body editor.
 // Keeping the reference in domain.Request means saved requests remain small
 // and continue to follow changes to the referenced file.
-func requestBodyReader(body string) (io.Reader, error) {
+func requestBodyValue(body, contentType string) (string, error) {
 	if body == "" {
-		return nil, nil
+		return "", nil
 	}
-	if !strings.HasPrefix(body, "@") || len(body) == 1 {
-		return newStringReader(body), nil
+	if strings.HasPrefix(body, "@") && len(body) > 1 {
+		path := strings.TrimPrefix(body, "@")
+		data, err := readRequestFile(path)
+		if err != nil {
+			return "", fmt.Errorf("exec: read body file %q: %w", path, err)
+		}
+		body = string(data)
 	}
+	return FormatRequestBody(body, contentType)
+}
 
-	data, err := readRequestFile(strings.TrimPrefix(body, "@"))
-	if err != nil {
-		return nil, fmt.Errorf("read body file %q: %w", strings.TrimPrefix(body, "@"), err)
+// FormatRequestBody prepares body text according to its media type. JSON is
+// validated and indented; other media types are intentionally byte-preserved.
+// An @file reference is left untouched so callers such as the TUI can persist
+// the reference and defer reading it until dispatch.
+func FormatRequestBody(body, contentType string) (string, error) {
+	if body == "" || (strings.HasPrefix(body, "@") && len(body) > 1) {
+		return body, nil
 	}
-	return bytes.NewReader(data), nil
+	mediaType, _, err := mime.ParseMediaType(contentType)
+	if err != nil {
+		mediaType = strings.TrimSpace(strings.Split(contentType, ";")[0])
+	}
+	if mediaType != "application/json" && !strings.HasSuffix(mediaType, "+json") {
+		return body, nil
+	}
+	var formatted bytes.Buffer
+	if err := json.Indent(&formatted, []byte(body), "", "  "); err != nil {
+		return "", fmt.Errorf("invalid JSON body: %w", err)
+	}
+	return formatted.String(), nil
 }
 
 func resolveHeaderFile(value string) (string, error) {

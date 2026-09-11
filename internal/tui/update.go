@@ -1804,6 +1804,14 @@ func (m Model) saveBody() (Model, tea.Cmd) {
 	if m.activeRequest == nil {
 		return m, nil
 	}
+	formatted, err := exec.FormatRequestBody(
+		m.bodyTextarea.Value(),
+		requestContentType(m.activeRequest),
+	)
+	if err != nil {
+		return m.status("error", err.Error()), nil
+	}
+	m.bodyTextarea.SetValue(formatted)
 	m = m.finishBodyEdit()
 	return m, saveRequestCmd(m.ctx, m.writer, m.reader, m.activeRequest)
 }

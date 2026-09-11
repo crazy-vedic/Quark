@@ -1,6 +1,7 @@
 package exec_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"errors"
@@ -188,6 +189,96 @@ func TestExecutor_AppliesSpecialRequestHeaders(t *testing.T) {
 	assert.True(t, observed.Close)
 	assert.Empty(t, observed.Header.Get("Content-Length"))
 	assert.Empty(t, observed.Header.Get("Transfer-Encoding"))
+}
+
+func TestExecutor_SpecialHeadersProduceExpectedWireRequest(t *testing.T) {
+	tests := []struct {
+		name        string
+		headers     string
+		body        string
+		mustContain []string
+	}{
+		{
+			name:        "host length and close",
+			headers:     `{"Host":"api.example.test","Content-Length":"7","Connection":"close"}`,
+			body:        "payload",
+			mustContain: []string{"Host: api.example.test\r\n", "Content-Length: 7\r\n", "Connection: close\r\n"},
+		},
+		{
+			name:        "chunked transfer",
+			headers:     `{"Transfer-Encoding":"chunked"}`,
+			body:        "payload",
+			mustContain: []string{"Transfer-Encoding: chunked\r\n", "7\r\npayload\r\n0\r\n"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			transport := roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+				var wire bytes.Buffer
+				require.NoError(t, r.Write(&wire))
+				for _, expected := range tt.mustContain {
+					assert.Contains(t, wire.String(), expected)
+				}
+				return &http.Response{
+					StatusCode: 200,
+					Status:     "200 OK",
+					Header:     make(http.Header),
+					Body:       io.NopCloser(strings.NewReader("ok")),
+					Request:    r,
+				}, nil
+			})
+			_, err := newTestExecutor(transport).Execute(context.Background(), &domain.Request{
+				Method:  http.MethodPost,
+				URL:     "https://example.test/upload",
+				Body:    tt.body,
+				Headers: tt.headers,
+			})
+			require.NoError(t, err)
+		})
+	}
+}
+
+func TestExecutor_FormatsJSONBodyByContentType(t *testing.T) {
+	var received string
+	transport := roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+		body, err := io.ReadAll(r.Body)
+		require.NoError(t, err)
+		received = string(body)
+		return &http.Response{
+			StatusCode: 200,
+			Status:     "200 OK",
+			Header:     make(http.Header),
+			Body:       io.NopCloser(strings.NewReader("ok")),
+			Request:    r,
+		}, nil
+	})
+
+	_, err := newTestExecutor(transport).Execute(context.Background(), &domain.Request{
+		Method:  http.MethodPost,
+		URL:     "https://example.test/json",
+		Body:    `{"name":"quark","items":[1,2]}`,
+		Headers: `{"Content-Type":"application/json; charset=utf-8"}`,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "{\n  \"name\": \"quark\",\n  \"items\": [\n    1,\n    2\n  ]\n}", received)
+}
+
+func TestExecutor_RejectsInvalidJSONBodyByContentType(t *testing.T) {
+	called := false
+	transport := roundTripperFunc(func(*http.Request) (*http.Response, error) {
+		called = true
+		return nil, errors.New("transport must not be called")
+	})
+	_, err := newTestExecutor(transport).Execute(context.Background(), &domain.Request{
+		Method:  http.MethodPost,
+		URL:     "https://example.test/json",
+		Body:    `{"invalid":`,
+		Headers: `{"Content-Type":"application/json"}`,
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid JSON body")
+	assert.False(t, called)
 }
 
 func TestExecutor_RejectsMissingBodyFile(t *testing.T) {

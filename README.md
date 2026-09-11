@@ -160,9 +160,10 @@ request keeps the reference and picks up later file changes. Files are limited
 to 10 MiB; missing or unreadable files fail before any network request is made.
 
 `Host`, `Content-Length`, `Transfer-Encoding`, and `Connection` headers are
-applied to their corresponding HTTP request fields. Other headers, including
-`Content-Type` and `Content-Encoding`, remain declarations: Quark does not
-silently transform the body based on them.
+applied to their corresponding HTTP request fields. JSON content types
+(`application/json` and `*+json`) are validated and formatted when saved or
+sent. Other types, including form, text, multipart, and `Content-Encoding`,
+remain byte-preserving declarations.
 
 ---
 
