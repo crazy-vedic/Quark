@@ -89,6 +89,17 @@ Test files follow `e2e_*_test.go` naming:
 - `e2e_auth_test.go`, `e2e_env_test.go`, `e2e_schedule_test.go`, etc.
 - `harness_smoke_test.go` — harness wiring verification
 
+The theming E2E tests (`e2e_theme_test.go`) parse the final ANSI frame into
+terminal cells. They check every cell's effective background after nested SGR
+resets, plus title, request, and response text roles, across wide, narrow, and
+tiny layouts. The tests also drive theme preview/cancel/apply, restart from
+saved config, custom-theme file reload, overlays, and 256-color output. Run the
+focused checks with:
+
+```bash
+go test -tags e2e ./tests/e2e/tui -run 'Test(E2E_Theme|E2E_CustomTheme|ThemeScreenReader)' -count=1
+```
+
 ### TUI Regression Tests
 
 `internal/tui/update_test.go` — BUG-NNN regression tests (not e2e tag, run with unit tests).
