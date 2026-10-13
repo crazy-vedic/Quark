@@ -35,6 +35,11 @@ type CurlImporter interface {
 	Parse(r io.Reader) (*curl.ImportResult, error)
 }
 
+// PostmanImporter imports a Postman collection file or bulk export directory.
+type PostmanImporter interface {
+	ImportPostman(ctx context.Context, path string) (string, error)
+}
+
 // CertificateManager reloads the HTTP client-certificate routes.
 type CertificateManager interface {
 	Reload(config.Config) error

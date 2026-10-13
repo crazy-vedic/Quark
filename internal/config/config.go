@@ -173,6 +173,11 @@ func Load(configDir string) (Config, error) {
 			override.Keybindings.SidebarDelete == "d" {
 			cfg.Keybindings.SidebarDelete = "D"
 		}
+		if md.IsDefined("keybindings", "import_curl") &&
+			!md.IsDefined("keybindings", "sidebar_import_postman") &&
+			override.Keybindings.ImportCurl == "I" {
+			cfg.Keybindings.ImportCurl = "i"
+		}
 	}
 
 	return cfg, nil

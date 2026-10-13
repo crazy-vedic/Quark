@@ -3,7 +3,6 @@ package cli
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -29,6 +28,7 @@ type requestPathResolver interface {
 // "Collection/Request Name" is the first positional argument.
 func NewRunCmd(st RunStore, e *exec.Executor) *cobra.Command {
 	var namedVars []string
+	var verbose bool
 
 	cmd := &cobra.Command{
 		Use:   "run <Collection/Request> [positional-args...]",
@@ -68,19 +68,7 @@ func NewRunCmd(st RunStore, e *exec.Executor) *cobra.Command {
 					if err != nil {
 						return fmt.Errorf("run: execute: %w", err)
 					}
-					fmt.Fprintf(
-						cmd.OutOrStdout(),
-						"Status: %s\nSize:   %d bytes\nTime:   %v\n",
-						result.Status,
-						result.Size,
-						result.Duration.Round(1000000),
-					)
-					ct := http.Header(result.Headers).Get("Content-Type")
-					if strings.Contains(ct, "application/json") && result.Body != nil {
-						fmt.Fprintln(cmd.OutOrStdout())
-						fmt.Fprintln(cmd.OutOrStdout(), string(result.Body))
-					}
-					return nil
+					return printRunResult(cmd, prepared, result, verbose)
 				}
 			}
 			parts := strings.SplitN(args[0], "/", 2)
@@ -149,15 +137,7 @@ func NewRunCmd(st RunStore, e *exec.Executor) *cobra.Command {
 				return fmt.Errorf("run: execute: %w", err)
 			}
 
-			fmt.Fprintf(cmd.OutOrStdout(), "Status: %s\nSize:   %d bytes\nTime:   %v\n",
-				result.Status, result.Size, result.Duration.Round(1000000))
-
-			ct := http.Header(result.Headers).Get("Content-Type")
-			if strings.Contains(ct, "application/json") && result.Body != nil {
-				fmt.Fprintln(cmd.OutOrStdout())
-				fmt.Fprintln(cmd.OutOrStdout(), string(result.Body))
-			}
-			return nil
+			return printRunResult(cmd, prepared, result, verbose)
 		},
 	}
 	cmd.ValidArgsFunction = CompleteRequestPaths(st.ListCollections, st.ListRequests)
@@ -167,6 +147,13 @@ func NewRunCmd(st RunStore, e *exec.Executor) *cobra.Command {
 		"v",
 		nil,
 		"Override a request variable as key=value; overrides collection/global envs",
+	)
+	cmd.Flags().BoolVarP(
+		&verbose,
+		"verbose",
+		"v",
+		false,
+		"Print request and response headers and request details (may include credentials)",
 	)
 	return cmd
 }
