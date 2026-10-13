@@ -70,7 +70,7 @@ quark collection list         # List all collections
 - **Import** — cURL and Postman Collection v2.1
 - **Response preview** — Syntax-highlighted JSON, streaming for large bodies
 - **Themes** — Terminal-aware dark and light palettes, local custom themes, live preview and reload
-- **Fuzzy search** — `s` to search across everything
+- **Fuzzy search** — `/` to search across everything
 - **Auto-backup** — Last 10 backups in `~/.quark/backup/`
 - **Signal-aware** — SIGINT cancels in-flight, restores terminal
 - **Scheduling** — Persist due times with `quark schedule add`; Quark is **not** a background daemon. Runs fire when you invoke `quark schedule run-due` (cron/systemd/CI) or while the TUI is open (in-app timer)
@@ -95,7 +95,7 @@ background while preserving that background. `dark` and `light` paint their own
 backgrounds. `transparent` also preserves the terminal background and follows
 its contrast.
 
-In the TUI, press `s`, type `> theme`, and use Up/Down to preview a theme.
+In the TUI, press `/`, type `> theme`, and use Up/Down to preview a theme.
 Press Enter to save it, or Esc to restore the previous theme. You can also use:
 
 ```bash
