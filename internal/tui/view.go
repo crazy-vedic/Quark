@@ -76,6 +76,7 @@ var helpActionLabels = map[string]string{
 	keybindings.ActionFocusResponse: "focus response",
 	keybindings.ActionClientCerts:   "client certificates",
 	keybindings.ActionImportCurl:    "import curl",
+	keybindings.ActionImportPostman: "import Postman collection",
 	keybindings.ActionImportParse:   "parse curl",
 	"pane_next":                     "next pane",
 	"pane_prev":                     "prev pane",
@@ -191,6 +192,8 @@ func (m Model) View() string {
 		out = m.viewViewer()
 	case clientCertMode:
 		out = m.viewClientCertModal()
+	case postmanImportMode:
+		out = m.viewPostmanImportModal()
 	default:
 		return m.viewByDim()
 	}
@@ -1663,6 +1666,32 @@ func (m Model) viewScheduleModal() string {
 		Height(10).
 		Render(sb.String())
 
+	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box)
+}
+
+func (m Model) viewPostmanImportModal() string {
+	var sb strings.Builder
+	sb.WriteString(titleStyle.Render("Import Postman collection") + "\n\n")
+	sb.WriteString("Collection file or export directory:\n")
+	sb.WriteString(m.postmanPath.View() + "\n\n")
+	sb.WriteString(mutedStyle.Render("Existing collection names are kept by creating a numbered copy.") + "\n")
+	if m.postmanOutput != "" {
+		width := max(20, m.twoThirdsModalWidth()-8)
+		output := clipToRows(stripANSI(m.postmanOutput), width, 5)
+		sb.WriteString("\n" + output + "\n")
+	}
+	if m.postmanBusy {
+		sb.WriteString("\n" + mutedStyle.Render("Importing…"))
+	} else {
+		sb.WriteString("\n" + mutedStyle.Render("[Enter] import  [Esc] cancel"))
+	}
+	box := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(blue).
+		Padding(1, 2).
+		Width(m.twoThirdsModalWidth()).
+		Height(12).
+		Render(sb.String())
 	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box)
 }
 
