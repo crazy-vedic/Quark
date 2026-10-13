@@ -95,7 +95,8 @@ background while preserving that background. `dark` and `light` paint their own
 backgrounds. `transparent` also preserves the terminal background and follows
 its contrast.
 
-In the TUI, press `/`, type `> theme`, and use Up/Down to preview a theme.
+In the TUI, press `/`, then type the `>` character followed by `theme` to
+switch request search into the command palette. Use Up/Down to preview a theme.
 Press Enter to save it, or Esc to restore the previous theme. You can also use:
 
 ```bash

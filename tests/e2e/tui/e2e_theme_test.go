@@ -161,9 +161,25 @@ func TestE2E_ThemePreviewCancelApplyAndRestart(t *testing.T) {
 		}
 	}
 	check(dark)
+	// Typing "theme" without the command prefix is request search. Give the
+	// exact hint needed to reach the theme picker from that state.
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
+	for _, key := range "theme" {
+		m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{key}})
+	}
+	assertViewContains(t, m, "Search all requests")
+	assertViewContains(t, m, "For theme choices, type > theme")
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyEsc})
+	check(dark)
+
 	openLightPreview := func() {
 		m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
-		m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("> theme: light")})
+		for _, key := range "> theme: light" {
+			m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{key}})
+			if key == '>' {
+				assertViewContains(t, m, "Command palette")
+			}
+		}
 		require.Equal(t, tui.SearchMode, m.Mode())
 		assertViewContains(t, m, "Theme: light")
 		check(light)
