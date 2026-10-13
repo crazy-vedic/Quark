@@ -148,10 +148,9 @@ func NewRunCmd(st RunStore, e *exec.Executor) *cobra.Command {
 		nil,
 		"Override a request variable as key=value; overrides collection/global envs",
 	)
-	cmd.Flags().BoolVarP(
+	cmd.Flags().BoolVar(
 		&verbose,
 		"verbose",
-		"v",
 		false,
 		"Print request and response headers and request details (may include credentials)",
 	)
