@@ -161,14 +161,13 @@ func TestE2E_ThemePreviewCancelApplyAndRestart(t *testing.T) {
 		}
 	}
 	check(dark)
-	// Typing "theme" without the command prefix is request search. Give the
-	// exact hint needed to reach the theme picker from that state.
+	// Typing "theme" without the command prefix remains ordinary request search.
 	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
 	for _, key := range "theme" {
 		m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{key}})
 	}
 	assertViewContains(t, m, "Search all requests")
-	assertViewContains(t, m, "For theme choices, type > theme")
+	assertViewContains(t, m, "Type to search requests…  > for commands")
 	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyEsc})
 	check(dark)
 

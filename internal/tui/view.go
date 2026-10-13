@@ -1573,9 +1573,7 @@ func (m Model) viewSearchModal() string {
 		}
 	case len(m.searchResults) == 0:
 		// BUG-008: distinguish "not yet searched" from "searched and found nothing".
-		if strings.EqualFold(query, "theme") {
-			sb.WriteString(m.styles.mutedStyle.Render("  For theme choices, type > theme"))
-		} else if !m.searched {
+		if !m.searched {
 			sb.WriteString(m.styles.mutedStyle.Render("  Type to search requests…  > for commands"))
 		} else {
 			sb.WriteString(m.styles.mutedStyle.Render("  No requests found.  > for commands"))
