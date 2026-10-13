@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -881,7 +882,13 @@ func (m Model) requestBodyPreviewSourceKey() string {
 	if m.activeRequest == nil {
 		return "request:none"
 	}
-	return fmt.Sprintf("request:%p:%s", m.activeRequest, m.activeRequest.ID)
+
+	// The active request is edited in place, so identity alone is not enough to
+	// invalidate the formatted preview cache. Keep the key bounded while making
+	// body/header edits visible on the next render.
+	source := m.activeRequest.Body + "\x00" + m.activeRequest.Headers
+	digest := sha256.Sum256([]byte(source))
+	return fmt.Sprintf("request:%p:%s:%x", m.activeRequest, m.activeRequest.ID, digest[:8])
 }
 
 func (m Model) responseTextSourceKey() string {
