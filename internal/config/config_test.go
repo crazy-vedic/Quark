@@ -61,6 +61,22 @@ keep_last = 5
 	assert.Equal(t, 5, cfg.Backup.KeepLast)
 }
 
+func TestLastRequestID_RoundTripsWithoutReplacingConfig(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "config.toml"), []byte("[ui]\ntheme = \"dark\"\n"), 0o600))
+
+	require.NoError(t, config.SaveLastRequestID(dir, "request-123"))
+	cfg, err := config.Load(dir)
+	require.NoError(t, err)
+	assert.Equal(t, "dark", cfg.UI.Theme)
+	assert.Equal(t, "request-123", cfg.UI.LastRequestID)
+
+	require.NoError(t, config.SaveLastRequestID(dir, ""))
+	cfg, err = config.Load(dir)
+	require.NoError(t, err)
+	assert.Empty(t, cfg.UI.LastRequestID)
+}
+
 func TestLoad_PartialFile_FillsZerosWithDefaults(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, os.MkdirAll(dir, 0o700))

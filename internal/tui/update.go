@@ -104,7 +104,32 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case collectionsLoadedMsg:
 		m.collections = orderCollectionsTree(msg.collections)
 		m.colCursor = 0
+		m.reqCursor = -1
+		if m.cfg.UI.LastRequestID != "" && m.reader != nil {
+			return m, loadLastRequestCmd(m.ctx, m.reader, m.cfg.UI.LastRequestID)
+		}
 		// Auto-load requests for the first collection.
+		if len(m.collections) > 0 && m.reader != nil {
+			id := m.collections[0].ID
+			m.expanded[id] = true
+			return m, loadRequestsCmd(m.ctx, m.reader, id)
+		}
+		return m, nil
+
+	case lastRequestLoadedMsg:
+		if msg.request != nil {
+			for idx, col := range m.collections {
+				if col != nil && col.ID == msg.request.CollectionID {
+					m.colCursor = idx
+					m.reqCursor = -1
+					m.expanded[col.ID] = true
+					return m, loadRequestsCmd(m.ctx, m.reader, col.ID)
+				}
+			}
+		}
+		// The remembered request may have been deleted. Start from the first
+		// visible collection and let requestsLoadedMsg choose its first request.
+		m.cfg.UI.LastRequestID = ""
 		if len(m.collections) > 0 && m.reader != nil {
 			id := m.collections[0].ID
 			m.expanded[id] = true
@@ -114,10 +139,26 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case requestsLoadedMsg:
 		m.collectionRequests[msg.collectionID] = msg.requests
+		var historyCmd tea.Cmd
 		// If this is the currently selected collection, also set m.requests
 		// for the Enter handler on a request.
 		if m.activeCollectionID() == msg.collectionID {
 			m.requests = msg.requests
+			if m.initialSelectionPending {
+				m.initialSelectionPending = false
+				if len(msg.requests) > 0 {
+					m.reqCursor = 0
+					if m.cfg.UI.LastRequestID != "" {
+						for idx, req := range msg.requests {
+							if req != nil && req.ID == m.cfg.UI.LastRequestID {
+								m.reqCursor = idx
+								break
+							}
+						}
+					}
+					m, historyCmd = m.selectRequest(msg.requests[m.reqCursor])
+				}
+			}
 			if m.activeRequest != nil {
 				found := false
 				for _, req := range msg.requests {
@@ -133,9 +174,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		// Also try to load persisted active env for this collection.
 		if m.activeEnvStore != nil {
-			return m, loadActiveEnvCmd(m.ctx, m.activeEnvStore, msg.collectionID)
+			return m, tea.Batch(historyCmd, loadActiveEnvCmd(m.ctx, m.activeEnvStore, msg.collectionID))
 		}
-		return m, nil
+		return m, historyCmd
 
 	case errLoadMsg:
 		m.err = fmt.Errorf("load: %w", msg.err)
@@ -597,6 +638,7 @@ func (m Model) handleSidebarAction(action string) (tea.Model, tea.Cmd) {
 		if colID != "" {
 			m.collapseCollectionSubtree(colID)
 			m.reqCursor = -1
+			m, _ = m.selectRequest(nil)
 		}
 		return m, nil
 	case "add":
@@ -803,6 +845,13 @@ func (m Model) handleRequestKey(_ string, msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// Inline field routing — when active, all keys go to the field.
 	switch m.activeField {
 	case urlField:
+		if msg.Type == tea.KeyTab {
+			if suggestion := m.urlSuggestion(m.urlInput.Value()); suggestion != "" {
+				m.urlInput.SetValue(suggestion)
+				m.urlInput.SetCursor(len([]rune(suggestion)))
+				return m, nil
+			}
+		}
 		var cmd tea.Cmd
 		m.urlInput, cmd = m.urlInput.Update(msg)
 		if msg.Type == tea.KeyEnter {
@@ -971,6 +1020,10 @@ func debugRuneCodes(runes []rune) string {
 
 func (m Model) openHelp() Model {
 	m.mode = helpMode
+	m.helpSearch = false
+	m.searchInput.Blur()
+	m.searchInput.SetValue("")
+	m.searchInput.Placeholder = "search requests (optional)..."
 	return m
 }
 
@@ -981,12 +1034,17 @@ func (m Model) closeHelp() Model {
 	m.helpEditState = helpViewing
 	m.helpEditAction = ""
 	m.helpEditErrMsg = ""
+	m.helpSearch = false
+	m.searchInput.Blur()
+	m.searchInput.SetValue("")
+	m.searchInput.Placeholder = "search requests (optional)..."
 	return m
 }
 
 func (m Model) openSearch() (Model, tea.Cmd) {
 	m.mode = searchMode
 	m.searchInput.SetValue("")
+	m.searchInput.Placeholder = "search requests (optional)..."
 	m.searchInput.Focus()
 	m.searchResults = nil
 	m.commands = nil
@@ -994,7 +1052,8 @@ func (m Model) openSearch() (Model, tea.Cmd) {
 	m.searchScroll = 0
 	m.searchCancel = nil
 	m.searched = false
-	return m, textinput.Blink
+	searchM, searchCmd := m.dispatchSearch("")
+	return searchM, tea.Batch(textinput.Blink, searchCmd)
 }
 
 func (m Model) closeSearch() Model {
@@ -1005,6 +1064,7 @@ func (m Model) closeSearch() Model {
 	m.mode = normalMode
 	m.searchInput.Blur()
 	m.searchInput.SetValue("")
+	m.searchInput.Placeholder = "search requests (optional)..."
 	m.searchResults = nil
 	m.commands = nil
 	m.searchCursor = 0
@@ -1293,9 +1353,65 @@ func (m Model) adjustHelpScroll(entries []keybindings.Entry, direction int) Mode
 	return m
 }
 
+func filterKeybindingEntries(entries []keybindings.Entry, query string) []keybindings.Entry {
+	query = strings.ToLower(strings.TrimSpace(query))
+	if query == "" {
+		return entries
+	}
+	filtered := make([]keybindings.Entry, 0, len(entries))
+	for _, entry := range entries {
+		if strings.Contains(strings.ToLower(entry.Action), query) ||
+			strings.Contains(strings.ToLower(helpActionLabel(entry.Action)), query) ||
+			strings.Contains(strings.ToLower(entry.Key), query) ||
+			strings.Contains(strings.ToLower(entry.Group), query) {
+			filtered = append(filtered, entry)
+		}
+	}
+	return filtered
+}
+
 // --- Help overlay ---
 
 func (m Model) handleHelpKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Search is an inline, live filter over the keybinding reference.
+	if m.helpSearch {
+		if action, ok := m.resolver.Resolve(2, 0, msg); ok {
+			switch action {
+			case keybindings.ActionSearch:
+				return m, nil
+			case keybindings.ActionClose:
+				m.helpSearch = false
+				m.searchInput.Blur()
+				m.searchInput.SetValue("")
+				m.helpCursor = 0
+				m.helpScrollOffset = 0
+				return m, nil
+			case keybindings.ActionNavigateUp, keybindings.ActionNavigateDown:
+				// Let printable navigation keys (often j/k) become part of the
+				// query. Arrow keys remain available for moving through matches.
+				if msg.Type != tea.KeyRunes {
+					entries := filterKeybindingEntries(keybindings.ListEntries(m.cfg.Keybindings), m.searchInput.Value())
+					if action == keybindings.ActionNavigateUp && m.helpCursor > 0 {
+						m.helpCursor--
+					}
+					if action == keybindings.ActionNavigateDown && m.helpCursor < len(entries)-1 {
+						m.helpCursor++
+					}
+					direction := 1
+					if action == keybindings.ActionNavigateUp {
+						direction = -1
+					}
+					return m.adjustHelpScroll(entries, direction), nil
+				}
+			}
+		}
+		var inputCmd tea.Cmd
+		m.searchInput, inputCmd = m.searchInput.Update(msg)
+		m.helpCursor = 0
+		m.helpScrollOffset = 0
+		return m, inputCmd
+	}
+
 	// Handle recording state first — capture the next keypress.
 	if m.helpEditState == helpRecording {
 		switch msg.String() {
@@ -1373,6 +1489,14 @@ func (m Model) handleHelpKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	if action, ok := m.resolver.Resolve(2, 0, msg); ok {
 		switch action {
+		case keybindings.ActionSearch:
+			m.helpSearch = true
+			m.searchInput.SetValue("")
+			m.searchInput.Placeholder = "search keybindings (optional)..."
+			m.searchInput.Focus()
+			m.helpCursor = 0
+			m.helpScrollOffset = 0
+			return m, textinput.Blink
 		case "quit":
 			return m, tea.Quit
 		case keybindings.ActionClose:
@@ -1691,6 +1815,14 @@ func (m Model) saveBody() (Model, tea.Cmd) {
 	if m.activeRequest == nil {
 		return m, nil
 	}
+	formatted, err := exec.FormatRequestBody(
+		m.bodyTextarea.Value(),
+		requestContentType(m.activeRequest),
+	)
+	if err != nil {
+		return m.status("error", err.Error()), nil
+	}
+	m.bodyTextarea.SetValue(formatted)
 	m = m.finishBodyEdit()
 	return m, saveRequestCmd(m.ctx, m.writer, m.reader, m.activeRequest)
 }
@@ -1828,8 +1960,17 @@ func (m Model) handleHeadersFieldKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m Model) handleHeaderFieldEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if msg.Type == tea.KeyTab {
 		if m.headerKeyInput.Focused() {
+			if suggestion := headerNameSuggestion(m.headerKeyInput.Value()); suggestion != "" {
+				m.headerKeyInput.SetValue(suggestion)
+				m.headerKeyInput.SetCursor(len([]rune(suggestion)))
+				return m, nil
+			}
 			m.headerKeyInput.Blur()
 			m.headerValueInput.Focus()
+		} else if suggestion := headerValueSuggestion(m.headerKeyInput.Value(), m.headerValueInput.Value()); suggestion != "" {
+			m.headerValueInput.SetValue(suggestion)
+			m.headerValueInput.SetCursor(len([]rune(suggestion)))
+			return m, nil
 		} else {
 			m.headerValueInput.Blur()
 			m.headerKeyInput.Focus()

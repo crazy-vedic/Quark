@@ -9,6 +9,18 @@ import (
 	"github.com/crazy-vedic/quark/internal/domain"
 )
 
+func requestContentType(req *domain.Request) string {
+	if req == nil {
+		return ""
+	}
+	for _, pair := range parseHeadersJSON(req.Headers) {
+		if strings.EqualFold(strings.TrimSpace(pair.Key), "Content-Type") {
+			return strings.TrimSpace(pair.Value)
+		}
+	}
+	return ""
+}
+
 func (m Model) clearStatus() Model {
 	return m.status("", "")
 }

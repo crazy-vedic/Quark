@@ -3,6 +3,7 @@ package tui
 import (
 	"testing"
 
+	"github.com/crazy-vedic/quark/internal/search"
 	"github.com/stretchr/testify/require"
 
 	"github.com/crazy-vedic/quark/internal/domain"
@@ -18,6 +19,68 @@ func TestOrderCollectionsTreePlacesRootsBeforeDescendants(t *testing.T) {
 
 	ordered := orderCollectionsTree(collections)
 	require.Equal(t, []string{"root", "child-a", "child-b", "sibling"}, collectionIDs(ordered))
+}
+
+func TestBuildSearchRowsGroupsByTopLevelCollection(t *testing.T) {
+	m := Model{
+		collections: []*domain.Collection{
+			{ID: "root-a", Name: "Accounts"},
+			{ID: "child", Name: "Admin", ParentID: "root-a"},
+			{ID: "root-b", Name: "Billing"},
+		},
+	}
+	hits := []*search.SearchHit{
+		{Request: &domain.Request{ID: "r1", CollectionID: "child", Name: "Invite"}},
+		{Request: &domain.Request{ID: "r2", CollectionID: "root-b", Name: "Invoice"}},
+	}
+
+	rows, selected := m.buildSearchRows(hits, 1)
+	require.Equal(t, 4, selected)
+	require.Len(t, rows, 5)
+	assertSearchGroupRow(t, rows[0], "Accounts")
+	assertSearchGroupRow(t, rows[3], "Billing")
+	require.Equal(t, searchRequestRow, rows[1].kind)
+	require.Equal(t, searchSpacerRow, rows[2].kind)
+	require.Equal(t, searchRequestRow, rows[4].kind)
+}
+
+func assertSearchGroupRow(t *testing.T, row searchRow, want string) {
+	t.Helper()
+	require.Equal(t, searchGroupRow, row.kind)
+	require.Equal(t, want, row.group)
+}
+
+func TestBuildSidebarRowsHidesChildrenWhenParentIsCollapsed(t *testing.T) {
+	m := Model{
+		collections: []*domain.Collection{
+			{ID: "root", Name: "AEF"},
+			{ID: "child", Name: "Control Plane", ParentID: "root"},
+		},
+		expanded:  map[string]bool{"root": false},
+		colCursor: 0,
+		reqCursor: -1,
+	}
+
+	rows, _ := m.buildSidebarRows()
+	if len(rows) != 1 || rows[0].colIndex != 0 {
+		t.Fatalf("collapsed sidebar rows = %#v, want only root collection", rows)
+	}
+}
+
+func TestBuildSidebarRowsShowsChildrenWhenParentIsExpanded(t *testing.T) {
+	m := Model{
+		collections: []*domain.Collection{
+			{ID: "root", Name: "AEF"},
+			{ID: "child", Name: "Control Plane", ParentID: "root"},
+		},
+		expanded:  map[string]bool{"root": true},
+		reqCursor: -1,
+	}
+
+	rows, _ := m.buildSidebarRows()
+	if len(rows) != 2 || rows[1].colIndex != 1 || rows[1].depth != 1 {
+		t.Fatalf("expanded sidebar rows = %#v, want root and child", rows)
+	}
 }
 
 func TestBuildSidebarRows_HidesEntireCollapsedSubtree(t *testing.T) {

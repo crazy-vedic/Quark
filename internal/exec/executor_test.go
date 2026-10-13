@@ -1,6 +1,7 @@
 package exec_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"errors"
@@ -8,6 +9,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -121,6 +124,170 @@ func TestExecutor_RequestHeadersSent(t *testing.T) {
 	_, err := e.Execute(context.Background(), req)
 	require.NoError(t, err)
 	assert.Equal(t, "Bearer tok123", receivedAuth)
+}
+
+func TestExecutor_ExpandsBodyAndHeaderFiles(t *testing.T) {
+	tmp := t.TempDir()
+	bodyPath := filepath.Join(tmp, "payload.json")
+	headerPath := filepath.Join(tmp, "token.txt")
+	require.NoError(t, os.WriteFile(bodyPath, []byte(`{"from":"file"}`), 0o600))
+	require.NoError(t, os.WriteFile(headerPath, []byte("file-token"), 0o600))
+
+	var receivedBody, receivedHeader string
+	transport := roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+		body, err := io.ReadAll(r.Body)
+		require.NoError(t, err)
+		receivedBody = string(body)
+		receivedHeader = r.Header.Get("X-Token")
+		return &http.Response{
+			StatusCode: 200,
+			Status:     "200 OK",
+			Header:     make(http.Header),
+			Body:       io.NopCloser(strings.NewReader("ok")),
+			Request:    r,
+		}, nil
+	})
+
+	req := &domain.Request{
+		Method:  http.MethodPost,
+		URL:     "https://example.test/upload",
+		Body:    "@" + bodyPath,
+		Headers: `{"X-Token":"@` + headerPath + `"}`,
+	}
+	_, err := newTestExecutor(transport).Execute(context.Background(), req)
+	require.NoError(t, err)
+	assert.Equal(t, `{"from":"file"}`, receivedBody)
+	assert.Equal(t, "file-token", receivedHeader)
+	assert.Equal(t, "@"+bodyPath, req.Body, "file references must remain in the saved request")
+}
+
+func TestExecutor_AppliesSpecialRequestHeaders(t *testing.T) {
+	var observed *http.Request
+	transport := roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+		observed = r
+		return &http.Response{
+			StatusCode: 200,
+			Status:     "200 OK",
+			Header:     make(http.Header),
+			Body:       io.NopCloser(strings.NewReader("ok")),
+			Request:    r,
+		}, nil
+	})
+
+	req := &domain.Request{
+		Method:  http.MethodPost,
+		URL:     "https://example.test/upload",
+		Body:    "payload",
+		Headers: `{"Host":"api.example.test","Content-Length":"7","Transfer-Encoding":"chunked","Connection":"close"}`,
+	}
+	_, err := newTestExecutor(transport).Execute(context.Background(), req)
+	require.NoError(t, err)
+	require.NotNil(t, observed)
+	assert.Equal(t, "api.example.test", observed.Host)
+	assert.Equal(t, int64(7), observed.ContentLength)
+	assert.Equal(t, []string{"chunked"}, observed.TransferEncoding)
+	assert.True(t, observed.Close)
+	assert.Empty(t, observed.Header.Get("Content-Length"))
+	assert.Empty(t, observed.Header.Get("Transfer-Encoding"))
+}
+
+func TestExecutor_SpecialHeadersProduceExpectedWireRequest(t *testing.T) {
+	tests := []struct {
+		name        string
+		headers     string
+		body        string
+		mustContain []string
+	}{
+		{
+			name:        "host length and close",
+			headers:     `{"Host":"api.example.test","Content-Length":"7","Connection":"close"}`,
+			body:        "payload",
+			mustContain: []string{"Host: api.example.test\r\n", "Content-Length: 7\r\n", "Connection: close\r\n"},
+		},
+		{
+			name:        "chunked transfer",
+			headers:     `{"Transfer-Encoding":"chunked"}`,
+			body:        "payload",
+			mustContain: []string{"Transfer-Encoding: chunked\r\n", "7\r\npayload\r\n0\r\n"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			transport := roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+				var wire bytes.Buffer
+				require.NoError(t, r.Write(&wire))
+				for _, expected := range tt.mustContain {
+					assert.Contains(t, wire.String(), expected)
+				}
+				return &http.Response{
+					StatusCode: 200,
+					Status:     "200 OK",
+					Header:     make(http.Header),
+					Body:       io.NopCloser(strings.NewReader("ok")),
+					Request:    r,
+				}, nil
+			})
+			_, err := newTestExecutor(transport).Execute(context.Background(), &domain.Request{
+				Method:  http.MethodPost,
+				URL:     "https://example.test/upload",
+				Body:    tt.body,
+				Headers: tt.headers,
+			})
+			require.NoError(t, err)
+		})
+	}
+}
+
+func TestExecutor_FormatsJSONBodyByContentType(t *testing.T) {
+	var received string
+	transport := roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+		body, err := io.ReadAll(r.Body)
+		require.NoError(t, err)
+		received = string(body)
+		return &http.Response{
+			StatusCode: 200,
+			Status:     "200 OK",
+			Header:     make(http.Header),
+			Body:       io.NopCloser(strings.NewReader("ok")),
+			Request:    r,
+		}, nil
+	})
+
+	_, err := newTestExecutor(transport).Execute(context.Background(), &domain.Request{
+		Method:  http.MethodPost,
+		URL:     "https://example.test/json",
+		Body:    `{"name":"quark","items":[1,2]}`,
+		Headers: `{"Content-Type":"application/json; charset=utf-8"}`,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "{\n  \"name\": \"quark\",\n  \"items\": [\n    1,\n    2\n  ]\n}", received)
+}
+
+func TestExecutor_RejectsInvalidJSONBodyByContentType(t *testing.T) {
+	called := false
+	transport := roundTripperFunc(func(*http.Request) (*http.Response, error) {
+		called = true
+		return nil, errors.New("transport must not be called")
+	})
+	_, err := newTestExecutor(transport).Execute(context.Background(), &domain.Request{
+		Method:  http.MethodPost,
+		URL:     "https://example.test/json",
+		Body:    `{"invalid":`,
+		Headers: `{"Content-Type":"application/json"}`,
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid JSON body")
+	assert.False(t, called)
+}
+
+func TestExecutor_RejectsMissingBodyFile(t *testing.T) {
+	_, err := newTestExecutor(roundTripperFunc(func(*http.Request) (*http.Response, error) {
+		t.Fatal("transport must not be called")
+		return nil, nil
+	})).Execute(context.Background(), newTestRequest(http.MethodPost, "https://example.test", "@/missing/file"))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "read body file")
 }
 
 func TestExecutor_RepeatedAndLegacyHeadersSent(t *testing.T) {
