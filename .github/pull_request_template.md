@@ -32,7 +32,3 @@
 ### Breaking Changes
 <!-- List any breaking changes and migration steps. Delete this section if none. -->
 - None
-
-### Release
-<!-- Specify the version to release when this PR merges. Leave blank or omit this line to skip releasing -->
-Release: 
