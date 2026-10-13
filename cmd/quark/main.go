@@ -34,6 +34,12 @@ import (
 )
 
 var (
+	// These values are replaced at build time by the Makefile and release
+	// workflows. Keep useful defaults for `go run` and plain `go build`.
+	Version   = "dev"
+	Commit    = "unknown"
+	BuildTime = "unknown"
+
 	debugMode  bool
 	timingMode string
 	configDir  string
@@ -60,6 +66,8 @@ func run() error {
 		Short: "A keyboard-driven TUI HTTP client",
 		Long:  "Quark — local-first, keyboard-driven HTTP client. No cloud dependencies.",
 	}
+	root.Version = Version
+	root.SetVersionTemplate(versionTemplate())
 	root.CompletionOptions.DisableDefaultCmd = true
 	root.SetContext(ctx)
 	root.PersistentFlags().
@@ -190,6 +198,10 @@ func run() error {
 	}
 
 	return root.Execute()
+}
+
+func versionTemplate() string {
+	return fmt.Sprintf("quark version %s\ncommit %s\nbuilt %s\n", Version, Commit, BuildTime)
 }
 
 // runtime holds lazily-initialised dependencies that depend on the --config flag.

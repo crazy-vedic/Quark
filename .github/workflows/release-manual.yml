@@ -79,11 +79,15 @@ jobs:
 
       - name: Build binaries
         run: |
-          GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w" -o dist/quark-darwin-amd64 ./cmd/quark
-          GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w" -o dist/quark-darwin-arm64 ./cmd/quark
-          GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o dist/quark-linux-amd64 ./cmd/quark
-          GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o dist/quark-linux-arm64 ./cmd/quark
-          GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o dist/quark-windows-amd64.exe ./cmd/quark
+          VERSION="${{ inputs.tag }}"
+          COMMIT_SHA="${{ steps.verify.outputs.commit_sha }}"
+          BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          LDFLAGS="-s -w -X main.Version=${VERSION} -X main.Commit=${COMMIT_SHA} -X main.BuildTime=${BUILD_TIME}"
+          GOOS=darwin GOARCH=amd64 go build -ldflags="${LDFLAGS}" -o dist/quark-darwin-amd64 ./cmd/quark
+          GOOS=darwin GOARCH=arm64 go build -ldflags="${LDFLAGS}" -o dist/quark-darwin-arm64 ./cmd/quark
+          GOOS=linux GOARCH=amd64 go build -ldflags="${LDFLAGS}" -o dist/quark-linux-amd64 ./cmd/quark
+          GOOS=linux GOARCH=arm64 go build -ldflags="${LDFLAGS}" -o dist/quark-linux-arm64 ./cmd/quark
+          GOOS=windows GOARCH=amd64 go build -ldflags="${LDFLAGS}" -o dist/quark-windows-amd64.exe ./cmd/quark
 
       - name: Copy install scripts
         run: |
