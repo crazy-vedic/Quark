@@ -12,7 +12,7 @@ on:
 permissions:
   checks: write
   contents: read
-  pull-requests: read
+  pull-requests: write
 
 jobs:
   validate-release:
@@ -84,13 +84,30 @@ jobs:
           CHECK_LINK="[Open validation workflow run]($RUN_URL)"
 
           if [ -z "$RAW_VERSION" ]; then
-            echo "No release version requested in PR body. Skipping validation."
+            if [ -n "$SUGGESTED_RELEASE" ]; then
+              PR_NUMBER="${{ github.event.pull_request.number }}"
+              PR_BODY="${PR_BODY:-}"
+              if [ -n "$PR_BODY" ]; then
+                UPDATED_BODY=$(printf '%s\n\nRelease: %s' "${PR_BODY%$'\n'}" "$SUGGESTED_RELEASE")
+              else
+                UPDATED_BODY="Release: ${SUGGESTED_RELEASE}"
+              fi
+              jq -n --arg body "$UPDATED_BODY" '{body: $body}' | gh api \
+                --method PATCH \
+                -H "Accept: application/vnd.github+json" \
+                "repos/${{ github.repository }}/pulls/${PR_NUMBER}" \
+                --input -
+              echo "Added Release: ${SUGGESTED_RELEASE} to PR #${PR_NUMBER}."
+              publish_check \
+                "success" \
+                "Default release added: ${SUGGESTED_RELEASE}" \
+                "Added the next patch release to the PR description." \
+                "The PR description now includes \`Release: ${SUGGESTED_RELEASE}\`. Edit that line for a minor or major release.\n\n$CHECK_LINK"
+              exit 0
+            fi
+            echo "No previous releases found and no release version requested. Skipping validation."
             RELEASE_HINT="Add \`Release: vX.Y.Z\` to the PR body when you want this PR to create a release on merge."
             CHECK_TITLE="No release requested"
-            if [ -n "$SUGGESTED_RELEASE" ]; then
-              RELEASE_HINT="Add \`Release: ${SUGGESTED_RELEASE}\` to the PR body when you want this PR to create a release on merge."
-              CHECK_TITLE="No release requested. Add Release: ${SUGGESTED_RELEASE} if you want to create a release on merge"
-            fi
             publish_check \
               "neutral" \
               "$CHECK_TITLE" \
