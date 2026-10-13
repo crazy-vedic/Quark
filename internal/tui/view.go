@@ -30,43 +30,6 @@ var ansiEscape = regexp.MustCompile(
 
 func stripANSI(s string) string { return ansiEscape.ReplaceAllString(s, "") }
 
-// --- Styles (foreground-only; background inherits terminal → transparency) ---
-
-var (
-	// Accent colours.
-	blue   = lipgloss.Color("#7aa2f7")
-	red    = lipgloss.Color("#f7768e")
-	green  = lipgloss.Color("#9ece6a")
-	yellow = lipgloss.Color("#e0af68")
-	cyan   = lipgloss.Color("#7dcfff")
-	muted  = lipgloss.Color("#737aa2") // brighter than before for readability
-
-	// BUG-007: Use high-contrast white for active border so it's unmistakably distinct
-	// from the muted inactive border regardless of terminal colour profile.
-	activeBorderColor = lipgloss.Color("#ffffff")
-
-	// Active pane border — bright white, clearly distinct from inactive.
-	activeBorder = lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(activeBorderColor)
-
-	// Inactive pane border — muted blue-grey.
-	inactiveBorder = lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(muted)
-
-	titleStyle      = lipgloss.NewStyle().Bold(true).Foreground(blue)
-	methodStyle     = lipgloss.NewStyle().Bold(true).Foreground(cyan)
-	sendButtonStyle = lipgloss.NewStyle().Bold(true).Foreground(green)
-	mutedStyle      = lipgloss.NewStyle().Foreground(muted)
-	errorStyle      = lipgloss.NewStyle().Foreground(red)
-	goodStyle       = lipgloss.NewStyle().Foreground(green)
-	warnStyle       = lipgloss.NewStyle().Foreground(yellow)
-
-	// Status bar base style.
-	statusStyle = lipgloss.NewStyle().Foreground(muted)
-)
-
 var helpActionLabels = map[string]string{
 	"quit":                          "quit",
 	"help":                          "help",
@@ -168,34 +131,37 @@ func (m Model) View() string {
 	if m.width == 0 {
 		return "Loading..."
 	}
-	if m.effectiveDim() == DimAbsurd {
-		return m.viewTooSmall()
-	}
-
-	// Overlay modes take precedence.
 	var out string
-	switch m.mode {
-	case helpMode:
-		out = m.viewHelp()
-	case envMode:
-		out = m.viewEnvModal()
-	case importMode:
-		out = m.viewImportModal()
-	case searchMode:
-		out = m.viewSearchModal()
-	case collectionPromptMode:
-		out = m.viewCollectionPromptModal()
-	case scheduleMode:
-		out = m.viewScheduleModal()
-	case viewerMode:
-		out = m.viewViewer()
-	case clientCertMode:
-		out = m.viewClientCertModal()
-	default:
-		return m.viewByDim()
+	if m.effectiveDim() == DimAbsurd {
+		out = m.viewTooSmall()
+	} else {
+		// Overlay modes take precedence.
+		switch m.mode {
+		case helpMode:
+			out = m.viewHelp()
+		case envMode:
+			out = m.viewEnvModal()
+		case importMode:
+			out = m.viewImportModal()
+		case searchMode:
+			out = m.viewSearchModal()
+		case collectionPromptMode:
+			out = m.viewCollectionPromptModal()
+		case scheduleMode:
+			out = m.viewScheduleModal()
+		case viewerMode:
+			out = m.viewViewer()
+		case clientCertMode:
+			out = m.viewClientCertModal()
+		default:
+			out = m.viewByDim()
+		}
 	}
 
 	m.maybeLogVisualOverflow(out, nil)
+	if m.theme.Background != "" {
+		return m.paintThemeFrame(out)
+	}
 	return out
 }
 
@@ -231,11 +197,11 @@ func (m Model) viewTooSmall() string {
 	boxW := max(1, m.width-2)
 	box := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(yellow).
+		BorderForeground(m.styles.warning).
 		Padding(0, 1).
 		Width(max(1, boxW-2)).
 		MaxWidth(boxW).
-		Render(warnStyle.Render(msg))
+		Render(m.styles.warnStyle.Render(msg))
 	if m.width > 0 && m.height > 0 {
 		placed := lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box)
 		// Hard-clamp in case Place still expands on tiny terminals.
@@ -331,17 +297,17 @@ func (m Model) viewSinglePane() string {
 // --- Sidebar ---
 
 func (m Model) viewSidebar(w, h int) string {
-	border := inactiveBorder
+	border := m.styles.inactiveBorder
 	if m.focus == sidebarPane {
-		border = activeBorder
+		border = m.styles.activeBorder
 	}
 
 	var sb strings.Builder
-	sb.WriteString(titleStyle.Render("Collections") + "\n")
+	sb.WriteString(m.styles.titleStyle.Render("Collections") + "\n")
 
 	rows, start, end := m.sidebarListWindow()
 	if start > 0 {
-		sb.WriteString(mutedStyle.Render("  ↑ more above") + "\n")
+		sb.WriteString(m.styles.mutedStyle.Render("  ↑ more above") + "\n")
 	}
 	for i := start; i < end; i++ {
 		row := rows[i]
@@ -366,9 +332,9 @@ func (m Model) viewSidebar(w, h int) string {
 			name := truncate(col.Name, innerW-4)
 			line := cursor + branch + icon + name
 			if row.colIndex == m.colCursor && m.reqCursor == -1 {
-				line = lipgloss.NewStyle().Foreground(blue).Bold(true).Render(line)
+				line = lipgloss.NewStyle().Foreground(m.styles.accent).Bold(true).Render(line)
 			} else {
-				line = lipgloss.NewStyle().Foreground(lipgloss.Color("#a9b1d6")).Render(line)
+				line = lipgloss.NewStyle().Foreground(m.styles.foreground).Render(line)
 			}
 			sb.WriteString(line + "\n")
 		case sidebarRequestRow:
@@ -380,25 +346,25 @@ func (m Model) viewSidebar(w, h int) string {
 				cursor = strings.Repeat("  ", row.depth) + "▸ "
 			}
 			innerW := max(1, w-2)
-			badge := methodBadge(req.Method)
+			badge := m.methodBadge(req.Method)
 			nameWidth := innerW - lipgloss.Width(cursor) - lipgloss.Width(badge) - 1
 			line := cursor + badge + " " + truncate(req.Name, nameWidth)
 			if isSelected {
-				line = lipgloss.NewStyle().Foreground(cyan).Render(line)
+				line = lipgloss.NewStyle().Foreground(m.styles.info).Render(line)
 			} else {
-				line = mutedStyle.Render(line)
+				line = m.styles.mutedStyle.Render(line)
 			}
 			sb.WriteString(line + "\n")
 		}
 	}
 	if end < len(rows) {
-		sb.WriteString(mutedStyle.Render("  ↓ more below") + "\n")
+		sb.WriteString(m.styles.mutedStyle.Render("  ↓ more below") + "\n")
 	}
 
 	if len(m.collections) == 0 {
 		addCollection := m.renderHintKeys([]string{"sidebar_add"}, false)
 		sb.WriteString(
-			"\n" + mutedStyle.Render("  No collections.\n  Press "+addCollection+" to add."),
+			"\n" + m.styles.mutedStyle.Render("  No collections.\n  Press "+addCollection+" to add."),
 		)
 	}
 
@@ -410,33 +376,33 @@ func (m Model) viewSidebar(w, h int) string {
 
 const requestSendButtonLabel = "[ Send ]"
 
-func renderMethodBadge(method string) string {
+func (m Model) renderMethodBadge(method string) string {
 	if method == "" {
 		method = "GET"
 	}
-	return methodStyle.Render(fmt.Sprintf(" %s ", method))
+	return m.styles.methodStyle.Render(fmt.Sprintf(" %s ", method))
 }
 
-func renderSendButton() string {
-	return sendButtonStyle.Render(requestSendButtonLabel)
+func (m Model) renderSendButton() string {
+	return m.styles.sendButtonStyle.Render(requestSendButtonLabel)
 }
 
-func methodBadgeWidth(method string) int {
-	return lipgloss.Width(renderMethodBadge(method))
+func (m Model) methodBadgeWidth(method string) int {
+	return lipgloss.Width(m.renderMethodBadge(method))
 }
 
-func requestSendButtonWidth() int {
-	return lipgloss.Width(renderSendButton())
+func (m Model) requestSendButtonWidth() int {
+	return lipgloss.Width(m.renderSendButton())
 }
 
 func (m Model) renderRequestTitleRightChrome() string {
-	sendBtn := renderSendButton()
+	sendBtn := m.renderSendButton()
 	envName := m.activeEnvName()
 	if envName == "" {
 		return sendBtn
 	}
 	envText := fmt.Sprintf("◀ %s ▶", envName)
-	envStyled := lipgloss.NewStyle().Foreground(yellow).Render(envText)
+	envStyled := lipgloss.NewStyle().Foreground(m.styles.warning).Render(envText)
 	return sendBtn + " " + envStyled
 }
 
@@ -452,9 +418,9 @@ func (m Model) viewRequestPane(w, h int) string {
 		logDebugTiming(m.debugLog, "view_request_pane", started,
 			fmt.Sprintf("width=%d height=%d field=%d", w, h, m.activeField))
 	}()
-	border := inactiveBorder
+	border := m.styles.inactiveBorder
 	if m.focus == requestPane {
-		border = activeBorder
+		border = m.styles.activeBorder
 	}
 
 	var top []string
@@ -464,7 +430,7 @@ func (m Model) viewRequestPane(w, h int) string {
 	if m.activeRequest != nil && strings.TrimSpace(m.activeRequest.Name) != "" {
 		titleLabel = "Request " + truncate(m.activeRequest.Name, max(12, w/2))
 	}
-	titleLine := titleStyle.Render(titleLabel)
+	titleLine := m.styles.titleStyle.Render(titleLabel)
 	rightChrome := m.renderRequestTitleRightChrome()
 	padding := w - 2 - lipgloss.Width(titleLine) - lipgloss.Width(rightChrome)
 	if padding < 0 {
@@ -473,7 +439,7 @@ func (m Model) viewRequestPane(w, h int) string {
 	top = append(top, titleLine+strings.Repeat(" ", padding)+rightChrome)
 
 	// Method badge + URL on one line — truncate URL to available width.
-	badge := renderMethodBadge(m.method)
+	badge := m.renderMethodBadge(m.method)
 	badgeW := lipgloss.Width(badge)
 	urlAvail := w - badgeW - 4 // padding around badge/url
 	if urlAvail < 1 {
@@ -485,7 +451,7 @@ func (m Model) viewRequestPane(w, h int) string {
 	} else {
 		urlVal := m.urlInput.Value()
 		if urlVal == "" {
-			urlDisplay = mutedStyle.Render(
+			urlDisplay = m.styles.mutedStyle.Render(
 				"press " + m.renderHintKeys(
 					[]string{keybindings.ActionEditURL},
 					false,
@@ -494,14 +460,14 @@ func (m Model) viewRequestPane(w, h int) string {
 		} else {
 			// Truncate long URLs so they don't wrap to next line.
 			urlDisplay = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("#c0caf5")).
+				Foreground(m.styles.foreground).
 				Render(truncate(urlVal, urlAvail))
 		}
 	}
 	top = append(top, badge+"  "+urlDisplay)
 
 	if m.activeRequest != nil {
-		authLabel := mutedStyle.Render("  Auth: ")
+		authLabel := m.styles.mutedStyle.Render("  Auth: ")
 		authSummary := truncate(
 			newAuthEditor(m.activeRequest).summary(),
 			max(1, w-2-lipgloss.Width("  Auth: ")),
@@ -509,11 +475,11 @@ func (m Model) viewRequestPane(w, h int) string {
 		top = append(
 			top,
 			authLabel+lipgloss.NewStyle().
-				Foreground(lipgloss.Color("#c0caf5")).
+				Foreground(m.styles.foreground).
 				Render(authSummary),
 		)
 		if m.activeField == urlField {
-			if warning := singleLineInputWarning(m.urlInput.Value()); warning != "" {
+			if warning := m.singleLineInputWarning(m.urlInput.Value()); warning != "" {
 				top = append(top, warning)
 			}
 		}
@@ -524,12 +490,12 @@ func (m Model) viewRequestPane(w, h int) string {
 	// Validation / status errors — strip Go error chain prefix for readability.
 	if m.activeValidationErr() != "" {
 		msg := cleanError(m.activeValidationErr())
-		top = append(top, errorStyle.Render("✗ "+truncate(msg, w-4)))
+		top = append(top, m.styles.errorStyle.Render("✗ "+truncate(msg, w-4)))
 	}
 
 	// Loading indicator.
 	if m.loading {
-		top = append(top, warnStyle.Render("  ⟳ Sending…  [Esc] cancel"))
+		top = append(top, m.styles.warnStyle.Render("  ⟳ Sending…  [Esc] cancel"))
 	}
 
 	var content string
@@ -547,16 +513,16 @@ func (m Model) viewRequestPane(w, h int) string {
 			preview.WriteString("Value:\n")
 			preview.WriteString(m.headerValueInput.View() + "\n")
 			if m.headerKeyInput.Focused() {
-				if warning := singleLineInputWarning(m.headerKeyInput.Value()); warning != "" {
+				if warning := m.singleLineInputWarning(m.headerKeyInput.Value()); warning != "" {
 					preview.WriteString(warning + "\n")
 				}
-			} else if warning := singleLineInputWarning(m.headerValueInput.Value()); warning != "" {
+			} else if warning := m.singleLineInputWarning(m.headerValueInput.Value()); warning != "" {
 				preview.WriteString(warning + "\n")
 			}
 		} else {
 			if len(m.headerPairs) == 0 {
 				preview.WriteString(
-					mutedStyle.Render(
+					m.styles.mutedStyle.Render(
 						"  No headers. Press " + m.renderHintKeys(
 							[]string{"header_add"},
 							false,
@@ -574,7 +540,7 @@ func (m Model) viewRequestPane(w, h int) string {
 					if i == m.headerCursor {
 						line = lipgloss.NewStyle().Bold(true).Render(plain)
 					} else {
-						line = lipgloss.NewStyle().Foreground(cyan).Render(plain)
+						line = lipgloss.NewStyle().Foreground(m.styles.info).Render(plain)
 					}
 					preview.WriteString(line + "\n")
 				}
@@ -640,12 +606,12 @@ func (m Model) viewRequestPane(w, h int) string {
 			{Label: "cycle env", Actions: []string{"env_prev", "env_next"}},
 		})
 	}
-	hints := mutedStyle.Render(truncate(hintsPlain, innerWidth))
+	hints := m.styles.mutedStyle.Render(truncate(hintsPlain, innerWidth))
 
 	// Measure chrome (title/url/auth + separator/hints) in visual rows so wrapped
 	// lines cannot steal body budget unnoticed — same approach as the response pane.
 	chromeTop := strings.Join(top, "\n")
-	sepAndHints := mutedStyle.Render(strings.Repeat("─", innerWidth)) + "\n" + hints
+	sepAndHints := m.styles.mutedStyle.Render(strings.Repeat("─", innerWidth)) + "\n" + hints
 	chromeRows := visualRows(chromeTop, innerWidth) + visualRows(sepAndHints, innerWidth)
 	contentLines := h - chromeRows
 	if contentLines < 0 {
@@ -715,28 +681,28 @@ func (m Model) requestBodyPreviewContent(parent ...*timing.Span) string {
 
 func (m Model) viewAuthEditor() string {
 	var sb strings.Builder
-	sb.WriteString(titleStyle.Render("Auth") + "\n")
-	sb.WriteString(mutedStyle.Render("  Secrets stay hidden in the preview.") + "\n\n")
+	sb.WriteString(m.styles.titleStyle.Render("Auth") + "\n")
+	sb.WriteString(m.styles.mutedStyle.Render("  Secrets stay hidden in the preview.") + "\n\n")
 	for idx, row := range m.authEditor.rows() {
 		cursor := "  "
 		if idx == m.authEditor.cursor {
 			cursor = "▸ "
 		}
-		label := lipgloss.NewStyle().Foreground(cyan).Render(authRowLabel(row))
-		value := m.authEditor.valueForRow(row, m.authEditor.editing)
+		label := lipgloss.NewStyle().Foreground(m.styles.info).Render(authRowLabel(row))
+		value := m.authEditor.valueForRow(row, m.authEditor.editing, m.styles.mutedStyle)
 		line := cursor + label + ": " + value
 		if idx == m.authEditor.cursor {
 			line = lipgloss.NewStyle().Bold(true).Render(line)
 		}
 		sb.WriteString(line + "\n")
 		if idx == m.authEditor.cursor && m.authEditor.editing {
-			if warning := singleLineInputWarning(m.authEditor.singleLineValue(row)); warning != "" {
+			if warning := m.singleLineInputWarning(m.authEditor.singleLineValue(row)); warning != "" {
 				sb.WriteString(warning + "\n")
 			}
 		}
 	}
 	sb.WriteString("\n")
-	sb.WriteString(mutedStyle.Render(m.renderHints([]hintItem{
+	sb.WriteString(m.styles.mutedStyle.Render(m.renderHints([]hintItem{
 		{Label: "move", Actions: []string{"auth_up", "auth_down"}},
 		{Label: "edit", Actions: []string{"auth_edit"}},
 		{Label: "cycle", Actions: []string{"auth_option_prev", "auth_option_next"}},
@@ -755,24 +721,24 @@ func (m Model) viewResponsePane(w, h int) string {
 		logDebugTiming(m.debugLog, "view_response_pane", started,
 			fmt.Sprintf("width=%d height=%d tab=%d cursor=%d", w, h, m.responseTab, m.execCursor))
 	}()
-	border := inactiveBorder
+	border := m.styles.inactiveBorder
 	if m.focus == responsePane {
-		border = activeBorder
+		border = m.styles.activeBorder
 	}
 
 	var sb strings.Builder
-	sb.WriteString(titleStyle.Render("Response") + "\n")
+	sb.WriteString(m.styles.titleStyle.Render("Response") + "\n")
 
 	currentExec := m.selectedExecution()
 	if currentExec == nil && m.response == nil {
 		sendHint := m.renderHintKeys([]string{keybindings.ActionSendRequest}, true)
-		sb.WriteString("\n" + mutedStyle.Render("  No response yet — press "+sendHint+" to send."))
+		sb.WriteString("\n" + m.styles.mutedStyle.Render("  No response yet — press "+sendHint+" to send."))
 		return border.Width(w).Height(h).MaxHeight(h + 2).Render(sb.String())
 	}
 
 	if currentExec != nil {
 		sb.WriteString(
-			mutedStyle.Render(
+			m.styles.mutedStyle.Render(
 				fmt.Sprintf(
 					"  Run %d/%d  %s",
 					m.execCursor+1,
@@ -817,7 +783,7 @@ func (m Model) viewResponsePane(w, h int) string {
 		case rawTab:
 			formatBody = func() string {
 				if currentExec.ResponseBody == "" {
-					return mutedStyle.Render("  (empty body)")
+					return m.styles.mutedStyle.Render("  (empty body)")
 				}
 				return stripANSI(currentExec.ResponseBody)
 			}
@@ -834,7 +800,7 @@ func (m Model) viewResponsePane(w, h int) string {
 					return stripANSI(string(r.Body))
 				}
 				if r.TempPath != "" {
-					return mutedStyle.Render(fmt.Sprintf("[streamed → %s]", r.TempPath))
+					return m.styles.mutedStyle.Render(fmt.Sprintf("[streamed → %s]", r.TempPath))
 				}
 				return ""
 			}
@@ -893,10 +859,10 @@ func (m Model) requestBodyPreviewSourceKey() string {
 
 func (m Model) responseTextSourceKey() string {
 	if currentExec := m.selectedExecution(); currentExec != nil {
-		return fmt.Sprintf("execution:%p:%s:%d", currentExec, currentExec.ID, m.responseTab)
+		return fmt.Sprintf("execution:%p:%s:%d:%s:%s", currentExec, currentExec.ID, m.responseTab, m.theme.Name, m.theme.Variant)
 	}
 	if m.response != nil {
-		return fmt.Sprintf("response:%p:%d", m.response, m.responseTab)
+		return fmt.Sprintf("response:%p:%d:%s:%s", m.response, m.responseTab, m.theme.Name, m.theme.Variant)
 	}
 	return fmt.Sprintf("response:none:%d", m.responseTab)
 }
@@ -920,7 +886,7 @@ func (m Model) formatResponseTextContent(parent ...*timing.Span) string {
 			return m.viewExecutionHeaders(currentExec)
 		case rawTab:
 			if currentExec.ResponseBody == "" {
-				return mutedStyle.Render("  (empty body)")
+				return m.styles.mutedStyle.Render("  (empty body)")
 			}
 			return stripANSI(currentExec.ResponseBody)
 		}
@@ -935,7 +901,7 @@ func (m Model) formatResponseTextContent(parent ...*timing.Span) string {
 				return stripANSI(string(r.Body))
 			}
 			if r.TempPath != "" {
-				return mutedStyle.Render(fmt.Sprintf("[streamed â†’ %s]", r.TempPath))
+				return m.styles.mutedStyle.Render(fmt.Sprintf("[streamed â†’ %s]", r.TempPath))
 			}
 		}
 	}
@@ -983,10 +949,10 @@ func (m Model) viewTabBar(maxWidth int) string {
 		if m.responseTab == t.id {
 			parts = append(
 				parts,
-				lipgloss.NewStyle().Foreground(blue).Underline(true).Bold(true).Render(label),
+				lipgloss.NewStyle().Foreground(m.styles.accent).Underline(true).Bold(true).Render(label),
 			)
 		} else {
-			parts = append(parts, mutedStyle.Render(label))
+			parts = append(parts, m.styles.mutedStyle.Render(label))
 		}
 	}
 	tabPart := "  " + strings.Join(parts, "  ")
@@ -1004,23 +970,23 @@ func (m Model) viewTabBar(maxWidth int) string {
 	hintsPlain := m.renderHints(hintItems)
 	if hintsPlain == "" {
 		if maxWidth > 0 && lipgloss.Width(tabPart) > maxWidth {
-			return mutedStyle.Render(truncate(stripANSI(tabPart), maxWidth))
+			return m.styles.mutedStyle.Render(truncate(stripANSI(tabPart), maxWidth))
 		}
 		return tabPart
 	}
 
 	const gap = "    "
 	if maxWidth <= 0 {
-		return tabPart + gap + mutedStyle.Render(hintsPlain)
+		return tabPart + gap + m.styles.mutedStyle.Render(hintsPlain)
 	}
 	avail := maxWidth - lipgloss.Width(tabPart) - lipgloss.Width(gap)
 	if avail < 1 {
 		if lipgloss.Width(tabPart) > maxWidth {
-			return mutedStyle.Render(truncate(stripANSI(tabPart), maxWidth))
+			return m.styles.mutedStyle.Render(truncate(stripANSI(tabPart), maxWidth))
 		}
 		return tabPart
 	}
-	return tabPart + gap + mutedStyle.Render(truncate(hintsPlain, avail))
+	return tabPart + gap + m.styles.mutedStyle.Render(truncate(hintsPlain, avail))
 }
 
 func (m Model) selectedExecution() *domain.Execution {
@@ -1036,30 +1002,30 @@ func (m Model) viewingHistoricalExecution() bool {
 
 func (m Model) viewLiveResponseStatus() string {
 	r := m.response
-	statusColor := goodStyle
+	statusColor := m.styles.goodStyle
 	if r.StatusCode >= 400 {
-		statusColor = errorStyle
+		statusColor = m.styles.errorStyle
 	} else if r.StatusCode >= 300 {
-		statusColor = warnStyle
+		statusColor = m.styles.warnStyle
 	}
 	return statusColor.Render(fmt.Sprintf("  %s", r.Status)) +
-		"  " + mutedStyle.Render(fmt.Sprintf("%v  %d bytes", r.Duration.Round(1_000_000), r.Size))
+		"  " + m.styles.mutedStyle.Render(fmt.Sprintf("%v  %d bytes", r.Duration.Round(1_000_000), r.Size))
 }
 
 func (m Model) viewExecutionStatus(ex *domain.Execution) string {
 	statusLabel := fmt.Sprintf("%d", ex.StatusCode)
-	statusStyle := goodStyle
+	responseStatusStyle := m.styles.goodStyle
 	switch {
 	case ex.Error != "" && ex.StatusCode == 0:
 		statusLabel = "ERROR"
-		statusStyle = errorStyle
+		responseStatusStyle = m.styles.errorStyle
 	case ex.StatusCode >= 400:
-		statusStyle = errorStyle
+		responseStatusStyle = m.styles.errorStyle
 	case ex.StatusCode >= 300:
-		statusStyle = warnStyle
+		responseStatusStyle = m.styles.warnStyle
 	}
-	return statusStyle.Render("  "+statusLabel) +
-		"  " + mutedStyle.Render(
+	return responseStatusStyle.Render("  "+statusLabel) +
+		"  " + m.styles.mutedStyle.Render(
 		fmt.Sprintf("%dms  %d bytes", ex.ResponseTimeMs, len(ex.ResponseBody)),
 	)
 }
@@ -1094,9 +1060,9 @@ func (m Model) viewResponseBody(parent ...*timing.Span) string {
 	r := m.response
 	if r.Body == nil {
 		if r.TempPath != "" {
-			return mutedStyle.Render(fmt.Sprintf("  [large response → %s]", r.TempPath))
+			return m.styles.mutedStyle.Render(fmt.Sprintf("  [large response → %s]", r.TempPath))
 		}
-		return mutedStyle.Render("  (empty body)")
+		return m.styles.mutedStyle.Render("  (empty body)")
 	}
 
 	// BUG-002: binary content must not be rendered raw — it can corrupt the terminal.
@@ -1105,7 +1071,7 @@ func (m Model) viewResponseBody(parent ...*timing.Span) string {
 		if ct == "" {
 			ct = "application/octet-stream"
 		}
-		return warnStyle.Render(fmt.Sprintf(
+		return m.styles.warnStyle.Render(fmt.Sprintf(
 			"  [binary content, %d bytes, content-type: %s]\n  Use Raw tab to view raw bytes path.",
 			len(r.Body), ct,
 		))
@@ -1118,7 +1084,7 @@ func (m Model) viewResponseBody(parent ...*timing.Span) string {
 		if err := json.Unmarshal(r.Body, &out); err == nil {
 			pretty, err := json.MarshalIndent(out, "", "  ")
 			if err == nil {
-				return highlight.JSON(string(pretty), m.cfg.UI.Theme)
+				return highlight.JSON(string(pretty), m.theme.Syntax)
 			}
 		}
 	}
@@ -1129,7 +1095,7 @@ func (m Model) viewResponseHeaders() string {
 	if m.response == nil {
 		return ""
 	}
-	return renderHTTPHeaders(m.response.Headers)
+	return m.renderHTTPHeaders(m.response.Headers)
 }
 
 func (m Model) viewExecutionBody(ex *domain.Execution, parent ...*timing.Span) string {
@@ -1146,16 +1112,16 @@ func (m Model) viewExecutionBody(ex *domain.Execution, parent ...*timing.Span) s
 	}()
 	if ex.Error != "" {
 		if ex.ResponseBody == "" {
-			return errorStyle.Render("  " + ex.Error)
+			return m.styles.errorStyle.Render("  " + ex.Error)
 		}
-		return errorStyle.Render("  "+ex.Error+"\n\n") + stripANSI(ex.ResponseBody)
+		return m.styles.errorStyle.Render("  "+ex.Error+"\n\n") + stripANSI(ex.ResponseBody)
 	}
 	if ex.ResponseBody == "" {
-		return mutedStyle.Render("  (empty body)")
+		return m.styles.mutedStyle.Render("  (empty body)")
 	}
 	bodyBytes := []byte(ex.ResponseBody)
 	if isBinaryBody(bodyBytes) {
-		return warnStyle.Render(fmt.Sprintf(
+		return m.styles.warnStyle.Render(fmt.Sprintf(
 			"  [binary content, %d bytes]\n  Use Raw tab to inspect the stored payload.",
 			len(bodyBytes),
 		))
@@ -1171,7 +1137,7 @@ func (m Model) viewExecutionBody(ex *domain.Execution, parent ...*timing.Span) s
 		if err := json.Unmarshal(bodyBytes, &out); err == nil {
 			pretty, err := json.MarshalIndent(out, "", "  ")
 			if err == nil {
-				return highlight.JSON(string(pretty), m.cfg.UI.Theme)
+				return highlight.JSON(string(pretty), m.theme.Syntax)
 			}
 		}
 	}
@@ -1182,21 +1148,21 @@ func (m Model) viewExecutionHeaders(ex *domain.Execution) string {
 	headers := m.executionHeaders(ex)
 	if len(headers) == 0 {
 		if ex.Error != "" {
-			return mutedStyle.Render("  No response headers captured for this failed execution.")
+			return m.styles.mutedStyle.Render("  No response headers captured for this failed execution.")
 		}
-		return mutedStyle.Render("  (no headers)")
+		return m.styles.mutedStyle.Render("  (no headers)")
 	}
-	return renderHTTPHeaders(headers)
+	return m.renderHTTPHeaders(headers)
 }
 
-func renderHTTPHeaders(headers http.Header) string {
+func (m Model) renderHTTPHeaders(headers http.Header) string {
 	var sb strings.Builder
 	for _, k := range sortedHeaderKeys(headers) {
 		vals := headers[k]
 		for _, v := range vals {
-			sb.WriteString("  " + lipgloss.NewStyle().Foreground(cyan).Render(k))
+			sb.WriteString("  " + lipgloss.NewStyle().Foreground(m.styles.info).Render(k))
 			sb.WriteString(
-				": " + lipgloss.NewStyle().Foreground(lipgloss.Color("#c0caf5")).Render(v) + "\n",
+				": " + lipgloss.NewStyle().Foreground(m.styles.foreground).Render(v) + "\n",
 			)
 		}
 	}
@@ -1240,9 +1206,9 @@ func (m Model) viewExecutionHistoryPopup(maxWidth, maxRows int) string {
 	innerWidth := max(1, popupWidth-4)
 
 	var sb strings.Builder
-	sb.WriteString(titleStyle.Render("Execution History") + "\n")
+	sb.WriteString(m.styles.titleStyle.Render("Execution History") + "\n")
 	if hasAbove {
-		sb.WriteString(mutedStyle.Render("  ↑ more above") + "\n")
+		sb.WriteString(m.styles.mutedStyle.Render("  ↑ more above") + "\n")
 	} else {
 		sb.WriteString("\n")
 	}
@@ -1251,14 +1217,14 @@ func (m Model) viewExecutionHistoryPopup(maxWidth, maxRows int) string {
 		sb.WriteString(m.viewExecutionHistoryLine(idx, ex, innerWidth) + "\n")
 	}
 	if hasBelow {
-		sb.WriteString(mutedStyle.Render("  ↓ more below"))
+		sb.WriteString(m.styles.mutedStyle.Render("  ↓ more below"))
 	} else {
 		sb.WriteString("")
 	}
 
 	return lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(muted).
+		BorderForeground(m.styles.mutedColor).
 		Padding(0, 1).
 		Width(popupWidth).
 		Render(sb.String())
@@ -1299,7 +1265,7 @@ func (m Model) visibleExecutionHistoryWindow(maxVisible int) ([]int, bool, bool)
 
 func (m Model) viewExecutionHistoryLine(idx int, ex *domain.Execution, width int) string {
 	label := executionHistoryLabel(idx, ex.CompletedAt)
-	statusText, statusPaint := executionHistoryStatus(ex)
+	statusText, statusPaint := m.executionHistoryStatus(ex)
 
 	cursor := "  "
 	if idx == m.execCursor {
@@ -1343,23 +1309,23 @@ func executionHistoryLabel(idx int, completedAt time.Time) string {
 	return local.Format("2006-01-02 3:04 PM")
 }
 
-func executionHistoryStatus(ex *domain.Execution) (string, lipgloss.Style) {
+func (m Model) executionHistoryStatus(ex *domain.Execution) (string, lipgloss.Style) {
 	if ex == nil {
-		return "—", mutedStyle
+		return "—", m.styles.mutedStyle
 	}
 	if ex.Error != "" && ex.StatusCode == 0 {
-		return "ERR", errorStyle
+		return "ERR", m.styles.errorStyle
 	}
 	if ex.StatusCode == 0 {
-		return "—", mutedStyle
+		return "—", m.styles.mutedStyle
 	}
 	switch {
 	case ex.StatusCode >= 400:
-		return fmt.Sprintf("%d", ex.StatusCode), errorStyle
+		return fmt.Sprintf("%d", ex.StatusCode), m.styles.errorStyle
 	case ex.StatusCode >= 300:
-		return fmt.Sprintf("%d", ex.StatusCode), warnStyle
+		return fmt.Sprintf("%d", ex.StatusCode), m.styles.warnStyle
 	default:
-		return fmt.Sprintf("%d", ex.StatusCode), goodStyle
+		return fmt.Sprintf("%d", ex.StatusCode), m.styles.goodStyle
 	}
 }
 
@@ -1438,7 +1404,7 @@ func (m Model) viewStatusBar(statusOverride string) string {
 		)
 	}
 	// Build plain text first, then style after any truncation. Truncating
-	// already-styled strings via stripANSI drops the muted color and falls
+	// already-styled strings via stripANSI drops the m.styles.mutedColor color and falls
 	// back to the terminal default foreground when the width changes.
 	hintsPlain := m.renderHints(items)
 	if dim != DimWide || m.forceDim != DimAuto {
@@ -1457,16 +1423,16 @@ func (m Model) viewStatusBar(statusOverride string) string {
 	// collection first" in the status bar.
 	case m.statusSuccess != "":
 		rightPlain = "  ✓ " + m.statusSuccess
-		rightStyle = goodStyle
+		rightStyle = m.styles.goodStyle
 	case m.statusErr != "":
 		rightPlain = "  ✗ " + m.statusErr
-		rightStyle = errorStyle
+		rightStyle = m.styles.errorStyle
 	case statusOverride != "":
 		rightPlain = "  ✗ " + statusOverride
-		rightStyle = errorStyle
+		rightStyle = m.styles.errorStyle
 	case m.err != nil:
 		rightPlain = "  ✗ " + m.err.Error()
-		rightStyle = errorStyle
+		rightStyle = m.styles.errorStyle
 	case m.tmuxDetected && m.showTmuxWarning:
 		// BUG-010: only show tmux warning briefly (first N renders), not permanently.
 		rightPlain = "  ⚠ tmux: Ctrl+w intercepted — use " + m.renderHintKeys(
@@ -1477,18 +1443,18 @@ func (m Model) viewStatusBar(statusOverride string) string {
 			},
 			false,
 		) + " for panes"
-		rightStyle = warnStyle
+		rightStyle = m.styles.warnStyle
 	}
 
 	if rightPlain == "" {
 		if m.width <= 0 {
-			return statusStyle.Render(hintsPlain)
+			return m.styles.statusStyle.Render(hintsPlain)
 		}
-		return statusStyle.Render(truncate(hintsPlain, m.width))
+		return m.styles.statusStyle.Render(truncate(hintsPlain, m.width))
 	}
 
 	if m.width <= 0 {
-		return statusStyle.Render(hintsPlain) + " " + rightStyle.Render(rightPlain)
+		return m.styles.statusStyle.Render(hintsPlain) + " " + rightStyle.Render(rightPlain)
 	}
 
 	rightW := lipgloss.Width(rightPlain)
@@ -1500,7 +1466,7 @@ func (m Model) viewStatusBar(statusOverride string) string {
 	// Right-align the status message when there's room.
 	gap := m.width - lipgloss.Width(hintsPlain) - rightW
 	if gap >= 1 {
-		return statusStyle.Render(
+		return m.styles.statusStyle.Render(
 			hintsPlain,
 		) + strings.Repeat(
 			" ",
@@ -1514,7 +1480,7 @@ func (m Model) viewStatusBar(statusOverride string) string {
 	if avail < 1 {
 		return rightStyle.Render(rightPlain)
 	}
-	return statusStyle.Render(truncate(hintsPlain, avail)) + rightStyle.Render(rightPlain)
+	return m.styles.statusStyle.Render(truncate(hintsPlain, avail)) + rightStyle.Render(rightPlain)
 }
 
 // --- Search modal ---
@@ -1545,6 +1511,14 @@ func (m Model) ensureSearchCursorVisible() Model {
 	return m
 }
 
+func (m Model) ensureCommandCursorVisible() Model {
+	m.searchScroll = adjustListViewport(listViewport{
+		Scroll: m.searchScroll, SelectedRow: m.searchCursor,
+		TotalRows: len(m.commands), VisibleRows: m.searchVisibleRows(),
+	})
+	return m
+}
+
 func (m Model) searchModalWidth() int {
 	return m.twoThirdsModalWidth()
 }
@@ -1565,9 +1539,9 @@ func (m Model) twoThirdsModalWidth() int {
 func (m Model) viewSearchModal() string {
 	var sb strings.Builder
 	if m.isCommandPalette() {
-		sb.WriteString(titleStyle.Render("Command palette") + "\n\n")
+		sb.WriteString(m.styles.titleStyle.Render("Command palette") + "\n\n")
 	} else {
-		sb.WriteString(titleStyle.Render("Search all requests") + "\n\n")
+		sb.WriteString(m.styles.titleStyle.Render("Search all requests") + "\n\n")
 	}
 	sb.WriteString(m.searchInput.View() + "\n\n")
 	query := strings.TrimSpace(m.searchInput.Value())
@@ -1575,24 +1549,34 @@ func (m Model) viewSearchModal() string {
 	switch {
 	case m.isCommandPalette():
 		if len(m.commands) == 0 {
-			sb.WriteString(mutedStyle.Render("  No commands."))
+			sb.WriteString(m.styles.mutedStyle.Render("  No commands."))
 		} else {
-			for i, item := range m.commands {
+			visible := m.searchVisibleRows()
+			start := min(m.searchScroll, max(0, len(m.commands)-visible))
+			end := min(len(m.commands), start+visible)
+			if start > 0 {
+				sb.WriteString(m.styles.mutedStyle.Render("  ↑ more above") + "\n")
+			}
+			for i := start; i < end; i++ {
+				item := m.commands[i]
 				cursor := "  "
 				line := item.Title
 				if i == m.searchCursor {
 					cursor = "▸ "
-					line = lipgloss.NewStyle().Foreground(blue).Bold(true).Render(line)
+					line = lipgloss.NewStyle().Foreground(m.styles.accent).Bold(true).Render(line)
 				}
-				sb.WriteString(cursor + line + mutedStyle.Render("  "+item.Action) + "\n")
+				sb.WriteString(cursor + line + m.styles.mutedStyle.Render("  "+item.Action) + "\n")
+			}
+			if end < len(m.commands) {
+				sb.WriteString(m.styles.mutedStyle.Render("  ↓ more below") + "\n")
 			}
 		}
 	case len(m.searchResults) == 0:
 		// BUG-008: distinguish "not yet searched" from "searched and found nothing".
 		if !m.searched {
-			sb.WriteString(mutedStyle.Render("  Type to search…"))
+			sb.WriteString(m.styles.mutedStyle.Render("  Type to search…"))
 		} else {
-			sb.WriteString(mutedStyle.Render("  No results."))
+			sb.WriteString(m.styles.mutedStyle.Render("  No results."))
 		}
 	default:
 		rows, selectedRow := buildSearchRows(m.searchResults, m.searchCursor)
@@ -1601,7 +1585,7 @@ func (m Model) viewSearchModal() string {
 		end := min(len(rows), start+visible)
 		contentWidth := max(1, m.searchModalWidth()-6)
 		if start > 0 {
-			sb.WriteString(mutedStyle.Render("  ↑ more above") + "\n")
+			sb.WriteString(m.styles.mutedStyle.Render("  ↑ more above") + "\n")
 		}
 		for i := start; i < end; i++ {
 			hit := rows[i].hit
@@ -1609,23 +1593,23 @@ func (m Model) viewSearchModal() string {
 			if i == selectedRow {
 				cursor = "▸ "
 			}
-			prefix := cursor + methodBadge(hit.Request.Method) + " "
+			prefix := cursor + m.methodBadge(hit.Request.Method) + " "
 			line := prefix + m.renderSearchHit(
 				hit,
 				query,
 				max(1, contentWidth-lipgloss.Width(prefix)),
 			)
 			if i == selectedRow {
-				line = lipgloss.NewStyle().Foreground(blue).Bold(true).Render(line)
+				line = lipgloss.NewStyle().Foreground(m.styles.accent).Bold(true).Render(line)
 			}
 			sb.WriteString(line + "\n")
 		}
 		if end < len(rows) {
-			sb.WriteString(mutedStyle.Render("  ↓ more below") + "\n")
+			sb.WriteString(m.styles.mutedStyle.Render("  ↓ more below") + "\n")
 		}
 	}
 
-	sb.WriteString("\n" + mutedStyle.Render(m.renderHints([]hintItem{
+	sb.WriteString("\n" + m.styles.mutedStyle.Render(m.renderHints([]hintItem{
 		{Label: "select", Actions: []string{"search_select"}},
 		{Label: helpLabelClose, Actions: []string{"search_cancel"}},
 		{Label: "navigate", Actions: []string{"search_up", "search_down"}},
@@ -1633,7 +1617,7 @@ func (m Model) viewSearchModal() string {
 
 	box := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(blue).
+		BorderForeground(m.styles.accent).
 		Padding(1, 2).
 		Width(m.searchModalWidth()).
 		Height(m.searchModalHeight()).
@@ -1644,20 +1628,20 @@ func (m Model) viewSearchModal() string {
 
 func (m Model) viewScheduleModal() string {
 	var sb strings.Builder
-	sb.WriteString(titleStyle.Render("Schedule request") + "\n\n")
+	sb.WriteString(m.styles.titleStyle.Render("Schedule request") + "\n\n")
 	if m.activeRequest != nil {
-		sb.WriteString(mutedStyle.Render(m.activeRequest.Name) + "\n\n")
+		sb.WriteString(m.styles.mutedStyle.Render(m.activeRequest.Name) + "\n\n")
 	}
 	sb.WriteString(m.scheduleInput.View() + "\n\n")
-	sb.WriteString(mutedStyle.Render("Examples: 10m, in 1h, 2026-06-25 18:30") + "\n\n")
-	sb.WriteString(mutedStyle.Render(m.renderHints([]hintItem{
+	sb.WriteString(m.styles.mutedStyle.Render("Examples: 10m, in 1h, 2026-06-25 18:30") + "\n\n")
+	sb.WriteString(m.styles.mutedStyle.Render(m.renderHints([]hintItem{
 		{Label: "save", Actions: []string{"import_confirm"}},
 		{Label: helpLabelClose, Actions: []string{keybindings.ActionImportCancel}},
 	})))
 
 	box := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(blue).
+		BorderForeground(m.styles.accent).
 		Padding(1, 2).
 		Width(m.twoThirdsModalWidth()).
 		Height(10).
@@ -1677,9 +1661,9 @@ func (m Model) renderSearchHit(hit *search.SearchHit, query string, maxWidth int
 		name = collectionName + "/" + name
 	}
 
-	nameStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#c0caf5"))
-	urlStyle := mutedStyle
-	matchStyle := lipgloss.NewStyle().Bold(true).Foreground(yellow)
+	nameStyle := lipgloss.NewStyle().Foreground(m.styles.foreground)
+	urlStyle := m.styles.mutedStyle
+	matchStyle := lipgloss.NewStyle().Bold(true).Foreground(m.styles.match)
 
 	if maxWidth <= 0 {
 		return ""
@@ -1810,20 +1794,20 @@ func (m Model) viewHelp() string {
 	}
 
 	var sb strings.Builder
-	sb.WriteString(titleStyle.Render("Keyboard Reference") + "\n\n")
+	sb.WriteString(m.styles.titleStyle.Render("Keyboard Reference") + "\n\n")
 
 	if m.helpEditState == helpConfirmResetAll {
 		diffs := helpResetAllDiffs(m.cfg.Keybindings)
-		sb.WriteString(warnStyle.Render("  Reset all keybindings to defaults?") + "\n\n")
+		sb.WriteString(m.styles.warnStyle.Render("  Reset all keybindings to defaults?") + "\n\n")
 		sb.WriteString(
-			mutedStyle.Render(
+			m.styles.mutedStyle.Render(
 				"  The following custom bindings will be updated to their default values:",
 			) + "\n",
 		)
 		for _, diff := range diffs {
 			sb.WriteString("  - " + diff + "\n")
 		}
-		sb.WriteString("\n" + mutedStyle.Render(
+		sb.WriteString("\n" + m.styles.mutedStyle.Render(
 			fmt.Sprintf(
 				"  [%s] confirm  [%s] cancel",
 				keybindings.FormatKey("enter"),
@@ -1833,7 +1817,7 @@ func (m Model) viewHelp() string {
 
 		box := lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
-			BorderForeground(blue).
+			BorderForeground(m.styles.accent).
 			Padding(1, 2).
 			Width(m.twoThirdsModalWidth()).
 			Height(boxHeight).
@@ -1845,7 +1829,7 @@ func (m Model) viewHelp() string {
 	// Top scroll indicator — placed right after the title so the user sees
 	// it before the entry list, not at the bottom.
 	if m.helpScrollOffset > 0 {
-		sb.WriteString(mutedStyle.Render("  ↑ more above") + "\n")
+		sb.WriteString(m.styles.mutedStyle.Render("  ↑ more above") + "\n")
 	}
 
 	start := min(m.helpScrollOffset, max(0, len(rows)-maxLines))
@@ -1857,7 +1841,7 @@ func (m Model) viewHelp() string {
 			sb.WriteString("\n")
 		case helpGroupRow:
 			sb.WriteString(
-				lipgloss.NewStyle().Bold(true).Foreground(yellow).Render(row.group) + "\n",
+				lipgloss.NewStyle().Bold(true).Foreground(m.styles.warning).Render(row.group) + "\n",
 			)
 		case helpBindingRow:
 			cursor := "  "
@@ -1866,9 +1850,9 @@ func (m Model) viewHelp() string {
 			}
 			key := row.entry.Key
 			if key == "" {
-				key = mutedStyle.Render("(unbound)")
+				key = m.styles.mutedStyle.Render("(unbound)")
 			} else {
-				key = lipgloss.NewStyle().Foreground(cyan).Render(key)
+				key = lipgloss.NewStyle().Foreground(m.styles.info).Render(key)
 			}
 			line := fmt.Sprintf("%s%-20s %s", cursor, helpActionLabel(row.entry.Action), key)
 			if i == selectedRow {
@@ -1880,12 +1864,12 @@ func (m Model) viewHelp() string {
 
 	// Bottom scroll indicator.
 	if end < len(rows) {
-		sb.WriteString(mutedStyle.Render("  ↓ more below") + "\n")
+		sb.WriteString(m.styles.mutedStyle.Render("  ↓ more below") + "\n")
 	}
 
 	// Recording prompt.
 	if m.helpEditState == helpRecording {
-		sb.WriteString("\n" + warnStyle.Render("  Press key to bind, "+m.renderHints([]hintItem{
+		sb.WriteString("\n" + m.styles.warnStyle.Render("  Press key to bind, "+m.renderHints([]hintItem{
 			{Label: helpLabelCancel, Actions: []string{"help_close"}},
 			{Label: "unbind", Actions: []string{"help_unbind"}},
 		})) + "\n")
@@ -1893,12 +1877,12 @@ func (m Model) viewHelp() string {
 
 	// Error banner.
 	if m.helpEditState == helpError && m.helpEditErrMsg != "" {
-		sb.WriteString("\n" + errorStyle.Render("  ✗ "+m.helpEditErrMsg) + "\n")
+		sb.WriteString("\n" + m.styles.errorStyle.Render("  ✗ "+m.helpEditErrMsg) + "\n")
 	}
 
 	// Bottom hint.
 	if m.helpEditState == helpViewing {
-		sb.WriteString("\n" + mutedStyle.Render("  "+m.renderHints([]hintItem{
+		sb.WriteString("\n" + m.styles.mutedStyle.Render("  "+m.renderHints([]hintItem{
 			{Label: "navigate", Actions: []string{"help_up", "help_down"}},
 			{Label: "edit", Actions: []string{"help_edit"}},
 			{Label: "reset one", Actions: []string{"help_reset"}},
@@ -1909,7 +1893,7 @@ func (m Model) viewHelp() string {
 
 	box := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(blue).
+		BorderForeground(m.styles.accent).
 		Padding(1, 2).
 		Width(m.twoThirdsModalWidth()).
 		Height(boxHeight).
@@ -1922,24 +1906,24 @@ func (m Model) viewHelp() string {
 
 func (m Model) viewImportModal() string {
 	var sb strings.Builder
-	sb.WriteString(titleStyle.Render("Import curl command") + "\n\n")
+	sb.WriteString(m.styles.titleStyle.Render("Import curl command") + "\n\n")
 	innerW := max(20, min(m.width-8, 96)-4)
 	if m.importPreview == nil {
 		sb.WriteString(
-			mutedStyle.Render(
+			m.styles.mutedStyle.Render(
 				"Paste the complete command below. Enter inserts a newline.",
 			) + "\n\n",
 		)
 		sb.WriteString(m.importInput.View() + "\n")
 		if m.importError != "" {
-			sb.WriteString("\n" + errorStyle.Render("✗ "+stripANSI(m.importError)) + "\n")
+			sb.WriteString("\n" + m.styles.errorStyle.Render("✗ "+stripANSI(m.importError)) + "\n")
 		}
 		sb.WriteString(
-			"\n" + mutedStyle.Render("Ctrl+V: read clipboard   Ctrl+S: parse   Esc: cancel"),
+			"\n" + m.styles.mutedStyle.Render("Ctrl+V: read clipboard   Ctrl+S: parse   Esc: cancel"),
 		)
 		box := lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
-			BorderForeground(blue).
+			BorderForeground(m.styles.accent).
 			Padding(1, 2).
 			Width(min(m.width-4, 104)).
 			Render(sb.String())
@@ -1947,19 +1931,19 @@ func (m Model) viewImportModal() string {
 	}
 
 	p := m.importPreview
-	secColor := goodStyle
+	secColor := m.styles.goodStyle
 	switch p.Security {
 	case 1: // Review
-		secColor = warnStyle
+		secColor = m.styles.warnStyle
 	case 2: // Dangerous
-		secColor = errorStyle
+		secColor = m.styles.errorStyle
 	}
-	fmt.Fprintf(&sb, "Method:   %s\n", methodStyle.Render(p.Method))
+	fmt.Fprintf(&sb, "Method:   %s\n", m.styles.methodStyle.Render(p.Method))
 	fmt.Fprintf(
 		&sb,
 		"URL:      %s\n",
 		lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#c0caf5")).
+			Foreground(m.styles.foreground).
 			Render(truncate(p.URL, max(1, innerW-10))),
 	)
 	if len(p.Headers) > 0 {
@@ -1997,21 +1981,21 @@ func (m Model) viewImportModal() string {
 	}
 	fmt.Fprintf(&sb, "Security: %s\n", secColor.Render(p.Security.String()))
 	for _, w := range p.Warnings {
-		sb.WriteString(warnStyle.Render("⚠ "+w) + "\n")
+		sb.WriteString(m.styles.warnStyle.Render("⚠ "+w) + "\n")
 	}
 	sb.WriteString("\n")
 	sb.WriteString("Save as: " + m.importName.View() + "\n\n")
 	if m.importError != "" {
-		sb.WriteString(errorStyle.Render("✗ "+stripANSI(m.importError)) + "\n")
+		sb.WriteString(m.styles.errorStyle.Render("✗ "+stripANSI(m.importError)) + "\n")
 	}
-	sb.WriteString(mutedStyle.Render(m.renderHints([]hintItem{
+	sb.WriteString(m.styles.mutedStyle.Render(m.renderHints([]hintItem{
 		{Label: "import", Actions: []string{"import_confirm"}},
 		{Label: helpLabelCancel, Actions: []string{keybindings.ActionImportCancel}},
 	})) + "   e: edit command")
 
 	box := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(blue).
+		BorderForeground(m.styles.accent).
 		Padding(1, 2).
 		Width(min(m.width-4, 104)). //nolint:predeclared // uses Go 1.21 built-in min
 		Render(sb.String())
@@ -2083,17 +2067,17 @@ func helpActionLabel(action string) string {
 	return strings.ReplaceAll(action, "_", " ")
 }
 
-func methodBadge(method string) string {
-	color := mutedStyle
+func (m Model) methodBadge(method string) string {
+	color := m.styles.mutedStyle
 	switch method {
 	case "GET":
-		color = lipgloss.NewStyle().Foreground(green)
+		color = lipgloss.NewStyle().Foreground(m.styles.get)
 	case "POST":
-		color = lipgloss.NewStyle().Foreground(blue)
+		color = lipgloss.NewStyle().Foreground(m.styles.post)
 	case "PUT", "PATCH":
-		color = lipgloss.NewStyle().Foreground(yellow)
+		color = lipgloss.NewStyle().Foreground(m.styles.put)
 	case "DELETE":
-		color = lipgloss.NewStyle().Foreground(red)
+		color = lipgloss.NewStyle().Foreground(m.styles.delete)
 	}
 	return color.Render(method)
 }
@@ -2178,7 +2162,7 @@ func limitLines(s string, contentWidth, maxRows int) string {
 						kept = append(kept, partial)
 					}
 				}
-				kept = append(kept, mutedStyle.Render(n))
+				kept = append(kept, n)
 			}
 			break
 		}
@@ -2342,12 +2326,12 @@ func (m Model) viewEnvModal() string {
 	}
 
 	var sb strings.Builder
-	sb.WriteString(titleStyle.Render("Environment Variables") + "\n\n")
+	sb.WriteString(m.styles.titleStyle.Render("Environment Variables") + "\n\n")
 
 	// Tabs use a one-line viewport. Large inherited hierarchies can contain
 	// hundreds of tabs; allowing the full list to soft-wrap makes the modal
 	// taller than the terminal. Hidden tabs remain reachable with tab-prev/next.
-	sb.WriteString(renderEnvTabViewport(
+	sb.WriteString(m.renderEnvTabViewport(
 		m.envEditor.tabs,
 		m.envEditor.tabIdx,
 		max(1, m.envModalWidth()-4),
@@ -2362,14 +2346,14 @@ func (m Model) viewEnvModal() string {
 		if m.currentEnvTabReadOnly() {
 			emptyMessage = "  No variables in this read-only environment."
 		}
-		sb.WriteString(mutedStyle.Render(emptyMessage) + "\n")
+		sb.WriteString(m.styles.mutedStyle.Render(emptyMessage) + "\n")
 	} else {
 		rows, selectedRow := buildEnvVarRows(m.envEditor.vars, m.envEditor.varCursor)
 		visible := m.envVisibleRows()
 		start := min(m.envEditor.scroll, max(0, len(rows)-visible))
 		end := min(len(rows), start+visible)
 		if start > 0 {
-			sb.WriteString(mutedStyle.Render("  ↑ more above") + "\n")
+			sb.WriteString(m.styles.mutedStyle.Render("  ↑ more above") + "\n")
 		}
 		for i := start; i < end; i++ {
 			v := rows[i].variable
@@ -2386,12 +2370,12 @@ func (m Model) viewEnvModal() string {
 			if i == selectedRow {
 				line = lipgloss.NewStyle().Bold(true).Render(plain)
 			} else {
-				line = lipgloss.NewStyle().Foreground(cyan).Render(plain)
+				line = lipgloss.NewStyle().Foreground(m.styles.info).Render(plain)
 			}
 			sb.WriteString(line + "\n")
 		}
 		if end < len(rows) {
-			sb.WriteString(mutedStyle.Render("  ↓ more below") + "\n")
+			sb.WriteString(m.styles.mutedStyle.Render("  ↓ more below") + "\n")
 		}
 	}
 
@@ -2400,7 +2384,7 @@ func (m Model) viewEnvModal() string {
 		sb.WriteString("\n")
 		sb.WriteString("Key:   " + m.envEditor.editKey.View() + "\n")
 		sb.WriteString("Value: " + m.envEditor.editVal.View() + "\n")
-		sb.WriteString("\n" + mutedStyle.Render("  "+m.renderHints([]hintItem{
+		sb.WriteString("\n" + m.styles.mutedStyle.Render("  "+m.renderHints([]hintItem{
 			{Label: "switch", Actions: []string{"env_edit_switch_field"}},
 			{Label: helpLabelConfirm, Actions: []string{"env_edit_confirm"}},
 			{Label: helpLabelCancel, Actions: []string{"env_cancel"}},
@@ -2409,11 +2393,11 @@ func (m Model) viewEnvModal() string {
 
 	// Save error.
 	if m.envEditor.saveErr != "" {
-		sb.WriteString("\n" + errorStyle.Render("✗ "+m.envEditor.saveErr) + "\n")
+		sb.WriteString("\n" + m.styles.errorStyle.Render("✗ "+m.envEditor.saveErr) + "\n")
 	}
 
 	// Hints.
-	sb.WriteString("\n" + mutedStyle.Render(m.renderHints([]hintItem{
+	sb.WriteString("\n" + m.styles.mutedStyle.Render(m.renderHints([]hintItem{
 		{Label: "tabs", Actions: []string{"env_tab_prev", "env_tab_next"}},
 		{Label: "nav", Actions: []string{"env_up", "env_down"}},
 		{Label: "add var", Actions: []string{"env_add"}},
@@ -2431,7 +2415,7 @@ func (m Model) viewEnvModal() string {
 	)
 	box := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(blue).
+		BorderForeground(m.styles.accent).
 		Padding(1, 2).
 		Width(m.envModalWidth()).
 		Height(m.envModalHeight()).
@@ -2440,7 +2424,7 @@ func (m Model) viewEnvModal() string {
 	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box)
 }
 
-func renderEnvTabViewport(tabs []envTab, activeIndex, maxWidth int) string {
+func (m Model) renderEnvTabViewport(tabs []envTab, activeIndex, maxWidth int) string {
 	if len(tabs) == 0 || maxWidth <= 0 {
 		return ""
 	}
@@ -2495,22 +2479,22 @@ func renderEnvTabViewport(tabs []envTab, activeIndex, maxWidth int) string {
 
 	parts := make([]string, 0, end-start+2)
 	if start > 0 {
-		parts = append(parts, mutedStyle.Render("…"))
+		parts = append(parts, m.styles.mutedStyle.Render("…"))
 	}
 	for i := start; i < end; i++ {
 		label := labels[i]
 		switch {
 		case i == activeIndex:
-			label = lipgloss.NewStyle().Foreground(blue).Underline(true).Bold(true).Render(label)
+			label = lipgloss.NewStyle().Foreground(m.styles.accent).Underline(true).Bold(true).Render(label)
 		case tabs[i].ReadOnly:
-			label = lipgloss.NewStyle().Foreground(yellow).Faint(true).Render(label)
+			label = lipgloss.NewStyle().Foreground(m.styles.warning).Faint(true).Render(label)
 		default:
-			label = mutedStyle.Render(label)
+			label = m.styles.mutedStyle.Render(label)
 		}
 		parts = append(parts, label)
 	}
 	if end < len(labels) {
-		parts = append(parts, mutedStyle.Render("…"))
+		parts = append(parts, m.styles.mutedStyle.Render("…"))
 	}
 	return "  " + strings.Join(parts, "  ")
 }
@@ -2519,7 +2503,7 @@ func renderEnvTabViewport(tabs []envTab, activeIndex, maxWidth int) string {
 func (m Model) viewCollectionPromptModal() string {
 	title := "New Collection"
 	hint := "Enter name"
-	boxColor := blue
+	boxColor := m.styles.accent
 
 	switch m.promptMode {
 	case promptAddRequest:
@@ -2534,7 +2518,7 @@ func (m Model) viewCollectionPromptModal() string {
 	case promptDeleteConfirm:
 		title = "Delete Collection"
 		hint = "Type 'delete' to confirm"
-		boxColor = red
+		boxColor = m.styles.error
 	case promptDeleteTiny:
 		// Tiny confirmation: repeat the request-delete key without text input.
 		name := m.promptTargetID
@@ -2560,19 +2544,19 @@ func (m Model) viewCollectionPromptModal() string {
 			confirmAction = "request_delete"
 			confirmLabel = "continue"
 		}
-		sb.WriteString(titleStyle.Render(title) + "\n\n")
+		sb.WriteString(m.styles.titleStyle.Render(title) + "\n\n")
 		sb.WriteString("Delete " + lipgloss.NewStyle().Bold(true).Render(name) + "?\n\n")
-		sb.WriteString(errorStyle.Render("This deletion is permanent and irreversible.") + "\n\n")
+		sb.WriteString(m.styles.errorStyle.Render("This deletion is permanent and irreversible.") + "\n\n")
 		if m.statusErr != "" {
-			sb.WriteString(errorStyle.Render("✗ "+m.statusErr) + "\n\n")
+			sb.WriteString(m.styles.errorStyle.Render("✗ "+m.statusErr) + "\n\n")
 		}
-		sb.WriteString(mutedStyle.Render(m.renderHints([]hintItem{
+		sb.WriteString(m.styles.mutedStyle.Render(m.renderHints([]hintItem{
 			{Label: confirmLabel, Actions: []string{confirmAction}},
 			{Label: helpLabelCancel, Actions: []string{keybindings.ActionImportCancel}},
 		})))
 		box := lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
-			BorderForeground(red).
+			BorderForeground(m.styles.error).
 			Padding(1, 2).
 			Width(min(m.width-4, 40)).
 			Render(sb.String())
@@ -2580,18 +2564,18 @@ func (m Model) viewCollectionPromptModal() string {
 	}
 
 	var sb strings.Builder
-	sb.WriteString(titleStyle.Render(title) + "\n\n")
+	sb.WriteString(m.styles.titleStyle.Render(title) + "\n\n")
 	if m.promptMode == promptDeleteConfirm {
-		sb.WriteString(errorStyle.Render("This deletion is permanent and irreversible.") + "\n\n")
+		sb.WriteString(m.styles.errorStyle.Render("This deletion is permanent and irreversible.") + "\n\n")
 	}
 	sb.WriteString(m.promptInput.View() + "\n")
-	sb.WriteString(mutedStyle.Render("["+hint+"]") + "\n")
+	sb.WriteString(m.styles.mutedStyle.Render("["+hint+"]") + "\n")
 
 	if m.statusErr != "" {
-		sb.WriteString("\n" + errorStyle.Render("✗ "+m.statusErr) + "\n")
+		sb.WriteString("\n" + m.styles.errorStyle.Render("✗ "+m.statusErr) + "\n")
 	}
 
-	sb.WriteString("\n" + mutedStyle.Render(m.renderHints([]hintItem{
+	sb.WriteString("\n" + m.styles.mutedStyle.Render(m.renderHints([]hintItem{
 		{Label: helpLabelConfirm, Actions: []string{"import_confirm"}},
 		{Label: helpLabelCancel, Actions: []string{keybindings.ActionImportCancel}},
 	})))

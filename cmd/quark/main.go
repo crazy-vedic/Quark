@@ -18,6 +18,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/spf13/cobra"
 
 	"github.com/crazy-vedic/quark/internal/cli"
@@ -28,6 +29,7 @@ import (
 	"github.com/crazy-vedic/quark/internal/keybindings"
 	"github.com/crazy-vedic/quark/internal/search"
 	"github.com/crazy-vedic/quark/internal/store"
+	"github.com/crazy-vedic/quark/internal/theme"
 	"github.com/crazy-vedic/quark/internal/timing"
 	"github.com/crazy-vedic/quark/internal/transport"
 	"github.com/crazy-vedic/quark/internal/tui"
@@ -44,6 +46,7 @@ var (
 	timingMode string
 	configDir  string
 	dimFlag    string
+	themeFlag  string
 )
 
 func main() {
@@ -78,6 +81,8 @@ func run() error {
 		StringVar(&configDir, "config", defaultConfigDir, "Directory for config and db")
 	root.PersistentFlags().
 		StringVar(&dimFlag, "dim", "", "Force TUI density: wide|narrow|tiny|absurd (default: auto from terminal size)")
+	root.PersistentFlags().
+		StringVar(&themeFlag, "theme", "", "Theme for this session (overrides QUARK_THEME and config.toml)")
 
 	var debugLog *os.File
 	defer func() {
@@ -106,6 +111,12 @@ func run() error {
 		if err != nil {
 			slog.Warn("config: failed to load config.toml; using defaults", "err", err)
 			cfg = config.Default(configDir)
+		}
+		if selected := os.Getenv("QUARK_THEME"); selected != "" {
+			cfg.UI.Theme = selected
+		}
+		if themeFlag != "" {
+			cfg.UI.Theme = themeFlag
 		}
 
 		// 0700: only the owner can read the directory. It contains the SQLite DB
@@ -160,6 +171,7 @@ func run() error {
 	root.AddCommand(lazyImportPostmanCmd(runtimeOnce))
 	root.AddCommand(lazyEnvCmd(runtimeOnce))
 	root.AddCommand(lazyKeybindingsCmd())
+	root.AddCommand(newThemeCmd())
 	root.AddCommand(cli.NewCompletionCmd(root))
 
 	root.AddCommand(&cobra.Command{
@@ -288,6 +300,9 @@ func launchTUI(
 	debugLog *os.File,
 	configDir string,
 ) error {
+	if _, err := theme.Resolve(configDir, cfg.UI.Theme, lipgloss.HasDarkBackground()); err != nil {
+		return err
+	}
 	forceDim := tui.DimAuto
 	if dimFlag != "" {
 		parsed, err := tui.ParseDimMode(dimFlag)

@@ -92,6 +92,7 @@ func (m Model) beginClientCertEdit(index int) Model {
 	m.clientCertPassword = textinput.New()
 	m.clientCertPassword.EchoMode = textinput.EchoPassword
 	m.clientCertPassword.CharLimit = 512
+	m.styleInputs()
 	if index >= 0 && index < len(m.clientCerts) {
 		cert := m.clientCerts[index]
 		m.clientCertHost.SetValue(cert.Host)
@@ -275,10 +276,10 @@ func (m Model) deleteClientCert() (tea.Model, tea.Cmd) {
 
 func (m Model) viewClientCertModal() string {
 	var sb strings.Builder
-	sb.WriteString(titleStyle.Render("Client Certificates (mTLS)") + "\n\n")
-	sb.WriteString(mutedStyle.Render("Certificates are selected by request hostname.") + "\n\n")
+	sb.WriteString(m.styles.titleStyle.Render("Client Certificates (mTLS)") + "\n\n")
+	sb.WriteString(m.styles.mutedStyle.Render("Certificates are selected by request hostname.") + "\n\n")
 	if len(m.clientCerts) == 0 {
-		sb.WriteString(mutedStyle.Render("No certificates configured. Press a to add one.") + "\n")
+		sb.WriteString(m.styles.mutedStyle.Render("No certificates configured. Press a to add one.") + "\n")
 	} else {
 		for i, cert := range m.clientCerts {
 			cursor := "  "
@@ -293,29 +294,29 @@ func (m Model) viewClientCertModal() string {
 			if i == m.clientCertCursor {
 				sb.WriteString(lipgloss.NewStyle().Bold(true).Render(line) + "\n")
 			} else {
-				sb.WriteString(mutedStyle.Render(line) + "\n")
+				sb.WriteString(m.styles.mutedStyle.Render(line) + "\n")
 			}
 		}
 	}
 	if m.clientCertEditing {
-		sb.WriteString("\n" + titleStyle.Render("Add / Edit Certificate") + "\n")
+		sb.WriteString("\n" + m.styles.titleStyle.Render("Add / Edit Certificate") + "\n")
 		sb.WriteString("Host:     " + m.clientCertHost.View() + "\n")
 		sb.WriteString("Type:     " + m.clientCertType.View() + "\n")
 		sb.WriteString("Cert:     " + m.clientCertFile.View() + "\n")
 		sb.WriteString("Key:      " + m.clientCertKeyFile.View() + "\n")
 		sb.WriteString("CA:       " + m.clientCertCAFile.View() + "\n")
 		sb.WriteString("Password: " + m.clientCertPassword.View() + "\n")
-		sb.WriteString(mutedStyle.Render("Tab: next field   Enter: save   Esc: cancel") + "\n")
+		sb.WriteString(m.styles.mutedStyle.Render("Tab: next field   Enter: save   Esc: cancel") + "\n")
 	}
 	if m.clientCertError != "" {
-		sb.WriteString("\n" + errorStyle.Render("✗ "+m.clientCertError) + "\n")
+		sb.WriteString("\n" + m.styles.errorStyle.Render("✗ "+m.clientCertError) + "\n")
 	}
 	sb.WriteString(
-		"\n" + mutedStyle.Render("a add   e/Enter edit   d delete   j/k move   Esc close"),
+		"\n" + m.styles.mutedStyle.Render("a add   e/Enter edit   d delete   j/k move   Esc close"),
 	)
 	box := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(blue).
+		BorderForeground(m.styles.accent).
 		Padding(1, 2).
 		Width(max(1, min(m.width-4, 110)))
 	return lipgloss.Place(

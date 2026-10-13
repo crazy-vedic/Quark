@@ -482,11 +482,11 @@ type requestPaneChromeRects struct {
 
 func (m Model) requestPaneChromeRects(layout normalLayout) requestPaneChromeRects {
 	content := layout.requestContentRect()
-	badgeW := methodBadgeWidth(m.method)
+	badgeW := m.methodBadgeWidth(m.method)
 	methodY := content.top + 1
 	urlLeft := content.left + badgeW + 2 // badge + "  " separator
 
-	sendW := requestSendButtonWidth()
+	sendW := m.requestSendButtonWidth()
 	rightW := m.requestTitleRightChromeWidth()
 	sendLeft := content.right - rightW + 1
 

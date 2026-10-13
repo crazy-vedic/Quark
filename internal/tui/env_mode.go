@@ -296,6 +296,7 @@ func (m Model) envAddVar() (tea.Model, tea.Cmd) {
 	m.envEditor.editing = true
 	m.envEditor.editKey = textinput.New()
 	m.envEditor.editVal = textinput.New()
+	m.styleInputs()
 	m.envEditor.editKey.Focus()
 	return m, textinput.Blink
 }
@@ -326,6 +327,7 @@ func (m Model) envEditVar() (tea.Model, tea.Cmd) {
 		m.envEditor.editing = true
 		m.envEditor.editKey = textinput.New()
 		m.envEditor.editVal = textinput.New()
+		m.styleInputs()
 		m.envEditor.editKey.SetValue(m.envEditor.vars[m.envEditor.varCursor].Key)
 		m.envEditor.editVal.SetValue(m.envEditor.vars[m.envEditor.varCursor].Value)
 		m.envEditor.editKey.Focus()
@@ -414,6 +416,7 @@ func (m Model) copyInheritedEnvVar() (tea.Model, tea.Cmd) {
 	m.envEditor.editing = true
 	m.envEditor.editKey = textinput.New()
 	m.envEditor.editVal = textinput.New()
+	m.styleInputs()
 	m.envEditor.editKey.SetValue(inherited.Key)
 	m.envEditor.editVal.SetValue(inherited.Value)
 	m.envEditor.editKey.Focus()

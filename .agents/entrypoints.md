@@ -28,6 +28,7 @@ No other `cmd/` packages exist.
 |---|---|---|
 | `--debug` | `false` | Enables keystroke/diagnostic logging to `/tmp/quark_debug_logs/debug.log` via `cli.DebugLogger` |
 | `--config` | `~/.quark` | Directory for `config.toml`, `quark.db`, backups, logs |
+| `--theme` | unset | TUI theme override, above `QUARK_THEME` and `[ui].theme` |
 
 ### Default Action
 
