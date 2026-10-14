@@ -78,6 +78,11 @@ type envLoadedMsg struct {
 	envID        string
 }
 
+type activeEnvSaveErrMsg struct {
+	collectionID string
+	err          error
+}
+
 // openEnvEditor opens the env editor for the current collection.
 func (m Model) openEnvEditor() (Model, tea.Cmd) {
 	if m.envReader == nil {
@@ -561,10 +566,6 @@ func (m Model) cycleEnv(direction int) (Model, tea.Cmd) {
 	// Cycle.
 	newIdx := (currentIdx + direction + len(envs)) % len(envs)
 	newEnv := envs[newIdx]
-	m.activeEnv[colID] = newEnv.ID
-	// Invalidate cached name so next render resolves the new env.
-	m.cachedEnvColID = ""
-	m.cachedEnvName = newEnv.Name
 
 	var cmd tea.Cmd
 	if m.activeEnvStore != nil {
@@ -572,10 +573,14 @@ func (m Model) cycleEnv(direction int) (Model, tea.Cmd) {
 			ctx2, cancel2 := context.WithTimeout(m.ctx, envDBTimeout)
 			defer cancel2()
 			if err := m.activeEnvStore.SetActiveEnvironment(ctx2, colID, newEnv.ID); err != nil {
-				return errLoadMsg{err: fmt.Errorf("save active env: %w", err)}
+				return activeEnvSaveErrMsg{collectionID: colID, err: err}
 			}
 			return envLoadedMsg{collectionID: colID, envID: newEnv.ID}
 		}
+	} else {
+		m.activeEnv[colID] = newEnv.ID
+		m.cachedEnvColID = ""
+		m.cachedEnvName = newEnv.Name
 	}
 	return m, cmd
 }

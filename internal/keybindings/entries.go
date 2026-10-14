@@ -23,6 +23,10 @@ var groups = []struct {
 		ActionFocusSidebar, ActionFocusRequest, ActionFocusResponse,
 		"pane_next", "pane_prev", ActionClientCerts, ActionImportCurl,
 	}},
+	{"Client Certificates", []string{
+		"cert_down", "cert_up", "cert_add", "cert_edit", "cert_delete", "cert_close",
+		"cert_next_field", "cert_prev_field", "cert_save",
+	}},
 	{"Sidebar", []string{
 		"sidebar_down", "sidebar_up", "sidebar_expand", "sidebar_collapse",
 		"sidebar_add_request", "sidebar_add", "sidebar_delete", "sidebar_rename",

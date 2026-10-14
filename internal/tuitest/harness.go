@@ -195,8 +195,13 @@ func NewModelWithConfigDir(
 	executor tui.RequestExecutor,
 	cfg config.Config,
 	configDir string,
+	activeEnvStore ...store.ActiveEnvironmentStore,
 ) tui.Model {
 	t.Helper()
+	var activeStore store.ActiveEnvironmentStore
+	if len(activeEnvStore) > 0 {
+		activeStore = activeEnvStore[0]
+	}
 	return tui.New(tui.Deps{
 		Lister:          st,
 		Reader:          st,
@@ -205,6 +210,7 @@ func NewModelWithConfigDir(
 		ExecutionReader: st,
 		EnvReader:       st,
 		EnvWriter:       st,
+		ActiveEnvStore:  activeStore,
 		Executor:        executor,
 		Searcher:        search.New(st),
 		Importer:        curl.NewImporter(),
