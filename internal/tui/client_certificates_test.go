@@ -49,11 +49,11 @@ func TestClientCertificateModalNavigationAndEditing(t *testing.T) {
 		{Type: tea.KeyTab}, {Type: tea.KeyTab}, {Type: tea.KeyTab},
 		{Type: tea.KeyShiftTab}, {Type: tea.KeyRunes, Runes: []rune{'x'}},
 	} {
-		updated, _ = m.handleClientCertEditKey(key)
+		updated, _ = m.Update(key)
 		m = updated.(Model)
 	}
 	require.NotEmpty(t, m.clientCertPassword.Value())
-	updated, _ = m.handleClientCertEditKey(tea.KeyMsg{Type: tea.KeyEsc})
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	m = updated.(Model)
 	require.False(t, m.clientCertEditing)
 	updated, _ = m.handleClientCertKey(tea.KeyMsg{Type: tea.KeyEsc})

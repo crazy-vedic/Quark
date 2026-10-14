@@ -403,10 +403,10 @@ func TestClientCertificateKeyBranches(t *testing.T) {
 	m.clientCertEditing = true
 	m.clientCertField = clientCertHostField
 	for i := 0; i < clientCertFieldCount; i++ {
-		updated, _ = m.handleClientCertEditKey(tea.KeyMsg{Type: tea.KeyTab})
+		updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
 		m = updated.(Model)
 	}
-	updated, _ = m.handleClientCertEditKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
 	require.NotNil(t, updated)
 }
 
