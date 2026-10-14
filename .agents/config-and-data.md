@@ -13,6 +13,7 @@ Created with mode `0700` (owner-only) because it holds credentials.
 ```
 <config-dir>/
 ├── config.toml       # Optional user configuration
+├── themes/           # Optional custom theme TOML files
 ├── quark.db          # SQLite database (WAL mode)
 ├── quark.log         # Application log (default path)
 └── backup/           # Auto-backup copies of quark.db
@@ -33,7 +34,7 @@ Loaded with merge semantics: only explicitly-set TOML fields override defaults (
 
 | Field | Default | Values |
 |---|---|---|
-| `theme` | `auto` | `auto`, `dark`, `light`, `transparent` |
+| `theme` | `auto` | Built-in (`auto`, `dark`, `light`, `transparent`) or a name from `themes/<name>.toml` |
 | `default_method` | `GET` | HTTP method for new requests |
 | `editor` | `$EDITOR` or `vim` | External editor for body editing |
 
@@ -70,6 +71,7 @@ User keybinding overrides. Managed via `quark keybindings set/reset`. Saved by `
 config.Load(configDir) (Config, error)       // missing file → defaults, not error
 config.Default(configDir) Config
 config.SaveKeybindings(configDir, binds) error
+config.SaveTheme(configDir, name) error
 cfg.Timeout() time.Duration
 cfg.BackupDir(dataDir) string                // → dataDir/backup
 ```
@@ -81,10 +83,16 @@ Load failure (unreadable file) logs `slog.Warn` and falls back to defaults in `m
 | Variable | Used by | Purpose |
 |---|---|---|
 | `$EDITOR` | `config.Default` | External editor fallback |
+| `$QUARK_THEME` | `cmd/quark/main.go` | TUI theme override; below `--theme`, above config.toml |
 | `$GITHUB_TOKEN` | `install.sh` | Private repo download auth |
 | `$GITHUB_ACCESS_TOKEN` | `install.sh` | Alternative to GITHUB_TOKEN |
 
-No other env vars configure runtime behavior. HTTP env vars for requests come from Quark's environment system (SQLite), not OS env — except CLI runs resolve via the store's env chain.
+HTTP env vars for requests come from Quark's environment system (SQLite), not OS env — except CLI runs resolve via the store's env chain.
+
+Custom theme files live in `<config-dir>/themes/`, declare `extends = "dark"` or
+`"light"`, and optionally override semantic colors under `[colors]`. The
+active custom file is checked every two seconds while the TUI is running;
+invalid edits keep the last good palette. See README for the complete format.
 
 ## Debug Logging
 

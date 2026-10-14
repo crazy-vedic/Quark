@@ -73,7 +73,7 @@ func TestE2E_Viewer_FinderOwnsTabAndReturnsToViewer(t *testing.T) {
 	m = callUpdate(t, m, tuitestRunes("needle"))
 	assert.Equal(t, 120, m.ViewerMatchCount())
 	assert.Contains(t, m.View(), "needle", "the active match text should remain visible")
-	assert.Contains(t, m.View(), "\x1b[48;5;214m", "find matches should have a visible highlight style")
+	assert.Contains(t, m.View(), "\x1b[7m", "find matches should use theme-independent reverse video")
 	assert.Contains(t, m.View(), "match 1/120")
 	first := m.ViewerTextOffset()
 	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyEnter})

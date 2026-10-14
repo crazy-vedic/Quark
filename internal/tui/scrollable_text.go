@@ -11,11 +11,12 @@ import (
 
 // scrollableText is the read-only text component used for large bodies.
 type scrollableText struct {
-	offset    int
-	cache     *scrollableTextCache
-	debugLog  *os.File
-	debugName string
-	timing    *timing.Collector
+	offset                   int
+	cache                    *scrollableTextCache
+	debugLog                 *os.File
+	debugName                string
+	timing                   *timing.Collector
+	preserveOffsetOnReformat bool
 }
 
 // scrollableTextCache contains derived data only. It is shared across model
@@ -107,7 +108,17 @@ func (s *scrollableText) SetFormattedContent(
 		content: content, sourceKey: sourceKey, formatted: true,
 		wrapped: make(map[int][]string),
 	}
-	s.offset = 0
+	if !s.preserveOffsetOnReformat {
+		s.offset = 0
+	}
+	s.preserveOffsetOnReformat = false
+}
+
+// InvalidateFormatting discards derived ANSI/wrapping data while retaining the
+// user's scroll position for a visual-only change such as theme selection.
+func (s *scrollableText) InvalidateFormatting() {
+	s.cache = &scrollableTextCache{}
+	s.preserveOffsetOnReformat = true
 }
 
 func (s *scrollableText) lines(width int, parent ...*timing.Span) []string {

@@ -90,7 +90,12 @@ func newCollectionRenameCmd(s CollectionStore) *cobra.Command {
 			if err := s.SaveCollection(cmd.Context(), collection); err != nil {
 				return fmt.Errorf("collection rename: %w", err)
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "Renamed collection %q to %q\n", args[0], collection.Name)
+			fmt.Fprintf(
+				cmd.OutOrStdout(),
+				"Renamed collection %q to %q\n",
+				args[0],
+				collection.Name,
+			)
 			return nil
 		},
 	}

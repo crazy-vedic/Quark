@@ -69,7 +69,7 @@ func (m Model) urlCursorPosFromClick(relX int, layout normalLayout) int {
 		return displayColumnToByteOffset(value, relX)
 	}
 
-	urlAvail := layout.mainW - 2 - methodBadgeWidth(m.method) - 4
+	urlAvail := layout.mainW - 2 - m.methodBadgeWidth(m.method) - 4
 	if urlAvail < 10 {
 		urlAvail = 10
 	}

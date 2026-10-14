@@ -22,8 +22,13 @@ import (
 const maxPrettyJSONBytes = 1 << 20
 const maxTerminalBodyBytes = 16 << 20
 
-func printRunResult(cmd *cobra.Command, req *domain.Request, result *exec.ExecuteResult, verbose bool) error {
-	defer result.Cleanup()
+func printRunResult(
+	cmd *cobra.Command,
+	req *domain.Request,
+	result *exec.ExecuteResult,
+	verbose bool,
+) error {
+	defer func() { _ = result.Cleanup() }()
 	if verbose {
 		printRequestDetails(cmd.ErrOrStderr(), req)
 		printResponseDetails(cmd.ErrOrStderr(), result)
@@ -51,12 +56,20 @@ func printRunResult(cmd *cobra.Command, req *domain.Request, result *exec.Execut
 			n, _ := f.Read(peek)
 			peek = peek[:n]
 			if binaryResponse(peek, contentType) {
-				fmt.Fprintf(out, "\n[binary response body omitted from terminal: %d bytes]\n", result.Size)
+				fmt.Fprintf(
+					out,
+					"\n[binary response body omitted from terminal: %d bytes]\n",
+					result.Size,
+				)
 				return nil
 			}
 			_, _ = f.Seek(0, io.SeekStart)
 			if result.Size > maxTerminalBodyBytes {
-				fmt.Fprintf(out, "\n[large response body: %d bytes; redirect stdout to capture it]\n", result.Size)
+				fmt.Fprintf(
+					out,
+					"\n[large response body: %d bytes; redirect stdout to capture it]\n",
+					result.Size,
+				)
 				return nil
 			}
 			body, err := io.ReadAll(f)
@@ -111,7 +124,11 @@ func printResponseDetails(w io.Writer, result *exec.ExecuteResult) {
 
 func writeResponseBody(w io.Writer, body []byte, contentType string, terminal bool) error {
 	if terminal && binaryResponse(body, contentType) {
-		_, err := fmt.Fprintf(w, "\n[binary response body omitted from terminal: %d bytes]\n", len(body))
+		_, err := fmt.Fprintf(
+			w,
+			"\n[binary response body omitted from terminal: %d bytes]\n",
+			len(body),
+		)
 		return err
 	}
 	if len(body) == 0 {
