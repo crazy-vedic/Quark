@@ -254,7 +254,7 @@ func (m Model) viewViewer() string {
 		help += matchStatus
 	}
 	help = truncate(stripANSI(help), max(1, m.width))
-	help = mutedStyle.Render(help)
+	help = m.styles.mutedStyle.Render(help)
 	textHeight := max(1, m.height-1)
 	body := m.viewerText.View(max(1, m.width), textHeight)
 	if query := strings.TrimSpace(m.viewerFind.Value()); query != "" {
@@ -280,8 +280,10 @@ func highlightViewerMatches(content, query string) string {
 	if query == "" {
 		return content
 	}
-	const matchStart = "\x1b[48;5;214m\x1b[1m"
-	const matchEnd = "\x1b[49m\x1b[22m"
+	// Reverse video keeps matches readable on either terminal background and
+	// retains any foreground syntax color beneath the temporary marker.
+	const matchStart = "\x1b[7m\x1b[1m"
+	const matchEnd = "\x1b[27m\x1b[22m"
 	contentRunes := []rune(content)
 	queryRunes := []rune(query)
 	if len(queryRunes) == 0 {

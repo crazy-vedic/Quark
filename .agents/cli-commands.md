@@ -161,6 +161,15 @@ Does **not** require store initialization — reads/writes `config.toml` directl
 
 Persists via `config.SaveKeybindings` (preserves other config sections).
 
+## theme
+
+**Source:** `cmd/quark/theme.go`, `internal/theme/theme.go`
+
+No store initialization is required. `list` shows built-in and local themes,
+`set <name>` validates and saves `[ui].theme`, and `validate [name]` checks a
+theme file or the current selection. For the TUI, theme precedence is
+`--theme` > `QUARK_THEME` > `[ui].theme` > `auto`.
+
 ## warp-completion
 
 **Source:** `internal/cli/warp_completion.go`

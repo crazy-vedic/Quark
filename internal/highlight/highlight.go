@@ -23,7 +23,7 @@ var themeMap = map[string]string{
 func JSON(input string, theme string) string {
 	styleName, ok := themeMap[theme]
 	if !ok {
-		styleName = "monokai"
+		styleName = theme // resolved custom themes pass a Chroma style name
 	}
 
 	lexer := lexers.Get("json")
@@ -36,7 +36,7 @@ func JSON(input string, theme string) string {
 	}
 	style := styles.Get(styleName)
 	if style == nil {
-		style = styles.Fallback
+		style = styles.Get("monokai")
 	}
 
 	iterator, err := lexer.Tokenise(nil, input)

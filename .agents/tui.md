@@ -9,6 +9,7 @@ The interactive terminal UI is built with bubbletea (Elm architecture: Model / U
 | `model.go` | State struct, initialization, mode constants |
 | `update.go` | Message handling, state transitions |
 | `view.go` | Rendering (lipgloss styling) |
+| `theme.go` | Model-owned semantic styles and widget styling |
 | `request_editors.go` | URL, method, headers, body editing |
 | `auth_editor.go` | Auth type/config editing |
 | `env_mode.go` | Environment variable management |
@@ -91,10 +92,16 @@ User overrides stored in `config.toml` `[keybindings]` section. Managed via `qua
 
 ## Response Rendering
 
-- JSON bodies: syntax-highlighted via `internal/highlight` (Chroma → ANSI)
+- JSON bodies: syntax-highlighted via `internal/highlight` (Chroma → ANSI), using the resolved theme's syntax style
 - Large/streamed bodies: read from temp file path
 - Binary content: must NOT render raw (BUG-002) — shows placeholder instead
 - Status line: method, URL, status code, timing
+
+Theme selection is available through the search command palette (`s`, then
+`> theme`). Moving through themes previews them without saving; Enter writes
+`[ui].theme`, Esc restores the prior theme. Theme styles are owned by each
+`Model`; avoid package-global styles when adding views. Response formatting
+caches are invalidated while preserving scroll position on theme changes.
 
 ## Execution Flow
 

@@ -12,6 +12,7 @@ import (
 
 	"github.com/crazy-vedic/quark/internal/config"
 	"github.com/crazy-vedic/quark/internal/keybindings"
+	"github.com/crazy-vedic/quark/internal/theme"
 	"github.com/crazy-vedic/quark/internal/tui"
 )
 
@@ -27,8 +28,13 @@ func (f *postmanImportFake) ImportPostman(_ context.Context, path string) (strin
 }
 
 func TestE2E_PostmanImportModalFlow(t *testing.T) {
+	trueColorThemeTest(t)
 	importer := &postmanImportFake{output: "Imported Team API"}
-	cfg := config.Default(t.TempDir())
+	dir := t.TempDir()
+	cfg := config.Default(dir)
+	cfg.UI.Theme = "light"
+	selected, err := theme.Resolve(dir, cfg.UI.Theme, true)
+	require.NoError(t, err)
 	m := tui.New(tui.Deps{
 		PostmanImporter: importer,
 		Config:          cfg,
@@ -40,6 +46,9 @@ func TestE2E_PostmanImportModalFlow(t *testing.T) {
 	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'I'}})
 	assertViewContains(t, m, "Import Postman collection")
 	assertViewContains(t, m, "Collection file or export directory")
+	screen := themeFrame(t, m)
+	screen.assertBackgroundOutsideReverse(t, terminalBackground(t, selected.Background))
+	screen.assertTextColor(t, "Import Postman collection", terminalForeground(t, selected.Accent))
 
 	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("collection.json")})
 	m, cmd := callUpdateWithCmd(t, m, tea.KeyMsg{Type: tea.KeyEnter})

@@ -23,6 +23,10 @@ func HttpResponseMsg(result *exec.ExecuteResult) httpResponseMsg {
 
 func HttpErrMsg(err error) httpErrMsg { return httpErrMsg{err: err} }
 
+// ThemeWatchTickMsg lets the E2E harness trigger a file check without waiting
+// for the production timer, keeping hot-reload tests deterministic.
+func ThemeWatchTickMsg() tea.Msg { return themeWatchTickMsg{} }
+
 func CollectionsLoadedMsg(cols []*domain.Collection) collectionsLoadedMsg {
 	return collectionsLoadedMsg{collections: cols}
 }
