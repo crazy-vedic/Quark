@@ -962,11 +962,10 @@ func (m Model) viewTabBar(maxWidth int) string {
 	tabs := []struct {
 		label string
 		id    responseTabID
-		key   string
 	}{
-		{"Body", bodyTab, "b"},
-		{"Headers", headersTab, "h"},
-		{"Raw", rawTab, "r"},
+		{"Body", bodyTab},
+		{"Headers", headersTab},
+		{"Raw", rawTab},
 	}
 	var parts []string
 	for _, t := range tabs {
@@ -1118,7 +1117,7 @@ func (m Model) viewResponseBody(parent ...*timing.Span) string {
 		if err := json.Unmarshal(r.Body, &out); err == nil {
 			pretty, err := json.MarshalIndent(out, "", "  ")
 			if err == nil {
-				return highlight.JSON(string(pretty), m.cfg.UI.Theme)
+				return highlight.JSON(string(pretty), m.theme.Syntax)
 			}
 		}
 	}
@@ -1171,7 +1170,7 @@ func (m Model) viewExecutionBody(ex *domain.Execution, parent ...*timing.Span) s
 		if err := json.Unmarshal(bodyBytes, &out); err == nil {
 			pretty, err := json.MarshalIndent(out, "", "  ")
 			if err == nil {
-				return highlight.JSON(string(pretty), m.cfg.UI.Theme)
+				return highlight.JSON(string(pretty), m.theme.Syntax)
 			}
 		}
 	}
