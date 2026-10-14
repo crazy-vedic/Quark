@@ -77,6 +77,20 @@ func TestResolver_Default_Sidebar(t *testing.T) {
 	assert.Equal(t, "expand", got, "key=right")
 }
 
+func TestResolver_ImportBindingsAreSeparatedByPane(t *testing.T) {
+	r := NewResolver(DefaultKeybindings())
+	postman, ok := r.Resolve(0, 0, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'I'}})
+	assert.True(t, ok)
+	assert.Equal(t, ActionImportPostman, postman)
+
+	curl, ok := r.Resolve(0, 0, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'i'}})
+	assert.True(t, ok)
+	assert.Equal(t, ActionImportCurl, curl)
+
+	_, ok = r.Resolve(0, 1, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'I'}})
+	assert.False(t, ok, "Postman import remains bound to the sidebar pane")
+}
+
 func TestResolver_Default_RequestPane(t *testing.T) {
 	r := NewResolver(DefaultKeybindings())
 

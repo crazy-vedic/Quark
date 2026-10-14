@@ -61,7 +61,7 @@ func requireImportModel(t *testing.T, value tea.Model) Model {
 
 func TestImportCurlKeyOpensDedicatedMultilineModal(t *testing.T) {
 	m := New(Deps{Importer: curl.NewImporter()})
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'I'}})
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'i'}})
 	var ok bool
 	m, ok = updated.(Model)
 	require.True(t, ok)

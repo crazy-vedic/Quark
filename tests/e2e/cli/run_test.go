@@ -117,7 +117,7 @@ func TestRunCommand_UsesPositionalsNamedVarsAndStoredEnvs(t *testing.T) {
 	assert.Equal(t, `{"merchant_id":"pos-123","name":"cli-name"}`, transport.lastBody)
 	assert.Equal(t, "Bearer cli-token", transport.lastHeaders.Get("Authorization"))
 	assert.Contains(t, out.String(), "Status: 200 OK")
-	assert.Contains(t, out.String(), `{"ok":true}`)
+	assert.Contains(t, out.String(), `"ok": true`)
 }
 
 func TestRunCommand_FallbackErrorsWhenNoCandidateResolves(t *testing.T) {
