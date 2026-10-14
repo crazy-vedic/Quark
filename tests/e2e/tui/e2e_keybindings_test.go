@@ -7,6 +7,9 @@ package tui_test
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
+	"path/filepath"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -16,10 +19,155 @@ import (
 	"github.com/crazy-vedic/quark/internal/config"
 	"github.com/crazy-vedic/quark/internal/curl"
 	"github.com/crazy-vedic/quark/internal/domain"
+	quarkexec "github.com/crazy-vedic/quark/internal/exec"
 	"github.com/crazy-vedic/quark/internal/keybindings"
 	"github.com/crazy-vedic/quark/internal/search"
+	"github.com/crazy-vedic/quark/internal/store"
 	"github.com/crazy-vedic/quark/internal/tui"
+	"github.com/crazy-vedic/quark/internal/tuitest"
 )
+
+func TestE2E_ClientCertificateModalUsesConfiguredBindings(t *testing.T) {
+	dir := t.TempDir()
+	cfg := config.Default(dir)
+	cfg.Keybindings.ClientCerts = "z"
+	cfg.Keybindings.CertDown = "n"
+	cfg.Keybindings.CertUp = "p"
+	cfg.Keybindings.CertAdd = "a"
+	cfg.Keybindings.CertEdit = "v"
+	cfg.Keybindings.CertDelete = "d"
+	cfg.Keybindings.CertClose = "q"
+	cfg.Keybindings.CertNextField = "tab"
+	cfg.Keybindings.CertPrevField = "shift+tab"
+	cfg.Keybindings.CertSave = "ctrl+s"
+	st := setupStore(t)
+	m := tuitest.NewModelWithConfigDir(t, st, &mockExecutor{}, cfg, dir)
+	m = resize(t, m, 120, 40)
+
+	press := func(key rune) { m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{key}}) }
+	typeText := func(text string) {
+		for _, char := range text {
+			press(char)
+		}
+	}
+	addCertificate := func(host, file string) {
+		t.Helper()
+		press('a')
+		typeText(host)
+		m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyTab})
+		typeText("PEM")
+		m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyTab})
+		typeText(file)
+		m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyCtrlS})
+	}
+
+	press('z')
+	assertViewContains(t, m, "[a] add")
+	assertViewContains(t, m, "[q] close")
+	addCertificate("api.one.example", filepath.Join(dir, "one.pem"))
+	addCertificate("api.two.example", filepath.Join(dir, "two.pem"))
+
+	press('p')
+	assertViewContains(t, m, "▸ api.one.example")
+	press('n')
+	assertViewContains(t, m, "▸ api.two.example")
+	press('d')
+	assertViewNotContains(t, m, "api.two.example")
+
+	loaded, err := config.Load(dir)
+	require.NoError(t, err)
+	require.Len(t, loaded.HTTP.ClientCertificates, 1)
+	require.Equal(t, "api.one.example", loaded.HTTP.ClientCertificates[0].Host)
+
+	press('q')
+	assertViewNotContains(t, m, "Client Certificates (mTLS)")
+}
+
+func TestE2E_RedirectOptionsAndStoreBackupRetention(t *testing.T) {
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(target.Close)
+	redirect := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, target.URL, http.StatusFound)
+	}))
+	t.Cleanup(redirect.Close)
+
+	for _, tc := range []struct {
+		name        string
+		follow      bool
+		maxRedirect int
+		wantStatus  int
+	}{
+		{name: "disabled", follow: false, maxRedirect: 0, wantStatus: http.StatusFound},
+		{name: "enabled", follow: true, maxRedirect: 2, wantStatus: http.StatusOK},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			transport := &http.Transport{}
+			t.Cleanup(transport.CloseIdleConnections)
+			executor := quarkexec.New(transport, quarkexec.WithRedirects(tc.follow, tc.maxRedirect))
+			result, err := executor.Execute(context.Background(), &domain.Request{
+				ID: "redirect", Method: http.MethodGet, URL: redirect.URL,
+			})
+			require.NoError(t, err)
+			require.Equal(t, tc.wantStatus, result.StatusCode)
+		})
+	}
+
+	backupDir := filepath.Join(t.TempDir(), "backups")
+	st, err := store.New(filepath.Join(t.TempDir(), "quark.db"), store.WithBackup(backupDir, 1))
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, st.Close()) })
+	ctx := context.Background()
+	for _, name := range []string{"First", "Second"} {
+		require.NoError(t, st.SaveCollection(ctx, &domain.Collection{ID: name, Name: name}))
+	}
+	backups, err := filepath.Glob(filepath.Join(backupDir, "quark.db.*"))
+	require.NoError(t, err)
+	require.Len(t, backups, 1, "retention limit must be applied")
+
+	defaultBackupDir := filepath.Join(t.TempDir(), "default-backups")
+	defaultStore, err := store.New(
+		filepath.Join(t.TempDir(), "default.db"), store.WithBackup(defaultBackupDir),
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, defaultStore.Close()) })
+	require.NoError(t, defaultStore.SaveCollection(ctx, &domain.Collection{ID: "Default", Name: "Default"}))
+}
+
+type failingActiveEnvironmentStore struct {
+	store.ActiveEnvironmentStore
+}
+
+func (failingActiveEnvironmentStore) SetActiveEnvironment(context.Context, string, string) error {
+	return assert.AnError
+}
+
+func TestE2E_ActiveEnvironmentRemainsUnchangedWhenSaveFails(t *testing.T) {
+	collection := &domain.Collection{ID: "active-env", Name: "Active Env"}
+	st := setupStore(t, collection)
+	ctx := context.Background()
+	defaultEnv, err := st.GetEnvironmentByName(ctx, collection.ID, "default")
+	require.NoError(t, err)
+	require.NoError(t, st.SaveEnvironment(ctx, &domain.Environment{
+		ID: "active-env-dev", CollectionID: collection.ID, Name: "dev", Data: "{}",
+	}))
+	cfg := config.Default("")
+	m := tuitest.NewModelWithConfigDir(
+		t, st, &mockExecutor{}, cfg, "", failingActiveEnvironmentStore{ActiveEnvironmentStore: st},
+	)
+	m = resize(t, m, 120, 40)
+	m = callUpdate(t, m, tui.CollectionsLoadedMsg([]*domain.Collection{collection}))
+	m = m.WithFocus(tui.RequestPane)
+	m.ActiveEnv()[collection.ID] = defaultEnv.ID
+
+	var cmd tea.Cmd
+	m, cmd = callUpdateWithCmd(t, m, tea.KeyMsg{Type: tea.KeyShiftRight})
+	require.NotNil(t, cmd)
+	m = executeCmdUpdate(t, m, cmd)
+	assert.Equal(t, defaultEnv.ID, m.ActiveEnv()[collection.ID])
+	assert.Contains(t, m.StatusErr(), "Save active environment")
+}
 
 // --- E2E: Default bindings smoke test (regression guard) ---
 

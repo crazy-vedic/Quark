@@ -14,6 +14,15 @@ type certificateManagerStub struct {
 	reloads []config.Config
 }
 
+func requireModel(t *testing.T, model tea.Model) Model {
+	t.Helper()
+	got, ok := model.(Model)
+	if !ok {
+		t.Fatalf("expected Model, got %T", model)
+	}
+	return got
+}
+
 func (s *certificateManagerStub) Reload(cfg config.Config) error {
 	s.reloads = append(s.reloads, cfg)
 	return nil
@@ -64,13 +73,13 @@ func TestClientCertificateConfiguredBindingsDriveModal(t *testing.T) {
 	m.width, m.height = 100, 30
 
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'z'}})
-	got := updated.(Model)
+	got := requireModel(t, updated)
 	require.Equal(t, clientCertMode, got.mode)
 	updated, _ = got.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
-	got = updated.(Model)
+	got = requireModel(t, updated)
 	require.True(t, got.clientCertEditing)
 	updated, _ = got.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
-	got = updated.(Model)
+	got = requireModel(t, updated)
 	require.False(t, got.clientCertEditing)
 	view := got.View()
 	require.Contains(t, view, "[x] add")
@@ -82,13 +91,13 @@ func TestClientCertificateSaveValidatesAndInfersPEM(t *testing.T) {
 	m := New(Deps{Config: config.Default(dir), ConfigDir: dir})
 	m = m.openClientCertModal().beginClientCertEdit(-1)
 	updated, _ := m.saveClientCert()
-	got := updated.(Model)
+	got := requireModel(t, updated)
 	require.Contains(t, got.clientCertError, "Host and a certificate")
 
 	got.clientCertHost.SetValue(" API.Example.COM ")
 	got.clientCertFile.SetValue("client.pem")
 	updated, _ = got.saveClientCert()
-	got = updated.(Model)
+	got = requireModel(t, updated)
 	require.Equal(t, "api.example.com", got.cfg.HTTP.ClientCertificates[0].Host)
 	require.Equal(t, "PEM", got.cfg.HTTP.ClientCertificates[0].Type)
 	require.False(t, got.clientCertEditing)
