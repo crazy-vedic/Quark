@@ -188,6 +188,37 @@ func TestCommandPalette_FiltersAndOpensSchedulePrompt(t *testing.T) {
 	assert.Equal(t, tui.ScheduleMode, m.Mode())
 }
 
+func TestCommandPalette_OffersTUIRequestCollectionAndEnvironmentActions(t *testing.T) {
+	m := newModel(defaultConfig())
+	m = callUpdate(t, m, tea.WindowSizeMsg{Width: 120, Height: 60})
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'>'}})
+	view := m.View()
+	for _, title := range []string{
+		"Edit request URL", "Edit request body", "Edit request headers",
+		"Edit request authorization", "Next HTTP method", "Previous HTTP method",
+		"Delete selected request", "Open environment editor", "Next environment",
+		"Previous environment", "Create collection", "Create request in collection",
+		"Rename selected collection", "Delete selected collection", "Search saved requests", "Import Postman collection",
+	} {
+		assert.Containsf(t, view, title, "missing command palette action %q", title)
+	}
+}
+
+func TestCommandPalette_CreateCollectionOpensExistingPrompt(t *testing.T) {
+	m := newModel(defaultConfig())
+	m = callUpdate(t, m, tea.WindowSizeMsg{Width: 100, Height: 50})
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'>'}})
+	for _, r := range []rune("create collection") {
+		m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+	}
+	require.Len(t, m.CommandResults(), 1)
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	assert.Equal(t, tui.CollectionPromptMode, m.Mode())
+	assert.Equal(t, tui.PromptAdd, m.PromptMode())
+}
+
 func TestUpdate_CollectionsLoaded_ResetsCursor(t *testing.T) {
 	m := newModel(defaultConfig())
 	m = m.WithColCursor(5) // stale cursor
