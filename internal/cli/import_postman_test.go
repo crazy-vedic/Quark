@@ -1,7 +1,9 @@
 package cli
 
 import (
+	"bytes"
 	"context"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/crazy-vedic/quark/internal/domain"
+	"github.com/crazy-vedic/quark/internal/postman"
 	"github.com/crazy-vedic/quark/internal/store"
 )
 
@@ -544,4 +547,147 @@ func TestMergeEnvironmentsIntoGlobal_Error_GetGlobalFails(t *testing.T) {
 
 	err := mergeEnvironmentsIntoGlobal(context.Background(), st, nil, logger)
 	assert.Error(t, err)
+}
+
+func TestImportPostmanCommandSingleFileAndErrors(t *testing.T) {
+	st, err := store.New(filepath.Join(t.TempDir(), "quark.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, st.Close()) })
+	ctx := context.Background()
+	file := filepath.Join(t.TempDir(), "collection.json")
+	require.NoError(t, os.WriteFile(file, []byte(`{"info":{"name":"Imported","schema":"https://schema.getpostman.com/json/collection/v2.1.0/collection.json"},"item":[{"name":"Health","request":{"method":"GET","url":"https://example.test/health"}}]}`), 0600))
+	cmd := NewImportPostmanCmd(st, NewDebugLogger(nil))
+	var out, diagnostics bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&diagnostics)
+	cmd.SetContext(ctx)
+	cmd.SetArgs([]string{file, "--collection-name", "Override"})
+	require.NoError(t, cmd.Execute())
+	assert.Contains(t, out.String(), `Imported 1/1 requests into collection "Override"`)
+	collections, err := st.ListCollections(ctx)
+	require.NoError(t, err)
+	require.Len(t, collections, 1)
+	assert.Equal(t, "Override", collections[0].Name)
+
+	missing := NewImportPostmanCmd(st, NewDebugLogger(nil))
+	missing.SetArgs([]string{filepath.Join(t.TempDir(), "missing.json")})
+	assert.ErrorContains(t, missing.Execute(), "import-postman:")
+	invalidAction := NewImportPostmanCmd(st, NewDebugLogger(nil))
+	invalidAction.SetArgs([]string{file, "--on-duplicate", "invalid"})
+	assert.ErrorContains(t, invalidAction.Execute(), "invalid --on-duplicate")
+	invalidFile := filepath.Join(t.TempDir(), "bad.json")
+	require.NoError(t, os.WriteFile(invalidFile, []byte("not json"), 0600))
+	parseFailure := NewImportPostmanCmd(st, NewDebugLogger(nil))
+	parseFailure.SetArgs([]string{invalidFile})
+	assert.ErrorContains(t, parseFailure.Execute(), "parse:")
+}
+
+func TestResolveDuplicateInteractiveActions(t *testing.T) {
+	st, err := store.New(filepath.Join(t.TempDir(), "quark.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, st.Close()) })
+	ctx := context.Background()
+	existing := &domain.Collection{Name: "API"}
+	require.NoError(t, st.SaveCollection(ctx, existing))
+	oldProbe := terminalProbe
+	terminalProbe = func(io.Reader) bool { return true }
+	t.Cleanup(func() { terminalProbe = oldProbe })
+	for _, tc := range []struct {
+		input string
+		want  duplicateAction
+	}{
+		{"?\nskip\n", actionSkip},
+		{"replace\n", actionReplace},
+		{"duplicate\n", actionDuplicate},
+		{"merge\n", actionMerge},
+		{"\n", actionDuplicate},
+	} {
+		cmd := &cobra.Command{}
+		cmd.SetIn(strings.NewReader(tc.input))
+		var out bytes.Buffer
+		cmd.SetOut(&out)
+		global := duplicateAction("")
+		got, id := resolveDuplicate(ctx, cmd, st, "API", []*domain.Request{{Name: "Incoming", Method: "GET"}}, "duplicate", &global, NewDebugLogger(nil))
+		assert.Equal(t, tc.want, got, tc.input)
+		assert.Equal(t, existing.ID, id)
+		assert.Contains(t, out.String(), "already exists")
+	}
+	cmd := &cobra.Command{}
+	cmd.SetIn(strings.NewReader("apply\nmerge\n"))
+	global := duplicateAction("")
+	got, _ := resolveDuplicate(ctx, cmd, st, "API", nil, "duplicate", &global, NewDebugLogger(nil))
+	assert.Equal(t, actionMerge, got)
+	assert.Equal(t, actionMerge, global)
+}
+
+func TestImportPostmanOutputParsingAndUniqueNames(t *testing.T) {
+	cmd := &cobra.Command{}
+	var out, diagnostics bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&diagnostics)
+	printImportResult(cmd, importStats{collectionName: "Skipped", total: 3, action: actionSkip})
+	assert.Contains(t, out.String(), `Skipped "Skipped" (3 requests)`)
+	out.Reset()
+	printImportResult(cmd, importStats{collectionName: "Review", imported: 1, total: 2, warnings: 1, warningMsgs: []string{"warning"}, security: postman.Dangerous, action: actionMerge})
+	assert.Contains(t, out.String(), `(merged) (1 warnings)`)
+	assert.Contains(t, diagnostics.String(), "Security: Dangerous")
+	assert.Contains(t, diagnostics.String(), "Warning: warning")
+	printImportResult(cmd, importStats{err: os.ErrNotExist})
+
+	st, err := store.New(filepath.Join(t.TempDir(), "quark.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, st.Close()) })
+	ctx := context.Background()
+	for _, name := range []string{"API", "API 1"} {
+		require.NoError(t, st.SaveCollection(ctx, &domain.Collection{Name: name}))
+	}
+	assert.Equal(t, "API 2", uniqueCollectionName(ctx, st, "API"))
+	assert.Equal(t, "Fresh", uniqueCollectionName(ctx, st, "Fresh"))
+
+	dir := t.TempDir()
+	assert.Empty(t, parseEnvironmentsInDir(dir, NewDebugLogger(nil)).files)
+	envDir := filepath.Join(dir, "environment")
+	require.NoError(t, os.MkdirAll(filepath.Join(envDir, "ignored"), 0700))
+	require.NoError(t, os.WriteFile(filepath.Join(envDir, "bad.json"), []byte("invalid"), 0600))
+	require.NoError(t, os.WriteFile(filepath.Join(envDir, "skip.txt"), []byte("ignored"), 0600))
+	require.NoError(t, os.WriteFile(filepath.Join(envDir, "dev.json"), []byte(`{"name":"Dev","values":[{"key":"url","value":"https://dev.example","enabled":true}]}`), 0600))
+	parsed := parseEnvironmentsInDir(dir, NewDebugLogger(nil))
+	assert.Len(t, parsed.files, 1)
+	assert.Equal(t, "Dev", parsed.files[0].name)
+	assert.Len(t, parsed.errors, 1)
+}
+
+func TestImportBulkManifestAndEmptyDirectoryPaths(t *testing.T) {
+	ctx := context.Background()
+	st, err := store.New(filepath.Join(t.TempDir(), "bulk.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = st.Close() })
+	logger := NewDebugLogger(nil)
+
+	missingCollection := t.TempDir()
+	_, _, err = importBulk(ctx, &cobra.Command{}, st, missingCollection, "", "duplicate", new(duplicateAction), logger)
+	require.ErrorContains(t, err, "missing collection/")
+
+	emptyCollection := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(emptyCollection, "collection"), 0o700))
+	_, _, err = importBulk(ctx, &cobra.Command{}, st, emptyCollection, "", "duplicate", new(duplicateAction), logger)
+	require.ErrorContains(t, err, "no collection files")
+
+	fallback := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(fallback, "collection"), 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(fallback, "archive.json"), []byte("not-json"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(fallback, "collection", "valid.json"), []byte(`{"info":{"name":"Manifest fallback","schema":"v2.1"},"item":[]}`), 0o600))
+	stats, _, err := importBulk(ctx, &cobra.Command{}, st, fallback, "", "duplicate", new(duplicateAction), logger)
+	require.NoError(t, err)
+	require.Len(t, stats, 1)
+	require.NoError(t, stats[0].err)
+
+	manifest := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(manifest, "collection"), 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(manifest, "archive.json"), []byte(`{"collection":{"../unsafe":true,"safe":true}}`), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(manifest, "collection", "safe.json"), []byte(`{"info":{"name":"Safe manifest","schema":"v2.1"},"item":[]}`), 0o600))
+	stats, _, err = importBulk(ctx, &cobra.Command{}, st, manifest, "", "duplicate", new(duplicateAction), logger)
+	require.NoError(t, err)
+	require.Len(t, stats, 1)
+	require.NoError(t, stats[0].err)
 }

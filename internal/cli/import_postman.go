@@ -1040,13 +1040,15 @@ func resolveDuplicate(
 	}
 }
 
-func isTerminal(r io.Reader) bool {
+var terminalProbe = func(r io.Reader) bool {
 	f, ok := r.(*os.File)
 	if !ok {
 		return false
 	}
 	return isatty.IsTerminal(f.Fd())
 }
+
+func isTerminal(r io.Reader) bool { return terminalProbe(r) }
 
 func printImportResult(cmd *cobra.Command, s importStats) {
 	if s.err != nil {
