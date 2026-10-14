@@ -207,11 +207,11 @@ func (m Model) handleResponseClick(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	tabs := m.responsePaneTabRects(layout)
 	switch {
 	case tabs.body.contains(msg.X, msg.Y):
-		return m.handleResponseAction("tab_body")
+		return m.handleResponseAction(actionTabBody)
 	case tabs.headers.contains(msg.X, msg.Y):
-		return m.handleResponseAction("tab_headers")
+		return m.handleResponseAction(actionTabHeaders)
 	case tabs.raw.contains(msg.X, msg.Y):
-		return m.handleResponseAction("tab_raw")
+		return m.handleResponseAction(actionTabRaw)
 	}
 
 	if idx, ok := m.responseHistoryHitAt(msg.X, msg.Y, layout); ok {
