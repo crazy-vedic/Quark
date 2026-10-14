@@ -691,3 +691,10 @@ func TestImportBulkManifestAndEmptyDirectoryPaths(t *testing.T) {
 	require.Len(t, stats, 1)
 	require.NoError(t, stats[0].err)
 }
+
+func TestIsTerminalUsesProbe(t *testing.T) {
+	previous := terminalProbe
+	terminalProbe = func(io.Reader) bool { return true }
+	t.Cleanup(func() { terminalProbe = previous })
+	require.True(t, isTerminal(bytes.NewBufferString("input")))
+}

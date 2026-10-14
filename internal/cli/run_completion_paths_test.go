@@ -157,7 +157,7 @@ func TestRunOutputBranches(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "keep"), []byte("x"), 0o600))
 	bad := &exec.ExecuteResult{Status: "500", Size: 3, TempPath: dir}
 	err := printRunResult(cmd, req, bad, false)
-	require.ErrorContains(t, err, "Incorrect function")
+	require.ErrorContains(t, err, "read response body")
 	require.ErrorContains(t, err, "cleanup response body")
 	missing := &exec.ExecuteResult{Status: "200", Size: 1, TempPath: filepath.Join(t.TempDir(), "missing")}
 	require.ErrorContains(t, printRunResult(cmd, req, missing, false), "read response body")

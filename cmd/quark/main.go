@@ -298,7 +298,9 @@ func saveRuntimeImportedCertificate(r *runtime, spec *curl.CertificateSpec, rawU
 // openDebugLog opens /tmp/quark_debug_logs/debug.log, archiving any existing file.
 // The first line of the new log is the current epoch time.
 // Returns nil on error (debug logging is best-effort).
-func openDebugLog() *os.File { return openDebugLogAt(filepath.Join("/tmp", "quark_debug_logs")) }
+var debugLogDirectory = filepath.Join("/tmp", "quark_debug_logs")
+
+func openDebugLog() *os.File { return openDebugLogAt(debugLogDirectory) }
 
 func openDebugLogAt(debugDir string) *os.File {
 	if err := os.MkdirAll(debugDir, 0o700); err != nil {

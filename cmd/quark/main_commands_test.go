@@ -29,6 +29,12 @@ type fakeTeaRunner struct {
 	sent  int
 }
 
+type inertTeaModel struct{}
+
+func (inertTeaModel) Init() tea.Cmd                         { return nil }
+func (m inertTeaModel) Update(tea.Msg) (tea.Model, tea.Cmd) { return m, nil }
+func (inertTeaModel) View() string                          { return "" }
+
 func (p *fakeTeaRunner) Run() (tea.Model, error) { return p.model, p.err }
 func (p *fakeTeaRunner) Send(tea.Msg)            { p.sent++ }
 
@@ -265,6 +271,12 @@ func TestLaunchTUIValidationAndRunnerResults(t *testing.T) {
 
 func TestDebugLogAndConfigDirHelpers(t *testing.T) {
 	dir := t.TempDir()
+	previousLogDir := debugLogDirectory
+	debugLogDirectory = dir
+	t.Cleanup(func() { debugLogDirectory = previousLogDir })
+	viaDefault := openDebugLog()
+	require.NotNil(t, viaDefault)
+	require.NoError(t, viaDefault.Close())
 	f := openDebugLogAt(dir)
 	require.NotNil(t, f)
 	require.NoError(t, f.Close())
@@ -284,4 +296,18 @@ func TestDebugLogAndConfigDirHelpers(t *testing.T) {
 	if err == nil {
 		require.Contains(t, path, ".quark")
 	}
+	require.NotNil(t, newTeaProgram(inertTeaModel{}))
+}
+
+func TestDebugModeRunsPersistentPreRun(t *testing.T) {
+	dir := t.TempDir()
+	opened := false
+	previousFactory := debugLogFactory
+	debugLogFactory = func() *os.File {
+		opened = true
+		return openDebugLogAt(filepath.Join(dir, "debug"))
+	}
+	t.Cleanup(func() { debugLogFactory = previousFactory })
+	require.NoError(t, runWithArgs([]string{"--debug", "--config", dir, "collection", "list"}))
+	require.True(t, opened)
 }
