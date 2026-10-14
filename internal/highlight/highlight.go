@@ -23,7 +23,7 @@ var themeMap = map[string]string{
 func JSON(input string, theme string) string {
 	styleName, ok := themeMap[theme]
 	if !ok {
-		styleName = "monokai"
+		styleName = theme // resolved custom themes pass a Chroma style name
 	}
 
 	lexer := lexers.Get("json")
@@ -36,7 +36,7 @@ func JSON(input string, theme string) string {
 	}
 	style := styles.Get(styleName)
 	if style == nil {
-		style = styles.Fallback
+		style = styles.Get("monokai")
 	}
 
 	iterator, err := lexer.Tokenise(nil, input)
@@ -53,6 +53,10 @@ func JSON(input string, theme string) string {
 	// while preserving the safe color/formatting codes from Chroma.
 	return safeStrip(buf.String())
 }
+
+// SafeStrip removes terminal control sequences from untrusted output while
+// preserving harmless SGR color codes.
+func SafeStrip(input string) string { return safeStrip(input) }
 
 // safeStrip removes dangerous ANSI escape sequences (OSC 52 clipboard hijack,
 // screen clear, cursor movement) while preserving harmless color/formatting codes (SGR 'm').

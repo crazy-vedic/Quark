@@ -24,6 +24,7 @@ import (
 	"github.com/crazy-vedic/quark/internal/keybindings"
 	"github.com/crazy-vedic/quark/internal/schedule"
 	"github.com/crazy-vedic/quark/internal/store"
+	"github.com/crazy-vedic/quark/internal/theme"
 	"github.com/crazy-vedic/quark/internal/timing"
 )
 
@@ -58,6 +59,38 @@ func debugHeaderKeys(headers http.Header) string {
 //nolint:gocyclo // Bubble Tea keeps the top-level message dispatcher centralized.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case themeWatchTickMsg:
+		if m.configDir == "" || m.ctx.Err() != nil {
+			return m, nil
+		}
+		if theme.IsBuiltin(m.theme.Name) {
+			if m.themePreviewBase != nil && !theme.IsBuiltin(m.themePreviewBase.Name) {
+				return m, themeWatchTick()
+			}
+			return m, nil
+		}
+		hash, err := theme.FileHash(m.configDir, m.theme.Name)
+		if err != nil {
+			if m.themeWatchError != err.Error() {
+				m.themeWatchError = err.Error()
+				m = m.status("error", "Theme reload: "+err.Error())
+			}
+			return m, themeWatchTick()
+		}
+		if hash != m.themeFileHash || m.themeWatchError != "" {
+			m.themeFileHash = hash
+			selected, err := theme.Resolve(m.configDir, m.theme.Name, m.terminalDark)
+			if err != nil {
+				if m.themeWatchError != err.Error() {
+					m.themeWatchError = err.Error()
+					m = m.status("error", "Theme reload: "+err.Error())
+				}
+			} else {
+				m = m.useTheme(selected)
+				m = m.status("success", "Theme reloaded: "+selected.Name)
+			}
+		}
+		return m, themeWatchTick()
 	case curlClipboardMsg:
 		if m.mode != importMode || m.importPreview != nil {
 			return m, nil
@@ -71,6 +104,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.importError = ""
 		m.debugCurl("clipboard read bytes=%d", len(msg.value))
 		return m, nil
+	case postmanImportResultMsg:
+		m.postmanBusy = false
+		m.postmanOutput = strings.TrimSpace(msg.output)
+		if msg.err != nil {
+			m.postmanOutput = strings.TrimSpace(m.postmanOutput + "\n" + msg.err.Error())
+			return m, nil
+		}
+		if m.lister != nil {
+			return m, loadCollectionsCmd(m.ctx, m.lister)
+		}
+		return m, nil
 
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
@@ -82,6 +126,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.mode == importMode && m.importPreview == nil {
 			m.importInput.SetWidth(max(20, min(m.width-12, 100)))
 			m.importInput.SetHeight(max(6, min(m.height/3, 14)))
+		}
+		if m.mode == postmanImportMode {
+			m.postmanPath.Width = max(20, min(m.width-12, 100))
 		}
 		return m, nil
 
@@ -95,6 +142,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.mode == importMode && m.importPreview == nil {
 			m.importInput.SetWidth(max(20, min(m.width-12, 100)))
 			m.importInput.SetHeight(max(6, min(m.height/3, 14)))
+		}
+		if m.mode == postmanImportMode {
+			m.postmanPath.Width = max(20, min(m.width-12, 100))
 		}
 		return m, nil
 
@@ -166,7 +216,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyMsg:
 		if m.debugLog != nil {
-			if m.mode == importMode {
+			if m.mode == importMode || m.mode == postmanImportMode {
 				// The import textarea can contain credentials, request bodies, and
 				// literal certificate passwords. Log only structural key metadata.
 				fmt.Fprintf(
@@ -235,6 +285,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.handleScheduleKey(msg)
 		case clientCertMode:
 			return m.handleClientCertKey(msg)
+		case postmanImportMode:
+			return m.handlePostmanImportKey(msg)
 		default:
 			return m.handleNormalKey(msg)
 		}
@@ -401,6 +453,8 @@ func (m Model) handleEsc() Model {
 		return m.closeCollectionPrompt()
 	case clientCertMode:
 		return m.closeClientCertModal()
+	case postmanImportMode:
+		return m.closePostmanImportModal()
 	}
 	// In normal mode: cancel in-flight request.
 	if m.loading && m.cancel != nil {
@@ -543,6 +597,8 @@ func (m Model) dispatchNormalAction(action string) (tea.Model, tea.Cmd) {
 		return m.openClientCertModal(), nil
 	case keybindings.ActionImportCurl:
 		return m.openCurlImport(), textarea.Blink
+	case keybindings.ActionImportPostman:
+		return m.openPostmanImportModal(), textinput.Blink
 	case "env_next":
 		return m.cycleEnv(1)
 	case "env_prev":
@@ -623,6 +679,8 @@ func (m Model) handleSidebarAction(action string) (tea.Model, tea.Cmd) {
 			return m.status("error", "Select a collection first"), nil
 		}
 		return m.enterCollectionPrompt(promptRename, colID)
+	case keybindings.ActionImportPostman:
+		return m.openPostmanImportModal(), textinput.Blink
 	}
 	return m, nil
 }
@@ -903,7 +961,7 @@ func (m Model) handleSearchKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				if len(m.commands) > 0 && m.searchCursor < len(m.commands)-1 {
 					m.searchCursor++
 				}
-				return m, nil
+				return m.ensureCommandCursorVisible().previewCommandTheme(), nil
 			}
 			if len(m.searchResults) > 0 && m.searchCursor < len(m.searchResults)-1 {
 				m.searchCursor++
@@ -915,7 +973,7 @@ func (m Model) handleSearchKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				if m.searchCursor > 0 {
 					m.searchCursor--
 				}
-				return m, nil
+				return m.ensureCommandCursorVisible().previewCommandTheme(), nil
 			}
 			m.searchCursor--
 			if m.searchCursor < 0 {
@@ -947,12 +1005,12 @@ func (m Model) handleSearchKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 	query := m.searchInput.Value()
 	if m.isCommandPaletteQuery(query) {
-		m.commands = filterCommandPalette(strings.TrimSpace(strings.TrimPrefix(query, ">")))
+		m.commands = m.filterCommandPalette(strings.TrimSpace(strings.TrimPrefix(query, ">")))
 		m.searchResults = nil
 		m.searchCursor = 0
 		m.searchScroll = 0
 		m.searched = true
-		return m, inputCmd
+		return m.previewCommandTheme(), inputCmd
 	}
 	// dispatchSearch cancels any stale search goroutine before starting a new one.
 	var searchM Model
@@ -1002,6 +1060,10 @@ func (m Model) openSearch() (Model, tea.Cmd) {
 }
 
 func (m Model) closeSearch() Model {
+	if m.themePreviewBase != nil {
+		m = m.useTheme(*m.themePreviewBase)
+		m.themePreviewBase = nil
+	}
 	if m.searchCancel != nil {
 		m.searchCancel()
 		m.searchCancel = nil
@@ -1106,8 +1168,15 @@ func (m Model) statusScheduledRunResult(msg scheduledRunBackgroundResultMsg) Mod
 }
 
 type commandPaletteItem struct {
-	Title  string
-	Action string
+	Title     string
+	Action    string
+	ThemeName string
+}
+
+type themeWatchTickMsg struct{}
+
+func themeWatchTick() tea.Cmd {
+	return tea.Tick(2*time.Second, func(time.Time) tea.Msg { return themeWatchTickMsg{} })
 }
 
 var commandPaletteItems = []commandPaletteItem{
@@ -1117,6 +1186,7 @@ var commandPaletteItems = []commandPaletteItem{
 	{Title: "Send request", Action: keybindings.ActionSendRequest},
 	{Title: "Schedule request", Action: keybindings.ActionScheduleRun},
 	{Title: "Import curl command", Action: keybindings.ActionImportCurl},
+	{Title: "Import Postman collection", Action: keybindings.ActionImportPostman},
 	{Title: "Client certificates", Action: keybindings.ActionClientCerts},
 	{Title: "Open help", Action: "help"},
 }
@@ -1129,13 +1199,22 @@ func (m Model) isCommandPaletteQuery(query string) bool {
 	return strings.HasPrefix(strings.TrimSpace(query), ">")
 }
 
-func filterCommandPalette(query string) []commandPaletteItem {
+func (m Model) filterCommandPalette(query string) []commandPaletteItem {
+	items := append([]commandPaletteItem(nil), commandPaletteItems...)
+	if names, err := theme.List(m.configDir); err == nil {
+		for _, name := range names {
+			items = append(
+				items,
+				commandPaletteItem{Title: "Theme: " + name, Action: "theme", ThemeName: name},
+			)
+		}
+	}
 	query = strings.ToLower(strings.TrimSpace(query))
 	if query == "" {
-		return append([]commandPaletteItem(nil), commandPaletteItems...)
+		return items
 	}
 	var out []commandPaletteItem
-	for _, item := range commandPaletteItems {
+	for _, item := range items {
 		title := strings.ToLower(item.Title)
 		action := strings.ReplaceAll(item.Action, "_", " ")
 		if strings.Contains(title, query) || strings.Contains(action, query) {
@@ -1149,7 +1228,29 @@ func (m Model) executeSelectedCommand() (tea.Model, tea.Cmd) {
 	if len(m.commands) == 0 || m.searchCursor >= len(m.commands) {
 		return m.closeSearch(), nil
 	}
-	action := m.commands[m.searchCursor].Action
+	item := m.commands[m.searchCursor]
+	if item.ThemeName != "" {
+		wasWatching := !theme.IsBuiltin(m.theme.Name)
+		if m.themePreviewBase != nil {
+			wasWatching = !theme.IsBuiltin(m.themePreviewBase.Name)
+		}
+		selected, err := theme.Resolve(m.configDir, item.ThemeName, m.terminalDark)
+		if err != nil {
+			return m.status("error", err.Error()), nil
+		}
+		if err := config.SaveTheme(m.configDir, item.ThemeName); err != nil {
+			return m.status("error", fmt.Sprintf("save theme: %v", err)), nil
+		}
+		m.cfg.UI.Theme = item.ThemeName
+		m.themePreviewBase = nil
+		m = m.useTheme(selected)
+		m = m.closeSearch().status("success", "Theme: "+item.ThemeName)
+		if !wasWatching && !theme.IsBuiltin(item.ThemeName) {
+			return m, themeWatchTick()
+		}
+		return m, nil
+	}
+	action := item.Action
 	m = m.closeSearch()
 	switch action {
 	case "help":
@@ -1161,6 +1262,7 @@ func (m Model) executeSelectedCommand() (tea.Model, tea.Cmd) {
 		m.focus = requestPane
 		return m.handleRequestAction(action)
 	case keybindings.ActionImportCurl,
+		keybindings.ActionImportPostman,
 		keybindings.ActionClientCerts:
 		return m.dispatchNormalAction(action)
 	case keybindings.ActionFocusSidebar,
@@ -1169,6 +1271,36 @@ func (m Model) executeSelectedCommand() (tea.Model, tea.Cmd) {
 		return m.dispatchNormalAction(action)
 	}
 	return m, nil
+}
+
+func (m Model) previewCommandTheme() Model {
+	name := ""
+	if m.searchCursor < len(m.commands) {
+		name = m.commands[m.searchCursor].ThemeName
+	}
+	if name == "" {
+		if m.themePreviewBase != nil {
+			m = m.useTheme(*m.themePreviewBase)
+			m.themePreviewBase = nil
+		}
+		return m
+	}
+	selected, err := theme.Resolve(m.configDir, name, m.terminalDark)
+	if err != nil {
+		return m.status("error", err.Error())
+	}
+	if selected == m.theme {
+		return m
+	}
+	if m.themePreviewBase != nil && selected == *m.themePreviewBase {
+		m.themePreviewBase = nil
+		return m.useTheme(selected)
+	}
+	if m.themePreviewBase == nil {
+		previous := m.theme
+		m.themePreviewBase = &previous
+	}
+	return m.useTheme(selected)
 }
 
 func (m Model) openImport(preview *curl.ImportResult) (Model, tea.Cmd) {

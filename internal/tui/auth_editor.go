@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/bubbles/textinput"
+	"github.com/charmbracelet/lipgloss"
 
 	"github.com/crazy-vedic/quark/internal/domain"
 )
@@ -173,7 +174,7 @@ func (e authEditor) summary() string {
 	}
 }
 
-func (e authEditor) valueForRow(row authRowID, editing bool) string {
+func (e authEditor) valueForRow(row authRowID, editing bool, muted lipgloss.Style) string {
 	switch row {
 	case authRowType:
 		switch e.authType {
@@ -191,7 +192,7 @@ func (e authEditor) valueForRow(row authRowID, editing bool) string {
 			return e.tokenInput.View()
 		}
 		if e.tokenInput.Value() == "" {
-			return mutedStyle.Render("(empty)")
+			return muted.Render("(empty)")
 		}
 		return "[REDACTED]"
 	case authRowUsername:
@@ -199,7 +200,7 @@ func (e authEditor) valueForRow(row authRowID, editing bool) string {
 			return e.usernameInput.View()
 		}
 		if e.usernameInput.Value() == "" {
-			return mutedStyle.Render("(empty)")
+			return muted.Render("(empty)")
 		}
 		return e.usernameInput.Value()
 	case authRowPassword:
@@ -207,7 +208,7 @@ func (e authEditor) valueForRow(row authRowID, editing bool) string {
 			return e.passwordInput.View()
 		}
 		if e.passwordInput.Value() == "" {
-			return mutedStyle.Render("(empty)")
+			return muted.Render("(empty)")
 		}
 		return "[REDACTED]"
 	case authRowAPIKeyIn:
@@ -220,7 +221,7 @@ func (e authEditor) valueForRow(row authRowID, editing bool) string {
 			return e.apiKeyNameInput.View()
 		}
 		if e.apiKeyNameInput.Value() == "" {
-			return mutedStyle.Render("(empty)")
+			return muted.Render("(empty)")
 		}
 		return e.apiKeyNameInput.Value()
 	case authRowAPIKeyValue:
@@ -228,7 +229,7 @@ func (e authEditor) valueForRow(row authRowID, editing bool) string {
 			return e.apiKeyValueInput.View()
 		}
 		if e.apiKeyValueInput.Value() == "" {
-			return mutedStyle.Render("(empty)")
+			return muted.Render("(empty)")
 		}
 		return "[REDACTED]"
 	default:

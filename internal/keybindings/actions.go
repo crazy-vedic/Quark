@@ -16,6 +16,7 @@ const (
 	ActionEnvOpen       = "env_open"
 	ActionClientCerts   = "client_certificates"
 	ActionImportCurl    = "import_curl"
+	ActionImportPostman = "sidebar_import_postman"
 	ActionImportParse   = "import_parse"
 	ActionImportCancel  = "import_cancel"
 

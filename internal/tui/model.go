@@ -12,6 +12,7 @@ import (
 	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/google/uuid"
 
 	"github.com/crazy-vedic/quark/internal/config"
@@ -21,6 +22,7 @@ import (
 	"github.com/crazy-vedic/quark/internal/keybindings"
 	"github.com/crazy-vedic/quark/internal/search"
 	"github.com/crazy-vedic/quark/internal/store"
+	"github.com/crazy-vedic/quark/internal/theme"
 	"github.com/crazy-vedic/quark/internal/timing"
 )
 
@@ -48,6 +50,7 @@ const (
 	collectionPromptMode
 	scheduleMode
 	clientCertMode
+	postmanImportMode
 )
 
 // promptType identifies which collection prompt is active.
@@ -132,6 +135,11 @@ type curlClipboardMsg struct {
 	err   error
 }
 
+type postmanImportResultMsg struct {
+	output string
+	err    error
+}
+
 // executionHistoryLoadedMsg carries persisted executions for a request.
 type executionHistoryLoadedMsg struct {
 	requestID  string
@@ -192,14 +200,20 @@ type Model struct {
 	writer          store.RequestWriter
 	colWriter       store.CollectionWriter // for add/rename/delete collections
 	executionReader store.ExecutionReader
-	executor        RequestExecutor            // narrow interface; *exec.Executor satisfies this
-	searcher        RequestSearcher            // narrow interface; *search.Searcher satisfies this
-	importer        CurlImporter               // narrow interface; *curl.Importer satisfies this
+	executor        RequestExecutor // narrow interface; *exec.Executor satisfies this
+	searcher        RequestSearcher // narrow interface; *search.Searcher satisfies this
+	importer        CurlImporter    // narrow interface; *curl.Importer satisfies this
+	postmanImporter PostmanImporter
 	envReader       EnvironmentHierarchyReader // narrow interface; *store.Store satisfies this
 	envWriter       store.EnvironmentWriter    // narrow interface; *store.Store satisfies this
 	activeEnvStore  store.ActiveEnvironmentStore
 	scheduler       store.ScheduledRunStore
 	cfg             config.Config
+	theme           theme.Theme
+	styles          styleSet
+	terminalDark    bool
+	themeFileHash   [32]byte
+	themeWatchError string
 	ctx             context.Context // root context; cancelled when main signals shutdown
 	now             func() time.Time
 
@@ -265,13 +279,14 @@ type Model struct {
 	statusSuccess         string            // Tier 3 — body/headers saved, etc.
 
 	// --- Search modal ---
-	searchInput   textinput.Model
-	searchResults []*search.SearchHit
-	searchCursor  int
-	searchScroll  int
-	searchCancel  context.CancelFunc // cancel func for the in-flight search goroutine
-	searched      bool               // true once the first searchResultsMsg arrives
-	commands      []commandPaletteItem
+	searchInput      textinput.Model
+	searchResults    []*search.SearchHit
+	searchCursor     int
+	searchScroll     int
+	searchCancel     context.CancelFunc // cancel func for the in-flight search goroutine
+	searched         bool               // true once the first searchResultsMsg arrives
+	commands         []commandPaletteItem
+	themePreviewBase *theme.Theme
 
 	// --- Import modal ---
 	importPreview *curl.ImportResult
@@ -280,6 +295,9 @@ type Model struct {
 	importID      string
 	importName    textinput.Model
 	importColID   string
+	postmanPath   textinput.Model
+	postmanBusy   bool
+	postmanOutput string
 
 	// --- Collection prompt modal ---
 	promptMode               promptType
@@ -380,6 +398,7 @@ type Deps struct {
 	Executor        RequestExecutor // accepts *exec.Executor or any fake
 	Searcher        RequestSearcher // accepts *search.Searcher or any fake
 	Importer        CurlImporter    // accepts *curl.Importer or any fake
+	PostmanImporter PostmanImporter
 	Config          config.Config
 	Resolver        *keybindings.Resolver
 	// Ctx is the root context for all background operations. If nil,
@@ -420,6 +439,9 @@ func New(deps Deps) Model {
 	importName := textinput.New()
 	importName.Placeholder = "request name"
 	importName.CharLimit = 128
+	postmanPath := textinput.New()
+	postmanPath.Placeholder = "Path to .postman_collection.json or export directory"
+	postmanPath.CharLimit = 4096
 
 	importTA := textarea.New()
 	importTA.Placeholder = "Paste a complete curl command..."
@@ -482,6 +504,7 @@ func New(deps Deps) Model {
 		executor:              deps.Executor,
 		searcher:              deps.Searcher,
 		importer:              deps.Importer,
+		postmanImporter:       deps.PostmanImporter,
 		cfg:                   deps.Config,
 		ctx:                   rootCtx,
 		method:                deps.Config.UI.DefaultMethod,
@@ -489,6 +512,7 @@ func New(deps Deps) Model {
 		searchInput:           searchInput,
 		viewerFind:            viewerFind,
 		importName:            importName,
+		postmanPath:           postmanPath,
 		importInput:           importTA,
 		promptInput:           promptInput,
 		bodyTextarea:          bodyTA,
@@ -535,7 +559,13 @@ func New(deps Deps) Model {
 		m.tmuxWarning = "GNU screen detected: some Ctrl+w bindings may be intercepted"
 	}
 
-	return m
+	m.terminalDark = lipgloss.HasDarkBackground()
+	selected, err := theme.Resolve(deps.ConfigDir, deps.Config.UI.Theme, m.terminalDark)
+	if err != nil {
+		selected, _ = theme.Resolve(deps.ConfigDir, "auto", m.terminalDark)
+		m.statusErr = err.Error()
+	}
+	return m.useTheme(selected)
 }
 
 // resolverOrDefault returns a resolver built from cfg.Keybindings when r is nil.
@@ -556,6 +586,9 @@ func resolverOrDefault(r *keybindings.Resolver, cfg config.Config) *keybindings.
 // Returns nil if lister is not injected (e.g. in unit tests that drive Update directly).
 func (m Model) Init() tea.Cmd {
 	var cmds []tea.Cmd
+	if m.configDir != "" && !theme.IsBuiltin(m.theme.Name) {
+		cmds = append(cmds, themeWatchTick())
+	}
 	if m.lister != nil {
 		cmds = append(cmds, loadCollectionsCmd(m.ctx, m.lister))
 	}

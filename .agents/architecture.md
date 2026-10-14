@@ -101,13 +101,14 @@ If `*Store` stops implementing any interface, **this file fails to compile**.
 | `domain` | Shared entities: Request, Collection, Environment, Execution, ScheduledRun, AuthConfig | Nothing (stdlib only) |
 | `store` | SQLite CRUD, migrations, backups, transactions | `domain` |
 | `exec` | HTTP dispatch, variable interpolation, auth, hooks, history | `domain` |
-| `tui` | Bubbletea Model/Update/View, editors, modes | `domain`, `exec`, `search`, `curl`, `keybindings`, `config` |
+| `tui` | Bubbletea Model/Update/View, editors, modes | `domain`, `exec`, `search`, `curl`, `keybindings`, `config`, `theme` |
 | `cli` | Thin cobra command handlers (no business logic) | `domain`, `store`, `exec`, `curl`, `postman`, `config` |
 | `curl` | Parse cURL commands → structured request | `domain` |
 | `postman` | Parse Postman Collection v2.1, map auth/env | `domain` |
 | `search` | Fuzzy search over requests | `domain`, store interface |
 | `keybindings` | Defaults, resolver, action→key mapping, hints | — |
 | `config` | Load/merge/save `config.toml` | `keybindings` |
+| `theme` | Semantic palettes, custom theme validation and file hashes | Chroma styles |
 | `highlight` | Chroma-based ANSI syntax highlighting | — |
 | `schedule` | Parse schedule time expressions | — |
 | `tuitest` | Model-level TUI test harness | `tui`, `store`, `exec` |

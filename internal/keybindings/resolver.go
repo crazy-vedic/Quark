@@ -17,14 +17,15 @@ type Keybindings struct {
 	ImportCurl    string `toml:"import_curl"`
 
 	// Sidebar
-	SidebarDown       string `toml:"sidebar_down"`
-	SidebarUp         string `toml:"sidebar_up"`
-	SidebarExpand     string `toml:"sidebar_expand"`
-	SidebarCollapse   string `toml:"sidebar_collapse"`
-	SidebarAdd        string `toml:"sidebar_add"`
-	SidebarDelete     string `toml:"sidebar_delete"`
-	SidebarRename     string `toml:"sidebar_rename"`
-	SidebarAddRequest string `toml:"sidebar_add_request"`
+	SidebarDown          string `toml:"sidebar_down"`
+	SidebarUp            string `toml:"sidebar_up"`
+	SidebarExpand        string `toml:"sidebar_expand"`
+	SidebarCollapse      string `toml:"sidebar_collapse"`
+	SidebarAdd           string `toml:"sidebar_add"`
+	SidebarDelete        string `toml:"sidebar_delete"`
+	SidebarRename        string `toml:"sidebar_rename"`
+	SidebarAddRequest    string `toml:"sidebar_add_request"`
+	SidebarImportPostman string `toml:"sidebar_import_postman"`
 
 	// Request pane
 	EditURL       string `toml:"edit_url"`
@@ -171,15 +172,16 @@ func NewResolver(binds Keybindings) *Resolver {
 
 	// Sidebar
 	sidebar := map[string]string{
-		binds.SidebarDown:       "cursor_down",
-		binds.SidebarUp:         "cursor_up",
-		binds.SidebarExpand:     "expand",
-		binds.SidebarCollapse:   "collapse",
-		binds.SidebarAdd:        "add",
-		binds.SidebarDelete:     "delete",
-		binds.SidebarRename:     "rename",
-		binds.SidebarAddRequest: "add_request",
-		binds.RequestDelete:     ActionDeleteRequest,
+		binds.SidebarDown:          "cursor_down",
+		binds.SidebarUp:            "cursor_up",
+		binds.SidebarExpand:        "expand",
+		binds.SidebarCollapse:      "collapse",
+		binds.SidebarAdd:           "add",
+		binds.SidebarDelete:        "delete",
+		binds.SidebarRename:        "rename",
+		binds.SidebarAddRequest:    "add_request",
+		binds.SidebarImportPostman: ActionImportPostman,
+		binds.RequestDelete:        ActionDeleteRequest,
 	}
 	// Arrow-key aliases mirror the hardcoded fallbacks in handleSidebarKey.
 	addAlias(sidebar, "down", "cursor_down")
@@ -457,6 +459,7 @@ func Validate(binds Keybindings) map[string][]string {
 				"sidebar_rename",
 			},
 			{binds.SidebarAddRequest, "sidebar_add_request"},
+			{binds.SidebarImportPostman, ActionImportPostman},
 		},
 		{{binds.EditURL, ActionEditURL}, {binds.MethodNext, ActionMethodNext},
 			{binds.MethodPrev, ActionMethodPrev}, {binds.SendRequest, ActionSendRequest},
