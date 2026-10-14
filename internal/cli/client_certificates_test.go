@@ -21,7 +21,12 @@ func (r *certificateReloadRecorder) reload(cfg config.Config) error {
 	return r.err
 }
 
-func executeCertificateCommand(t *testing.T, configDir string, reload func(config.Config) error, args ...string) (string, error) {
+func executeCertificateCommand(
+	t *testing.T,
+	configDir string,
+	reload func(config.Config) error,
+	args ...string,
+) (string, error) {
 	t.Helper()
 	cmd := NewClientCertificatesCmd(configDir, reload)
 	var out bytes.Buffer
@@ -35,8 +40,13 @@ func executeCertificateCommand(t *testing.T, configDir string, reload func(confi
 func TestClientCertificateSetListAndDelete(t *testing.T) {
 	dir := t.TempDir()
 	recorder := &certificateReloadRecorder{}
-	out, err := executeCertificateCommand(t, dir, recorder.reload,
-		"set", "API.Example", "--file", "client.p12", "--password-env", "P12_PASSWORD", "--ca-file", "root.pem")
+	out, err := executeCertificateCommand(
+		t,
+		dir,
+		recorder.reload,
+		"set", "API.Example", "--file", "client.p12", "--password-env", "P12_PASSWORD",
+		"--ca-file", "root.pem",
+	)
 	require.NoError(t, err)
 	require.Contains(t, out, "Saved client certificate for api.example")
 	require.Len(t, recorder.configs, 1)
@@ -50,7 +60,17 @@ func TestClientCertificateSetListAndDelete(t *testing.T) {
 	require.Contains(t, out, "password-env=P12_PASSWORD")
 	require.NotContains(t, out, "P12_PASSWORD=")
 
-	_, err = executeCertificateCommand(t, dir, recorder.reload, "set", "api.example", "--file", "client.pem", "--key-file", "client.key")
+	_, err = executeCertificateCommand(
+		t,
+		dir,
+		recorder.reload,
+		"set",
+		"api.example",
+		"--file",
+		"client.pem",
+		"--key-file",
+		"client.key",
+	)
 	require.NoError(t, err)
 	out, err = executeCertificateCommand(t, dir, nil, "list")
 	require.NoError(t, err)
@@ -77,7 +97,15 @@ func TestClientCertificateRejectsInvalidInputAndFailedReload(t *testing.T) {
 	}
 
 	recorder := &certificateReloadRecorder{err: errors.New("invalid certificate")}
-	_, err := executeCertificateCommand(t, dir, recorder.reload, "set", "api.example", "--file", "client.pem")
+	_, err := executeCertificateCommand(
+		t,
+		dir,
+		recorder.reload,
+		"set",
+		"api.example",
+		"--file",
+		"client.pem",
+	)
 	require.ErrorContains(t, err, "validate certificate")
 	cfg, loadErr := config.Load(dir)
 	require.NoError(t, loadErr)

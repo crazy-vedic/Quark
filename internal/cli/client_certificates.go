@@ -113,10 +113,20 @@ func NewClientCertificatesCmd(configDir string, reload func(config.Config) error
 		},
 	}
 	setCmd.Flags().StringVar(&file, "file", "", "Client certificate file (PEM, P12, or PFX)")
-	setCmd.Flags().StringVar(&certType, "type", "", "Certificate type: PEM or P12 (inferred from file when omitted)")
+	setCmd.Flags().StringVar(
+		&certType,
+		"type",
+		"",
+		"Certificate type: PEM or P12 (inferred from file when omitted)",
+	)
 	setCmd.Flags().StringVar(&keyFile, "key-file", "", "PEM private key file")
 	setCmd.Flags().StringVar(&caFile, "ca-file", "", "Optional CA certificate file")
-	setCmd.Flags().StringVar(&passwordEnv, "password-env", "", "Environment variable containing the P12 password")
+	setCmd.Flags().StringVar(
+		&passwordEnv,
+		"password-env",
+		"",
+		"Environment variable containing the P12 password",
+	)
 	cmd.AddCommand(setCmd)
 
 	cmd.AddCommand(&cobra.Command{

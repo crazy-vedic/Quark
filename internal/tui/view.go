@@ -94,7 +94,7 @@ var helpActionLabels = map[string]string{
 	keybindings.ActionSendRequest:   "send request",
 	keybindings.ActionEditBody:      "edit body",
 	keybindings.ActionEditHeaders:   "edit headers",
-	"edit_auth":                     "edit auth",
+	keybindings.ActionEditAuth:      "edit auth",
 	keybindings.ActionScheduleRun:   "schedule request",
 	"response_down":                 "next history item",
 	"response_up":                   "prev history item",
@@ -626,7 +626,10 @@ func (m Model) viewRequestPane(w, h int) string {
 			{Label: "body", Actions: []string{keybindings.ActionEditBody}},
 			{Label: "headers", Actions: []string{keybindings.ActionEditHeaders}},
 			{Label: "env", Actions: []string{keybindings.ActionEnvOpen}},
-			{Label: "cycle env", Actions: []string{"env_prev", "env_next"}},
+			{
+				Label:   "cycle env",
+				Actions: []string{keybindings.ActionEnvPrev, keybindings.ActionEnvNext},
+			},
 		})
 	default:
 		hintsPlain = m.renderHints([]hintItem{
@@ -638,9 +641,12 @@ func (m Model) viewRequestPane(w, h int) string {
 			{Label: "send", Actions: []string{keybindings.ActionSendRequest}, IncludeAliases: true},
 			{Label: "body", Actions: []string{keybindings.ActionEditBody}},
 			{Label: "headers", Actions: []string{keybindings.ActionEditHeaders}},
-			{Label: "auth", Actions: []string{"edit_auth"}},
+			{Label: "auth", Actions: []string{keybindings.ActionEditAuth}},
 			{Label: "env", Actions: []string{keybindings.ActionEnvOpen}},
-			{Label: "cycle env", Actions: []string{"env_prev", "env_next"}},
+			{
+				Label:   "cycle env",
+				Actions: []string{keybindings.ActionEnvPrev, keybindings.ActionEnvNext},
+			},
 		})
 	}
 	hints := mutedStyle.Render(truncate(hintsPlain, innerWidth))
@@ -1674,7 +1680,9 @@ func (m Model) viewPostmanImportModal() string {
 	sb.WriteString(titleStyle.Render("Import Postman collection") + "\n\n")
 	sb.WriteString("Collection file or export directory:\n")
 	sb.WriteString(m.postmanPath.View() + "\n\n")
-	sb.WriteString(mutedStyle.Render("Existing collection names are kept by creating a numbered copy.") + "\n")
+	sb.WriteString(
+		mutedStyle.Render("Existing collection names are kept by creating a numbered copy.") + "\n",
+	)
 	if m.postmanOutput != "" {
 		width := max(20, m.twoThirdsModalWidth()-8)
 		output := clipToRows(stripANSI(m.postmanOutput), width, 5)

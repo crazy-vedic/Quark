@@ -562,9 +562,9 @@ func (m Model) dispatchNormalAction(action string) (tea.Model, tea.Cmd) {
 		return m.openCurlImport(), textarea.Blink
 	case keybindings.ActionImportPostman:
 		return m.openPostmanImportModal(), textinput.Blink
-	case "env_next":
+	case keybindings.ActionEnvNext:
 		return m.cycleEnv(1)
-	case "env_prev":
+	case keybindings.ActionEnvPrev:
 		return m.cycleEnv(-1)
 	}
 
@@ -685,11 +685,11 @@ func (m Model) handleRequestAction(action string) (tea.Model, tea.Cmd) {
 		return m.beginBodyEdit(), nil
 	case keybindings.ActionEnvOpen:
 		return m.openEnvEditor()
-	case "env_next":
+	case keybindings.ActionEnvNext:
 		return m.cycleEnv(1)
-	case "env_prev":
+	case keybindings.ActionEnvPrev:
 		return m.cycleEnv(-1)
-	case "edit_auth":
+	case keybindings.ActionEditAuth:
 		return m.beginAuthEdit(), nil
 	case keybindings.ActionEditHeaders:
 		return m.beginHeadersEdit(), nil
@@ -1141,14 +1141,14 @@ var commandPaletteItems = []commandPaletteItem{
 	{Title: "Edit request URL", Action: keybindings.ActionEditURL},
 	{Title: "Edit request body", Action: keybindings.ActionEditBody},
 	{Title: "Edit request headers", Action: keybindings.ActionEditHeaders},
-	{Title: "Edit request authorization", Action: "edit_auth"},
+	{Title: "Edit request authorization", Action: keybindings.ActionEditAuth},
 	{Title: "Next HTTP method", Action: keybindings.ActionMethodNext},
 	{Title: "Previous HTTP method", Action: keybindings.ActionMethodPrev},
 	{Title: "Delete selected request", Action: keybindings.ActionDeleteRequest},
 	{Title: "Schedule request", Action: keybindings.ActionScheduleRun},
 	{Title: "Open environment editor", Action: keybindings.ActionEnvOpen},
-	{Title: "Next environment", Action: "env_next"},
-	{Title: "Previous environment", Action: "env_prev"},
+	{Title: "Next environment", Action: keybindings.ActionEnvNext},
+	{Title: "Previous environment", Action: keybindings.ActionEnvPrev},
 	{Title: "Create collection", Action: "add"},
 	{Title: "Create request in collection", Action: "add_request"},
 	{Title: "Rename selected collection", Action: "rename"},
@@ -1214,10 +1214,10 @@ func (m Model) executeSelectedCommand() (tea.Model, tea.Cmd) {
 		keybindings.ActionEditHeaders,
 		keybindings.ActionMethodNext,
 		keybindings.ActionMethodPrev,
-		"edit_auth":
+		keybindings.ActionEditAuth:
 		m.focus = requestPane
 		return m.dispatchNormalAction(action)
-	case keybindings.ActionEnvOpen, "env_next", "env_prev":
+	case keybindings.ActionEnvOpen, keybindings.ActionEnvNext, keybindings.ActionEnvPrev:
 		return m.dispatchNormalAction(action)
 	case "add", "add_request", "rename", deleteToken:
 		m.focus = sidebarPane

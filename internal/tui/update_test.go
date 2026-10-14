@@ -210,13 +210,77 @@ func TestCommandPalette_CreateCollectionOpensExistingPrompt(t *testing.T) {
 	m = callUpdate(t, m, tea.WindowSizeMsg{Width: 100, Height: 50})
 	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
 	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'>'}})
-	for _, r := range []rune("create collection") {
+	for _, r := range "create collection" {
 		m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
 	}
 	require.Len(t, m.CommandResults(), 1)
 	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyEnter})
 	assert.Equal(t, tui.CollectionPromptMode, m.Mode())
 	assert.Equal(t, tui.PromptAdd, m.PromptMode())
+}
+
+func selectCommandPaletteItem(
+	t *testing.T,
+	m tui.Model,
+	query string,
+) (tui.Model, tea.Cmd) {
+	t.Helper()
+	m = callUpdate(t, m, tea.WindowSizeMsg{Width: 120, Height: 60})
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
+	for _, r := range ">" + query {
+		m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+	}
+	require.Len(t, m.CommandResults(), 1)
+	return callUpdateWithCmd(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+}
+
+func TestCommandPalette_QuitRunsQuitCommand(t *testing.T) {
+	m, cmd := selectCommandPaletteItem(t, newModel(defaultConfig()), "quit quark")
+	require.NotNil(t, cmd)
+	assert.IsType(t, tea.QuitMsg{}, cmd())
+	assert.Equal(t, tui.NormalMode, m.Mode())
+}
+
+func TestCommandPalette_SearchSavedRequestsOpensSearchMode(t *testing.T) {
+	m, cmd := selectCommandPaletteItem(t, newModel(defaultConfig()), "search saved requests")
+	require.NotNil(t, cmd)
+	assert.Equal(t, tui.SearchMode, m.Mode())
+	assert.Empty(t, m.SearchInputValue())
+}
+
+func TestCommandPalette_EditAuthorizationFocusesRequestEditor(t *testing.T) {
+	req := &domain.Request{ID: "req-1", CollectionID: col1, Name: "Payments", Method: "GET"}
+	m, _ := selectCommandPaletteItem(
+		t,
+		newModel(defaultConfig()).WithActiveRequest(req),
+		"edit request authorization",
+	)
+	assert.Equal(t, tui.AuthField, m.ActiveField())
+}
+
+func TestCommandPalette_EnvironmentActionsUseExistingEditorAndCycler(t *testing.T) {
+	col := &domain.Collection{ID: col1, Name: "API"}
+	reader := &fakeEnvReader{
+		global: &domain.Environment{ID: "global", Data: "{}"},
+		byCol: map[string][]*domain.Environment{
+			col1: {
+				{ID: "env-one", CollectionID: col1, Name: "One", Data: "{}"},
+				{ID: "env-two", CollectionID: col1, Name: "Two", Data: "{}"},
+			},
+		},
+		cols: map[string]*domain.Collection{col1: col},
+	}
+	base := newModel(defaultConfig()).
+		WithCollections([]*domain.Collection{col}).
+		WithEnvReader(reader)
+
+	opened, _ := selectCommandPaletteItem(t, base, "open environment editor")
+	assert.Equal(t, tui.EnvMode, opened.Mode())
+
+	next, _ := selectCommandPaletteItem(t, base, "next environment")
+	assert.Equal(t, "env-two", next.ActiveEnv()[col1])
+	previous, _ := selectCommandPaletteItem(t, next, "previous environment")
+	assert.Equal(t, "env-one", previous.ActiveEnv()[col1])
 }
 
 func TestUpdate_CollectionsLoaded_ResetsCursor(t *testing.T) {
