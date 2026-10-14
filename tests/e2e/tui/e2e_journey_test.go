@@ -404,7 +404,7 @@ func TestE2E_CurlImportFlow(t *testing.T) {
 	m = callUpdate(t, m, tui.RequestsLoadedMsg(col.ID, nil))
 
 	// Open the dedicated import modal and paste a curl command.
-	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'I'}})
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'i'}})
 	curlCmd := "curl -X POST -H 'Authorization: Bearer secret' https://api.example.com/items"
 	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(curlCmd), Paste: true})
 	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyCtrlS})

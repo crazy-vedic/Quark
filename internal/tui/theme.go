@@ -68,6 +68,7 @@ func (m Model) useTheme(t theme.Theme) Model {
 func (m *Model) styleInputs() {
 	inputs := []*textinput.Model{
 		&m.urlInput, &m.searchInput, &m.viewerFind, &m.importName,
+		&m.postmanPath,
 		&m.promptInput, &m.scheduleInput, &m.clientCertHost, &m.clientCertFile,
 		&m.clientCertType, &m.clientCertKeyFile, &m.clientCertCAFile,
 		&m.clientCertPassword, &m.headerKeyInput, &m.headerValueInput,

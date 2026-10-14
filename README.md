@@ -67,7 +67,7 @@ quark collection list         # List all collections
 
 - **Local SQLite** — `~/.quark/quark.db`, WAL mode, no network
 - **Collections & requests** — Organise, sort, enable/disable
-- **Import** — cURL and Postman Collection v2.1
+- **Import** — cURL and Postman Collection v2.1 from the CLI or TUI
 - **Response preview** — Syntax-highlighted JSON, streaming for large bodies
 - **Themes** — Terminal-aware dark and light palettes, local custom themes, live preview and reload
 - **Fuzzy search** — `/` to search across everything
@@ -85,6 +85,22 @@ multipart text fields.
 `--cert`/`--cert-type P12`, PEM `--cert` plus `--key`, and `--cacert` are saved
 as host-scoped TLS configuration. File- or stdin-backed bodies, shell
 expansions, redirections, and multiple URLs are rejected rather than executed.
+
+From the TUI sidebar, press `I` to import a Postman Collection v2.1 JSON file
+or bulk export directory; `i` opens the cURL importer. Existing collection names
+are imported as numbered copies. The same import is available with
+`quark import-postman <file-or-directory>`.
+
+Use `quark collection rename <collection> <new-name>` and
+`quark collection delete <collection>` to manage collections from scripts.
+`quark cert list`, `quark cert set <host> --file <path>`, and
+`quark cert delete <host>` manage host-scoped TLS client certificates. For
+PKCS#12 files, prefer `--password-env` to keep passwords out of shell history.
+
+`quark run <Collection/Request>` prints the response body after its status
+summary. Valid JSON is pretty-printed and syntax-highlighted in a terminal.
+Add `--verbose` to print request details and response headers to stderr; this
+can include credentials from the saved request.
 
 ---
 

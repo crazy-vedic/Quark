@@ -4,6 +4,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -170,6 +171,7 @@ func run() error {
 	root.AddCommand(lazyImportCmd(runtimeOnce))
 	root.AddCommand(lazyImportPostmanCmd(runtimeOnce))
 	root.AddCommand(lazyEnvCmd(runtimeOnce))
+	root.AddCommand(lazyClientCertCmd())
 	root.AddCommand(lazyKeybindingsCmd())
 	root.AddCommand(newThemeCmd())
 	root.AddCommand(cli.NewCompletionCmd(root))
@@ -224,6 +226,27 @@ type runtime struct {
 	transport *transport.Manager
 	importer  *curl.Importer
 	searcher  *search.Searcher
+}
+
+type tuiPostmanImporter struct {
+	st cli.ImportPostmanStore
+}
+
+func (i tuiPostmanImporter) ImportPostman(ctx context.Context, path string) (string, error) {
+	command := cli.NewImportPostmanCmd(i.st, cli.NewDebugLogger(nil))
+	command.SilenceUsage = true
+	command.SilenceErrors = true
+	command.SetArgs([]string{path, "--on-duplicate", "duplicate"})
+	command.SetIn(strings.NewReader(""))
+	var output, diagnostics bytes.Buffer
+	command.SetOut(&output)
+	command.SetErr(&diagnostics)
+	err := command.ExecuteContext(ctx)
+	combined := output.String()
+	if diagnostics.Len() > 0 {
+		combined += diagnostics.String()
+	}
+	return combined, err
 }
 
 func saveRuntimeImportedCertificate(r *runtime, spec *curl.CertificateSpec, rawURL string) error {
@@ -326,6 +349,7 @@ func launchTUI(
 		Executor:           executor,
 		Searcher:           searcher,
 		Importer:           importer,
+		PostmanImporter:    tuiPostmanImporter{st: st},
 		EnvReader:          st,
 		EnvWriter:          st,
 		ActiveEnvStore:     st,
@@ -414,6 +438,40 @@ func lazyCollectionCmd(rt func() (*runtime, error)) *cobra.Command {
 			return fmt.Errorf("create subcommand not found")
 		},
 	})
+	cmd.AddCommand(&cobra.Command{
+		Use:   "rename <collection> <new-name>",
+		Short: "Rename a collection",
+		Args:  cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			r, err := rt()
+			if err != nil {
+				return err
+			}
+			for _, c := range cli.NewCollectionCmd(r.st).Commands() {
+				if c.Name() == "rename" {
+					return c.RunE(cmd, args)
+				}
+			}
+			return fmt.Errorf("rename subcommand not found")
+		},
+	})
+	cmd.AddCommand(&cobra.Command{
+		Use:   "delete <collection>",
+		Short: "Delete a collection and its requests",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			r, err := rt()
+			if err != nil {
+				return err
+			}
+			for _, c := range cli.NewCollectionCmd(r.st).Commands() {
+				if c.Name() == "delete" {
+					return c.RunE(cmd, args)
+				}
+			}
+			return fmt.Errorf("delete subcommand not found")
+		},
+	})
 	return cmd
 }
 
@@ -457,17 +515,37 @@ func lazyRequestCmd(rt func() (*runtime, error)) *cobra.Command {
 }
 
 func lazyRunCmd(rt func() (*runtime, error)) *cobra.Command {
+	var namedVars []string
+	var verbose bool
 	cmd := &cobra.Command{
 		Use:   "run <Collection/Request>",
 		Short: "Execute a saved request",
 		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			r, err := rt()
-			if err != nil {
+	}
+	cmd.Flags().StringArrayVarP(
+		&namedVars,
+		"var",
+		"v",
+		nil,
+		"Override a request variable as key=value; overrides collection/global envs",
+	)
+	cmd.Flags().BoolVar(&verbose, "verbose", false,
+		"Print request and response headers and request details (may include credentials)")
+	cmd.RunE = func(cmd *cobra.Command, args []string) error {
+		r, err := rt()
+		if err != nil {
+			return err
+		}
+		inner := cli.NewRunCmd(r.st, r.executor)
+		if err := inner.Flags().Set("verbose", strconv.FormatBool(verbose)); err != nil {
+			return err
+		}
+		for _, assignment := range namedVars {
+			if err := inner.Flags().Set("var", assignment); err != nil {
 				return err
 			}
-			return cli.NewRunCmd(r.st, r.executor).RunE(cmd, args)
-		},
+		}
+		return inner.RunE(cmd, args)
 	}
 	cmd.ValidArgsFunction = cli.CompleteRequestPaths(
 		func(ctx context.Context) ([]*domain.Collection, error) {
@@ -757,4 +835,11 @@ func lazyKeybindingsCmd() *cobra.Command {
 		},
 	})
 	return cmd
+}
+
+func lazyClientCertCmd() *cobra.Command {
+	return cli.NewClientCertificatesCmd(configDir, func(cfg config.Config) error {
+		_, err := transport.New(cfg)
+		return err
+	})
 }
