@@ -69,7 +69,8 @@ quark collection list         # List all collections
 - **Collections & requests** — Organise, sort, enable/disable
 - **Import** — cURL and Postman Collection v2.1 from the CLI or TUI
 - **Response preview** — Syntax-highlighted JSON, streaming for large bodies
-- **Fuzzy search** — `s` to search across everything
+- **Themes** — Terminal-aware dark and light palettes, local custom themes, live preview and reload
+- **Fuzzy search** — `/` to search across everything
 - **Auto-backup** — Last 10 backups in `~/.quark/backup/`
 - **Signal-aware** — SIGINT cancels in-flight, restores terminal
 - **Scheduling** — Persist due times with `quark schedule add`; Quark is **not** a background daemon. Runs fire when you invoke `quark schedule run-due` (cron/systemd/CI) or while the TUI is open (in-app timer)
@@ -100,6 +101,60 @@ PKCS#12 files, prefer `--password-env` to keep passwords out of shell history.
 summary. Valid JSON is pretty-printed and syntax-highlighted in a terminal.
 Add `--verbose` to print request details and response headers to stderr; this
 can include credentials from the saved request.
+
+---
+
+## Themes
+
+Quark starts with `auto`, which chooses a dark or light palette from the terminal
+background while preserving that background. `dark` and `light` paint their own
+backgrounds. `transparent` also preserves the terminal background and follows
+its contrast.
+
+In the TUI, press `/`, then type the `>` character followed by `theme` to
+switch request search into the command palette. Use Up/Down to preview a theme.
+Press Enter to save it, or Esc to restore the previous theme. You can also use:
+
+```bash
+quark theme list
+quark theme set light
+quark theme validate
+quark --theme dark tui          # one session only
+```
+
+For a custom theme, create `<config-dir>/themes/ocean.toml` (the default config
+directory is `~/.quark`):
+
+```toml
+extends = "dark" # or "light"
+
+[colors]
+foreground = "#c0caf5"
+background = "#1a1b26" # use "transparent" to inherit the terminal
+muted = "#737aa2"
+accent = "#7aa2f7"
+info = "#7dcfff"
+success = "#9ece6a"
+warning = "#e0af68"
+error = "#f7768e"
+active_border = "#ffffff"
+match = "#e0af68"
+get = "#9ece6a"
+post = "#7aa2f7"
+put = "#e0af68"
+delete = "#f7768e"
+syntax = "monokai" # Chroma style for JSON
+```
+
+Every color is optional and inherits from `extends`. Colors use six-digit hex
+values. The filename is the theme name: run `quark theme validate ocean`, then
+select `ocean` in the TUI or use `quark theme set ocean`. Quark checks the active
+custom theme file every two seconds and reloads valid edits. An invalid edit
+leaves the last working palette in place and shows an error.
+
+The TUI chooses a theme in this order: `--theme`, `QUARK_THEME`, `[ui].theme` in
+`config.toml`, then `auto`. `--config` moves both `config.toml` and `themes/` to
+the selected directory.
 
 ---
 

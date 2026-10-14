@@ -7,12 +7,12 @@ import (
 
 const singleLineLargeInputThreshold = 256
 
-func singleLineInputWarning(value string) string {
+func (m Model) singleLineInputWarning(value string) string {
 	count := utf8.RuneCountInString(value)
 	if count <= singleLineLargeInputThreshold {
 		return ""
 	}
-	return warnStyle.Render(fmt.Sprintf(
+	return m.styles.warnStyle.Render(fmt.Sprintf(
 		"  Large single-line input (%d characters). Consider an environment variable and reference it here.",
 		count,
 	))

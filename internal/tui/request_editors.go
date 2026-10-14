@@ -37,6 +37,7 @@ func (m Model) beginAuthEdit() Model {
 		return m.status("error", "Select a request first")
 	}
 	m.authEditor = newAuthEditor(m.activeRequest)
+	m.styleInputs()
 	m.activeField = authField
 	return m.clearStatus()
 }
