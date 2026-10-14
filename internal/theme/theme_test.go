@@ -16,7 +16,8 @@ func TestBuiltinsFollowTerminalBackground(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if darkAuto.Variant != "dark" || lightAuto.Variant != "light" || darkAuto.Foreground == lightAuto.Foreground {
+	if darkAuto.Variant != "dark" || lightAuto.Variant != "light" ||
+		darkAuto.Foreground == lightAuto.Foreground {
 		t.Fatalf("auto did not select distinct palettes: %#v %#v", darkAuto, lightAuto)
 	}
 	if darkAuto.Background != "" || lightAuto.Background != "" {
@@ -39,14 +40,21 @@ func TestCustomThemeExtendsAndValidates(t *testing.T) {
 		t.Fatal(err)
 	}
 	path := filepath.Join(themesDir, "ocean.toml")
-	if err := os.WriteFile(path, []byte("extends = \"light\"\n[colors]\naccent = \"#123abc\"\nget = \"#15803d\"\nsyntax = \"github\"\n"), 0o600); err != nil {
+	if err := os.WriteFile(
+		path,
+		[]byte(
+			"extends = \"light\"\n[colors]\naccent = \"#123abc\"\nget = \"#15803d\"\nsyntax = \"github\"\n",
+		),
+		0o600,
+	); err != nil {
 		t.Fatal(err)
 	}
 	got, err := Resolve(dir, "ocean", true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Variant != "light" || got.Accent != "#123abc" || got.GET != "#15803d" || got.Foreground != light.Foreground {
+	if got.Variant != "light" || got.Accent != "#123abc" || got.GET != "#15803d" ||
+		got.Foreground != light.Foreground {
 		t.Fatalf("unexpected resolved palette: %#v", got)
 	}
 	names, err := List(dir)
@@ -57,7 +65,11 @@ func TestCustomThemeExtendsAndValidates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(path, []byte("extends = \"light\"\n[colors]\naccent = \"#abcdef\"\n"), 0o600); err != nil {
+	if err := os.WriteFile(
+		path,
+		[]byte("extends = \"light\"\n[colors]\naccent = \"#abcdef\"\n"),
+		0o600,
+	); err != nil {
 		t.Fatal(err)
 	}
 	after, err := FileHash(dir, "ocean")
@@ -77,7 +89,12 @@ func TestCustomThemeExtendsAndValidates(t *testing.T) {
 			t.Errorf("expected invalid theme to fail: %q", input)
 		}
 	}
-	if _, err := Resolve(dir, "../config", true); err == nil || !strings.Contains(err.Error(), "invalid theme name") {
+	if _, err := Resolve(
+		dir,
+		"../config",
+		true,
+	); err == nil ||
+		!strings.Contains(err.Error(), "invalid theme name") {
 		t.Fatalf("unsafe name accepted: %v", err)
 	}
 }

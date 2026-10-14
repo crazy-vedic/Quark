@@ -44,6 +44,8 @@ type Theme struct {
 var validName = regexp.MustCompile(`^[a-z][a-z0-9_-]*$`)
 var validColor = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
 
+const lightName = "light"
+
 var dark = Palette{
 	Foreground: "#c0caf5", Background: "#1a1b26", Muted: "#737aa2", Accent: "#7aa2f7",
 	Info: "#7dcfff", Success: "#9ece6a", Warning: "#e0af68",
@@ -61,7 +63,7 @@ var light = Palette{
 }
 
 // Builtins lists selection names in a stable order.
-func Builtins() []string { return []string{"auto", "dark", "light", "transparent"} }
+func Builtins() []string { return []string{"auto", "dark", lightName, "transparent"} }
 
 // List returns built-in and valid local theme names. A malformed theme is
 // omitted here; Resolve reports its detailed error when selected.
@@ -123,8 +125,8 @@ func Resolve(configDir, name string, darkBackground bool) (Theme, error) {
 	}
 	base := dark
 	variant := "dark"
-	if (name == "auto" || name == "transparent") && !darkBackground || name == "light" {
-		base, variant = light, "light"
+	if (name == "auto" || name == "transparent") && !darkBackground || name == lightName {
+		base, variant = light, lightName
 	}
 	if isBuiltin(name) {
 		if name == "auto" || name == "transparent" {
@@ -150,8 +152,8 @@ func Resolve(configDir, name string, darkBackground bool) (Theme, error) {
 	switch doc.Extends {
 	case "dark":
 		base, variant = dark, "dark"
-	case "light":
-		base, variant = light, "light"
+	case lightName:
+		base, variant = light, lightName
 	default:
 		return Theme{}, fmt.Errorf("theme %q: extends must be dark or light", name)
 	}
@@ -167,12 +169,23 @@ func applyOverrides(dst *Palette, src Palette) error {
 		value    *string
 		override string
 	}{
-		{"foreground", &dst.Foreground, src.Foreground}, {"muted", &dst.Muted, src.Muted},
-		{"accent", &dst.Accent, src.Accent}, {"info", &dst.Info, src.Info},
-		{"success", &dst.Success, src.Success}, {"warning", &dst.Warning, src.Warning},
-		{"error", &dst.Error, src.Error}, {"active_border", &dst.ActiveBorder, src.ActiveBorder},
-		{"match", &dst.Match, src.Match}, {"get", &dst.GET, src.GET},
-		{"post", &dst.POST, src.POST}, {"put", &dst.PUT, src.PUT}, {"delete", &dst.DELETE, src.DELETE},
+		{"foreground", &dst.Foreground, src.Foreground},
+		{"muted", &dst.Muted, src.Muted},
+		{"accent", &dst.Accent, src.Accent},
+		{"info", &dst.Info, src.Info},
+		{"success", &dst.Success, src.Success},
+		{"warning", &dst.Warning, src.Warning},
+		{"error", &dst.Error, src.Error},
+		{"active_border", &dst.ActiveBorder, src.ActiveBorder},
+		{"match", &dst.Match, src.Match},
+		{"get", &dst.GET, src.GET},
+		{
+			"post",
+			&dst.POST,
+			src.POST,
+		},
+		{"put", &dst.PUT, src.PUT},
+		{"delete", &dst.DELETE, src.DELETE},
 	}
 	if src.Background == "transparent" {
 		dst.Background = ""

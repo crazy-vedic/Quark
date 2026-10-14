@@ -277,9 +277,13 @@ func (m Model) deleteClientCert() (tea.Model, tea.Cmd) {
 func (m Model) viewClientCertModal() string {
 	var sb strings.Builder
 	sb.WriteString(m.styles.titleStyle.Render("Client Certificates (mTLS)") + "\n\n")
-	sb.WriteString(m.styles.mutedStyle.Render("Certificates are selected by request hostname.") + "\n\n")
+	sb.WriteString(
+		m.styles.mutedStyle.Render("Certificates are selected by request hostname.") + "\n\n",
+	)
 	if len(m.clientCerts) == 0 {
-		sb.WriteString(m.styles.mutedStyle.Render("No certificates configured. Press a to add one.") + "\n")
+		sb.WriteString(
+			m.styles.mutedStyle.Render("No certificates configured. Press a to add one.") + "\n",
+		)
 	} else {
 		for i, cert := range m.clientCerts {
 			cursor := "  "
@@ -306,7 +310,9 @@ func (m Model) viewClientCertModal() string {
 		sb.WriteString("Key:      " + m.clientCertKeyFile.View() + "\n")
 		sb.WriteString("CA:       " + m.clientCertCAFile.View() + "\n")
 		sb.WriteString("Password: " + m.clientCertPassword.View() + "\n")
-		sb.WriteString(m.styles.mutedStyle.Render("Tab: next field   Enter: save   Esc: cancel") + "\n")
+		sb.WriteString(
+			m.styles.mutedStyle.Render("Tab: next field   Enter: save   Esc: cancel") + "\n",
+		)
 	}
 	if m.clientCertError != "" {
 		sb.WriteString("\n" + m.styles.errorStyle.Render("✗ "+m.clientCertError) + "\n")

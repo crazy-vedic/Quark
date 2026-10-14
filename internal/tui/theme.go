@@ -31,8 +31,12 @@ func stylesFor(t theme.Theme) styleSet {
 		get: lipgloss.Color(p.GET), post: lipgloss.Color(p.POST),
 		put: lipgloss.Color(p.PUT), delete: lipgloss.Color(p.DELETE),
 	}
-	s.activeBorder = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color(p.ActiveBorder))
-	s.inactiveBorder = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(s.mutedColor)
+	s.activeBorder = lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color(p.ActiveBorder))
+	s.inactiveBorder = lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(s.mutedColor)
 	s.titleStyle = lipgloss.NewStyle().Bold(true).Foreground(s.accent)
 	s.methodStyle = lipgloss.NewStyle().Bold(true).Foreground(s.info)
 	s.sendButtonStyle = lipgloss.NewStyle().Bold(true).Foreground(s.success)

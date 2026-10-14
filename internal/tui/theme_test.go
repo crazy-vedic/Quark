@@ -43,7 +43,11 @@ func TestThemePreviewCancelAndSave(t *testing.T) {
 	}
 	m = selectThemeCommand(t, m, "light")
 	updated, _ := m.executeSelectedCommand()
-	m = updated.(Model)
+	var ok bool
+	m, ok = updated.(Model)
+	if !ok {
+		t.Fatalf("theme command returned %T, want Model", updated)
+	}
 	if m.theme.Name != "light" || m.mode != normalMode {
 		t.Fatalf("selection not applied: %#v", m.theme)
 	}
@@ -60,7 +64,11 @@ func TestCustomThemeReloadKeepsLastGoodPalette(t *testing.T) {
 		t.Fatal(err)
 	}
 	path := filepath.Join(themesDir, "local.toml")
-	if err := os.WriteFile(path, []byte("extends = \"dark\"\n[colors]\naccent = \"#123456\"\n"), 0o600); err != nil {
+	if err := os.WriteFile(
+		path,
+		[]byte("extends = \"dark\"\n[colors]\naccent = \"#123456\"\n"),
+		0o600,
+	); err != nil {
 		t.Fatal(err)
 	}
 	cfg := config.Default(dir)
@@ -69,19 +77,34 @@ func TestCustomThemeReloadKeepsLastGoodPalette(t *testing.T) {
 	if m.theme.Accent != "#123456" {
 		t.Fatalf("initial custom theme: %#v", m.theme)
 	}
-	if err := os.WriteFile(path, []byte("extends = \"dark\"\n[colors]\naccent = \"#abcdef\"\n"), 0o600); err != nil {
+	if err := os.WriteFile(
+		path,
+		[]byte("extends = \"dark\"\n[colors]\naccent = \"#abcdef\"\n"),
+		0o600,
+	); err != nil {
 		t.Fatal(err)
 	}
 	updated, _ := m.Update(themeWatchTickMsg{})
-	m = updated.(Model)
+	var ok bool
+	m, ok = updated.(Model)
+	if !ok {
+		t.Fatalf("theme watch returned %T, want Model", updated)
+	}
 	if m.theme.Accent != "#abcdef" {
 		t.Fatalf("theme did not reload: %#v", m.theme)
 	}
-	if err := os.WriteFile(path, []byte("extends = \"dark\"\n[colors]\naccent = \"invalid\"\n"), 0o600); err != nil {
+	if err := os.WriteFile(
+		path,
+		[]byte("extends = \"dark\"\n[colors]\naccent = \"invalid\"\n"),
+		0o600,
+	); err != nil {
 		t.Fatal(err)
 	}
 	updated, _ = m.Update(themeWatchTickMsg{})
-	m = updated.(Model)
+	m, ok = updated.(Model)
+	if !ok {
+		t.Fatalf("theme watch returned %T, want Model", updated)
+	}
 	if m.theme.Accent != "#abcdef" || m.statusErr == "" {
 		t.Fatalf("invalid reload discarded last good palette: %#v, %q", m.theme, m.statusErr)
 	}
@@ -94,7 +117,11 @@ func TestThemePreviewRestoresCustomSnapshot(t *testing.T) {
 		t.Fatal(err)
 	}
 	path := filepath.Join(themesDir, "local.toml")
-	if err := os.WriteFile(path, []byte("extends = \"dark\"\n[colors]\naccent = \"#123456\"\n"), 0o600); err != nil {
+	if err := os.WriteFile(
+		path,
+		[]byte("extends = \"dark\"\n[colors]\naccent = \"#123456\"\n"),
+		0o600,
+	); err != nil {
 		t.Fatal(err)
 	}
 	cfg := config.Default(dir)
@@ -124,6 +151,10 @@ func TestForcedLightThemePaintsReadableBackground(t *testing.T) {
 		t.Fatal("forced light theme did not paint its background")
 	}
 	if lipgloss.Width(view) > m.width || lipgloss.Height(view) > m.height {
-		t.Fatalf("themed frame overflowed terminal: %dx%d", lipgloss.Width(view), lipgloss.Height(view))
+		t.Fatalf(
+			"themed frame overflowed terminal: %dx%d",
+			lipgloss.Width(view),
+			lipgloss.Height(view),
+		)
 	}
 }

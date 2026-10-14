@@ -1173,7 +1173,10 @@ func (m Model) filterCommandPalette(query string) []commandPaletteItem {
 	items := append([]commandPaletteItem(nil), commandPaletteItems...)
 	if names, err := theme.List(m.configDir); err == nil {
 		for _, name := range names {
-			items = append(items, commandPaletteItem{Title: "Theme: " + name, Action: "theme", ThemeName: name})
+			items = append(
+				items,
+				commandPaletteItem{Title: "Theme: " + name, Action: "theme", ThemeName: name},
+			)
 		}
 	}
 	query = strings.ToLower(strings.TrimSpace(query))

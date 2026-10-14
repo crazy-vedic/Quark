@@ -9,7 +9,15 @@ import (
 func TestSaveThemePreservesOtherConfigAndRejectsMalformed(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.toml")
-	original := []byte("[ui]\ntheme = \"dark\"\neditor = \"nano\"\n[http]\nfollow_redirects = false\n[[http.client_certificates]]\nhost = \"api.example.com\"\nfile = \"client.p12\"\n")
+	original := []byte(`[ui]
+theme = "dark"
+editor = "nano"
+[http]
+follow_redirects = false
+[[http.client_certificates]]
+host = "api.example.com"
+file = "client.p12"
+`)
 	if err := os.WriteFile(path, original, 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -20,7 +28,9 @@ func TestSaveThemePreservesOtherConfigAndRejectsMalformed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.UI.Theme != "light" || cfg.UI.Editor != "nano" || cfg.HTTP.FollowRedirects || len(cfg.HTTP.ClientCertificates) != 1 || cfg.HTTP.ClientCertificates[0].Host != "api.example.com" {
+	if cfg.UI.Theme != "light" || cfg.UI.Editor != "nano" || cfg.HTTP.FollowRedirects ||
+		len(cfg.HTTP.ClientCertificates) != 1 ||
+		cfg.HTTP.ClientCertificates[0].Host != "api.example.com" {
 		t.Fatalf("other settings changed: %#v", cfg)
 	}
 	if err := os.WriteFile(path, []byte("[ui\ntheme = \"dark\"\n"), 0o600); err != nil {

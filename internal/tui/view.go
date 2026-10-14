@@ -364,7 +364,9 @@ func (m Model) viewSidebar(w, h int) string {
 	if len(m.collections) == 0 {
 		addCollection := m.renderHintKeys([]string{"sidebar_add"}, false)
 		sb.WriteString(
-			"\n" + m.styles.mutedStyle.Render("  No collections.\n  Press "+addCollection+" to add."),
+			"\n" + m.styles.mutedStyle.Render(
+				"  No collections.\n  Press "+addCollection+" to add.",
+			),
 		)
 	}
 
@@ -696,7 +698,9 @@ func (m Model) viewAuthEditor() string {
 		}
 		sb.WriteString(line + "\n")
 		if idx == m.authEditor.cursor && m.authEditor.editing {
-			if warning := m.singleLineInputWarning(m.authEditor.singleLineValue(row)); warning != "" {
+			if warning := m.singleLineInputWarning(
+				m.authEditor.singleLineValue(row),
+			); warning != "" {
 				sb.WriteString(warning + "\n")
 			}
 		}
@@ -732,7 +736,9 @@ func (m Model) viewResponsePane(w, h int) string {
 	currentExec := m.selectedExecution()
 	if currentExec == nil && m.response == nil {
 		sendHint := m.renderHintKeys([]string{keybindings.ActionSendRequest}, true)
-		sb.WriteString("\n" + m.styles.mutedStyle.Render("  No response yet — press "+sendHint+" to send."))
+		sb.WriteString(
+			"\n" + m.styles.mutedStyle.Render("  No response yet — press "+sendHint+" to send."),
+		)
 		return border.Width(w).Height(h).MaxHeight(h + 2).Render(sb.String())
 	}
 
@@ -859,10 +865,23 @@ func (m Model) requestBodyPreviewSourceKey() string {
 
 func (m Model) responseTextSourceKey() string {
 	if currentExec := m.selectedExecution(); currentExec != nil {
-		return fmt.Sprintf("execution:%p:%s:%d:%s:%s", currentExec, currentExec.ID, m.responseTab, m.theme.Name, m.theme.Variant)
+		return fmt.Sprintf(
+			"execution:%p:%s:%d:%s:%s",
+			currentExec,
+			currentExec.ID,
+			m.responseTab,
+			m.theme.Name,
+			m.theme.Variant,
+		)
 	}
 	if m.response != nil {
-		return fmt.Sprintf("response:%p:%d:%s:%s", m.response, m.responseTab, m.theme.Name, m.theme.Variant)
+		return fmt.Sprintf(
+			"response:%p:%d:%s:%s",
+			m.response,
+			m.responseTab,
+			m.theme.Name,
+			m.theme.Variant,
+		)
 	}
 	return fmt.Sprintf("response:none:%d", m.responseTab)
 }
@@ -949,7 +968,11 @@ func (m Model) viewTabBar(maxWidth int) string {
 		if m.responseTab == t.id {
 			parts = append(
 				parts,
-				lipgloss.NewStyle().Foreground(m.styles.accent).Underline(true).Bold(true).Render(label),
+				lipgloss.NewStyle().
+					Foreground(m.styles.accent).
+					Underline(true).
+					Bold(true).
+					Render(label),
 			)
 		} else {
 			parts = append(parts, m.styles.mutedStyle.Render(label))
@@ -1148,7 +1171,9 @@ func (m Model) viewExecutionHeaders(ex *domain.Execution) string {
 	headers := m.executionHeaders(ex)
 	if len(headers) == 0 {
 		if ex.Error != "" {
-			return m.styles.mutedStyle.Render("  No response headers captured for this failed execution.")
+			return m.styles.mutedStyle.Render(
+				"  No response headers captured for this failed execution.",
+			)
 		}
 		return m.styles.mutedStyle.Render("  (no headers)")
 	}
@@ -1841,7 +1866,11 @@ func (m Model) viewHelp() string {
 			sb.WriteString("\n")
 		case helpGroupRow:
 			sb.WriteString(
-				lipgloss.NewStyle().Bold(true).Foreground(m.styles.warning).Render(row.group) + "\n",
+				lipgloss.NewStyle().
+					Bold(true).
+					Foreground(m.styles.warning).
+					Render(row.group) +
+					"\n",
 			)
 		case helpBindingRow:
 			cursor := "  "
@@ -1869,10 +1898,12 @@ func (m Model) viewHelp() string {
 
 	// Recording prompt.
 	if m.helpEditState == helpRecording {
-		sb.WriteString("\n" + m.styles.warnStyle.Render("  Press key to bind, "+m.renderHints([]hintItem{
-			{Label: helpLabelCancel, Actions: []string{"help_close"}},
-			{Label: "unbind", Actions: []string{"help_unbind"}},
-		})) + "\n")
+		sb.WriteString(
+			"\n" + m.styles.warnStyle.Render("  Press key to bind, "+m.renderHints([]hintItem{
+				{Label: helpLabelCancel, Actions: []string{"help_close"}},
+				{Label: "unbind", Actions: []string{"help_unbind"}},
+			})) + "\n",
+		)
 	}
 
 	// Error banner.
@@ -1919,7 +1950,9 @@ func (m Model) viewImportModal() string {
 			sb.WriteString("\n" + m.styles.errorStyle.Render("✗ "+stripANSI(m.importError)) + "\n")
 		}
 		sb.WriteString(
-			"\n" + m.styles.mutedStyle.Render("Ctrl+V: read clipboard   Ctrl+S: parse   Esc: cancel"),
+			"\n" + m.styles.mutedStyle.Render(
+				"Ctrl+V: read clipboard   Ctrl+S: parse   Esc: cancel",
+			),
 		)
 		box := lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
@@ -2485,7 +2518,11 @@ func (m Model) renderEnvTabViewport(tabs []envTab, activeIndex, maxWidth int) st
 		label := labels[i]
 		switch {
 		case i == activeIndex:
-			label = lipgloss.NewStyle().Foreground(m.styles.accent).Underline(true).Bold(true).Render(label)
+			label = lipgloss.NewStyle().
+				Foreground(m.styles.accent).
+				Underline(true).
+				Bold(true).
+				Render(label)
 		case tabs[i].ReadOnly:
 			label = lipgloss.NewStyle().Foreground(m.styles.warning).Faint(true).Render(label)
 		default:
@@ -2546,7 +2583,9 @@ func (m Model) viewCollectionPromptModal() string {
 		}
 		sb.WriteString(m.styles.titleStyle.Render(title) + "\n\n")
 		sb.WriteString("Delete " + lipgloss.NewStyle().Bold(true).Render(name) + "?\n\n")
-		sb.WriteString(m.styles.errorStyle.Render("This deletion is permanent and irreversible.") + "\n\n")
+		sb.WriteString(
+			m.styles.errorStyle.Render("This deletion is permanent and irreversible.") + "\n\n",
+		)
 		if m.statusErr != "" {
 			sb.WriteString(m.styles.errorStyle.Render("✗ "+m.statusErr) + "\n\n")
 		}
@@ -2566,7 +2605,9 @@ func (m Model) viewCollectionPromptModal() string {
 	var sb strings.Builder
 	sb.WriteString(m.styles.titleStyle.Render(title) + "\n\n")
 	if m.promptMode == promptDeleteConfirm {
-		sb.WriteString(m.styles.errorStyle.Render("This deletion is permanent and irreversible.") + "\n\n")
+		sb.WriteString(
+			m.styles.errorStyle.Render("This deletion is permanent and irreversible.") + "\n\n",
+		)
 	}
 	sb.WriteString(m.promptInput.View() + "\n")
 	sb.WriteString(m.styles.mutedStyle.Render("["+hint+"]") + "\n")

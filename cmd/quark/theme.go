@@ -39,7 +39,8 @@ func newThemeCmd() *cobra.Command {
 	cmd.AddCommand(&cobra.Command{
 		Use: "set NAME", Short: "Save the selected theme to config.toml", Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if _, err := theme.Resolve(configDir, args[0], lipgloss.HasDarkBackground()); err != nil {
+			_, err := theme.Resolve(configDir, args[0], lipgloss.HasDarkBackground())
+			if err != nil {
 				return err
 			}
 			if err := config.SaveTheme(configDir, args[0]); err != nil {
@@ -50,7 +51,9 @@ func newThemeCmd() *cobra.Command {
 		},
 	})
 	cmd.AddCommand(&cobra.Command{
-		Use: "validate [NAME]", Short: "Validate a theme file or the current selection", Args: cobra.MaximumNArgs(1),
+		Use:   "validate [NAME]",
+		Short: "Validate a theme file or the current selection",
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := ""
 			if len(args) == 1 {
@@ -72,7 +75,12 @@ func newThemeCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "Theme %s is valid (%s palette)\n", resolved.Name, resolved.Variant)
+			fmt.Fprintf(
+				cmd.OutOrStdout(),
+				"Theme %s is valid (%s palette)\n",
+				resolved.Name,
+				resolved.Variant,
+			)
 			return nil
 		},
 	})
