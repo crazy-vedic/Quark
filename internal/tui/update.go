@@ -669,7 +669,7 @@ func (m Model) handleSidebarAction(action string) (tea.Model, tea.Cmd) {
 			return m.status("error", "Select a collection first"), nil
 		}
 		return m.enterCollectionPrompt(promptDeleteConfirm, colID)
-	case "rename":
+	case actionRename:
 		colID := m.activeCollectionID()
 		if colID == "" {
 			return m.status("error", "Select a collection first"), nil
@@ -757,19 +757,19 @@ func (m Model) handleResponseAction(action string, parent ...*timing.Span) (tea.
 			return m.status("error", err.Error()), nil
 		}
 		return m.startRawRequest(req)
-	case "tab_body":
+	case actionTabBody:
 		m.responseTab = bodyTab
-	case "tab_headers":
+	case actionTabHeaders:
 		m.responseTab = headersTab
-	case "tab_raw":
+	case actionTabRaw:
 		m.responseTab = rawTab
-	case "tab_next":
+	case actionTabNext:
 		if m.responseTab == rawTab {
 			m.responseTab = bodyTab
 		} else {
 			m.responseTab++
 		}
-	case "tab_prev":
+	case actionTabPrev:
 		if m.responseTab == bodyTab {
 			m.responseTab = rawTab
 		} else {
@@ -1195,7 +1195,7 @@ var commandPaletteItems = []commandPaletteItem{
 	{Title: "Previous environment", Action: keybindings.ActionEnvPrev},
 	{Title: "Create collection", Action: "add"},
 	{Title: "Create request in collection", Action: "add_request"},
-	{Title: "Rename selected collection", Action: "rename"},
+	{Title: "Rename selected collection", Action: actionRename},
 	{Title: "Delete selected collection", Action: deleteToken},
 	{Title: "Import curl command", Action: keybindings.ActionImportCurl},
 	{Title: "Import Postman collection", Action: keybindings.ActionImportPostman},
@@ -1294,7 +1294,7 @@ func (m Model) executeSelectedCommand() (tea.Model, tea.Cmd) {
 		return m.dispatchNormalAction(action)
 	case keybindings.ActionEnvOpen, keybindings.ActionEnvNext, keybindings.ActionEnvPrev:
 		return m.dispatchNormalAction(action)
-	case "add", "add_request", "rename", deleteToken:
+	case "add", "add_request", actionRename, deleteToken:
 		m.focus = sidebarPane
 		return m.dispatchNormalAction(action)
 	case keybindings.ActionDeleteRequest:

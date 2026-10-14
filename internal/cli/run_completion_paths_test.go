@@ -11,10 +11,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/crazy-vedic/quark/internal/domain"
-	"github.com/crazy-vedic/quark/internal/exec"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/require"
+
+	"github.com/crazy-vedic/quark/internal/domain"
+	"github.com/crazy-vedic/quark/internal/exec"
 )
 
 type pathRunStore struct {
@@ -61,7 +62,15 @@ func (s *fallbackRunStore) ListRequests(ctx context.Context, id string) ([]*doma
 }
 
 func TestNewRunCmdResolverAndLookupErrors(t *testing.T) {
-	base := &fakeRunStore{collections: []*domain.Collection{{ID: "c", Name: "C"}}, requests: map[string][]*domain.Request{"c": {{ID: "r", CollectionID: "c", Name: "R", Method: "GET", URL: "https://example.test"}}}}
+	base := &fakeRunStore{
+		collections: []*domain.Collection{{ID: "c", Name: "C"}},
+		requests: map[string][]*domain.Request{
+			"c": {{
+				ID: "r", CollectionID: "c", Name: "R", Method: "GET",
+				URL: "https://example.test",
+			}},
+		},
+	}
 	for _, tt := range []struct {
 		name string
 		st   RunStore
@@ -86,11 +95,23 @@ func TestNewRunCmdResolverAndLookupErrors(t *testing.T) {
 
 func TestNewRunCmdResolverExecutesAndRejectsOverrides(t *testing.T) {
 	global := &domain.Environment{ID: "global", Name: "Global", Data: "{}"}
-	st := &pathRunStore{fakeRunStore: &fakeRunStore{collections: []*domain.Collection{{ID: "c", Name: "C"}}, globalEnv: global}, resolve: &domain.Request{ID: "r", CollectionID: "c", Method: "GET", URL: "https://example.test"}}
+	st := &pathRunStore{
+		fakeRunStore: &fakeRunStore{
+			collections: []*domain.Collection{{ID: "c", Name: "C"}},
+			globalEnv:   global,
+		},
+		resolve: &domain.Request{
+			ID: "r", CollectionID: "c", Method: "GET", URL: "https://example.test",
+		},
+	}
 	cmd := NewRunCmd(st, exec.New(nil))
 	cmd.SetArgs([]string{"C/R", "--var", "broken"})
 	require.ErrorContains(t, cmd.Execute(), "expected key=value")
-	roundTrip := &recordingRoundTripper{response: &http.Response{StatusCode: 200, Status: "200 OK", Header: http.Header{}, Body: io.NopCloser(strings.NewReader("ok"))}}
+	response := &http.Response{
+		StatusCode: 200, Status: "200 OK", Header: http.Header{},
+		Body: io.NopCloser(strings.NewReader("ok")),
+	}
+	roundTrip := &recordingRoundTripper{response: response}
 	cmd = NewRunCmd(st, exec.New(roundTrip))
 	cmd.SetArgs([]string{"C/R"})
 	require.NoError(t, cmd.Execute())
@@ -102,8 +123,15 @@ func TestRunOutputBranches(t *testing.T) {
 	var out, errOut bytes.Buffer
 	cmd.SetOut(&out)
 	cmd.SetErr(&errOut)
-	req := &domain.Request{Method: "GET", URL: "https://example.test", Headers: `{"Authorization":"secret"}`, AuthType: "bearer", AuthConfig: `{"token":"secret"}`, Body: "payload"}
-	result := &exec.ExecuteResult{Status: "200 OK", Size: 0, Headers: http.Header{"X-Z": []string{"z"}, "X-A": []string{"a"}}}
+	req := &domain.Request{
+		Method: "GET", URL: "https://example.test",
+		Headers: `{"Authorization":"secret"}`, AuthType: "bearer",
+		AuthConfig: `{"token":"secret"}`, Body: "payload",
+	}
+	result := &exec.ExecuteResult{
+		Status: "200 OK", Size: 0,
+		Headers: http.Header{"X-Z": []string{"z"}, "X-A": []string{"a"}},
+	}
 	require.NoError(t, printRunResult(cmd, req, result, true))
 	require.Contains(t, errOut.String(), "Request body")
 	require.Contains(t, errOut.String(), "< X-A: a")
@@ -112,7 +140,10 @@ func TestRunOutputBranches(t *testing.T) {
 		terminal bool
 		want     string
 	}{
-		{"", "text/plain", false, ""}, {"{\"ok\":true}", "application/json", false, "\"ok\": true"}, {string([]byte{0, 1}), "application/octet-stream", true, "binary response body omitted"}, {"bad", "application/json", false, "bad"},
+		{"", "text/plain", false, ""},
+		{"{\"ok\":true}", "application/json", false, "\"ok\": true"},
+		{string([]byte{0, 1}), "application/octet-stream", true, "binary response body omitted"},
+		{"bad", "application/json", false, "bad"},
 	} {
 		var b bytes.Buffer
 		require.NoError(t, writeResponseBody(&b, []byte(tc.body), tc.ct, tc.terminal))
@@ -126,14 +157,22 @@ func TestRunOutputBranches(t *testing.T) {
 	var terminalOut bytes.Buffer
 	terminalCmd := &cobra.Command{}
 	terminalCmd.SetOut(&terminalOut)
-	large := &exec.ExecuteResult{Status: "200 OK", Size: (16 << 20) + 1, Headers: http.Header{"Content-Type": []string{"text/plain"}}, TempPath: textPath}
+	large := &exec.ExecuteResult{
+		Status: "200 OK", Size: (16 << 20) + 1,
+		Headers: http.Header{"Content-Type": []string{"text/plain"}}, TempPath: textPath,
+	}
 	require.NoError(t, printRunResult(terminalCmd, req, large, false))
 	require.Contains(t, terminalOut.String(), "large response body")
 
 	binaryPath := filepath.Join(t.TempDir(), "binary-response")
 	require.NoError(t, os.WriteFile(binaryPath, []byte{0, 1, 2, 3}, 0o600))
 	terminalOut.Reset()
-	binaryResult := &exec.ExecuteResult{Status: "200 OK", Size: 4, Headers: http.Header{"Content-Type": []string{"application/octet-stream"}}, TempPath: binaryPath}
+	binaryResult := &exec.ExecuteResult{
+		Status:   "200 OK",
+		Size:     4,
+		Headers:  http.Header{"Content-Type": []string{"application/octet-stream"}},
+		TempPath: binaryPath,
+	}
 	require.NoError(t, printRunResult(terminalCmd, req, binaryResult, false))
 	require.Contains(t, terminalOut.String(), "binary response body omitted")
 	require.True(t, binaryResponse([]byte("file"), "application/pdf"))
@@ -141,7 +180,7 @@ func TestRunOutputBranches(t *testing.T) {
 	for _, tc := range []struct {
 		body, contentType, want string
 	}{
-        {`{"file":true}`, "application/json", "file"},
+		{`{"file":true}`, "application/json", "file"},
 		{"plain file", "text/plain", "plain file"},
 	} {
 		path := filepath.Join(t.TempDir(), "response")
@@ -149,7 +188,12 @@ func TestRunOutputBranches(t *testing.T) {
 		var b bytes.Buffer
 		fileCmd := &cobra.Command{}
 		fileCmd.SetOut(&b)
-		result := &exec.ExecuteResult{Status: "200 OK", Size: int64(len(tc.body)), Headers: http.Header{"Content-Type": []string{tc.contentType}}, TempPath: path}
+		result := &exec.ExecuteResult{
+			Status:   "200 OK",
+			Size:     int64(len(tc.body)),
+			Headers:  http.Header{"Content-Type": []string{tc.contentType}},
+			TempPath: path,
+		}
 		require.NoError(t, printRunResult(fileCmd, req, result, false))
 		require.Contains(t, b.String(), tc.want)
 	}
@@ -159,7 +203,11 @@ func TestRunOutputBranches(t *testing.T) {
 	err := printRunResult(cmd, req, bad, false)
 	require.ErrorContains(t, err, "read response body")
 	require.ErrorContains(t, err, "cleanup response body")
-	missing := &exec.ExecuteResult{Status: "200", Size: 1, TempPath: filepath.Join(t.TempDir(), "missing")}
+	missing := &exec.ExecuteResult{
+		Status:   "200",
+		Size:     1,
+		TempPath: filepath.Join(t.TempDir(), "missing"),
+	}
 	require.ErrorContains(t, printRunResult(cmd, req, missing, false), "read response body")
 	_ = safeText(&bytes.Buffer{}, "plain")
 }
@@ -196,7 +244,8 @@ func TestCompletionPureBranches(t *testing.T) {
 	require.Error(t, err)
 	err = writeCompletionScript(root, "unknown", io.Discard, false)
 	require.Error(t, err)
-	require.Contains(t, injectBeforeEndMarker("head\n"+completionMarkerEnd, "extra"), "extra\n"+completionMarkerEnd)
+	marker := injectBeforeEndMarker("head\n"+completionMarkerEnd, "extra")
+	require.Contains(t, marker, "extra\n"+completionMarkerEnd)
 	require.Contains(t, injectBeforeEndMarker("head", "extra"), "head\nextra")
 	_ = powershellProfilePath(t.TempDir())
 	clearZshCompdump(t.TempDir())

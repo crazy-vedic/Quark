@@ -62,11 +62,11 @@ var helpActionLabels = map[string]string{
 	"response_down":                 "next history item",
 	"response_up":                   "prev history item",
 	"response_retry":                "retry request",
-	"tab_body":                      "show body",
-	"tab_headers":                   "show headers",
-	"tab_raw":                       "show raw",
-	"tab_next":                      "next view",
-	"tab_prev":                      "prev view",
+	actionTabBody:                   "show body",
+	actionTabHeaders:                "show headers",
+	actionTabRaw:                    "show raw",
+	actionTabNext:                   "next view",
+	actionTabPrev:                   "prev view",
 	"search_select":                 "select result",
 	"search_down":                   helpLabelMoveDown,
 	"search_up":                     helpLabelMoveUp,
@@ -959,9 +959,9 @@ func (m Model) viewTabBar(maxWidth int) string {
 	var parts []string
 	for _, t := range tabs {
 		action := map[responseTabID]string{
-			bodyTab:    "tab_body",
-			headersTab: "tab_headers",
-			rawTab:     "tab_raw",
+			bodyTab:    actionTabBody,
+			headersTab: actionTabHeaders,
+			rawTab:     actionTabRaw,
 		}[t.id]
 		label := fmt.Sprintf(
 			"[%s] %s",
@@ -984,7 +984,7 @@ func (m Model) viewTabBar(maxWidth int) string {
 	tabPart := "  " + strings.Join(parts, "  ")
 
 	hintItems := []hintItem{
-		{Label: "view", Actions: []string{"tab_prev", "tab_next"}},
+		{Label: "view", Actions: []string{actionTabPrev, actionTabNext}},
 		{Label: "retry", Actions: []string{"response_retry"}},
 	}
 	if len(m.executions) > 1 {
@@ -1427,7 +1427,7 @@ func (m Model) viewStatusBar(statusOverride string) string {
 			hintItem{Label: "tree", Actions: []string{"sidebar_collapse", "sidebar_expand"}},
 			hintItem{Label: "new req", Actions: []string{"sidebar_add_request"}},
 			hintItem{Label: "new col", Actions: []string{"sidebar_add"}},
-			hintItem{Label: "rename", Actions: []string{"sidebar_rename"}},
+			hintItem{Label: actionRename, Actions: []string{"sidebar_rename"}},
 			hintItem{Label: deleteToken, Actions: []string{"sidebar_delete"}},
 		)
 	}

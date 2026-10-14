@@ -28,7 +28,10 @@ func interactionModel() Model { return New(Deps{Config: config.Default("")}) }
 func TestUpdateAndViewHelpers(t *testing.T) {
 	m := interactionModel()
 	m.debugCurl("curl %s", "https://example.test")
-	require.NotEmpty(t, debugHeaderKeys(http.Header{"Z-Last": []string{"1"}, "A-First": []string{"2"}}))
+	require.NotEmpty(t, debugHeaderKeys(http.Header{
+		"Z-Last":  []string{"1"},
+		"A-First": []string{"2"},
+	}))
 	require.Equal(t, "[65,128640]", debugRuneCodes([]rune{'A', '🚀'}))
 	require.Equal(t, "[]", debugRuneCodes(nil))
 	m.mode = helpMode
@@ -37,11 +40,19 @@ func TestUpdateAndViewHelpers(t *testing.T) {
 	require.Equal(t, "  \n ", cleanError("  \n "))
 	require.True(t, isBinaryBody([]byte{0, 1, 2}))
 	require.False(t, isBinaryBody([]byte("plain")))
-	require.Equal(t, []string{"Content-Type", "A-Test", "z-test"}, sortedHeaderKeys(http.Header{"z-test": nil, "Content-Type": nil, "A-Test": nil}))
+	require.Equal(
+		t,
+		[]string{"Content-Type", "A-Test", "z-test"},
+		sortedHeaderKeys(http.Header{"z-test": nil, "Content-Type": nil, "A-Test": nil}),
+	)
 	require.Equal(t, 0, headerPriority("content-type"))
 	require.Less(t, headerPriority("content-type"), headerPriority("x-custom"))
-	require.True(t, sameLocalDay(time.Date(2025, 1, 1, 1, 0, 0, 0, time.UTC), time.Date(2025, 1, 1, 23, 0, 0, 0, time.UTC)))
-	require.False(t, sameLocalDay(time.Date(2025, 1, 1, 1, 0, 0, 0, time.UTC), time.Date(2025, 1, 2, 1, 0, 0, 0, time.UTC)))
+	firstTime := time.Date(2025, 1, 1, 1, 0, 0, 0, time.UTC)
+	secondTime := time.Date(2025, 1, 1, 23, 0, 0, 0, time.UTC)
+	require.True(t, sameLocalDay(firstTime, secondTime))
+	firstTime = time.Date(2025, 1, 1, 1, 0, 0, 0, time.UTC)
+	secondTime = time.Date(2025, 1, 2, 1, 0, 0, 0, time.UTC)
+	require.False(t, sameLocalDay(firstTime, secondTime))
 	require.Equal(t, 2, lineVisualRows("a\nb", 20))
 	require.Equal(t, 2, visualRows("a\nb", 20))
 	require.Equal(t, "", clipToRows("a", 1, 0))
@@ -50,7 +61,10 @@ func TestUpdateAndViewHelpers(t *testing.T) {
 	require.True(t, isCredentialHeader("Authorization"))
 	require.Equal(t, []string{"a", "b"}, dedupeHintKeys([]string{"a", "a", "b"}))
 	require.Equal(t, "quit", helpActionLabel("quit"))
-	require.NotEmpty(t, highlightSearchMatch("Payment request", "pay", lipgloss.NewStyle(), lipgloss.NewStyle()))
+	searchMatch := highlightSearchMatch(
+		"Payment request", "pay", lipgloss.NewStyle(), lipgloss.NewStyle(),
+	)
+	require.NotEmpty(t, searchMatch)
 	keys := []string{"b", "a", "b"}
 	sortHeaderKeys(keys)
 	require.Equal(t, []string{"a", "b", "b"}, keys)
@@ -93,7 +107,12 @@ func TestModelAndLayoutBranches(t *testing.T) {
 
 func TestMouseNoOpAndHitTestBranches(t *testing.T) {
 	m := interactionModel()
-	for _, msg := range []tea.MouseMsg{{Shift: true}, {Action: tea.MouseActionRelease, Button: tea.MouseButtonLeft}, {Button: tea.MouseButtonWheelLeft}, {X: 999, Y: 999, Action: tea.MouseActionPress, Button: tea.MouseButtonLeft}} {
+	for _, msg := range []tea.MouseMsg{
+		{Shift: true},
+		{Action: tea.MouseActionRelease, Button: tea.MouseButtonLeft},
+		{Button: tea.MouseButtonWheelLeft},
+		{X: 999, Y: 999, Action: tea.MouseActionPress, Button: tea.MouseButtonLeft},
+	} {
 		_, _ = m.handleMouse(msg)
 	}
 	m.mode = viewerMode
@@ -189,20 +208,27 @@ func TestModelCommands(t *testing.T) {
 	t.Cleanup(func() { _ = st.Close() })
 	col := &domain.Collection{ID: "interaction-col", Name: "Interaction"}
 	require.NoError(t, st.SaveCollection(ctx, col))
-	req := &domain.Request{ID: "interaction-req", CollectionID: col.ID, Name: "Get", Method: "GET", URL: "https://example.test"}
+	req := &domain.Request{
+		ID: "interaction-req", CollectionID: col.ID, Name: "Get", Method: "GET",
+		URL: "https://example.test",
+	}
 	require.NoError(t, st.SaveRequest(ctx, req))
 	require.IsType(t, collectionsLoadedMsg{}, loadCollectionsCmd(ctx, st)())
 	require.IsType(t, requestsLoadedMsg{}, loadRequestsCmd(ctx, st, col.ID)())
-	require.Equal(t, executionHistoryLoadedMsg{requestID: ""}, loadExecutionHistoryCmd(ctx, nil, "")())
+	msg := loadExecutionHistoryCmd(ctx, nil, "")()
+	require.Equal(t, executionHistoryLoadedMsg{requestID: ""}, msg)
 	require.IsType(t, executionHistoryLoadedMsg{}, loadExecutionHistoryCmd(ctx, st, req.ID)())
 	require.IsType(t, envLoadedMsg{}, loadActiveEnvCmd(ctx, st, col.ID)())
 	require.IsType(t, searchResultsMsg{}, searchCmd(ctx, nil, col.ID, "q")())
 	require.IsType(t, searchResultsMsg{}, searchAllCmd(ctx, nil, []string{col.ID}, "q")())
 	require.IsType(t, searchResultsMsg{}, searchCmd(ctx, fakeSearcher{}, col.ID, "q")())
-	require.IsType(t, searchResultsMsg{}, searchAllCmd(ctx, fakeAllSearcher{}, []string{col.ID}, "q")())
+	allSearchResult := searchAllCmd(ctx, fakeAllSearcher{}, []string{col.ID}, "q")()
+	require.IsType(t, searchResultsMsg{}, allSearchResult)
 	require.IsType(t, requestsLoadedMsg{}, saveRequestCmd(ctx, st, st, req)())
 	rolled := false
-	msg := saveRequestCmdWithRollback(ctx, failingRequestWriter{RequestWriter: st, err: errors.New("write")}, st, req, func() { rolled = true })()
+	failingWriter := failingRequestWriter{RequestWriter: st, err: errors.New("write")}
+	rollback := func() { rolled = true }
+	msg = saveRequestCmdWithRollback(ctx, failingWriter, st, req, rollback)()
 	require.IsType(t, errLoadMsg{}, msg)
 	require.True(t, rolled)
 	require.IsType(t, httpResponseMsg{}, dispatchCmd(ctx, fakeExecutor{}, req)())
@@ -216,7 +242,8 @@ func TestModelCommands(t *testing.T) {
 	require.Equal(t, "scheduled request", scheduledRunName(ctx, nil, nil))
 	require.Equal(t, req.Name, scheduledRunName(ctx, st, &domain.ScheduledRun{RequestID: req.ID}))
 	require.Equal(t, "Interaction / Get", scheduledRunSuccessLabel(ctx, st, req))
-	require.NotNil(t, executeDueScheduledRunsCmd(ctx, nil, nil, nil, nil, nil, nil, nil, time.Now)())
+	dueRunsCmd := executeDueScheduledRunsCmd(ctx, nil, nil, nil, nil, nil, nil, nil, time.Now)
+	require.NotNil(t, dueRunsCmd())
 	_, cmd := interactionModel().armScheduleTimer()
 	require.Nil(t, cmd)
 }
@@ -229,7 +256,9 @@ func (fakeAllSearcher) SearchAll(context.Context, string, []string) (*search.Sea
 
 type failingAllSearcher struct{}
 
-func (failingAllSearcher) SearchAll(context.Context, string, []string) (*search.SearchResult, error) {
+func (failingAllSearcher) SearchAll(
+	context.Context, string, []string,
+) (*search.SearchResult, error) {
 	return nil, errors.New("search all")
 }
 
@@ -244,7 +273,9 @@ type failingRequestReader struct{ store.RequestReader }
 func (f failingRequestReader) ListRequests(context.Context, string) ([]*domain.Request, error) {
 	return nil, errors.New("requests")
 }
-func (f failingRequestReader) ListExecutionsByRequest(context.Context, string) ([]*domain.Execution, error) {
+func (f failingRequestReader) ListExecutionsByRequest(
+	context.Context, string,
+) ([]*domain.Execution, error) {
 	return nil, errors.New("history")
 }
 
@@ -261,11 +292,21 @@ func TestModelCommandFailuresAndSelectionReset(t *testing.T) {
 	ctx := context.Background()
 	require.IsType(t, errLoadMsg{}, loadCollectionsCmd(ctx, failingCollectionLister{})())
 	require.IsType(t, errLoadMsg{}, loadRequestsCmd(ctx, failingRequestReader{}, "collection")())
-	require.IsType(t, errLoadMsg{}, loadExecutionHistoryCmd(ctx, failingRequestReader{}, "request")())
-	require.IsType(t, envLoadedMsg{}, loadActiveEnvCmd(ctx, failingActiveEnvironmentStore{}, "collection")())
-	require.IsType(t, errLoadMsg{}, searchCmd(ctx, fakeSearcher{err: errors.New("search")}, "collection", "query")())
-	require.IsType(t, errLoadMsg{}, searchAllCmd(ctx, failingAllSearcher{}, []string{"collection"}, "query")())
-	require.IsType(t, errLoadMsg{}, saveRequestCmd(ctx, failingRequestWriter{err: errors.New("save")}, nil, &domain.Request{})())
+	failedHistory := loadExecutionHistoryCmd(ctx, failingRequestReader{}, "request")()
+	require.IsType(t, errLoadMsg{}, failedHistory)
+	failedEnvironment := loadActiveEnvCmd(ctx, failingActiveEnvironmentStore{}, "collection")()
+	require.IsType(t, envLoadedMsg{}, failedEnvironment)
+	failedSearch := searchCmd(ctx, fakeSearcher{err: errors.New("search")}, "collection", "query")()
+	require.IsType(t, errLoadMsg{}, failedSearch)
+	failedSearchAll := searchAllCmd(ctx, failingAllSearcher{}, []string{"collection"}, "query")()
+	require.IsType(t, errLoadMsg{}, failedSearchAll)
+	failedSave := saveRequestCmd(
+		ctx,
+		failingRequestWriter{err: errors.New("save")},
+		nil,
+		&domain.Request{},
+	)()
+	require.IsType(t, errLoadMsg{}, failedSave)
 
 	m := interactionModel()
 	m.response = &exec.ExecuteResult{Body: []byte("old")}
@@ -277,7 +318,8 @@ func TestModelCommandFailuresAndSelectionReset(t *testing.T) {
 	require.Empty(t, selected.executions)
 	selected.activeRequest = &domain.Request{ID: "old", Method: "GET", URL: "https://old.test"}
 	selected.response = &exec.ExecuteResult{Body: []byte("old")}
-	selected, _ = selected.selectRequest(&domain.Request{ID: "new", Method: "POST", URL: "https://new.test"})
+	selectedRequest := &domain.Request{ID: "new", Method: "POST", URL: "https://new.test"}
+	selected, _ = selected.selectRequest(selectedRequest)
 	require.Nil(t, selected.response)
 	require.Equal(t, 0, selected.execCursor)
 	require.Empty(t, selected.activeValidationErr())
@@ -289,30 +331,30 @@ func TestHelpKeyRecordingResetAndErrorBranches(t *testing.T) {
 	m := New(Deps{Config: config.Default(configDir), ConfigDir: configDir})
 	m.mode = helpMode
 	updated, _ := m.handleHelpKey(tea.KeyMsg{Type: tea.KeyDown})
-	m = updated.(Model)
+	m = updatedCertificateModel(t, updated)
 	updated, _ = m.handleHelpKey(tea.KeyMsg{Type: tea.KeyUp})
-	m = updated.(Model)
+	m = updatedCertificateModel(t, updated)
 	updated, _ = m.handleHelpKey(tea.KeyMsg{Type: tea.KeyEnter})
-	m = updated.(Model)
+	m = updatedCertificateModel(t, updated)
 	require.Equal(t, helpRecording, m.helpEditState)
 	m.helpEditAction = "quit"
 	updated, _ = m.handleHelpKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'Z'}})
-	m = updated.(Model)
+	m = updatedCertificateModel(t, updated)
 	require.Equal(t, helpViewing, m.helpEditState)
 
 	m.helpEditState = helpRecording
 	m.helpEditAction = "quit"
 	updated, _ = m.handleHelpKey(tea.KeyMsg{Type: tea.KeyBackspace})
-	m = updated.(Model)
+	m = updatedCertificateModel(t, updated)
 	require.Equal(t, helpViewing, m.helpEditState)
 
 	m.helpEditState = helpRecording
 	m.helpEditAction = "not-an-action"
 	updated, _ = m.handleHelpKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
-	m = updated.(Model)
+	m = updatedCertificateModel(t, updated)
 	require.Equal(t, helpError, m.helpEditState)
 	updated, _ = m.handleHelpKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
-	m = updated.(Model)
+	m = updatedCertificateModel(t, updated)
 	require.Equal(t, helpViewing, m.helpEditState)
 
 	badConfig := filepath.Join(t.TempDir(), "not-a-directory")
@@ -321,15 +363,15 @@ func TestHelpKeyRecordingResetAndErrorBranches(t *testing.T) {
 	m.helpEditState = helpRecording
 	m.helpEditAction = "help_close"
 	updated, _ = m.handleHelpKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'c'}})
-	require.Equal(t, helpError, updated.(Model).helpEditState)
+	require.Equal(t, helpError, updatedCertificateModel(t, updated).helpEditState)
 
 	m.configDir = configDir
 	m.helpEditState = helpConfirmResetAll
 	updated, _ = m.handleHelpKey(tea.KeyMsg{Type: tea.KeyEsc})
-	require.Equal(t, helpViewing, updated.(Model).helpEditState)
+	require.Equal(t, helpViewing, updatedCertificateModel(t, updated).helpEditState)
 	m.helpEditState = helpConfirmResetAll
 	updated, _ = m.handleHelpKey(tea.KeyMsg{Type: tea.KeyEnter})
-	require.Equal(t, helpViewing, updated.(Model).helpEditState)
+	require.Equal(t, helpViewing, updatedCertificateModel(t, updated).helpEditState)
 }
 
 func TestNormalPaneActionBranches(t *testing.T) {
@@ -339,10 +381,18 @@ func TestNormalPaneActionBranches(t *testing.T) {
 	t.Cleanup(func() { _ = st.Close() })
 	collection := &domain.Collection{ID: "action-col", Name: "Actions"}
 	require.NoError(t, st.SaveCollection(ctx, collection))
-	request := &domain.Request{ID: "action-req", CollectionID: collection.ID, Name: "Get", Method: "GET", URL: "https://example.test", Headers: "{}", Body: "{}"}
+	request := &domain.Request{
+		ID: "action-req", CollectionID: collection.ID, Name: "Get", Method: "GET",
+		URL: "https://example.test", Headers: "{}", Body: "{}",
+	}
 	require.NoError(t, st.SaveRequest(ctx, request))
 	newModel := func() Model {
-		m := New(Deps{Config: config.Default(t.TempDir()), Ctx: ctx, Reader: st, Writer: st, ColWriter: st, EnvReader: st, EnvWriter: st, ActiveEnvStore: st, Scheduler: st, Executor: fakeExecutor{}})
+		m := New(Deps{
+			Config: config.Default(t.TempDir()), Ctx: ctx,
+			Reader: st, Writer: st, ColWriter: st,
+			EnvReader: st, EnvWriter: st, ActiveEnvStore: st,
+			Scheduler: st, Executor: fakeExecutor{},
+		})
 		m.collections = []*domain.Collection{collection}
 		m.collectionRequests = map[string][]*domain.Request{collection.ID: {request}}
 		m.activeRequest = request
@@ -359,17 +409,20 @@ func TestNormalPaneActionBranches(t *testing.T) {
 		require.NotNil(t, updated, action)
 	}
 	updated, _ := interactionModel().handleRequestAction(keybindings.ActionDeleteRequest)
-	require.Contains(t, updated.(Model).statusErr, "Select a request")
+	require.Contains(t, updatedCertificateModel(t, updated).statusErr, "Select a request")
 	updated, _ = newModel().handleRequestAction(keybindings.ActionDeleteRequest)
-	require.Equal(t, promptDeleteTiny, updated.(Model).promptMode)
+	require.Equal(t, promptDeleteTiny, updatedCertificateModel(t, updated).promptMode)
 
 	for _, action := range []string{"history_next", "history_prev", "tab_body", "tab_headers", "tab_raw", "tab_next", "tab_prev"} {
 		_, _ = newModel().handleResponseAction(action)
 	}
 	updated, _ = newModel().handleResponseAction("retry_request")
-	require.Contains(t, updated.(Model).statusErr, "retry unavailable")
+	require.Contains(t, updatedCertificateModel(t, updated).statusErr, "retry unavailable")
 	raw := newModel()
-	raw.executions = []*domain.Execution{{RequestID: request.ID, RequestSnapshot: `{"method":"GET","url":"https://snapshot.test","headers":"{}","body":""}`}}
+	raw.executions = []*domain.Execution{{
+		RequestID:       request.ID,
+		RequestSnapshot: `{"method":"GET","url":"https://snapshot.test","headers":"{}","body":""}`,
+	}}
 	updated, cmd := raw.handleResponseAction("retry_request")
 	require.NotNil(t, updated)
 	require.NotNil(t, cmd)
@@ -379,17 +432,27 @@ func TestNormalPaneActionBranches(t *testing.T) {
 		require.NotNil(t, updated, action)
 	}
 	updated, _ = interactionModel().handleSidebarAction("add_request")
-	require.Contains(t, updated.(Model).statusErr, "Select a collection")
+	require.Contains(t, updatedCertificateModel(t, updated).statusErr, "Select a collection")
 }
 
 func TestClientCertificateKeyBranches(t *testing.T) {
 	dir := t.TempDir()
 	manager := &certificateManagerStub{}
-	m := New(Deps{Config: config.Default(dir), ConfigDir: dir, CertificateManager: manager}).openClientCertModal()
-	m.clientCerts = []config.ClientCertificate{{Host: "one.test", File: "one.pem"}, {Host: "two.test", File: "two.pem"}}
-	for _, key := range []tea.KeyMsg{{Type: tea.KeyDown}, {Type: tea.KeyUp}, {Type: tea.KeyEnter}, {Type: tea.KeyDown}, {Type: tea.KeyRunes, Runes: []rune{'e'}}, {Type: tea.KeyEsc}, {Type: tea.KeyRunes, Runes: []rune{'d'}}} {
+	m := New(Deps{
+		Config: config.Default(dir), ConfigDir: dir,
+		CertificateManager: manager,
+	}).openClientCertModal()
+	m.clientCerts = []config.ClientCertificate{
+		{Host: "one.test", File: "one.pem"},
+		{Host: "two.test", File: "two.pem"},
+	}
+	for _, key := range []tea.KeyMsg{
+		{Type: tea.KeyDown}, {Type: tea.KeyUp}, {Type: tea.KeyEnter}, {Type: tea.KeyDown},
+		{Type: tea.KeyRunes, Runes: []rune{'e'}}, {Type: tea.KeyEsc},
+		{Type: tea.KeyRunes, Runes: []rune{'d'}},
+	} {
 		updated, _ := m.handleClientCertKey(key)
-		m = updated.(Model)
+		m = updatedCertificateModel(t, updated)
 	}
 	require.Len(t, m.clientCerts, 1)
 	m.clientCertCursor = 99
@@ -398,13 +461,13 @@ func TestClientCertificateKeyBranches(t *testing.T) {
 	m.clientCertCursor = 0
 	manager.err = errors.New("reload")
 	updated, _ := m.deleteClientCert()
-	require.Contains(t, updated.(Model).clientCertError, "reload")
+	require.Contains(t, updatedCertificateModel(t, updated).clientCertError, "reload")
 	manager.err = nil
 	m.clientCertEditing = true
 	m.clientCertField = clientCertHostField
 	for i := 0; i < clientCertFieldCount; i++ {
 		updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
-		m = updated.(Model)
+		m = updatedCertificateModel(t, updated)
 	}
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
 	require.NotNil(t, updated)
@@ -413,8 +476,15 @@ func TestClientCertificateKeyBranches(t *testing.T) {
 func TestViewPaneStates(t *testing.T) {
 	m := interactionModel()
 	m.width, m.height = 120, 40
-	m.activeRequest = &domain.Request{ID: "r", CollectionID: "c", Name: "Request", Method: "GET", URL: "https://example.test", Headers: `{"X-Test":"yes"}`, Body: "body"}
-	m.response = &exec.ExecuteResult{StatusCode: 200, Status: "200 OK", Size: 15, Body: []byte("{\"ok\":true}"), Headers: map[string][]string{"Content-Type": {"application/json"}}}
+	m.activeRequest = &domain.Request{
+		ID: "r", CollectionID: "c", Name: "Request", Method: "GET",
+		URL: "https://example.test", Headers: `{"X-Test":"yes"}`, Body: "body",
+	}
+	m.response = &exec.ExecuteResult{
+		StatusCode: 200, Status: "200 OK", Size: 15,
+		Body:    []byte("{\"ok\":true}"),
+		Headers: map[string][]string{"Content-Type": {"application/json"}},
+	}
 	for _, dim := range []DimMode{DimWide, DimNarrow, DimTiny, DimAbsurd, DimAuto} {
 		m.forceDim = dim
 		m.focus = requestPane
@@ -432,19 +502,34 @@ func TestViewPaneStates(t *testing.T) {
 	require.NotEmpty(t, m.viewAuthEditor())
 	require.NotEmpty(t, m.viewHelp())
 	require.NotEmpty(t, m.viewImportModal())
-	m.importPreview = &curl.ImportResult{Method: "POST", URL: "https://example.test", Headers: http.Header{"X-Test": {"yes"}}, Body: "payload"}
+	m.importPreview = &curl.ImportResult{
+		Method: "POST", URL: "https://example.test",
+		Headers: http.Header{"X-Test": {"yes"}}, Body: "payload",
+	}
 	require.NotEmpty(t, m.viewImportModal())
 	m.importError = "invalid preview"
 	m.importPreview = &curl.ImportResult{
 		Method: "POST", URL: "https://example.test", Security: curl.Dangerous,
-		Headers: http.Header{"Authorization": {"secret"}}, Body: strings.Repeat("body", 140),
-		Certificate: &curl.CertificateSpec{Type: "PEM", File: "client.pem", KeyFile: "client.key", CAFile: "ca.pem"},
-		Warnings:    []string{"review this import"},
+		Headers: http.Header{"Authorization": {"secret"}},
+		Body:    strings.Repeat("body", 140),
+		Certificate: &curl.CertificateSpec{
+			Type: "PEM", File: "client.pem", KeyFile: "client.key", CAFile: "ca.pem",
+		},
+		Warnings: []string{"review this import"},
 	}
 	require.NotEmpty(t, m.viewImportModal())
 	require.NotEmpty(t, m.viewLiveResponseStatus())
 	m.response = nil
-	m.executions = []*domain.Execution{{ID: "e1", RequestID: "r", StatusCode: 200, ResponseBody: "ok", ResponseHeaders: `{"X-Test":"yes"}`, CompletedAt: time.Now().Add(-time.Hour)}, {ID: "e2", RequestID: "r", StatusCode: 500, ResponseBody: "bad", ResponseHeaders: "{}", CompletedAt: time.Now()}}
+	m.executions = []*domain.Execution{
+		{
+			ID: "e1", RequestID: "r", StatusCode: 200, ResponseBody: "ok",
+			ResponseHeaders: `{"X-Test":"yes"}`, CompletedAt: time.Now().Add(-time.Hour),
+		},
+		{
+			ID: "e2", RequestID: "r", StatusCode: 500, ResponseBody: "bad",
+			ResponseHeaders: "{}", CompletedAt: time.Now(),
+		},
+	}
 	m.execCursor = 1
 	require.NotEmpty(t, m.viewExecutionHistoryPopup(80, 20))
 	require.NotEmpty(t, m.viewExecutionBody(m.executions[1]))
@@ -455,7 +540,9 @@ func TestViewPaneStates(t *testing.T) {
 	require.NotEmpty(t, m.requestBodyPreviewSourceKey())
 	require.NotEmpty(t, m.responseTextSourceKey())
 	m.mode = searchMode
-	m.searchResults = []*search.SearchHit{{Request: m.activeRequest, Collection: &domain.Collection{Name: "Collection"}, Score: 1}}
+	m.searchResults = []*search.SearchHit{
+		{Request: m.activeRequest, Collection: &domain.Collection{Name: "Collection"}, Score: 1},
+	}
 	require.NotEmpty(t, m.viewSearchModal())
 	require.NotEmpty(t, m.renderSearchHit(m.searchResults[0], "req", 50))
 	require.NotEmpty(t, m.collectionNameForSearchHit(m.searchResults[0]))
@@ -486,7 +573,10 @@ func TestMouseGeometryBranches(t *testing.T) {
 	m.activeField = noneField
 	m.activeRequest = &domain.Request{ID: "r", URL: "https://example.test"}
 	collection := &domain.Collection{ID: "mouse-col", Name: "Mouse"}
-	request := &domain.Request{ID: "mouse-req", CollectionID: collection.ID, Name: "Request", Method: "GET", URL: "https://example.test"}
+	request := &domain.Request{
+		ID: "mouse-req", CollectionID: collection.ID, Name: "Request",
+		Method: "GET", URL: "https://example.test",
+	}
 	m.collections = []*domain.Collection{collection}
 	m.collectionRequests = map[string][]*domain.Request{collection.ID: {request}}
 	_, _ = m.selectSidebarRequest(99, 0)
@@ -506,7 +596,10 @@ func TestUpdateMessageDispatchBranches(t *testing.T) {
 	ctx := context.Background()
 	base := interactionModel()
 	collection := &domain.Collection{ID: "updates", Name: "Updates"}
-	request := &domain.Request{ID: "request", CollectionID: collection.ID, Name: "Get", Method: "GET", URL: "https://example.test"}
+	request := &domain.Request{
+		ID: "request", CollectionID: collection.ID, Name: "Get",
+		Method: "GET", URL: "https://example.test",
+	}
 	messages := []tea.Msg{
 		themeWatchTickMsg{},
 		curlClipboardMsg{err: errors.New("clipboard")},
@@ -539,18 +632,22 @@ func TestUpdateMessageDispatchBranches(t *testing.T) {
 	m.collections = []*domain.Collection{collection}
 	m.activeRequest = request
 	m.activeEnvStore = nil
-	updated, _ := m.Update(requestsLoadedMsg{collectionID: collection.ID, requests: []*domain.Request{request}})
-	require.Equal(t, request.ID, updated.(Model).activeRequest.ID)
-	updated, _ = m.Update(executionHistoryLoadedMsg{requestID: request.ID, executions: []*domain.Execution{{ID: "execution"}}})
-	require.Len(t, updated.(Model).executions, 1)
+	updated, _ := m.Update(
+		requestsLoadedMsg{collectionID: collection.ID, requests: []*domain.Request{request}},
+	)
+	require.Equal(t, request.ID, updatedCertificateModel(t, updated).activeRequest.ID)
+	updated, _ = m.Update(executionHistoryLoadedMsg{
+		requestID: request.ID, executions: []*domain.Execution{{ID: "execution"}},
+	})
+	require.Len(t, updatedCertificateModel(t, updated).executions, 1)
 	updated, _ = m.Update(searchResultsMsg{hits: []*search.SearchHit{{Request: request}}})
-	require.True(t, updated.(Model).searched)
+	require.True(t, updatedCertificateModel(t, updated).searched)
 
 	postmanModel := base
 	postmanModel.mode = postmanImportMode
 	postmanModel.postmanBusy = true
 	updated, cmd := postmanModel.Update(postmanImportResultMsg{output: " done "})
-	require.False(t, updated.(Model).postmanBusy)
+	require.False(t, updatedCertificateModel(t, updated).postmanBusy)
 	require.Nil(t, cmd)
 
 	for _, mode := range []modeID{searchMode, viewerMode, helpMode, envMode, importMode, collectionPromptMode, scheduleMode, clientCertMode, postmanImportMode, normalMode} {
@@ -596,9 +693,15 @@ func TestInlineEditorsAndWriteCommands(t *testing.T) {
 	t.Cleanup(func() { _ = st.Close() })
 	collection := &domain.Collection{ID: "edit-col", Name: "Edit"}
 	require.NoError(t, st.SaveCollection(ctx, collection))
-	request := &domain.Request{ID: "edit-req", CollectionID: collection.ID, Name: "Get", Method: "GET", URL: "https://example.test", Headers: "{}"}
+	request := &domain.Request{
+		ID: "edit-req", CollectionID: collection.ID, Name: "Get",
+		Method: "GET", URL: "https://example.test", Headers: "{}",
+	}
 	require.NoError(t, st.SaveRequest(ctx, request))
-	m := New(Deps{Config: config.Default(""), Ctx: ctx, Reader: st, Writer: st, ColWriter: st, EnvWriter: st, EnvReader: st})
+	m := New(Deps{
+		Config: config.Default(""), Ctx: ctx, Reader: st, Writer: st,
+		ColWriter: st, EnvWriter: st, EnvReader: st,
+	})
 	m.activeRequest = request
 	m.bodyTextarea.SetValue("body updated")
 	_, cmd := m.saveBody()
@@ -613,14 +716,46 @@ func TestInlineEditorsAndWriteCommands(t *testing.T) {
 
 	environment := &domain.Environment{CollectionID: collection.ID, Name: "dev", Data: "{}"}
 	require.IsType(t, envCreatedMsg{}, saveEnvAndReloadCmd(ctx, st, environment)())
-	require.IsType(t, collectionSavedMsg{}, saveCollectionCmd(ctx, st, &domain.Collection{Name: "Saved"})())
-	require.IsType(t, collectionSavedErrMsg{}, saveCollectionCmd(ctx, failingCollectionWriter{st}, &domain.Collection{Name: "Fail"})())
-	require.IsType(t, requestsLoadedMsg{}, deleteRequestCmd(ctx, st, request.ID, collection.ID, nil)())
-	require.IsType(t, collectionSavedErrMsg{}, deleteRequestCmd(ctx, failingRequestWriter{RequestWriter: st, err: errors.New("request delete")}, request.ID, collection.ID, st)())
-	require.IsType(t, collectionSavedErrMsg{}, deleteRequestCmd(ctx, st, "missing", collection.ID, st)())
+	require.IsType(
+		t,
+		collectionSavedMsg{},
+		saveCollectionCmd(ctx, st, &domain.Collection{Name: "Saved"})(),
+	)
+	require.IsType(
+		t,
+		collectionSavedErrMsg{},
+		saveCollectionCmd(ctx, failingCollectionWriter{st}, &domain.Collection{Name: "Fail"})(),
+	)
+	require.IsType(
+		t,
+		requestsLoadedMsg{},
+		deleteRequestCmd(ctx, st, request.ID, collection.ID, nil)(),
+	)
+	require.IsType(
+		t,
+		collectionSavedErrMsg{},
+		deleteRequestCmd(
+			ctx,
+			failingRequestWriter{RequestWriter: st, err: errors.New("request delete")},
+			request.ID, collection.ID, st,
+		)(),
+	)
+	require.IsType(
+		t,
+		collectionSavedErrMsg{},
+		deleteRequestCmd(ctx, st, "missing", collection.ID, st)(),
+	)
 	require.IsType(t, collectionSavedMsg{}, deleteCollectionCmd(ctx, st, collection.ID)())
-	require.IsType(t, collectionSavedErrMsg{}, deleteCollectionCmd(ctx, failingCollectionWriter{st}, "missing")())
-	require.IsType(t, collectionSavedErrMsg{}, saveEnvAndReloadCmd(ctx, failingEnvironmentWriter{st}, environment)())
+	require.IsType(
+		t,
+		collectionSavedErrMsg{},
+		deleteCollectionCmd(ctx, failingCollectionWriter{st}, "missing")(),
+	)
+	require.IsType(
+		t,
+		collectionSavedErrMsg{},
+		saveEnvAndReloadCmd(ctx, failingEnvironmentWriter{st}, environment)(),
+	)
 
 	for _, message := range []tea.Msg{collectionSavedMsg{}, envCreatedMsg{}, requestsLoadedMsg{collectionID: collection.ID}, errLoadMsg{err: errors.New("other")}} {
 		wrapped := wrapPromptSuccess(func() tea.Msg { return message })()
@@ -643,10 +778,16 @@ func TestCollectionPromptActions(t *testing.T) {
 	t.Cleanup(func() { _ = st.Close() })
 	collection := &domain.Collection{ID: "prompt-col", Name: "Prompt"}
 	require.NoError(t, st.SaveCollection(ctx, collection))
-	request := &domain.Request{ID: "prompt-req", CollectionID: collection.ID, Name: "Request", Method: "GET", URL: "https://example.test"}
+	request := &domain.Request{
+		ID: "prompt-req", CollectionID: collection.ID, Name: "Request",
+		Method: "GET", URL: "https://example.test",
+	}
 	require.NoError(t, st.SaveRequest(ctx, request))
 	newModel := func(prompt promptType, target string) Model {
-		m := New(Deps{Config: config.Default(""), Ctx: ctx, Reader: st, Writer: st, ColWriter: st, EnvWriter: st})
+		m := New(Deps{
+			Config: config.Default(""), Ctx: ctx, Reader: st,
+			Writer: st, ColWriter: st, EnvWriter: st,
+		})
 		m.mode, m.promptMode, m.promptTargetID = collectionPromptMode, prompt, target
 		return m
 	}
@@ -672,20 +813,23 @@ func TestCollectionPromptActions(t *testing.T) {
 	require.IsType(t, promptCompletedMsg{}, cmd())
 	m.promptInput.SetValue(defaultEnvironmentName)
 	updated, _ := m.handleCollectionPromptKey(tea.KeyMsg{Type: tea.KeyEnter})
-	require.Contains(t, updated.(Model).statusErr, "reserved")
+	require.Contains(t, updatedCertificateModel(t, updated).statusErr, "reserved")
 
 	m = newModel(promptDeleteConfirm, collection.ID)
 	m.promptInput.SetValue("cancel")
 	updated, cmdModel := m.handleCollectionPromptKey(tea.KeyMsg{Type: tea.KeyEnter})
 	require.Nil(t, cmdModel)
-	require.Equal(t, normalMode, updated.(Model).mode)
+	require.Equal(t, normalMode, updatedCertificateModel(t, updated).mode)
 	m = newModel(promptDeleteRequestConfirm, request.ID)
 	m.promptTargetCollectionID = collection.ID
 	m.promptInput.SetValue("yes")
 	_, cmd = m.handleCollectionPromptKey(tea.KeyMsg{Type: tea.KeyEnter})
 	require.IsType(t, promptCompletedMsg{}, cmd())
 
-	tinyRequest := &domain.Request{ID: "tiny-req", CollectionID: collection.ID, Name: "Tiny", Method: "GET", URL: "https://example.test"}
+	tinyRequest := &domain.Request{
+		ID: "tiny-req", CollectionID: collection.ID, Name: "Tiny",
+		Method: "GET", URL: "https://example.test",
+	}
 	require.NoError(t, st.SaveRequest(ctx, tinyRequest))
 	m = newModel(promptDeleteTiny, tinyRequest.ID)
 	m.promptTargetCollectionID = collection.ID
@@ -703,16 +847,19 @@ func TestCollectionPromptActions(t *testing.T) {
 	withoutWriters.mode, withoutWriters.promptMode = collectionPromptMode, promptAdd
 	withoutWriters.promptInput.SetValue("missing writer")
 	updated, _ = withoutWriters.handleCollectionPromptKey(tea.KeyMsg{Type: tea.KeyEnter})
-	require.Contains(t, updated.(Model).statusErr, "writer not available")
+	require.Contains(t, updatedCertificateModel(t, updated).statusErr, "writer not available")
 	withoutWriters.promptMode = promptAddEnv
 	withoutWriters.promptInput.SetValue("dev")
 	updated, _ = withoutWriters.handleCollectionPromptKey(tea.KeyMsg{Type: tea.KeyEnter})
-	require.Contains(t, updated.(Model).statusErr, "Environment writer")
+	require.Contains(t, updatedCertificateModel(t, updated).statusErr, "Environment writer")
 }
 
 func TestAuthAndHeaderEditorKeyPaths(t *testing.T) {
 	m := interactionModel()
-	m.activeRequest = &domain.Request{ID: "editor", Method: "GET", URL: "https://example.test", AuthType: "bearer", Headers: `{"Accept":"application/json"}`}
+	m.activeRequest = &domain.Request{
+		ID: "editor", Method: "GET", URL: "https://example.test",
+		AuthType: "bearer", Headers: `{"Accept":"application/json"}`,
+	}
 	m = m.beginAuthEdit()
 	for _, key := range []tea.KeyMsg{{Type: tea.KeyDown}, {Type: tea.KeyUp}, {Type: tea.KeyRight}, {Type: tea.KeyLeft}} {
 		_, _ = m.handleAuthFieldKey(key)
@@ -747,21 +894,28 @@ func TestAuthAndHeaderEditorKeyPaths(t *testing.T) {
 
 func TestHTTPResponseAndErrorStatePaths(t *testing.T) {
 	m := interactionModel()
-	m.activeRequest = &domain.Request{ID: "active", CollectionID: "col", Name: "Get", Method: "GET", URL: "https://example.test"}
+	m.activeRequest = &domain.Request{
+		ID: "active", CollectionID: "col", Name: "Get", Method: "GET",
+		URL: "https://example.test",
+	}
 	m.loading = true
 	m.cancel = func() {}
-	updated, cmd := m.handleHTTPResponse(httpResponseMsg{requestID: "stale", result: &exec.ExecuteResult{Status: "200"}})
-	require.False(t, updated.(Model).loading)
+	updated, cmd := m.handleHTTPResponse(
+		httpResponseMsg{requestID: "stale", result: &exec.ExecuteResult{Status: "200"}},
+	)
+	require.False(t, updatedCertificateModel(t, updated).loading)
 	require.Nil(t, cmd)
 
 	m.loading = true
 	updated, cmd = m.handleHTTPResponse(httpResponseMsg{result: &exec.ExecuteResult{Status: "200"}})
-	require.False(t, updated.(Model).loading)
+	require.False(t, updatedCertificateModel(t, updated).loading)
 	require.Nil(t, cmd)
 
 	m.loading = true
-	updated, cmd = m.handleHTTPResponse(httpResponseMsg{requestID: "active", result: &exec.ExecuteResult{Status: "200"}})
-	require.False(t, updated.(Model).loading)
+	updated, cmd = m.handleHTTPResponse(
+		httpResponseMsg{requestID: "active", result: &exec.ExecuteResult{Status: "200"}},
+	)
+	require.False(t, updatedCertificateModel(t, updated).loading)
 	require.NotNil(t, cmd)
 
 	for _, tc := range []struct {
@@ -784,7 +938,7 @@ func TestHTTPResponseAndErrorStatePaths(t *testing.T) {
 			model.loading = true
 			model.cancel = func() {}
 			updated, _ := model.handleHTTPErr(httpErrMsg{requestID: tc.id, err: tc.err})
-			got := updated.(Model)
+			got := updatedCertificateModel(t, updated)
 			require.False(t, got.loading)
 			if tc.want == "Request timed out" {
 				require.Contains(t, got.statusErr, tc.want)

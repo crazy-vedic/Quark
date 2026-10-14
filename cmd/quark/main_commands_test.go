@@ -46,17 +46,25 @@ func testRuntime(t *testing.T) (*runtime, *store.Store, string) {
 	cfg := config.Default(dir)
 	tr, err := transport.New(cfg)
 	require.NoError(t, err)
-	rt := &runtime{st: st, cfg: cfg, executor: exec.New(http.DefaultTransport, exec.WithExecutionWriter(st)), transport: tr, importer: curl.NewImporter(), searcher: search.New(st)}
+	rt := &runtime{
+		st:        st,
+		cfg:       cfg,
+		executor:  exec.New(http.DefaultTransport, exec.WithExecutionWriter(st)),
+		transport: tr,
+		importer:  curl.NewImporter(),
+		searcher:  search.New(st),
+	}
 	t.Cleanup(func() { _ = st.Close() })
 	return rt, st, dir
 }
 
 func executeCommand(t *testing.T, cmd interface {
 	SetArgs([]string)
+	SetContext(context.Context)
 	Execute() error
 }, args ...string) error {
 	t.Helper()
-	cmd.(interface{ SetContext(context.Context) }).SetContext(context.Background())
+	cmd.SetContext(context.Background())
 	cmd.SetArgs(args)
 	return cmd.Execute()
 }
@@ -73,7 +81,10 @@ func TestRunEntrypointAndLazyCommands(t *testing.T) {
 		_, _ = w.Write([]byte(`{"ok":true}`))
 	}))
 	defer server.Close()
-	req := &domain.Request{ID: "main-req", CollectionID: collection.ID, Name: "Get", Method: "GET", URL: server.URL, Headers: "{}", Body: ""}
+	req := &domain.Request{
+		ID: "main-req", CollectionID: collection.ID, Name: "Get", Method: "GET",
+		URL: server.URL, Headers: "{}", Body: "",
+	}
 	require.NoError(t, st.SaveRequest(context.Background(), req))
 	rtf := func() (*runtime, error) { return rt, nil }
 	for _, args := range [][]string{{"create", "Temp"}, {"rename", "Temp", "Temp2"}, {"list"}, {"delete", "Temp2"}} {
@@ -95,8 +106,14 @@ func TestRunEntrypointAndLazyCommands(t *testing.T) {
 	require.NoError(t, executeCommand(t, lazyKeybindingsCmd(), "reset"))
 	require.NoError(t, executeCommand(t, lazyClientCertCmd(), "list"))
 	certCmd := lazyClientCertCmd()
-	require.ErrorContains(t, executeCommand(t, certCmd, "set", "API.EXAMPLE.TEST", "--file", "client.pem", "--key-file", "key.pem", "--password-env", "CERT_PASSWORD"), "validate certificate")
-	require.NoError(t, config.SaveClientCertificates(dir, []config.ClientCertificate{{Host: "api.example.test"}}))
+	err := executeCommand(
+		t, certCmd, "set", "API.EXAMPLE.TEST", "--file", "client.pem", "--key-file", "key.pem",
+		"--password-env", "CERT_PASSWORD",
+	)
+	require.ErrorContains(t, err, "validate certificate")
+	require.NoError(t, config.SaveClientCertificates(
+		dir, []config.ClientCertificate{{Host: "api.example.test"}},
+	))
 	require.NoError(t, executeCommand(t, lazyClientCertCmd(), "list"))
 	require.NoError(t, executeCommand(t, lazyClientCertCmd(), "delete", "api.example.test"))
 	require.NoError(t, executeCommand(t, newThemeCmd(), "list"))
@@ -104,9 +121,13 @@ func TestRunEntrypointAndLazyCommands(t *testing.T) {
 	require.NoError(t, executeCommand(t, newThemeCmd(), "validate"))
 	require.NoError(t, executeCommand(t, newThemeCmd(), "validate", "light"))
 
-	require.NoError(t, executeCommand(t, lazyImportCmd(rtf), "curl", `curl -X GET https://example.test/health`, "--collection", collection.ID, "--name", "Health"))
+	require.NoError(t, executeCommand(
+		t, lazyImportCmd(rtf), "curl", `curl -X GET https://example.test/health`,
+		"--collection", collection.ID, "--name", "Health",
+	))
 	postman := filepath.Join(t.TempDir(), "collection.json")
-	require.NoError(t, os.WriteFile(postman, []byte(`{"info":{"name":"Postman Import","schema":"https://schema.getpostman.com/json/collection/v2.1.0/collection.json"},"item":[]}`), 0o600))
+	postmanCollection := `{"info":{"name":"Postman Import","schema":"https://schema.getpostman.com/json/collection/v2.1.0/collection.json"},"item":[]}`
+	require.NoError(t, os.WriteFile(postman, []byte(postmanCollection), 0o600))
 	require.NoError(t, executeCommand(t, lazyImportPostmanCmd(rtf), postman))
 
 	completionCmd := lazyRunCmd(rtf)
@@ -119,7 +140,7 @@ func TestRunEntrypointAndLazyCommands(t *testing.T) {
 	require.NotNil(t, completions)
 	searchCmd := lazySearchCmd(func() (*runtime, error) { return nil, errors.New("runtime") })
 	searchCmd.SetContext(context.Background())
-	err := searchCmd.RunE(searchCmd, []string{"x"})
+	err = searchCmd.RunE(searchCmd, []string{"x"})
 	require.ErrorContains(t, err, "runtime")
 	requestCmd := lazyRequestCmd(func() (*runtime, error) { return nil, errors.New("runtime") }).Commands()[0]
 	requestCmd.SetContext(context.Background())
@@ -158,7 +179,8 @@ func TestDefaultRootCommandInitializesRuntimeAndLaunchesTUI(t *testing.T) {
 		require.NoError(t, runWithArgs(fullArgs))
 	}
 	postman := filepath.Join(t.TempDir(), "collection.json")
-	require.NoError(t, os.WriteFile(postman, []byte(`{"info":{"name":"Root Import","schema":"https://schema.getpostman.com/json/collection/v2.1.0/collection.json"},"item":[]}`), 0o600))
+	rootCollection := `{"info":{"name":"Root Import","schema":"https://schema.getpostman.com/json/collection/v2.1.0/collection.json"},"item":[]}`
+	require.NoError(t, os.WriteFile(postman, []byte(rootCollection), 0o600))
 	require.NoError(t, runWithArgs([]string{"--config", dir, "import-postman", postman}))
 	oldDebugFactory := debugLogFactory
 	debugDir := filepath.Join(t.TempDir(), "debug")
@@ -172,7 +194,11 @@ func TestDefaultRootCommandInitializesRuntimeAndLaunchesTUI(t *testing.T) {
 	}
 	configFile := filepath.Join(t.TempDir(), "not-a-directory")
 	require.NoError(t, os.WriteFile(configFile, []byte("file"), 0o600))
-	require.ErrorContains(t, runWithArgs([]string{"--config", configFile, "collection", "list"}), "create config dir")
+	require.ErrorContains(
+		t,
+		runWithArgs([]string{"--config", configFile, "collection", "list"}),
+		"create config dir",
+	)
 }
 
 func TestLazyCommandRuntimeErrorsAndEnvironmentCompletions(t *testing.T) {
@@ -223,17 +249,35 @@ func TestImportAndCertificateHelpers(t *testing.T) {
 	imp := tuiPostmanImporter{st: st}
 	_, err := imp.ImportPostman(context.Background(), filepath.Join(t.TempDir(), "missing.json"))
 	require.Error(t, err)
-	require.ErrorContains(t, saveRuntimeImportedCertificate(rt, &curl.CertificateSpec{Type: "DER"}, "https://example.test"), "unsupported certificate type")
-	require.ErrorContains(t, saveRuntimeImportedCertificate(rt, &curl.CertificateSpec{}, "not-a-url"), "hostname")
-	certServer := httptest.NewTLSServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	unsupportedCertErr := saveRuntimeImportedCertificate(
+		rt, &curl.CertificateSpec{Type: "DER"}, "https://example.test",
+	)
+	require.ErrorContains(
+		t,
+		unsupportedCertErr,
+		"unsupported certificate type",
+	)
+	invalidHostnameErr := saveRuntimeImportedCertificate(
+		rt, &curl.CertificateSpec{}, "not-a-url",
+	)
+	require.ErrorContains(t, invalidHostnameErr, "hostname")
+	certServer := httptest.NewTLSServer(
+		http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}),
+	)
 	defer certServer.Close()
 	caPath := filepath.Join(dir, "ca.pem")
-	require.NoError(t, os.WriteFile(caPath, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certServer.Certificate().Raw}), 0o600))
-	require.NoError(t, saveRuntimeImportedCertificate(rt, &curl.CertificateSpec{CAFile: caPath}, "https://Example.Test/path"))
-	require.NoError(t, saveRuntimeImportedCertificate(rt, &curl.CertificateSpec{CAFile: caPath}, "https://example.test/other"))
+	caCert := &pem.Block{Type: "CERTIFICATE", Bytes: certServer.Certificate().Raw}
+	require.NoError(t, os.WriteFile(caPath, pem.EncodeToMemory(caCert), 0o600))
+	require.NoError(t, saveRuntimeImportedCertificate(
+		rt, &curl.CertificateSpec{CAFile: caPath}, "https://Example.Test/path",
+	))
+	require.NoError(t, saveRuntimeImportedCertificate(
+		rt, &curl.CertificateSpec{CAFile: caPath}, "https://example.test/other",
+	))
 	require.Len(t, rt.cfg.HTTP.ClientCertificates, 1)
 	postman := filepath.Join(t.TempDir(), "collection.json")
-	require.NoError(t, os.WriteFile(postman, []byte(`{"info":{"name":"Import","schema":"https://schema.getpostman.com/json/collection/v2.1.0/collection.json"},"item":[]}`), 0o600))
+	importCollection := `{"info":{"name":"Import","schema":"https://schema.getpostman.com/json/collection/v2.1.0/collection.json"},"item":[]}`
+	require.NoError(t, os.WriteFile(postman, []byte(importCollection), 0o600))
 	_, err = imp.ImportPostman(context.Background(), postman)
 	require.NoError(t, err)
 }
@@ -242,7 +286,9 @@ func TestLaunchTUIValidationAndRunnerResults(t *testing.T) {
 	_, st, dir := testRuntime(t)
 	cfg := config.Default(dir)
 	originalDim, originalTiming, originalDebug := dimFlag, timingMode, debugMode
-	t.Cleanup(func() { dimFlag, timingMode, debugMode = originalDim, originalTiming, originalDebug })
+	t.Cleanup(func() {
+		dimFlag, timingMode, debugMode = originalDim, originalTiming, originalDebug
+	})
 	newTeaProgramOld := newTeaProgram
 	t.Cleanup(func() { newTeaProgram = newTeaProgramOld })
 	ctx := context.Background()

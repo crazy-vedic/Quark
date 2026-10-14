@@ -74,7 +74,14 @@ func TestNewSearchCmd_ErrorAndEmptyResults(t *testing.T) {
 		want string
 	}{
 		{"list failure", &searchErrorStore{fakeRunStore: &fakeRunStore{}, collectionErr: errors.New("list failed")}, "search: list collections"},
-		{"request read failure is skipped", &searchErrorStore{fakeRunStore: &fakeRunStore{collections: []*domain.Collection{{ID: "c", Name: "C"}}}, requestErr: errors.New("read failed")}, "No requests found."},
+		{
+			"request read failure is skipped",
+			&searchErrorStore{
+				fakeRunStore: &fakeRunStore{collections: []*domain.Collection{{ID: "c", Name: "C"}}},
+				requestErr:   errors.New("read failed"),
+			},
+			"No requests found.",
+		},
 		{"no matches", &searchErrorStore{fakeRunStore: &fakeRunStore{}}, "No requests found."},
 	} {
 		t.Run(tt.name, func(t *testing.T) {

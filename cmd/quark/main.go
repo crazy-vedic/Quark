@@ -422,9 +422,11 @@ func defaultConfigDir() (string, error) {
 
 // lazy wrapper functions create cobra commands that lazily initialise the runtime.
 
+const collectionCommandName = "collection"
+
 func lazyCollectionCmd(rt func() (*runtime, error)) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "collection",
+		Use:   collectionCommandName,
 		Short: "Manage collections",
 	}
 	cmd.AddCommand(&cobra.Command{
@@ -514,7 +516,7 @@ func lazyRequestCmd(rt func() (*runtime, error)) *cobra.Command {
 			for _, c := range cli.NewRequestCmd(r.st).Commands() {
 				if c.Name() == "list" {
 					c.SetContext(cmd.Context())
-					if err := c.Flags().Set("collection", collectionID); err != nil {
+					if err := c.Flags().Set(collectionCommandName, collectionID); err != nil {
 						return err
 					}
 					return c.RunE(c, args)
@@ -523,8 +525,8 @@ func lazyRequestCmd(rt func() (*runtime, error)) *cobra.Command {
 			return fmt.Errorf("list subcommand not found")
 		},
 	}
-	listCmd.Flags().StringVar(&collectionID, "collection", "", "Collection ID")
-	_ = listCmd.RegisterFlagCompletionFunc("collection", cli.CompleteCollectionIDs(
+	listCmd.Flags().StringVar(&collectionID, collectionCommandName, "", "Collection ID")
+	_ = listCmd.RegisterFlagCompletionFunc(collectionCommandName, cli.CompleteCollectionIDs(
 		func(ctx context.Context) ([]*domain.Collection, error) {
 			r, err := rt()
 			if err != nil {
@@ -711,7 +713,7 @@ func lazyImportCmd(rt func() (*runtime, error)) *cobra.Command {
 			return inner.Execute()
 		},
 	}
-	curlCmd.Flags().StringVar(&collectionID, "collection", "", "Target collection ID")
+	curlCmd.Flags().StringVar(&collectionID, collectionCommandName, "", "Target collection ID")
 	curlCmd.Flags().StringVar(&name, "name", "", "Request name")
 	cmd.AddCommand(curlCmd)
 	return cmd

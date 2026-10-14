@@ -555,7 +555,9 @@ func TestImportPostmanCommandSingleFileAndErrors(t *testing.T) {
 	t.Cleanup(func() { require.NoError(t, st.Close()) })
 	ctx := context.Background()
 	file := filepath.Join(t.TempDir(), "collection.json")
-	require.NoError(t, os.WriteFile(file, []byte(`{"info":{"name":"Imported","schema":"https://schema.getpostman.com/json/collection/v2.1.0/collection.json"},"item":[{"name":"Health","request":{"method":"GET","url":"https://example.test/health"}}]}`), 0600))
+	collection := `{"info":{"name":"Imported","schema":"https://schema.getpostman.com/json/collection/v2.1.0/collection.json"},` +
+		`"item":[{"name":"Health","request":{"method":"GET","url":"https://example.test/health"}}]}`
+	require.NoError(t, os.WriteFile(file, []byte(collection), 0600))
 	cmd := NewImportPostmanCmd(st, NewDebugLogger(nil))
 	var out, diagnostics bytes.Buffer
 	cmd.SetOut(&out)
@@ -607,7 +609,11 @@ func TestResolveDuplicateInteractiveActions(t *testing.T) {
 		var out bytes.Buffer
 		cmd.SetOut(&out)
 		global := duplicateAction("")
-		got, id := resolveDuplicate(ctx, cmd, st, "API", []*domain.Request{{Name: "Incoming", Method: "GET"}}, "duplicate", &global, NewDebugLogger(nil))
+		got, id := resolveDuplicate(
+			ctx, cmd, st, "API",
+			[]*domain.Request{{Name: "Incoming", Method: "GET"}},
+			"duplicate", &global, NewDebugLogger(nil),
+		)
 		assert.Equal(t, tc.want, got, tc.input)
 		assert.Equal(t, existing.ID, id)
 		assert.Contains(t, out.String(), "already exists")
@@ -628,7 +634,10 @@ func TestImportPostmanOutputParsingAndUniqueNames(t *testing.T) {
 	printImportResult(cmd, importStats{collectionName: "Skipped", total: 3, action: actionSkip})
 	assert.Contains(t, out.String(), `Skipped "Skipped" (3 requests)`)
 	out.Reset()
-	printImportResult(cmd, importStats{collectionName: "Review", imported: 1, total: 2, warnings: 1, warningMsgs: []string{"warning"}, security: postman.Dangerous, action: actionMerge})
+	printImportResult(cmd, importStats{
+		collectionName: "Review", imported: 1, total: 2, warnings: 1,
+		warningMsgs: []string{"warning"}, security: postman.Dangerous, action: actionMerge,
+	})
 	assert.Contains(t, out.String(), `(merged) (1 warnings)`)
 	assert.Contains(t, diagnostics.String(), "Security: Dangerous")
 	assert.Contains(t, diagnostics.String(), "Warning: warning")
@@ -650,7 +659,9 @@ func TestImportPostmanOutputParsingAndUniqueNames(t *testing.T) {
 	require.NoError(t, os.MkdirAll(filepath.Join(envDir, "ignored"), 0700))
 	require.NoError(t, os.WriteFile(filepath.Join(envDir, "bad.json"), []byte("invalid"), 0600))
 	require.NoError(t, os.WriteFile(filepath.Join(envDir, "skip.txt"), []byte("ignored"), 0600))
-	require.NoError(t, os.WriteFile(filepath.Join(envDir, "dev.json"), []byte(`{"name":"Dev","values":[{"key":"url","value":"https://dev.example","enabled":true}]}`), 0600))
+	devEnvironment := `{"name":"Dev","values":[{"key":"url","value":"https://dev.example","enabled":true}]}`
+	devFile := filepath.Join(envDir, "dev.json")
+	require.NoError(t, os.WriteFile(devFile, []byte(devEnvironment), 0600))
 	parsed := parseEnvironmentsInDir(dir, NewDebugLogger(nil))
 	assert.Len(t, parsed.files, 1)
 	assert.Equal(t, "Dev", parsed.files[0].name)
@@ -665,28 +676,47 @@ func TestImportBulkManifestAndEmptyDirectoryPaths(t *testing.T) {
 	logger := NewDebugLogger(nil)
 
 	missingCollection := t.TempDir()
-	_, _, err = importBulk(ctx, &cobra.Command{}, st, missingCollection, "", "duplicate", new(duplicateAction), logger)
+	_, _, err = importBulk(
+		ctx, &cobra.Command{}, st, missingCollection, "", "duplicate",
+		new(duplicateAction), logger,
+	)
 	require.ErrorContains(t, err, "missing collection/")
 
 	emptyCollection := t.TempDir()
 	require.NoError(t, os.MkdirAll(filepath.Join(emptyCollection, "collection"), 0o700))
-	_, _, err = importBulk(ctx, &cobra.Command{}, st, emptyCollection, "", "duplicate", new(duplicateAction), logger)
+	_, _, err = importBulk(
+		ctx, &cobra.Command{}, st, emptyCollection, "", "duplicate",
+		new(duplicateAction), logger,
+	)
 	require.ErrorContains(t, err, "no collection files")
 
 	fallback := t.TempDir()
 	require.NoError(t, os.MkdirAll(filepath.Join(fallback, "collection"), 0o700))
-	require.NoError(t, os.WriteFile(filepath.Join(fallback, "archive.json"), []byte("not-json"), 0o600))
-	require.NoError(t, os.WriteFile(filepath.Join(fallback, "collection", "valid.json"), []byte(`{"info":{"name":"Manifest fallback","schema":"v2.1"},"item":[]}`), 0o600))
-	stats, _, err := importBulk(ctx, &cobra.Command{}, st, fallback, "", "duplicate", new(duplicateAction), logger)
+	archive := filepath.Join(fallback, "archive.json")
+	require.NoError(t, os.WriteFile(archive, []byte("not-json"), 0o600))
+	validCollection := filepath.Join(fallback, "collection", "valid.json")
+	manifestJSON := `{"info":{"name":"Manifest fallback","schema":"v2.1"},"item":[]}`
+	require.NoError(t, os.WriteFile(validCollection, []byte(manifestJSON), 0o600))
+	stats, _, err := importBulk(
+		ctx, &cobra.Command{}, st, fallback, "", "duplicate",
+		new(duplicateAction), logger,
+	)
 	require.NoError(t, err)
 	require.Len(t, stats, 1)
 	require.NoError(t, stats[0].err)
 
 	manifest := t.TempDir()
 	require.NoError(t, os.MkdirAll(filepath.Join(manifest, "collection"), 0o700))
-	require.NoError(t, os.WriteFile(filepath.Join(manifest, "archive.json"), []byte(`{"collection":{"../unsafe":true,"safe":true}}`), 0o600))
-	require.NoError(t, os.WriteFile(filepath.Join(manifest, "collection", "safe.json"), []byte(`{"info":{"name":"Safe manifest","schema":"v2.1"},"item":[]}`), 0o600))
-	stats, _, err = importBulk(ctx, &cobra.Command{}, st, manifest, "", "duplicate", new(duplicateAction), logger)
+	manifestArchive := filepath.Join(manifest, "archive.json")
+	manifestData := `{"collection":{"../unsafe":true,"safe":true}}`
+	require.NoError(t, os.WriteFile(manifestArchive, []byte(manifestData), 0o600))
+	safeCollection := filepath.Join(manifest, "collection", "safe.json")
+	safeData := `{"info":{"name":"Safe manifest","schema":"v2.1"},"item":[]}`
+	require.NoError(t, os.WriteFile(safeCollection, []byte(safeData), 0o600))
+	stats, _, err = importBulk(
+		ctx, &cobra.Command{}, st, manifest, "", "duplicate",
+		new(duplicateAction), logger,
+	)
 	require.NoError(t, err)
 	require.Len(t, stats, 1)
 	require.NoError(t, stats[0].err)
