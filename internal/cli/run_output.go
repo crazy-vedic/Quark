@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -27,8 +28,13 @@ func printRunResult(
 	req *domain.Request,
 	result *exec.ExecuteResult,
 	verbose bool,
-) error {
-	defer func() { _ = result.Cleanup() }()
+) (runErr error) {
+	defer func() {
+		if cleanupErr := result.Cleanup(); cleanupErr != nil {
+			cleanupErr = fmt.Errorf("cleanup response body: %w", cleanupErr)
+			runErr = errors.Join(runErr, cleanupErr)
+		}
+	}()
 	if verbose {
 		printRequestDetails(cmd.ErrOrStderr(), req)
 		printResponseDetails(cmd.ErrOrStderr(), result)

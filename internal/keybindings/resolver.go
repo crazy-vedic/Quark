@@ -156,8 +156,8 @@ func NewResolver(binds Keybindings) *Resolver {
 		binds.ImportCurl:    ActionImportCurl,
 		binds.EnvOpen:       ActionEnvOpen,
 		binds.ClientCerts:   ActionClientCerts,
-		binds.EnvNext:       "env_next",
-		binds.EnvPrev:       "env_prev",
+		binds.EnvNext:       ActionEnvNext,
+		binds.EnvPrev:       ActionEnvPrev,
 	}
 
 	// Sidebar
@@ -189,7 +189,7 @@ func NewResolver(binds Keybindings) *Resolver {
 		binds.EditBody:      ActionEditBody,
 		binds.EditHeaders:   ActionEditHeaders,
 		binds.RequestDelete: ActionDeleteRequest,
-		binds.EditAuth:      "edit_auth",
+		binds.EditAuth:      ActionEditAuth,
 		binds.ScheduleRun:   ActionScheduleRun,
 	}
 	addAlias(request, "alt+enter", ActionSendRequest)
@@ -440,7 +440,7 @@ func Validate(binds Keybindings) map[string][]string {
 			{binds.MethodPrev, ActionMethodPrev}, {binds.SendRequest, ActionSendRequest},
 			{binds.EditBody, ActionEditBody}, {binds.EditHeaders, ActionEditHeaders},
 			{binds.RequestDelete, ActionDeleteRequest},
-			{binds.EditAuth, "edit_auth"}, {binds.ScheduleRun, ActionScheduleRun}},
+			{binds.EditAuth, ActionEditAuth}, {binds.ScheduleRun, ActionScheduleRun}},
 		{{binds.ResponseDown, "response_down"}, {binds.ResponseUp, "response_up"},
 			{binds.ResponseRetry, "response_retry"},
 			{binds.TabBody, "tab_body"}, {binds.TabHeaders, "tab_headers"},

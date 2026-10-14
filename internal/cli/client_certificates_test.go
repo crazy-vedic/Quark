@@ -44,14 +44,8 @@ func TestClientCertificateSetListAndDelete(t *testing.T) {
 		t,
 		dir,
 		recorder.reload,
-		"set",
-		"API.Example",
-		"--file",
-		"client.p12",
-		"--password-env",
-		"P12_PASSWORD",
-		"--ca-file",
-		"root.pem",
+		"set", "API.Example", "--file", "client.p12", "--password-env", "P12_PASSWORD",
+		"--ca-file", "root.pem",
 	)
 	require.NoError(t, err)
 	require.Contains(t, out, "Saved client certificate for api.example")
