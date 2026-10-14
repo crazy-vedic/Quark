@@ -1117,7 +1117,7 @@ func (m Model) viewResponseBody(parent ...*timing.Span) string {
 		if err := json.Unmarshal(r.Body, &out); err == nil {
 			pretty, err := json.MarshalIndent(out, "", "  ")
 			if err == nil {
-				return highlight.JSON(string(pretty), m.theme.Syntax)
+				return highlight.JSON(string(pretty), m.cfg.UI.Theme)
 			}
 		}
 	}
@@ -1170,7 +1170,7 @@ func (m Model) viewExecutionBody(ex *domain.Execution, parent ...*timing.Span) s
 		if err := json.Unmarshal(bodyBytes, &out); err == nil {
 			pretty, err := json.MarshalIndent(out, "", "  ")
 			if err == nil {
-				return highlight.JSON(string(pretty), m.theme.Syntax)
+				return highlight.JSON(string(pretty), m.cfg.UI.Theme)
 			}
 		}
 	}

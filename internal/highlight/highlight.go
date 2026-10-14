@@ -10,11 +10,21 @@ import (
 	"github.com/alecthomas/chroma/v2/styles"
 )
 
+// ThemeMap maps Quark UI theme names to Chroma style names.
+var themeMap = map[string]string{
+	"auto":        "monokai",
+	"dark":        "monokai",
+	"light":       "github",
+	"transparent": "monokai",
+}
+
 // JSON highlights a JSON string with terminal ANSI colors.
-// syntaxStyle is the resolved theme's syntax palette value. Theme selection
-// and palette defaults belong to internal/theme; this package only renders it.
 // Returns the original string if highlighting fails (graceful degradation).
-func JSON(input string, syntaxStyle string) string {
+func JSON(input string, theme string) string {
+	styleName, ok := themeMap[theme]
+	if !ok {
+		styleName = "monokai"
+	}
 
 	lexer := lexers.Get("json")
 	if lexer == nil {
@@ -24,7 +34,7 @@ func JSON(input string, syntaxStyle string) string {
 	if formatter == nil {
 		return input
 	}
-	style := styles.Get(syntaxStyle)
+	style := styles.Get(styleName)
 	if style == nil {
 		style = styles.Fallback
 	}
