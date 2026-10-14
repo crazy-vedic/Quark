@@ -129,7 +129,7 @@ func run() error {
 		dbPath := filepath.Join(configDir, "quark.db")
 		backupDir := cfg.BackupDir(configDir)
 
-		storeOpts := []store.Option{store.WithBackup(backupDir)}
+		storeOpts := []store.Option{store.WithBackup(backupDir, cfg.Backup.KeepLast)}
 		if !cfg.Backup.AutoBackup {
 			storeOpts = []store.Option{}
 		}
@@ -144,6 +144,7 @@ func run() error {
 		}
 		executor := exec.New(httpTransport,
 			exec.WithTimeout(cfg.Timeout()),
+			exec.WithRedirects(cfg.HTTP.FollowRedirects, cfg.HTTP.MaxRedirects),
 			exec.WithExecutionWriter(st),
 		)
 		importer := curl.NewImporter()

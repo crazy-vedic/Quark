@@ -10,7 +10,6 @@ import (
 )
 
 const (
-	backupKeep   = 10
 	backupPrefix = "quark.db."
 )
 
@@ -58,7 +57,7 @@ func (s *Store) nextBackupName() (string, error) {
 	return fmt.Sprintf("%s%s-%03d", backupPrefix, today, seq), nil
 }
 
-// evictOldBackups deletes the oldest backups (by filename) to keep only backupKeep.
+// evictOldBackups deletes the oldest backups (by filename) to honor the configured retention limit.
 func (s *Store) evictOldBackups() error {
 	entries, err := os.ReadDir(s.backupPath)
 	if err != nil {
@@ -74,7 +73,7 @@ func (s *Store) evictOldBackups() error {
 		}
 	}
 
-	if len(names) <= backupKeep {
+	if len(names) <= s.backupKeep {
 		return nil
 	}
 
@@ -83,7 +82,7 @@ func (s *Store) evictOldBackups() error {
 	sort.Strings(names)
 
 	// Evict the oldest (first in sorted order).
-	toDelete := names[:len(names)-backupKeep]
+	toDelete := names[:len(names)-s.backupKeep]
 	for _, n := range toDelete {
 		path := filepath.Join(s.backupPath, n)
 		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
