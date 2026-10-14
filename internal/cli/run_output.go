@@ -12,7 +12,6 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/mattn/go-isatty"
 	"github.com/spf13/cobra"
 
 	"github.com/crazy-vedic/quark/internal/domain"
@@ -47,8 +46,8 @@ func printRunResult(
 
 	out := cmd.OutOrStdout()
 	terminal := false
-	if file, ok := out.(*os.File); ok {
-		terminal = isatty.IsTerminal(file.Fd())
+	if reader, ok := out.(io.Reader); ok {
+		terminal = terminalProbe(reader)
 	}
 	contentType := http.Header(result.Headers).Get("Content-Type")
 	if result.TempPath != "" {
@@ -164,7 +163,7 @@ func writeResponseBody(w io.Writer, body []byte, contentType string, terminal bo
 }
 
 func safeText(w io.Writer, value string) string {
-	if file, ok := w.(*os.File); ok && isatty.IsTerminal(file.Fd()) {
+	if reader, ok := w.(io.Reader); ok && terminalProbe(reader) {
 		return highlight.SafeStrip(value)
 	}
 	return value
