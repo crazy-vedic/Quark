@@ -71,6 +71,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.importError = ""
 		m.debugCurl("clipboard read bytes=%d", len(msg.value))
 		return m, nil
+	case postmanImportResultMsg:
+		m.postmanBusy = false
+		m.postmanOutput = strings.TrimSpace(msg.output)
+		if msg.err != nil {
+			m.postmanOutput = strings.TrimSpace(m.postmanOutput + "\n" + msg.err.Error())
+			return m, nil
+		}
+		if m.lister != nil {
+			return m, loadCollectionsCmd(m.ctx, m.lister)
+		}
+		return m, nil
 
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
@@ -82,6 +93,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.mode == importMode && m.importPreview == nil {
 			m.importInput.SetWidth(max(20, min(m.width-12, 100)))
 			m.importInput.SetHeight(max(6, min(m.height/3, 14)))
+		}
+		if m.mode == postmanImportMode {
+			m.postmanPath.Width = max(20, min(m.width-12, 100))
 		}
 		return m, nil
 
@@ -95,6 +109,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.mode == importMode && m.importPreview == nil {
 			m.importInput.SetWidth(max(20, min(m.width-12, 100)))
 			m.importInput.SetHeight(max(6, min(m.height/3, 14)))
+		}
+		if m.mode == postmanImportMode {
+			m.postmanPath.Width = max(20, min(m.width-12, 100))
 		}
 		return m, nil
 
@@ -166,7 +183,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyMsg:
 		if m.debugLog != nil {
-			if m.mode == importMode {
+			if m.mode == importMode || m.mode == postmanImportMode {
 				// The import textarea can contain credentials, request bodies, and
 				// literal certificate passwords. Log only structural key metadata.
 				fmt.Fprintf(
@@ -235,6 +252,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.handleScheduleKey(msg)
 		case clientCertMode:
 			return m.handleClientCertKey(msg)
+		case postmanImportMode:
+			return m.handlePostmanImportKey(msg)
 		default:
 			return m.handleNormalKey(msg)
 		}
@@ -397,6 +416,8 @@ func (m Model) handleEsc() Model {
 		return m.closeCollectionPrompt()
 	case clientCertMode:
 		return m.closeClientCertModal()
+	case postmanImportMode:
+		return m.closePostmanImportModal()
 	}
 	// In normal mode: cancel in-flight request.
 	if m.loading && m.cancel != nil {
@@ -539,6 +560,8 @@ func (m Model) dispatchNormalAction(action string) (tea.Model, tea.Cmd) {
 		return m.openClientCertModal(), nil
 	case keybindings.ActionImportCurl:
 		return m.openCurlImport(), textarea.Blink
+	case keybindings.ActionImportPostman:
+		return m.openPostmanImportModal(), textinput.Blink
 	case "env_next":
 		return m.cycleEnv(1)
 	case "env_prev":
@@ -619,6 +642,8 @@ func (m Model) handleSidebarAction(action string) (tea.Model, tea.Cmd) {
 			return m.status("error", "Select a collection first"), nil
 		}
 		return m.enterCollectionPrompt(promptRename, colID)
+	case keybindings.ActionImportPostman:
+		return m.openPostmanImportModal(), textinput.Blink
 	}
 	return m, nil
 }
@@ -1113,6 +1138,7 @@ var commandPaletteItems = []commandPaletteItem{
 	{Title: "Send request", Action: keybindings.ActionSendRequest},
 	{Title: "Schedule request", Action: keybindings.ActionScheduleRun},
 	{Title: "Import curl command", Action: keybindings.ActionImportCurl},
+	{Title: "Import Postman collection", Action: keybindings.ActionImportPostman},
 	{Title: "Client certificates", Action: keybindings.ActionClientCerts},
 	{Title: "Open help", Action: "help"},
 }
@@ -1157,6 +1183,7 @@ func (m Model) executeSelectedCommand() (tea.Model, tea.Cmd) {
 		m.focus = requestPane
 		return m.handleRequestAction(action)
 	case keybindings.ActionImportCurl,
+		keybindings.ActionImportPostman,
 		keybindings.ActionClientCerts:
 		return m.dispatchNormalAction(action)
 	case keybindings.ActionFocusSidebar,

@@ -17,17 +17,18 @@ func DefaultKeybindings() Keybindings {
 		FocusResponse: "3",
 		PaneNext:      "tab",
 		PanePrev:      KeyShiftTab,
-		ImportCurl:    "I",
+		ImportCurl:    "i",
 
 		// Sidebar
-		SidebarDown:       "j",
-		SidebarUp:         "k",
-		SidebarExpand:     "l",
-		SidebarCollapse:   "h",
-		SidebarAdd:        "A",
-		SidebarDelete:     "D",
-		SidebarRename:     "r",
-		SidebarAddRequest: "a",
+		SidebarDown:          "j",
+		SidebarUp:            "k",
+		SidebarExpand:        "l",
+		SidebarCollapse:      "h",
+		SidebarAdd:           "A",
+		SidebarDelete:        "D",
+		SidebarRename:        "r",
+		SidebarAddRequest:    "a",
+		SidebarImportPostman: "I",
 
 		// Request pane
 		EditURL:       "u",

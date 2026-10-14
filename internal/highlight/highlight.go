@@ -54,6 +54,10 @@ func JSON(input string, theme string) string {
 	return safeStrip(buf.String())
 }
 
+// SafeStrip removes terminal control sequences from untrusted output while
+// preserving harmless SGR color codes.
+func SafeStrip(input string) string { return safeStrip(input) }
+
 // safeStrip removes dangerous ANSI escape sequences (OSC 52 clipboard hijack,
 // screen clear, cursor movement) while preserving harmless color/formatting codes (SGR 'm').
 func safeStrip(s string) string {
