@@ -13,6 +13,8 @@ type options struct {
 	postResponseHooks []PostResponseHook
 	variableResolver  VariableResolver
 	executionWriter   ExecutionWriter
+	followRedirects   bool
+	maxRedirects      int
 }
 
 func defaultOptions() options {
@@ -20,6 +22,8 @@ func defaultOptions() options {
 		timeout:         30 * time.Second,
 		maxResponseSize: 10 << 20, // 10 MiB
 		logger:          slog.Default(),
+		followRedirects: true,
+		maxRedirects:    10,
 	}
 }
 
@@ -33,6 +37,22 @@ func (o timeoutOption) apply(opts *options) { opts.timeout = time.Duration(o) }
 
 // WithTimeout sets the per-request timeout.
 func WithTimeout(d time.Duration) timeoutOption { return timeoutOption(d) }
+
+type redirectsOption struct {
+	follow bool
+	max    int
+}
+
+func (o redirectsOption) apply(opts *options) {
+	opts.followRedirects = o.follow
+	opts.maxRedirects = o.max
+}
+
+// WithRedirects configures whether HTTP redirects are followed and the maximum
+// number of hops. A non-positive maximum prevents following any redirect.
+func WithRedirects(follow bool, max int) redirectsOption {
+	return redirectsOption{follow: follow, max: max}
+}
 
 type maxRespSizeOption int
 

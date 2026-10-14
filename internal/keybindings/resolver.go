@@ -39,6 +39,15 @@ type Keybindings struct {
 	ScheduleRun   string `toml:"schedule_run"`
 	EnvOpen       string `toml:"env_open"`
 	ClientCerts   string `toml:"client_certificates"`
+	CertDown      string `toml:"cert_down"`
+	CertUp        string `toml:"cert_up"`
+	CertAdd       string `toml:"cert_add"`
+	CertEdit      string `toml:"cert_edit"`
+	CertDelete    string `toml:"cert_delete"`
+	CertClose     string `toml:"cert_close"`
+	CertNextField string `toml:"cert_next_field"`
+	CertPrevField string `toml:"cert_prev_field"`
+	CertSave      string `toml:"cert_save"`
 	EnvNext       string `toml:"env_next"`
 	EnvPrev       string `toml:"env_prev"`
 
@@ -122,14 +131,15 @@ type Resolver struct {
 	response map[string]string
 
 	// Overlay modes.
-	search     map[string]string
-	help       map[string]string
-	import_    map[string]string
-	body       map[string]string
-	header     map[string]string
-	env        map[string]string
-	collection map[string]string
-	auth       map[string]string
+	search      map[string]string
+	help        map[string]string
+	import_     map[string]string
+	body        map[string]string
+	header      map[string]string
+	env         map[string]string
+	collection  map[string]string
+	auth        map[string]string
+	certificate map[string]string
 }
 
 // addAlias adds a key → action alias to a map, but only if the key is not
@@ -300,30 +310,41 @@ func NewResolver(binds Keybindings) *Resolver {
 	addAlias(auth, "right", "option_next")
 	addAlias(auth, "enter", "save")
 
+	certificate := map[string]string{
+		binds.CertDown: "navigate_down", binds.CertUp: "navigate_up",
+		binds.CertAdd: "add", binds.CertEdit: "edit", binds.CertDelete: "delete",
+		binds.CertClose: "close", binds.CertNextField: "next_field",
+		binds.CertPrevField: "prev_field", binds.CertSave: "save",
+	}
+	addAlias(certificate, "down", "navigate_down")
+	addAlias(certificate, "up", "navigate_up")
+	addAlias(certificate, "enter", "edit")
+
 	return &Resolver{
-		global:     global,
-		sidebar:    sidebar,
-		request:    request,
-		response:   response,
-		search:     search,
-		help:       help,
-		import_:    import_,
-		body:       body,
-		header:     header,
-		env:        env,
-		collection: collection,
-		auth:       auth,
+		global:      global,
+		sidebar:     sidebar,
+		request:     request,
+		response:    response,
+		search:      search,
+		help:        help,
+		import_:     import_,
+		body:        body,
+		header:      header,
+		env:         env,
+		collection:  collection,
+		auth:        auth,
+		certificate: certificate,
 	}
 }
 
 // Resolve returns the action name for a given key in a given mode.
-// mode: 0=normal, 1=search, 2=help, 3=import, 4=body, 5=header, 6=env, 7=collection prompt, 8=auth
+// mode: 0=normal, 1=search, 2=help, 3=import, 4=body, 5=header, 6=env, 7=collection prompt, 8=auth, 9=certificate
 // pane: 0=sidebar, 1=request, 2=response (only used in normal mode)
 func (r *Resolver) Resolve(mode, pane int, msg tea.KeyMsg) (string, bool) {
 	key := msg.String()
 
 	// Validate mode.
-	if mode < 0 || mode > 8 {
+	if mode < 0 || mode > 9 {
 		return "", false
 	}
 
@@ -396,6 +417,10 @@ func (r *Resolver) lookupOverlay(mode int, key string) (string, bool) {
 		}
 	case 8:
 		if action, ok := r.auth[key]; ok {
+			return action, true
+		}
+	case 9:
+		if action, ok := r.certificate[key]; ok {
 			return action, true
 		}
 	}
@@ -474,6 +499,11 @@ func Validate(binds Keybindings) map[string][]string {
 			{binds.AuthEdit, "auth_edit"}, {binds.AuthSave, "auth_save"},
 			{binds.AuthCancel, "auth_cancel"}, {binds.AuthOptionNext, "auth_option_next"},
 			{binds.AuthOptionPrev, "auth_option_prev"}},
+		{{binds.CertDown, "cert_down"}, {binds.CertUp, "cert_up"},
+			{binds.CertAdd, "cert_add"}, {binds.CertEdit, "cert_edit"},
+			{binds.CertDelete, "cert_delete"}, {binds.CertClose, "cert_close"},
+			{binds.CertNextField, "cert_next_field"}, {binds.CertPrevField, "cert_prev_field"},
+			{binds.CertSave, "cert_save"}},
 	}
 
 	conflicts := make(map[string][]string)

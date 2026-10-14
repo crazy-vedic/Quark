@@ -8,6 +8,9 @@ import (
 
 var hintAliases = map[string][]string{
 	ActionSendRequest: {"alt+enter"},
+	"cert_down":       {"down"},
+	"cert_up":         {"up"},
+	"cert_edit":       {KeyEnter},
 }
 
 // HintKeys returns the configured key for an action plus any user-facing

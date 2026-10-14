@@ -331,6 +331,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Invalidate cached env name on active-env change.
 		m.cachedEnvColID = ""
 		return m, nil
+	case activeEnvSaveErrMsg:
+		m.cachedEnvColID = ""
+		m = m.status("error", fmt.Sprintf("Save active environment: %v", msg.err))
+		return m, nil
 	case promptCompletedMsg:
 		m = m.closeCollectionPrompt()
 		if msg.inner == nil {

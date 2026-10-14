@@ -950,11 +950,10 @@ func (m Model) viewTabBar(maxWidth int) string {
 	tabs := []struct {
 		label string
 		id    responseTabID
-		key   string
 	}{
-		{"Body", bodyTab, "b"},
-		{"Headers", headersTab, "h"},
-		{"Raw", rawTab, "r"},
+		{"Body", bodyTab},
+		{"Headers", headersTab},
+		{"Raw", rawTab},
 	}
 	var parts []string
 	for _, t := range tabs {

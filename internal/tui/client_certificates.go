@@ -44,27 +44,45 @@ func (m Model) closeClientCertModal() Model {
 }
 
 func (m Model) handleClientCertKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	if m.clientCertEditing {
-		return m.handleClientCertEditKey(msg)
+	action, ok := m.resolver.Resolve(9, 0, msg)
+	if !ok {
+		if m.clientCertEditing {
+			return m.updateClientCertInput(msg)
+		}
+		return m, nil
 	}
-	switch msg.String() {
-	case "esc":
+	if m.clientCertEditing {
+		switch action {
+		case "close":
+			return m.cancelClientCertEdit(), nil
+		case "next_field":
+			return m.moveClientCertField(1), nil
+		case "prev_field":
+			return m.moveClientCertField(-1), nil
+		case "save":
+			return m.saveClientCert()
+		default:
+			return m.updateClientCertInput(msg)
+		}
+	}
+	switch action {
+	case "close":
 		return m.closeClientCertModal(), nil
-	case "j", "down":
+	case "navigate_down":
 		if m.clientCertCursor < len(m.clientCerts)-1 {
 			m.clientCertCursor++
 		}
-	case "k", "up":
+	case "navigate_up":
 		if m.clientCertCursor > 0 {
 			m.clientCertCursor--
 		}
-	case "a":
+	case "add":
 		return m.beginClientCertEdit(-1), nil
-	case "e", "enter":
+	case "edit":
 		if len(m.clientCerts) > 0 {
 			return m.beginClientCertEdit(m.clientCertCursor), nil
 		}
-	case "d":
+	case "delete":
 		return m.deleteClientCert()
 	}
 	return m, nil
@@ -106,29 +124,25 @@ func (m Model) beginClientCertEdit(index int) Model {
 	return m
 }
 
-func (m Model) handleClientCertEditKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
-	case "esc":
-		m.clientCertEditing = false
-		m.clientCertError = ""
-		m.clientCertHost.Blur()
-		m.clientCertType.Blur()
-		m.clientCertFile.Blur()
-		m.clientCertKeyFile.Blur()
-		m.clientCertCAFile.Blur()
-		m.clientCertPassword.Blur()
-		return m, nil
-	case "tab", "shift+tab":
-		step := 1
-		if msg.String() == "shift+tab" {
-			step = -1
-		}
-		m.clientCertField = (m.clientCertField + step + clientCertFieldCount) % clientCertFieldCount
-		m.focusClientCertField()
-		return m, nil
-	case "enter":
-		return m.saveClientCert()
-	}
+func (m Model) cancelClientCertEdit() Model {
+	m.clientCertEditing = false
+	m.clientCertError = ""
+	m.clientCertHost.Blur()
+	m.clientCertType.Blur()
+	m.clientCertFile.Blur()
+	m.clientCertKeyFile.Blur()
+	m.clientCertCAFile.Blur()
+	m.clientCertPassword.Blur()
+	return m
+}
+
+func (m Model) moveClientCertField(step int) Model {
+	m.clientCertField = (m.clientCertField + step + clientCertFieldCount) % clientCertFieldCount
+	m.focusClientCertField()
+	return m
+}
+
+func (m Model) updateClientCertInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	switch m.clientCertField {
 	case clientCertHostField:
@@ -310,15 +324,24 @@ func (m Model) viewClientCertModal() string {
 		sb.WriteString("Key:      " + m.clientCertKeyFile.View() + "\n")
 		sb.WriteString("CA:       " + m.clientCertCAFile.View() + "\n")
 		sb.WriteString("Password: " + m.clientCertPassword.View() + "\n")
-		sb.WriteString(
-			m.styles.mutedStyle.Render("Tab: next field   Enter: save   Esc: cancel") + "\n",
-		)
+		sb.WriteString(m.styles.mutedStyle.Render(m.renderHints([]hintItem{
+			{Label: "next field", Actions: []string{"cert_next_field"}},
+			{Label: "previous field", Actions: []string{"cert_prev_field"}},
+			{Label: "save", Actions: []string{"cert_save"}},
+			{Label: "cancel", Actions: []string{"cert_close"}},
+		})) + "\n")
 	}
 	if m.clientCertError != "" {
 		sb.WriteString("\n" + m.styles.errorStyle.Render("✗ "+m.clientCertError) + "\n")
 	}
 	sb.WriteString(
-		"\n" + m.styles.mutedStyle.Render("a add   e/Enter edit   d delete   j/k move   Esc close"),
+		"\n" + m.styles.mutedStyle.Render(m.renderHints([]hintItem{
+			{Label: "add", Actions: []string{"cert_add"}},
+			{Label: "edit", Actions: []string{"cert_edit"}, IncludeAliases: true},
+			{Label: "delete", Actions: []string{"cert_delete"}},
+			{Label: "move", Actions: []string{"cert_up", "cert_down"}, IncludeAliases: true},
+			{Label: "close", Actions: []string{"cert_close"}},
+		})),
 	)
 	box := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
