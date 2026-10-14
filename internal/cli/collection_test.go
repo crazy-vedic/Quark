@@ -18,7 +18,10 @@ func (s *collectionCommandStore) ListCollections(context.Context) ([]*domain.Col
 	return s.collections, nil
 }
 
-func (s *collectionCommandStore) SaveCollection(_ context.Context, collection *domain.Collection) error {
+func (s *collectionCommandStore) SaveCollection(
+	_ context.Context,
+	collection *domain.Collection,
+) error {
 	for i, current := range s.collections {
 		if current.ID == collection.ID {
 			s.collections[i] = collection
@@ -40,7 +43,9 @@ func (s *collectionCommandStore) DeleteCollection(_ context.Context, id string) 
 }
 
 func TestCollectionRenameAndDeleteCommands(t *testing.T) {
-	st := &collectionCommandStore{collections: []*domain.Collection{{ID: "collection-1", Name: "Before"}}}
+	st := &collectionCommandStore{
+		collections: []*domain.Collection{{ID: "collection-1", Name: "Before"}},
+	}
 	root := NewCollectionCmd(st)
 	var out bytes.Buffer
 	root.SetOut(&out)

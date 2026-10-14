@@ -58,7 +58,10 @@ func TestPostmanImportModalHandlesEmptyUnavailableFailureBusyAndCancel(t *testin
 	require.Nil(t, cmd)
 	require.Contains(t, m.postmanOutput, "unavailable")
 
-	importer := &postmanImporterStub{output: "could not import", err: errors.New("invalid collection")}
+	importer := &postmanImporterStub{
+		output: "could not import",
+		err:    errors.New("invalid collection"),
+	}
 	m.postmanImporter = importer
 	updated, cmd = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	m = requireImportModel(t, updated)

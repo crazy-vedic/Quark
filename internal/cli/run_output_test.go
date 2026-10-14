@@ -17,7 +17,10 @@ import (
 
 func TestWriteResponseBodyPrettyPrintsJSONAndPreservesPlainText(t *testing.T) {
 	var out bytes.Buffer
-	require.NoError(t, writeResponseBody(&out, []byte(`{"ok":true,"items":[1,2]}`), "application/json", false))
+	require.NoError(
+		t,
+		writeResponseBody(&out, []byte(`{"ok":true,"items":[1,2]}`), "application/json", false),
+	)
 	require.Equal(t, "{\n  \"ok\": true,\n  \"items\": [\n    1,\n    2\n  ]\n}\n", out.String())
 
 	out.Reset()
@@ -44,8 +47,12 @@ func TestPrintRunResultVerboseIncludesRequestAndResponseDetails(t *testing.T) {
 	cmd.SetOut(&stdout)
 	cmd.SetErr(&stderr)
 	req := &domain.Request{
-		Method: "POST", URL: "https://example.test", Headers: `{"Content-Type":["application/json"]}`,
-		Body: `{"send":true}`, AuthType: "bearer", AuthConfig: `{"token":"secret"}`,
+		Method:     "POST",
+		URL:        "https://example.test",
+		Headers:    `{"Content-Type":["application/json"]}`,
+		Body:       `{"send":true}`,
+		AuthType:   "bearer",
+		AuthConfig: `{"token":"secret"}`,
 	}
 	result := &exec.ExecuteResult{
 		Status: "200 OK", Size: 12, Body: []byte(`{"ok":true}`),
@@ -57,7 +64,11 @@ func TestPrintRunResultVerboseIncludesRequestAndResponseDetails(t *testing.T) {
 	require.Contains(t, stderr.String(), "Request: POST https://example.test")
 	require.Contains(t, stderr.String(), "Request auth config: {\"token\":\"secret\"}")
 	require.Contains(t, stderr.String(), "Request body (13 bytes)")
-	require.Less(t, strings.Index(stderr.String(), "< A-First:"), strings.Index(stderr.String(), "< Z-Last:"))
+	require.Less(
+		t,
+		strings.Index(stderr.String(), "< A-First:"),
+		strings.Index(stderr.String(), "< Z-Last:"),
+	)
 }
 
 func TestPrintRunResultStreamsBodyAndCleansTemporaryFile(t *testing.T) {
@@ -66,7 +77,12 @@ func TestPrintRunResultStreamsBodyAndCleansTemporaryFile(t *testing.T) {
 	var stdout bytes.Buffer
 	cmd := &cobra.Command{}
 	cmd.SetOut(&stdout)
-	result := &exec.ExecuteResult{Status: "200 OK", Size: 17, TempPath: path, Headers: http.Header{"Content-Type": {"text/plain"}}}
+	result := &exec.ExecuteResult{
+		Status:   "200 OK",
+		Size:     17,
+		TempPath: path,
+		Headers:  http.Header{"Content-Type": {"text/plain"}},
+	}
 	require.NoError(t, printRunResult(cmd, &domain.Request{}, result, false))
 	require.Contains(t, stdout.String(), "streamed response")
 	require.NoFileExists(t, path)
@@ -77,7 +93,15 @@ func TestPrintRunResultHandlesEmptyJSONStreamAndReadError(t *testing.T) {
 	var stdout bytes.Buffer
 	cmd := &cobra.Command{}
 	cmd.SetOut(&stdout)
-	require.NoError(t, printRunResult(cmd, &domain.Request{}, &exec.ExecuteResult{Status: "204 No Content"}, false))
+	require.NoError(
+		t,
+		printRunResult(
+			cmd,
+			&domain.Request{},
+			&exec.ExecuteResult{Status: "204 No Content"},
+			false,
+		),
+	)
 	require.Contains(t, stdout.String(), "Status: 204 No Content")
 	require.NotContains(t, stdout.String(), "{}")
 
@@ -93,8 +117,16 @@ func TestPrintRunResultHandlesEmptyJSONStreamAndReadError(t *testing.T) {
 	require.Contains(t, stdout.String(), `"ok": true`)
 	require.NoFileExists(t, path)
 
-	result = &exec.ExecuteResult{Status: "200 OK", Size: 1, TempPath: filepath.Join(t.TempDir(), "missing")}
-	require.ErrorContains(t, printRunResult(cmd, &domain.Request{}, result, false), "read response body")
+	result = &exec.ExecuteResult{
+		Status:   "200 OK",
+		Size:     1,
+		TempPath: filepath.Join(t.TempDir(), "missing"),
+	}
+	require.ErrorContains(
+		t,
+		printRunResult(cmd, &domain.Request{}, result, false),
+		"read response body",
+	)
 }
 
 type failingWriter struct{}
@@ -106,7 +138,11 @@ func TestWriteResponseBodyHandlesInvalidJSONAndWriterError(t *testing.T) {
 	require.NoError(t, writeResponseBody(&out, []byte("{bad"), "application/json", false))
 	require.Equal(t, "{bad\n", out.String())
 	require.NoError(t, writeResponseBody(&out, nil, "text/plain", false))
-	require.ErrorIs(t, writeResponseBody(failingWriter{}, []byte("text"), "text/plain", false), os.ErrPermission)
+	require.ErrorIs(
+		t,
+		writeResponseBody(failingWriter{}, []byte("text"), "text/plain", false),
+		os.ErrPermission,
+	)
 }
 
 func TestBinaryResponseClassification(t *testing.T) {
