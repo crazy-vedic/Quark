@@ -44,6 +44,11 @@ func callUpdate(t *testing.T, m tui.Model, msg tea.Msg) tui.Model {
 	return tuitest.Update(t, m, msg)
 }
 
+func callUpdateWithCmd(t *testing.T, m tui.Model, msg tea.Msg) (tui.Model, tea.Cmd) {
+	t.Helper()
+	return tuitest.UpdateWithCmd(t, m, msg)
+}
+
 type captureExecutor struct {
 	last *domain.Request
 }
