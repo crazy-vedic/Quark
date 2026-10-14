@@ -233,3 +233,34 @@ func TestNormalLayoutFor_AutoDim(t *testing.T) {
 	assert.Equal(t, DimNarrow, normalLayoutFor(60, 30).mode)
 	assert.Equal(t, DimTiny, normalLayoutFor(40, 20).mode)
 }
+
+func TestLayoutTierHelpersCoverAllModes(t *testing.T) {
+	for _, mode := range []DimMode{DimAbsurd, DimTiny, DimNarrow, DimWide, DimAuto, DimMode(99)} {
+		_ = mode.String()
+		_ = dimRank(mode)
+		_ = clearlyLeftTier(20, 5, mode)
+		_ = clearlyEnteredTier(120, 50, mode)
+	}
+	assert.True(t, clearlyLeftTier(70, 40, DimWide))
+	assert.False(t, clearlyLeftTier(80, 20, DimWide))
+	assert.True(t, clearlyEnteredTier(120, 40, DimWide))
+	assert.False(t, clearlyEnteredTier(80, 18, DimWide))
+}
+
+func TestLayoutFallbackDimensionsAndFocusRects(t *testing.T) {
+	for _, mode := range []DimMode{DimAuto, DimWide, DimNarrow, DimTiny, DimAbsurd, DimMode(99)} {
+		l := layoutFor(0, 0, mode, requestPane)
+		_ = l.sidebarOuterH()
+		_ = l.requestOuterH()
+		_ = l.responseOuterH()
+		_ = l.sidebarRect()
+		_ = l.requestRect()
+		_ = l.responseRect()
+		_ = l.requestContentRect()
+		_ = l.responseContentRect()
+		_, _ = l.paneAt(0, 0)
+	}
+	assert.Equal(t, 10, pickSidebarW(0))
+	assert.Equal(t, DimTiny, dimWithHysteresis(30, 10, DimAbsurd))
+	assert.Equal(t, DimWide, dimWithHysteresis(120, 40, DimAuto))
+}

@@ -57,7 +57,9 @@ func main() {
 	}
 }
 
-func run() error {
+func run() error { return runWithArgs(os.Args[1:]) }
+
+func runWithArgs(args []string) error {
 	// Signal-aware root context: Ctrl+C or SIGTERM cancels in-flight operations.
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -96,13 +98,18 @@ func run() error {
 
 	root.PersistentPreRun = func(cmd *cobra.Command, args []string) {
 		if debugMode && debugLog == nil {
-			debugLog = openDebugLog()
+			debugLog = debugLogFactory()
 			logger.SetFile(debugLog)
 		}
 	}
 
 	// Lazy store & config — initialised on first use so the --config flag is honoured.
 	var rt *runtime
+	defer func() {
+		if rt != nil && rt.st != nil {
+			_ = rt.st.Close()
+		}
+	}()
 	runtimeOnce := func() (*runtime, error) {
 		if rt != nil {
 			return rt, nil
@@ -212,6 +219,7 @@ func run() error {
 		)
 	}
 
+	root.SetArgs(args)
 	return root.Execute()
 }
 
@@ -291,8 +299,11 @@ func saveRuntimeImportedCertificate(r *runtime, spec *curl.CertificateSpec, rawU
 // openDebugLog opens /tmp/quark_debug_logs/debug.log, archiving any existing file.
 // The first line of the new log is the current epoch time.
 // Returns nil on error (debug logging is best-effort).
-func openDebugLog() *os.File {
-	debugDir := filepath.Join("/tmp", "quark_debug_logs")
+var debugLogDirectory = filepath.Join("/tmp", "quark_debug_logs")
+
+func openDebugLog() *os.File { return openDebugLogAt(debugLogDirectory) }
+
+func openDebugLogAt(debugDir string) *os.File {
 	if err := os.MkdirAll(debugDir, 0o700); err != nil {
 		return nil
 	}
@@ -309,6 +320,17 @@ func openDebugLog() *os.File {
 	_, _ = fmt.Fprintf(f, "epoch: %d\n", time.Now().Unix())
 	return f
 }
+
+type teaProgramRunner interface {
+	Run() (tea.Model, error)
+	Send(tea.Msg)
+}
+
+var newTeaProgram = func(model tea.Model, opts ...tea.ProgramOption) teaProgramRunner {
+	return tea.NewProgram(model, opts...)
+}
+
+var debugLogFactory = openDebugLog
 
 // launchTUI constructs the TUI model and runs the bubbletea program.
 // bubbletea v1.3.10 catches panics by default and restores the terminal
@@ -368,7 +390,7 @@ func launchTUI(
 	// Coalesce WindowSizeMsg bursts: Bubble Tea's renderer force-repaints the
 	// entire screen on every resize event, which flickers under rapid SIGWINCH.
 	resize := tui.NewResizeCoalescer()
-	p := tea.NewProgram(
+	p := newTeaProgram(
 		model,
 		tea.WithAltScreen(),
 		tea.WithMouseCellMotion(),
@@ -401,9 +423,11 @@ func defaultConfigDir() (string, error) {
 
 // lazy wrapper functions create cobra commands that lazily initialise the runtime.
 
+const collectionCommandName = "collection"
+
 func lazyCollectionCmd(rt func() (*runtime, error)) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "collection",
+		Use:   collectionCommandName,
 		Short: "Manage collections",
 	}
 	cmd.AddCommand(&cobra.Command{
@@ -492,7 +516,8 @@ func lazyRequestCmd(rt func() (*runtime, error)) *cobra.Command {
 			}
 			for _, c := range cli.NewRequestCmd(r.st).Commands() {
 				if c.Name() == "list" {
-					if err := c.Flags().Set("collection", collectionID); err != nil {
+					c.SetContext(cmd.Context())
+					if err := c.Flags().Set(collectionCommandName, collectionID); err != nil {
 						return err
 					}
 					return c.RunE(c, args)
@@ -501,8 +526,8 @@ func lazyRequestCmd(rt func() (*runtime, error)) *cobra.Command {
 			return fmt.Errorf("list subcommand not found")
 		},
 	}
-	listCmd.Flags().StringVar(&collectionID, "collection", "", "Collection ID")
-	_ = listCmd.RegisterFlagCompletionFunc("collection", cli.CompleteCollectionIDs(
+	listCmd.Flags().StringVar(&collectionID, collectionCommandName, "", "Collection ID")
+	_ = listCmd.RegisterFlagCompletionFunc(collectionCommandName, cli.CompleteCollectionIDs(
 		func(ctx context.Context) ([]*domain.Collection, error) {
 			r, err := rt()
 			if err != nil {
@@ -689,7 +714,7 @@ func lazyImportCmd(rt func() (*runtime, error)) *cobra.Command {
 			return inner.Execute()
 		},
 	}
-	curlCmd.Flags().StringVar(&collectionID, "collection", "", "Target collection ID")
+	curlCmd.Flags().StringVar(&collectionID, collectionCommandName, "", "Target collection ID")
 	curlCmd.Flags().StringVar(&name, "name", "", "Request name")
 	cmd.AddCommand(curlCmd)
 	return cmd

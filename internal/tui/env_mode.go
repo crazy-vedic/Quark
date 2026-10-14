@@ -253,14 +253,14 @@ func (m Model) dispatchEnvAction(action string) (tea.Model, tea.Cmd) {
 	switch action {
 	case keybindings.ActionCancel:
 		return m.closeEnvEditor(), nil
-	case "tab_prev":
+	case actionTabPrev:
 		if len(m.envEditor.tabs) > 0 {
 			m = m.switchEnvTab(
 				(m.envEditor.tabIdx - 1 + len(m.envEditor.tabs)) % len(m.envEditor.tabs),
 			)
 		}
 		return m, nil
-	case "tab_next":
+	case actionTabNext:
 		if len(m.envEditor.tabs) > 0 {
 			m = m.switchEnvTab((m.envEditor.tabIdx + 1) % len(m.envEditor.tabs))
 		}
