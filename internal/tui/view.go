@@ -510,7 +510,9 @@ func (m Model) viewRequestPane(w, h int) string {
 	case m.activeField == bodyField && m.activeRequest != nil:
 		content = m.bodyTextarea.View()
 	case m.activeField == authField && m.activeRequest != nil:
-		content = m.viewAuthEditor()
+		// Render after measuring the request pane so the auth editor can keep
+		// its selected row inside the available content viewport.
+		content = ""
 	case m.activeField == headersField && m.activeRequest != nil:
 		var preview strings.Builder
 		if m.headerEditing {
@@ -631,6 +633,8 @@ func (m Model) viewRequestPane(w, h int) string {
 			return m.requestBodyPreviewContent(timingSpan)
 		}, timingSpan)
 		renderedContent = m.requestText.View(innerWidth, contentLines, timingSpan)
+	} else if m.activeField == authField && m.activeRequest != nil {
+		renderedContent = limitLines(m.viewAuthEditor(contentLines), innerWidth, contentLines)
 	} else {
 		renderedContent = limitLines(content, innerWidth, contentLines)
 	}
@@ -685,11 +689,25 @@ func (m Model) requestBodyPreviewContent(parent ...*timing.Span) string {
 	return strings.Join(lines, "\n")
 }
 
-func (m Model) viewAuthEditor() string {
+func (m Model) viewAuthEditor(maxRows int) string {
 	var sb strings.Builder
 	sb.WriteString(m.styles.titleStyle.Render("Auth") + "\n")
 	sb.WriteString(m.styles.mutedStyle.Render("  Secrets stay hidden in the preview.") + "\n\n")
-	for idx, row := range m.authEditor.rows() {
+
+	rows := m.authEditor.rows()
+	// Keep the title, privacy hint, and key hints visible while scrolling rows.
+	rowBudget := max(1, maxRows-5)
+	start := adjustListViewport(listViewport{
+		SelectedRow: m.authEditor.cursor,
+		TotalRows:   len(rows),
+		VisibleRows: rowBudget,
+	})
+	end := min(len(rows), start+rowBudget)
+	if start > 0 {
+		sb.WriteString(m.styles.mutedStyle.Render("  ↑ more above") + "\n")
+	}
+	for idx := start; idx < end; idx++ {
+		row := rows[idx]
 		cursor := "  "
 		if idx == m.authEditor.cursor {
 			cursor = "▸ "
@@ -708,6 +726,9 @@ func (m Model) viewAuthEditor() string {
 				sb.WriteString(warning + "\n")
 			}
 		}
+	}
+	if end < len(rows) {
+		sb.WriteString(m.styles.mutedStyle.Render("  ↓ more below") + "\n")
 	}
 	sb.WriteString("\n")
 	sb.WriteString(m.styles.mutedStyle.Render(m.renderHints([]hintItem{
