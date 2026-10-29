@@ -35,6 +35,7 @@ type Keybindings struct {
 	EditBody      string `toml:"edit_body"`
 	EditHeaders   string `toml:"edit_headers"`
 	RequestDelete string `toml:"request_delete"`
+	ExportCurl    string `toml:"export_curl"`
 	EditAuth      string `toml:"edit_auth"`
 	ScheduleRun   string `toml:"schedule_run"`
 	EnvOpen       string `toml:"env_open"`
@@ -199,6 +200,7 @@ func NewResolver(binds Keybindings) *Resolver {
 		binds.EditBody:      ActionEditBody,
 		binds.EditHeaders:   ActionEditHeaders,
 		binds.RequestDelete: ActionDeleteRequest,
+		binds.ExportCurl:    ActionExportCurl,
 		binds.EditAuth:      ActionEditAuth,
 		binds.ScheduleRun:   ActionScheduleRun,
 	}
@@ -465,7 +467,8 @@ func Validate(binds Keybindings) map[string][]string {
 			{binds.MethodPrev, ActionMethodPrev}, {binds.SendRequest, ActionSendRequest},
 			{binds.EditBody, ActionEditBody}, {binds.EditHeaders, ActionEditHeaders},
 			{binds.RequestDelete, ActionDeleteRequest},
-			{binds.EditAuth, ActionEditAuth}, {binds.ScheduleRun, ActionScheduleRun}},
+			{binds.EditAuth, ActionEditAuth}, {binds.ScheduleRun, ActionScheduleRun},
+			{binds.ExportCurl, ActionExportCurl}},
 		{{binds.ResponseDown, "response_down"}, {binds.ResponseUp, "response_up"},
 			{binds.ResponseRetry, "response_retry"},
 			{binds.TabBody, "tab_body"}, {binds.TabHeaders, "tab_headers"},

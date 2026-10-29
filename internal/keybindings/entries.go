@@ -47,6 +47,7 @@ var groups = []struct {
 			ActionMethodPrev,
 			ActionSendRequest,
 			ActionScheduleRun,
+			ActionExportCurl,
 			ActionEditBody,
 			ActionEditHeaders,
 			ActionDeleteRequest,

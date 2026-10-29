@@ -2,6 +2,8 @@
 
 Quark supports importing requests from cURL commands and Postman Collection v2.1 exports.
 
+Saved requests can be exported as POSIX-shell-safe cURL commands with `curl.ExportRequest`.
+
 ## cURL Import (`internal/curl/`)
 
 ### CLI Usage

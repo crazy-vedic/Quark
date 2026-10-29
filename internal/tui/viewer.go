@@ -238,6 +238,12 @@ func copyViewerContentCmd(content string) tea.Cmd {
 	}
 }
 
+func copyCurlCommandCmd(content string) tea.Cmd {
+	return func() tea.Msg {
+		return curlExportClipboardMsg{err: clipboard.WriteAll(content)}
+	}
+}
+
 func readCurlClipboardCmd() tea.Cmd {
 	return func() tea.Msg {
 		value, err := clipboard.ReadAll()

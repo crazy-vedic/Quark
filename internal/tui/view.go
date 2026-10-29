@@ -59,6 +59,7 @@ var helpActionLabels = map[string]string{
 	keybindings.ActionEditHeaders:   "edit headers",
 	"edit_auth":                     "edit auth",
 	keybindings.ActionScheduleRun:   "schedule request",
+	keybindings.ActionExportCurl:    "copy as curl",
 	"response_down":                 "next history item",
 	"response_up":                   "prev history item",
 	"response_retry":                "retry request",
