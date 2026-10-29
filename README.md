@@ -82,7 +82,7 @@ clipboard, `Ctrl+S` parses it, and `Enter` confirms the preview. The importer
 preserves repeated headers, request bodies, JSON, URL-encoded data, and
 multipart text fields.
 
-In the request pane, press `y` to copy the selected request as a shell-quoted
+In the request pane, press `x` to copy the selected request as a shell-quoted
 cURL command. The command includes its method, headers, authorization, URL, and
 body.
 
