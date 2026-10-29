@@ -634,7 +634,7 @@ func (m Model) viewRequestPane(w, h int) string {
 		}, timingSpan)
 		renderedContent = m.requestText.View(innerWidth, contentLines, timingSpan)
 	} else if m.activeField == authField && m.activeRequest != nil {
-		renderedContent = limitLines(m.viewAuthEditor(contentLines), innerWidth, contentLines)
+		renderedContent = m.viewAuthEditor(contentLines, innerWidth)
 	} else {
 		renderedContent = limitLines(content, innerWidth, contentLines)
 	}
@@ -689,55 +689,98 @@ func (m Model) requestBodyPreviewContent(parent ...*timing.Span) string {
 	return strings.Join(lines, "\n")
 }
 
-func (m Model) viewAuthEditor(maxRows int) string {
-	var sb strings.Builder
-	sb.WriteString(m.styles.titleStyle.Render("Auth") + "\n")
-	sb.WriteString(m.styles.mutedStyle.Render("  Secrets stay hidden in the preview.") + "\n\n")
-
+func (m Model) viewAuthEditor(maxRows, contentWidth int) string {
 	rows := m.authEditor.rows()
-	// Keep the title, privacy hint, and key hints visible while scrolling rows.
-	rowBudget := max(1, maxRows-5)
-	start := adjustListViewport(listViewport{
-		SelectedRow: m.authEditor.cursor,
-		TotalRows:   len(rows),
-		VisibleRows: rowBudget,
-	})
-	end := min(len(rows), start+rowBudget)
-	if start > 0 {
-		sb.WriteString(m.styles.mutedStyle.Render("  ↑ more above") + "\n")
-	}
-	for idx := start; idx < end; idx++ {
-		row := rows[idx]
+	selected := min(max(0, m.authEditor.cursor), len(rows)-1)
+	rowViews := make([]string, len(rows))
+	rowHeights := make([]int, len(rows))
+	for idx, row := range rows {
 		cursor := "  "
-		if idx == m.authEditor.cursor {
+		if idx == selected {
 			cursor = "▸ "
 		}
 		label := lipgloss.NewStyle().Foreground(m.styles.info).Render(authRowLabel(row))
 		value := m.authEditor.valueForRow(row, m.authEditor.editing, m.styles.mutedStyle)
 		line := cursor + label + ": " + value
-		if idx == m.authEditor.cursor {
+		if idx == selected {
 			line = lipgloss.NewStyle().Bold(true).Render(line)
 		}
-		sb.WriteString(line + "\n")
-		if idx == m.authEditor.cursor && m.authEditor.editing {
+		rowViews[idx] = line
+		if idx == selected && m.authEditor.editing {
 			if warning := m.singleLineInputWarning(
 				m.authEditor.singleLineValue(row),
 			); warning != "" {
-				sb.WriteString(warning + "\n")
+				rowViews[idx] += "\n" + warning
 			}
 		}
+		rowHeights[idx] = visualRows(rowViews[idx], contentWidth)
 	}
-	if end < len(rows) {
-		sb.WriteString(m.styles.mutedStyle.Render("  ↓ more below") + "\n")
-	}
-	sb.WriteString("\n")
-	sb.WriteString(m.styles.mutedStyle.Render(m.renderHints([]hintItem{
+
+	header := m.styles.titleStyle.Render("Auth") + "\n" +
+		m.styles.mutedStyle.Render("  Secrets stay hidden in the preview.") + "\n\n"
+	footer := "\n" + m.styles.mutedStyle.Render(m.renderHints([]hintItem{
 		{Label: "move", Actions: []string{"auth_up", "auth_down"}},
 		{Label: "edit", Actions: []string{"auth_edit"}},
 		{Label: "cycle", Actions: []string{"auth_option_prev", "auth_option_next"}},
 		{Label: "save", Actions: []string{"auth_save"}},
-	})))
-	return sb.String()
+	}))
+	fixedRows := visualRows(header, contentWidth) + visualRows(footer, contentWidth)
+	rowBudget := max(1, maxRows-fixedRows)
+	start, end := 0, len(rows)
+	for range 3 {
+		start, end = authRowViewport(rowHeights, selected, rowBudget)
+		indicatorRows := 0
+		if start > 0 {
+			indicatorRows++
+		}
+		if end < len(rows) {
+			indicatorRows++
+		}
+		available := max(1, maxRows-fixedRows-indicatorRows)
+		if available >= rowBudget {
+			break
+		}
+		rowBudget = available
+	}
+	start, end = authRowViewport(rowHeights, selected, rowBudget)
+
+	var sb strings.Builder
+	sb.WriteString(header)
+	if start > 0 {
+		sb.WriteString(m.styles.mutedStyle.Render("  ↑ more above") + "\n")
+	}
+	for idx := start; idx < end; idx++ {
+		if idx > start {
+			sb.WriteString("\n")
+		}
+		sb.WriteString(rowViews[idx])
+	}
+	if end < len(rows) {
+		sb.WriteString("\n" + m.styles.mutedStyle.Render("  ↓ more below"))
+	}
+	sb.WriteString(footer)
+	return clipToRows(sb.String(), contentWidth, maxRows)
+}
+
+func authRowViewport(rowHeights []int, selected, visibleRows int) (int, int) {
+	if len(rowHeights) == 0 {
+		return 0, 0
+	}
+	selected = min(max(0, selected), len(rowHeights)-1)
+	visibleRows = max(1, visibleRows)
+
+	start := selected
+	usedRows := rowHeights[selected]
+	for start > 0 && usedRows+rowHeights[start-1] <= visibleRows {
+		start--
+		usedRows += rowHeights[start]
+	}
+	end := selected + 1
+	for end < len(rowHeights) && usedRows+rowHeights[end] <= visibleRows {
+		usedRows += rowHeights[end]
+		end++
+	}
+	return start, end
 }
 
 // --- Response pane ---
