@@ -129,6 +129,7 @@ type errLoadMsg struct{ err error }
 type searchResultsMsg struct{ hits []*search.SearchHit }
 
 type viewerClipboardMsg struct{ err error }
+type curlExportClipboardMsg struct{ err error }
 
 type curlClipboardMsg struct {
 	value string
