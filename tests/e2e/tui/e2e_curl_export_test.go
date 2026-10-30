@@ -49,18 +49,30 @@ func TestE2E_CurlExportFromPersistedRequest(t *testing.T) {
 	model := newE2EModel(t, st, &mockExecutor{}).
 		WithActiveRequest(persisted[0]).
 		WithFocus(tui.RequestPane)
-	_, shortcutCmd := callUpdateWithCmd(t, model, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
+	_, shortcutCmd := callUpdateWithCmd(
+		t,
+		model,
+		tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}},
+	)
 	require.NotNil(t, shortcutCmd, "x should dispatch the curl export clipboard action")
 
 	_, paletteCmd := choosePaletteCommand(t, model, "copy request as curl")
-	require.NotNil(t, paletteCmd, "the command palette should dispatch the curl export clipboard action")
+	require.NotNil(
+		t,
+		paletteCmd,
+		"the command palette should dispatch the curl export clipboard action",
+	)
 }
 
 func assertCurlExportKeybinding(t *testing.T) {
 	t.Helper()
 	binds := keybindings.DefaultKeybindings()
 	resolver := keybindings.NewResolver(binds)
-	action, ok := resolver.Resolve(0, 1, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(binds.ExportCurl)})
+	action, ok := resolver.Resolve(
+		0,
+		1,
+		tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(binds.ExportCurl)},
+	)
 	require.True(t, ok)
 	require.Equal(t, keybindings.ActionExportCurl, action)
 	require.Empty(t, keybindings.Validate(binds))
@@ -161,10 +173,33 @@ func TestE2E_CurlExportRejectsInvalidPersistedRequests(t *testing.T) {
 		wantErr string
 	}{
 		{name: "empty URL", wantErr: "request URL is required"},
-		{name: "malformed headers", url: "https://example.test", headers: "{", wantErr: "parse request headers"},
-		{name: "malformed auth config", url: "https://example.test", auth: domain.AuthTypeBearer, config: "{", wantErr: "parse request authorization"},
-		{name: "unsupported auth type", url: "https://example.test", auth: "digest", config: `{}`, wantErr: `unsupported authorization type "digest"`},
-		{name: "invalid URL for query API key", url: "https://example.test/%zz", auth: domain.AuthTypeAPIKey, config: `{"in":"query","name":"key","value":"value"}`, wantErr: "parse request URL"},
+		{
+			name:    "malformed headers",
+			url:     "https://example.test",
+			headers: "{",
+			wantErr: "parse request headers",
+		},
+		{
+			name:    "malformed auth config",
+			url:     "https://example.test",
+			auth:    domain.AuthTypeBearer,
+			config:  "{",
+			wantErr: "parse request authorization",
+		},
+		{
+			name:    "unsupported auth type",
+			url:     "https://example.test",
+			auth:    "digest",
+			config:  `{}`,
+			wantErr: `unsupported authorization type "digest"`,
+		},
+		{
+			name:    "invalid URL for query API key",
+			url:     "https://example.test/%zz",
+			auth:    domain.AuthTypeAPIKey,
+			config:  `{"in":"query","name":"key","value":"value"}`,
+			wantErr: "parse request URL",
+		},
 	}
 
 	for i, tc := range cases {
