@@ -626,16 +626,17 @@ func (m Model) viewRequestPane(w, h int) string {
 		contentLines = 0
 	}
 	var renderedContent string
-	if m.activeField == noneField && m.activeRequest != nil {
+	switch {
+	case m.activeField == noneField && m.activeRequest != nil:
 		m.requestText.SetDebugLog(m.debugLog, "request")
 		m.requestText.SetTiming(m.timing)
 		m.requestText.SetFormattedContent(m.requestBodyPreviewSourceKey(), func() string {
 			return m.requestBodyPreviewContent(timingSpan)
 		}, timingSpan)
 		renderedContent = m.requestText.View(innerWidth, contentLines, timingSpan)
-	} else if m.activeField == authField && m.activeRequest != nil {
+	case m.activeField == authField && m.activeRequest != nil:
 		renderedContent = m.viewAuthEditor(contentLines, innerWidth)
-	} else {
+	default:
 		renderedContent = limitLines(content, innerWidth, contentLines)
 	}
 	paddingLines := contentLines - visualRows(renderedContent, innerWidth)
@@ -720,7 +721,7 @@ func (m Model) viewAuthEditor(maxRows, contentWidth int) string {
 	footer := ""
 	fixedRows := visualRows(header, contentWidth) + visualRows(footer, contentWidth)
 	rowBudget := max(1, maxRows-fixedRows)
-	start, end := 0, len(rows)
+	var start, end int
 	for range 3 {
 		start, end = authRowViewport(rowHeights, selected, rowBudget)
 		indicatorRows := 0
