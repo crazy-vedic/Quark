@@ -72,7 +72,7 @@ var helpActionLabels = map[string]string{
 	"search_down":                   helpLabelMoveDown,
 	"search_up":                     helpLabelMoveUp,
 	"search_cancel":                 "close search",
-	"help_close":                    "close help",
+	actionHelpClose:                 "close help",
 	"help_down":                     helpLabelMoveDown,
 	"help_up":                       helpLabelMoveUp,
 	"help_edit":                     "edit binding",
@@ -416,6 +416,56 @@ func (m Model) requestTitleRightChromeWidth() int {
 	return lipgloss.Width(m.renderRequestTitleRightChrome())
 }
 
+// viewHeadersPreview renders the inline header editor or the header list.
+func (m Model) viewHeadersPreview(w int) string {
+	var preview strings.Builder
+	if m.headerEditing {
+		preview.WriteString("Key:\n")
+		preview.WriteString(m.headerKeyInput.View() + "\n\n")
+		if m.headerKeyInput.Focused() {
+			if suggestion := headerNameSuggestion(m.headerKeyInput.Value()); suggestion != "" {
+				preview.WriteString(m.styles.mutedStyle.Render("  Tab → "+suggestion) + "\n")
+			}
+		}
+		preview.WriteString("Value:\n")
+		preview.WriteString(m.headerValueInput.View() + "\n")
+		if m.headerKeyInput.Focused() {
+			if warning := m.singleLineInputWarning(m.headerKeyInput.Value()); warning != "" {
+				preview.WriteString(warning + "\n")
+			}
+		} else if warning := m.singleLineInputWarning(m.headerValueInput.Value()); warning != "" {
+			preview.WriteString(warning + "\n")
+		}
+	} else {
+		if len(m.headerPairs) == 0 {
+			preview.WriteString(
+				m.styles.mutedStyle.Render(
+					"  No headers. Press " + m.renderHintKeys(
+						[]string{"header_add"},
+						false,
+					) + " to add.\n",
+				),
+			)
+		} else {
+			for i, p := range m.headerPairs {
+				cursor := "  "
+				if i == m.headerCursor {
+					cursor = "▸ "
+				}
+				plain := truncate(cursor+p.Key+": "+p.Value, w-4)
+				var line string
+				if i == m.headerCursor {
+					line = lipgloss.NewStyle().Bold(true).Render(plain)
+				} else {
+					line = lipgloss.NewStyle().Foreground(m.styles.info).Render(plain)
+				}
+				preview.WriteString(line + "\n")
+			}
+		}
+	}
+	return preview.String()
+}
+
 func (m Model) viewRequestPane(w, h int) string {
 	timingSpan := m.timing.Track("tui.view_request_pane")
 	defer timingSpan.Done()
@@ -432,7 +482,7 @@ func (m Model) viewRequestPane(w, h int) string {
 	var top []string
 
 	// Title line with the request label first, then send/env chrome aligned right.
-	titleLabel := "Request"
+	titleLabel := requestTitleLabel
 	if m.activeRequest != nil && strings.TrimSpace(m.activeRequest.Name) != "" {
 		titleLabel = "Request " + truncate(m.activeRequest.Name, max(12, w/2))
 	}
@@ -454,6 +504,11 @@ func (m Model) viewRequestPane(w, h int) string {
 	var urlDisplay string
 	if m.activeField == urlField {
 		urlDisplay = m.urlInput.View()
+		if suggestion := m.urlSuggestion(m.urlInput.Value()); suggestion != "" {
+			urlDisplay += m.styles.mutedStyle.Render(
+				completionSuffix(m.urlInput.Value(), suggestion),
+			)
+		}
 	} else {
 		urlVal := m.urlInput.Value()
 		if urlVal == "" {
@@ -514,50 +569,20 @@ func (m Model) viewRequestPane(w, h int) string {
 		// its selected row inside the available content viewport.
 		content = ""
 	case m.activeField == headersField && m.activeRequest != nil:
-		var preview strings.Builder
-		if m.headerEditing {
-			preview.WriteString("Key:\n")
-			preview.WriteString(m.headerKeyInput.View() + "\n\n")
-			preview.WriteString("Value:\n")
-			preview.WriteString(m.headerValueInput.View() + "\n")
-			if m.headerKeyInput.Focused() {
-				if warning := m.singleLineInputWarning(m.headerKeyInput.Value()); warning != "" {
-					preview.WriteString(warning + "\n")
-				}
-			} else if warning := m.singleLineInputWarning(m.headerValueInput.Value()); warning != "" {
-				preview.WriteString(warning + "\n")
-			}
-		} else {
-			if len(m.headerPairs) == 0 {
-				preview.WriteString(
-					m.styles.mutedStyle.Render(
-						"  No headers. Press " + m.renderHintKeys(
-							[]string{"header_add"},
-							false,
-						) + " to add.\n",
-					),
-				)
-			} else {
-				for i, p := range m.headerPairs {
-					cursor := "  "
-					if i == m.headerCursor {
-						cursor = "▸ "
-					}
-					plain := truncate(cursor+p.Key+": "+p.Value, w-4)
-					var line string
-					if i == m.headerCursor {
-						line = lipgloss.NewStyle().Bold(true).Render(plain)
-					} else {
-						line = lipgloss.NewStyle().Foreground(m.styles.info).Render(plain)
-					}
-					preview.WriteString(line + "\n")
-				}
-			}
-		}
-		content = preview.String()
+		content = m.viewHeadersPreview(w)
 	case m.activeRequest != nil:
 		// The read-only preview is formatted lazily by requestText below.
 		content = ""
+	default:
+		content = m.styles.mutedStyle.Render(
+			"No request selected.\n\n" +
+				"Get started by importing a curl command with " +
+				m.renderHintKeys([]string{keybindings.ActionImportCurl}, false) +
+				", or create a collection with " +
+				m.renderHintKeys([]string{"sidebar_add"}, false) +
+				" and add a request with " +
+				m.renderHintKeys([]string{"sidebar_add_request"}, false) + ".",
+		)
 	}
 
 	// Responsive key hints — shorten at narrow terminals, then hard-clamp to one
@@ -1152,7 +1177,7 @@ func (m Model) viewResponseBody(parent ...*timing.Span) string {
 
 	// BUG-002: binary content must not be rendered raw — it can corrupt the terminal.
 	if isBinaryBody(r.Body) {
-		ct := http.Header(r.Headers).Get("Content-Type")
+		ct := http.Header(r.Headers).Get(headerContentType)
 		if ct == "" {
 			ct = "application/octet-stream"
 		}
@@ -1163,7 +1188,7 @@ func (m Model) viewResponseBody(parent ...*timing.Span) string {
 	}
 
 	// Pretty-print JSON if content-type matches.
-	ct := http.Header(r.Headers).Get("Content-Type")
+	ct := http.Header(r.Headers).Get(headerContentType)
 	if strings.Contains(ct, "application/json") || json.Valid(r.Body) {
 		var out any
 		if err := json.Unmarshal(r.Body, &out); err == nil {
@@ -1214,7 +1239,7 @@ func (m Model) viewExecutionBody(ex *domain.Execution, parent ...*timing.Span) s
 	if headers := m.executionHeaders(
 		ex,
 	); strings.Contains(
-		headers.Get("Content-Type"),
+		headers.Get(headerContentType),
 		"application/json",
 	) ||
 		json.Valid(bodyBytes) {
@@ -1589,10 +1614,11 @@ func (m Model) searchVisibleRows() int {
 }
 
 func (m Model) ensureSearchCursorVisible() Model {
+	rows, selectedRow := m.buildSearchRows(m.searchResults, m.searchCursor)
 	m.searchScroll = adjustListViewport(listViewport{
 		Scroll:      m.searchScroll,
-		SelectedRow: m.searchCursor,
-		TotalRows:   len(m.searchResults),
+		SelectedRow: selectedRow,
+		TotalRows:   len(rows),
 		VisibleRows: m.searchVisibleRows(),
 	})
 	return m
@@ -1666,7 +1692,7 @@ func (m Model) viewSearchModal() string {
 			sb.WriteString(m.styles.mutedStyle.Render("  No requests found.  > for commands"))
 		}
 	default:
-		rows, selectedRow := buildSearchRows(m.searchResults, m.searchCursor)
+		rows, selectedRow := m.buildSearchRows(m.searchResults, m.searchCursor)
 		visible := m.searchVisibleRows()
 		start := min(m.searchScroll, max(0, len(rows)-visible))
 		end := min(len(rows), start+visible)
@@ -1675,21 +1701,35 @@ func (m Model) viewSearchModal() string {
 			sb.WriteString(m.styles.mutedStyle.Render("  ↑ more above") + "\n")
 		}
 		for i := start; i < end; i++ {
-			hit := rows[i].hit
-			cursor := "  "
-			if i == selectedRow {
-				cursor = "▸ "
+			row := rows[i]
+			switch row.kind {
+			case searchSpacerRow:
+				sb.WriteString("\n")
+			case searchGroupRow:
+				sb.WriteString(
+					lipgloss.NewStyle().
+						Bold(true).
+						Foreground(m.styles.warning).
+						Render(row.group) +
+						"\n",
+				)
+			case searchRequestRow:
+				hit := row.hit
+				cursor := "  "
+				if i == selectedRow {
+					cursor = "▸ "
+				}
+				prefix := cursor + m.methodBadge(hit.Request.Method) + " "
+				line := prefix + m.renderSearchHit(
+					hit,
+					query,
+					max(1, contentWidth-lipgloss.Width(prefix)),
+				)
+				if i == selectedRow {
+					line = lipgloss.NewStyle().Foreground(m.styles.accent).Bold(true).Render(line)
+				}
+				sb.WriteString(line + "\n")
 			}
-			prefix := cursor + m.methodBadge(hit.Request.Method) + " "
-			line := prefix + m.renderSearchHit(
-				hit,
-				query,
-				max(1, contentWidth-lipgloss.Width(prefix)),
-			)
-			if i == selectedRow {
-				line = lipgloss.NewStyle().Foreground(m.styles.accent).Bold(true).Render(line)
-			}
-			sb.WriteString(line + "\n")
 		}
 		if end < len(rows) {
 			sb.WriteString(m.styles.mutedStyle.Render("  ↓ more below") + "\n")
@@ -1862,6 +1902,9 @@ func highlightSearchMatch(text, query string, base, match lipgloss.Style) string
 
 func (m Model) viewHelp() string {
 	entries := keybindings.ListEntries(m.cfg.Keybindings)
+	if m.helpSearch {
+		entries = filterKeybindingEntries(entries, m.searchInput.Value())
+	}
 	rows, selectedRow := buildHelpRows(entries, m.helpCursor)
 
 	// --- Height budget ---
@@ -1883,6 +1926,9 @@ func (m Model) viewHelp() string {
 	// Do not force a minimum taller than the terminal — Place would overflow.
 	// Everything except the entry-list content:
 	overhead := 2 /*title+blank*/ + 2 /*indicators*/ + 2 /*bottom hint*/ + 4 /*border+padding*/
+	if m.helpSearch {
+		overhead += 2 /*search input*/
+	}
 	if m.helpEditState == helpRecording {
 		overhead += 2
 	}
@@ -1912,6 +1958,9 @@ func (m Model) viewHelp() string {
 
 	var sb strings.Builder
 	sb.WriteString(m.styles.titleStyle.Render("Keyboard Reference") + "\n\n")
+	if m.helpSearch {
+		sb.WriteString(m.searchInput.View() + "\n\n")
+	}
 
 	if m.helpEditState == helpConfirmResetAll {
 		diffs := helpResetAllDiffs(m.cfg.Keybindings)
@@ -1928,7 +1977,7 @@ func (m Model) viewHelp() string {
 			fmt.Sprintf(
 				"  [%s] confirm  [%s] cancel",
 				keybindings.FormatKey("enter"),
-				keybindings.FormatKey(keybindings.GetAction(m.cfg.Keybindings, "help_close")),
+				keybindings.FormatKey(keybindings.GetAction(m.cfg.Keybindings, actionHelpClose)),
 			),
 		))
 
@@ -1951,6 +2000,9 @@ func (m Model) viewHelp() string {
 
 	start := min(m.helpScrollOffset, max(0, len(rows)-maxLines))
 	end := min(len(rows), start+maxLines)
+	if len(rows) == 0 {
+		sb.WriteString(m.styles.mutedStyle.Render("  No keybindings match.") + "\n")
+	}
 	for i := start; i < end; i++ {
 		row := rows[i]
 		switch row.kind {
@@ -1992,7 +2044,7 @@ func (m Model) viewHelp() string {
 	if m.helpEditState == helpRecording {
 		sb.WriteString(
 			"\n" + m.styles.warnStyle.Render("  Press key to bind, "+m.renderHints([]hintItem{
-				{Label: helpLabelCancel, Actions: []string{"help_close"}},
+				{Label: helpLabelCancel, Actions: []string{actionHelpClose}},
 				{Label: "unbind", Actions: []string{"help_unbind"}},
 			})) + "\n",
 		)
@@ -2005,13 +2057,24 @@ func (m Model) viewHelp() string {
 
 	// Bottom hint.
 	if m.helpEditState == helpViewing {
-		sb.WriteString("\n" + m.styles.mutedStyle.Render("  "+m.renderHints([]hintItem{
+		hints := []hintItem{
 			{Label: "navigate", Actions: []string{"help_up", "help_down"}},
 			{Label: "edit", Actions: []string{"help_edit"}},
 			{Label: "reset one", Actions: []string{"help_reset"}},
 			{Label: "reset all", Actions: []string{"help_reset_all"}},
-			{Label: helpLabelClose, Actions: []string{"help_close"}},
-		})))
+		}
+		if m.helpSearch {
+			hints = append(
+				hints,
+				hintItem{Label: helpLabelClose, Actions: []string{actionHelpClose}},
+			)
+		} else {
+			hints = append(hints,
+				hintItem{Label: "search", Actions: []string{"search"}},
+				hintItem{Label: helpLabelClose, Actions: []string{actionHelpClose}},
+			)
+		}
+		sb.WriteString("\n" + m.styles.mutedStyle.Render("  "+m.renderHints(hints)))
 	}
 
 	box := lipgloss.NewStyle().
@@ -2722,3 +2785,8 @@ func (m Model) viewCollectionPromptModal() string {
 
 	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box)
 }
+
+const (
+	actionHelpClose   = "help_close"
+	requestTitleLabel = "Request"
+)

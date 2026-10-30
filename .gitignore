@@ -7,3 +7,5 @@ coverage.out
 /docs/
 .quark/
 *.db
+# Local e2e test output (make e2e-tui)
+test-output.log

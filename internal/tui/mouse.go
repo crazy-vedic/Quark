@@ -429,7 +429,7 @@ func (m Model) handleSidebarClick(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case sidebarListHitCollection:
-		if m.colCursor == hit.row.colIndex && m.reqCursor == -1 {
+		if m.colCursor == hit.row.colIndex {
 			return m.toggleSidebarCollectionExpand(hit.row.colIndex)
 		}
 		return m.selectSidebarCollection(hit.row.colIndex), nil
@@ -466,6 +466,7 @@ func (m Model) toggleSidebarCollectionExpand(colIndex int) (Model, tea.Cmd) {
 	colID := m.collections[colIndex].ID
 	if m.expanded[colID] {
 		m.collapseCollectionSubtree(colID)
+		m, _ = m.selectRequest(nil)
 		return m, nil
 	}
 

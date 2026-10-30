@@ -124,21 +124,21 @@ var corpus = []corpusCase{
 	// --- @filename body ---
 	{
 		name:            "@filename body",
-		input:           `curl -d @/etc/passwd https://api.example.com`,
+		input:           `curl -d @/definitely/missing/quark-body.json https://api.example.com`,
 		wantErr:         true,
 		wantMethod:      "POST",
 		wantURL:         baseURL,
 		wantSecurity:    curl.Dangerous,
-		wantWarnContain: "@filename detected: /etc/passwd",
+		wantWarnContain: "@filename detected: /definitely/missing/quark-body.json",
 	},
 	{
 		name:            "@filename with --data-binary",
-		input:           `curl --data-binary @/tmp/file.json https://api.example.com`,
+		input:           `curl --data-binary @/definitely/missing/quark-body.json https://api.example.com`,
 		wantErr:         true,
 		wantMethod:      "GET", // no body inferred for @- or @file with data-binary
 		wantURL:         baseURL,
 		wantSecurity:    curl.Dangerous,
-		wantWarnContain: "@filename detected: /tmp/file.json",
+		wantWarnContain: "@filename detected: /definitely/missing/quark-body.json",
 	},
 	{
 		name:            "--data-binary @- (stdin)",
@@ -365,15 +365,15 @@ var corpus = []corpusCase{
 	// --- Dangerous patterns ---
 	{
 		name:            "@filename in --data",
-		input:           `curl --data @/home/user/.netrc https://api.example.com`,
+		input:           `curl --data @/definitely/missing/quark-netrc https://api.example.com`,
 		wantErr:         true,
 		wantURL:         baseURL,
 		wantSecurity:    curl.Dangerous,
-		wantWarnContain: "@filename detected: /home/user/.netrc",
+		wantWarnContain: "@filename detected: /definitely/missing/quark-netrc",
 	},
 	{
 		name:         "safe body, dangerous inferred by filename",
-		input:        `curl -d @/tmp/safe.json https://api.example.com`,
+		input:        `curl -d @/definitely/missing/quark-safe.json https://api.example.com`,
 		wantErr:      true,
 		wantURL:      baseURL,
 		wantSecurity: curl.Dangerous,

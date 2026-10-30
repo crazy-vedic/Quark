@@ -7,9 +7,11 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"mime/multipart"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 
 	"mvdan.cc/sh/v3/syntax"
@@ -291,7 +293,12 @@ func parseCommand(command string) (*ImportResult, error) {
 				return nil, errors.New("curl: multipart form and data options cannot be mixed")
 			}
 			if strings.HasPrefix(value, "@") && definition.kind != optionDataRaw {
-				return nil, errors.New("curl: file/stdin-backed request bodies are not imported")
+				body, readErr := readBodyFile(strings.TrimPrefix(value, "@"))
+				if readErr != nil {
+					return nil, readErr
+				}
+				value = body
+				markDangerous(result)
 			}
 			bodyMode = "data"
 			bodyParts = append(bodyParts, value)
@@ -790,4 +797,35 @@ func upgradeSecurityTo(result *ImportResult) {
 	if Review > result.Security {
 		result.Security = Review
 	}
+}
+
+const maxImportedBodyFileBytes = 10 << 20
+
+func readBodyFile(path string) (string, error) {
+	if path == "-" {
+		return "", errors.New("curl: stdin-backed request bodies are not supported during import")
+	}
+	if path == "" {
+		return "", errors.New("curl: empty body file path")
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return "", fmt.Errorf("curl: read body file %q: %w", path, err)
+	}
+	defer f.Close()
+	if info, statErr := f.Stat(); statErr == nil && info.Size() > maxImportedBodyFileBytes {
+		return "", fmt.Errorf("curl: body file %q exceeds %d bytes", path, maxImportedBodyFileBytes)
+	}
+	data, err := io.ReadAll(io.LimitReader(f, maxImportedBodyFileBytes+1))
+	if err != nil {
+		return "", fmt.Errorf("curl: read body file %q: %w", path, err)
+	}
+	if len(data) > maxImportedBodyFileBytes {
+		return "", fmt.Errorf("curl: body file %q exceeds %d bytes", path, maxImportedBodyFileBytes)
+	}
+	return string(data), nil
+}
+
+func markDangerous(result *ImportResult) {
+	result.Security = Dangerous
 }

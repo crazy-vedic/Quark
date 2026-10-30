@@ -79,9 +79,10 @@ func TestE2E_FullUserJourney(t *testing.T) {
 	// 6. Enter URL editing mode
 	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'u'}})
 	assert.True(t, m.ActiveField() == tui.URLField)
-	assertViewContains(t, m, "https://...") // placeholder visible
+	assertViewContains(t, m, "https://example.com/json") // current URL visible
 
 	// 7. Type a URL (keys routed to textinput)
+	m = m.WithURLValue("")
 	m = callUpdate(
 		t,
 		m,
