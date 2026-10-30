@@ -499,7 +499,7 @@ func TestViewPaneStates(t *testing.T) {
 		require.NotEmpty(t, m.viewResponseBody())
 		require.NotEmpty(t, m.viewResponseHeaders())
 	}
-	require.NotEmpty(t, m.viewAuthEditor())
+	require.NotEmpty(t, m.viewAuthEditor(20, 80))
 	require.NotEmpty(t, m.viewHelp())
 	require.NotEmpty(t, m.viewImportModal())
 	m.importPreview = &curl.ImportResult{
