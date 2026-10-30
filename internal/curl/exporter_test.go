@@ -28,14 +28,14 @@ func TestExportRequest(t *testing.T) {
 			wantErr: "request URL is required",
 		},
 		{
-			name:    "defaults method and ignores blank optional fields",
+			name: "defaults method and ignores blank optional fields",
 			request: &domain.Request{
 				URL:      "https://example.test/path",
 				Method:   "  ",
 				Headers:  "  ",
 				AuthType: "  ",
 			},
-			want:    "curl -X 'GET' 'https://example.test/path'",
+			want: "curl -X 'GET' 'https://example.test/path'",
 		},
 		{
 			name: "trims method, sorts headers, and safely quotes values and body",
@@ -97,8 +97,12 @@ func TestExportRequest(t *testing.T) {
 			want: "curl -X 'GET' 'https://example.test/items?api_key=new&keep=yes'",
 		},
 		{
-			name:    "invalid auth config",
-			request: &domain.Request{URL: "https://example.test", AuthType: domain.AuthTypeBearer, AuthConfig: "{"},
+			name: "invalid auth config",
+			request: &domain.Request{
+				URL:        "https://example.test",
+				AuthType:   domain.AuthTypeBearer,
+				AuthConfig: "{",
+			},
 			wantErr: "parse request authorization:",
 		},
 		{
@@ -110,8 +114,12 @@ func TestExportRequest(t *testing.T) {
 			wantErr: "parse request URL:",
 		},
 		{
-			name:    "unsupported authorization type",
-			request: &domain.Request{URL: "https://example.test", AuthType: "digest", AuthConfig: `{}`},
+			name: "unsupported authorization type",
+			request: &domain.Request{
+				URL:        "https://example.test",
+				AuthType:   "digest",
+				AuthConfig: `{}`,
+			},
 			wantErr: `unsupported authorization type "digest"`,
 		},
 	}

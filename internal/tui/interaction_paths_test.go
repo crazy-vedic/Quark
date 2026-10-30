@@ -419,7 +419,11 @@ func TestNormalPaneActionBranches(t *testing.T) {
 	}
 	updated, cmd = invalid.handleRequestAction(keybindings.ActionExportCurl)
 	require.Nil(t, cmd)
-	require.Contains(t, updatedCertificateModel(t, updated).statusErr, "Export curl: parse request authorization")
+	require.Contains(
+		t,
+		updatedCertificateModel(t, updated).statusErr,
+		"Export curl: parse request authorization",
+	)
 	noSelection := newModel()
 	noSelection.activeRequest = nil
 	updated, cmd = noSelection.handleRequestAction(keybindings.ActionExportCurl)
@@ -429,7 +433,11 @@ func TestNormalPaneActionBranches(t *testing.T) {
 	updated, _ = newModel().Update(curlExportClipboardMsg{})
 	require.Equal(t, "Copied curl command", updatedCertificateModel(t, updated).statusSuccess)
 	updated, _ = newModel().Update(curlExportClipboardMsg{err: errors.New("clipboard unavailable")})
-	require.Equal(t, "Copy failed: clipboard unavailable", updatedCertificateModel(t, updated).statusErr)
+	require.Equal(
+		t,
+		"Copy failed: clipboard unavailable",
+		updatedCertificateModel(t, updated).statusErr,
+	)
 	updated, _ = interactionModel().handleRequestAction(keybindings.ActionDeleteRequest)
 	require.Contains(t, updatedCertificateModel(t, updated).statusErr, "Select a request")
 	updated, _ = newModel().handleRequestAction(keybindings.ActionDeleteRequest)
