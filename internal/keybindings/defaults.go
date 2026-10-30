@@ -38,6 +38,7 @@ func DefaultKeybindings() Keybindings {
 		EditBody:      "b",
 		EditHeaders:   "h",
 		RequestDelete: "d",
+		ExportCurl:    "x",
 		EditAuth:      "a",
 		ScheduleRun:   "S",
 		EnvOpen:       "e",

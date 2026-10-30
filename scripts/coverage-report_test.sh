@@ -456,7 +456,8 @@ test_e2e_suites_exclude_cross_surface_files() {
 
     setup_repo "$repo_dir"
 
-    mkdir -p "${repo_dir}/internal/tui" "${repo_dir}/internal/cli" "${repo_dir}/internal/tuitest"
+    mkdir -p "${repo_dir}/internal/tui" "${repo_dir}/internal/cli" "${repo_dir}/internal/tuitest" \
+        "${repo_dir}/internal/curl" "${repo_dir}/internal/keybindings"
     cat > "${repo_dir}/internal/tui/widget.go" <<'EOF'
 package tui
 
@@ -479,7 +480,23 @@ func Harness() int {
 }
 EOF
 
-    git -C "$repo_dir" add internal/tui/widget.go internal/cli/command.go internal/tuitest/harness.go
+    cat > "${repo_dir}/internal/curl/exporter.go" <<'EOF'
+package curl
+
+func Exporter() int {
+	return 1
+}
+EOF
+    cat > "${repo_dir}/internal/keybindings/resolver.go" <<'EOF'
+package keybindings
+
+func Resolve() int {
+	return 1
+}
+EOF
+
+    git -C "$repo_dir" add internal/tui/widget.go internal/cli/command.go internal/tuitest/harness.go \
+        internal/curl/exporter.go internal/keybindings/resolver.go
     git -C "$repo_dir" commit -m "add tui and cli surfaces" >/dev/null
 
     cat > "${repo_dir}/internal/tui/widget.go" <<'EOF'
@@ -504,11 +521,28 @@ func Harness() int {
 }
 EOF
 
+    cat > "${repo_dir}/internal/curl/exporter.go" <<'EOF'
+package curl
+
+func Exporter() int {
+	return 2
+}
+EOF
+    cat > "${repo_dir}/internal/keybindings/resolver.go" <<'EOF'
+package keybindings
+
+func Resolve() int {
+	return 2
+}
+EOF
+
     cat > "${repo_dir}/ut.out" <<EOF
 mode: set
 ${repo_dir}/internal/tui/widget.go:4.1,4.13 1 1
 ${repo_dir}/internal/cli/command.go:4.1,4.13 1 1
 ${repo_dir}/internal/tuitest/harness.go:4.1,4.13 1 1
+${repo_dir}/internal/curl/exporter.go:4.1,4.13 1 1
+${repo_dir}/internal/keybindings/resolver.go:4.1,4.13 1 1
 EOF
 
     cat > "${repo_dir}/tui.out" <<EOF
@@ -516,6 +550,8 @@ mode: set
 ${repo_dir}/internal/tui/widget.go:4.1,4.14 1 1
 ${repo_dir}/internal/cli/command.go:4.1,4.14 1 0
 ${repo_dir}/internal/tuitest/harness.go:4.1,4.14 1 1
+${repo_dir}/internal/curl/exporter.go:4.1,4.14 1 1
+${repo_dir}/internal/keybindings/resolver.go:4.1,4.14 1 1
 EOF
 
     cat > "${repo_dir}/cli.out" <<EOF
@@ -523,6 +559,8 @@ mode: set
 ${repo_dir}/internal/tui/widget.go:4.1,4.14 1 0
 ${repo_dir}/internal/cli/command.go:4.1,4.14 1 1
 ${repo_dir}/internal/tuitest/harness.go:4.1,4.14 1 0
+${repo_dir}/internal/curl/exporter.go:4.1,4.14 1 0
+${repo_dir}/internal/keybindings/resolver.go:4.1,4.14 1 0
 EOF
 
     run_code_change "$repo_dir" "$state_dir" \
@@ -532,8 +570,8 @@ EOF
 
     # shellcheck disable=SC1090
     source "${state_dir}/state.env"
-    assert_eq "${TUI_CODE_COUNT}" "2/2" \
-        "E2E TUI MCC should count TUI-scoped changed lines including tuitest"
+    assert_eq "${TUI_CODE_COUNT}" "4/4" \
+        "E2E TUI MCC should count TUI-scoped changed lines including shared TUI code"
     assert_eq "${CLI_CODE_COUNT}" "1/1" \
         "E2E CLI MCC should count only CLI-scoped changed lines"
 
@@ -543,6 +581,10 @@ EOF
         "E2E CLI uncovered files should exclude TUI-only surface"
     assert_file_not_contains "${state_dir}/cli-uncovered.md" "internal/tuitest/harness.go" \
         "E2E CLI uncovered files should exclude TUI test harness"
+    assert_file_not_contains "${state_dir}/cli-uncovered.md" "internal/curl/exporter.go" \
+        "E2E CLI uncovered files should exclude TUI-only curl export code"
+    assert_file_not_contains "${state_dir}/cli-uncovered.md" "internal/keybindings/resolver.go" \
+        "E2E CLI uncovered files should exclude the TUI keybinding resolver"
 
     cleanup_dirs "$repo_dir" "$state_dir"
 }

@@ -115,6 +115,23 @@ func TestResolver_Default_RequestPane(t *testing.T) {
 	}
 }
 
+func TestResolver_ExportCurlBinding(t *testing.T) {
+	binds := DefaultKeybindings()
+	binds.ExportCurl = "x"
+	r := NewResolver(binds)
+
+	got, ok := r.Resolve(0, 1, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
+	assert.True(t, ok)
+	assert.Equal(t, ActionExportCurl, got)
+	assert.Empty(t, Validate(binds), "the default curl export binding should not conflict")
+
+	binds.ExportCurl = binds.EditURL
+	conflicts := Validate(binds)
+	assert.Contains(t, conflicts, binds.ExportCurl)
+	assert.Contains(t, conflicts[binds.ExportCurl], ActionExportCurl)
+	assert.Contains(t, conflicts[binds.ExportCurl], ActionEditURL)
+}
+
 func TestResolver_Default_ResponsePane(t *testing.T) {
 	r := NewResolver(DefaultKeybindings())
 

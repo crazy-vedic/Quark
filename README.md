@@ -82,6 +82,10 @@ clipboard, `Ctrl+S` parses it, and `Enter` confirms the preview. The importer
 preserves repeated headers, request bodies, JSON, URL-encoded data, and
 multipart text fields.
 
+In the request pane, press `x` to copy the selected request as a shell-quoted
+cURL command. The command includes its method, headers, authorization, URL, and
+body.
+
 `--cert`/`--cert-type P12`, PEM `--cert` plus `--key`, and `--cacert` are saved
 as host-scoped TLS configuration. File- or stdin-backed bodies, shell
 expansions, redirections, and multiple URLs are rejected rather than executed.

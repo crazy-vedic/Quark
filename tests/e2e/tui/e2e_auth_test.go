@@ -74,7 +74,8 @@ func TestE2E_AuthEditor_BearerUsesEnvAndRedactsPreview(t *testing.T) {
 	model, cmd := callUpdateWithCmd(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
 	m = model
 	require.Equal(t, tui.AuthField, m.ActiveField())
-	assertViewContains(t, m, "Secrets stay hidden in the preview")
+	assertViewContains(t, m, "Type: None")
+	assertViewNotContains(t, m, "Secrets stay hidden in the preview")
 
 	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}}) // None -> Bearer
 	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})

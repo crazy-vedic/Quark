@@ -59,6 +59,7 @@ var helpActionLabels = map[string]string{
 	keybindings.ActionEditHeaders:   "edit headers",
 	"edit_auth":                     "edit auth",
 	keybindings.ActionScheduleRun:   "schedule request",
+	keybindings.ActionExportCurl:    "copy as curl",
 	"response_down":                 "next history item",
 	"response_up":                   "prev history item",
 	"response_retry":                "retry request",
@@ -509,7 +510,9 @@ func (m Model) viewRequestPane(w, h int) string {
 	case m.activeField == bodyField && m.activeRequest != nil:
 		content = m.bodyTextarea.View()
 	case m.activeField == authField && m.activeRequest != nil:
-		content = m.viewAuthEditor()
+		// Render after measuring the request pane so the auth editor can keep
+		// its selected row inside the available content viewport.
+		content = ""
 	case m.activeField == headersField && m.activeRequest != nil:
 		var preview strings.Builder
 		if m.headerEditing {
@@ -623,14 +626,17 @@ func (m Model) viewRequestPane(w, h int) string {
 		contentLines = 0
 	}
 	var renderedContent string
-	if m.activeField == noneField && m.activeRequest != nil {
+	switch {
+	case m.activeField == noneField && m.activeRequest != nil:
 		m.requestText.SetDebugLog(m.debugLog, "request")
 		m.requestText.SetTiming(m.timing)
 		m.requestText.SetFormattedContent(m.requestBodyPreviewSourceKey(), func() string {
 			return m.requestBodyPreviewContent(timingSpan)
 		}, timingSpan)
 		renderedContent = m.requestText.View(innerWidth, contentLines, timingSpan)
-	} else {
+	case m.activeField == authField && m.activeRequest != nil:
+		renderedContent = m.viewAuthEditor(contentLines, innerWidth)
+	default:
 		renderedContent = limitLines(content, innerWidth, contentLines)
 	}
 	paddingLines := contentLines - visualRows(renderedContent, innerWidth)
@@ -684,38 +690,92 @@ func (m Model) requestBodyPreviewContent(parent ...*timing.Span) string {
 	return strings.Join(lines, "\n")
 }
 
-func (m Model) viewAuthEditor() string {
-	var sb strings.Builder
-	sb.WriteString(m.styles.titleStyle.Render("Auth") + "\n")
-	sb.WriteString(m.styles.mutedStyle.Render("  Secrets stay hidden in the preview.") + "\n\n")
-	for idx, row := range m.authEditor.rows() {
+func (m Model) viewAuthEditor(maxRows, contentWidth int) string {
+	rows := m.authEditor.rows()
+	selected := min(max(0, m.authEditor.cursor), len(rows)-1)
+	rowViews := make([]string, len(rows))
+	rowHeights := make([]int, len(rows))
+	for idx, row := range rows {
 		cursor := "  "
-		if idx == m.authEditor.cursor {
+		if idx == selected {
 			cursor = "▸ "
 		}
 		label := lipgloss.NewStyle().Foreground(m.styles.info).Render(authRowLabel(row))
 		value := m.authEditor.valueForRow(row, m.authEditor.editing, m.styles.mutedStyle)
 		line := cursor + label + ": " + value
-		if idx == m.authEditor.cursor {
+		if idx == selected {
 			line = lipgloss.NewStyle().Bold(true).Render(line)
 		}
-		sb.WriteString(line + "\n")
-		if idx == m.authEditor.cursor && m.authEditor.editing {
+		rowViews[idx] = line
+		if idx == selected && m.authEditor.editing {
 			if warning := m.singleLineInputWarning(
 				m.authEditor.singleLineValue(row),
 			); warning != "" {
-				sb.WriteString(warning + "\n")
+				rowViews[idx] += "\n" + warning
 			}
 		}
+		rowHeights[idx] = visualRows(rowViews[idx], contentWidth)
 	}
-	sb.WriteString("\n")
-	sb.WriteString(m.styles.mutedStyle.Render(m.renderHints([]hintItem{
-		{Label: "move", Actions: []string{"auth_up", "auth_down"}},
-		{Label: "edit", Actions: []string{"auth_edit"}},
-		{Label: "cycle", Actions: []string{"auth_option_prev", "auth_option_next"}},
-		{Label: "save", Actions: []string{"auth_save"}},
-	})))
-	return sb.String()
+
+	header := m.styles.titleStyle.Render("Auth") + "\n"
+	footer := ""
+	fixedRows := visualRows(header, contentWidth) + visualRows(footer, contentWidth)
+	rowBudget := max(1, maxRows-fixedRows)
+	var start, end int
+	for range 3 {
+		start, end = authRowViewport(rowHeights, selected, rowBudget)
+		indicatorRows := 0
+		if start > 0 {
+			indicatorRows++
+		}
+		if end < len(rows) {
+			indicatorRows++
+		}
+		available := max(1, maxRows-fixedRows-indicatorRows)
+		if available >= rowBudget {
+			break
+		}
+		rowBudget = available
+	}
+	start, end = authRowViewport(rowHeights, selected, rowBudget)
+
+	var sb strings.Builder
+	sb.WriteString(header)
+	if start > 0 {
+		sb.WriteString(m.styles.mutedStyle.Render("  ↑ more above") + "\n")
+	}
+	for idx := start; idx < end; idx++ {
+		if idx > start {
+			sb.WriteString("\n")
+		}
+		sb.WriteString(rowViews[idx])
+	}
+	if end < len(rows) {
+		sb.WriteString("\n" + m.styles.mutedStyle.Render("  ↓ more below"))
+	}
+	sb.WriteString(footer)
+	return clipToRows(sb.String(), contentWidth, maxRows)
+}
+
+func authRowViewport(rowHeights []int, selected, visibleRows int) (int, int) {
+	if len(rowHeights) == 0 {
+		return 0, 0
+	}
+	selected = min(max(0, selected), len(rowHeights)-1)
+	visibleRows = max(1, visibleRows)
+
+	start := selected
+	usedRows := rowHeights[selected]
+	for start > 0 && usedRows+rowHeights[start-1] <= visibleRows {
+		start--
+		usedRows += rowHeights[start]
+	}
+	end := selected + 1
+	for end < len(rowHeights) && usedRows+rowHeights[end] <= visibleRows {
+		usedRows += rowHeights[end]
+		end++
+	}
+	return start, end
 }
 
 // --- Response pane ---

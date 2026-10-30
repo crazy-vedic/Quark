@@ -205,6 +205,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.statusSuccess = "Copied body"
 		}
 		return m, nil
+	case curlExportClipboardMsg:
+		if msg.err != nil {
+			m.statusErr = "Copy failed: " + msg.err.Error()
+		} else {
+			m.statusSuccess = "Copied curl command"
+		}
+		return m, nil
 
 	case executionHistoryLoadedMsg:
 		if m.activeRequest == nil || msg.requestID != m.activeRequest.ID {
@@ -718,6 +725,15 @@ func (m Model) handleRequestAction(action string) (tea.Model, tea.Cmd) {
 		return m.startRequest(req)
 	case keybindings.ActionScheduleRun:
 		return m.openSchedulePrompt()
+	case keybindings.ActionExportCurl:
+		if m.activeRequest == nil {
+			return m.status("error", "Select a request first"), nil
+		}
+		command, err := curl.ExportRequest(m.activeRequest)
+		if err != nil {
+			return m.status("error", "Export curl: "+err.Error()), nil
+		}
+		return m, copyCurlCommandCmd(command)
 	case keybindings.ActionEditBody:
 		return m.beginBodyEdit(), nil
 	case keybindings.ActionEnvOpen:
@@ -1194,6 +1210,7 @@ var commandPaletteItems = []commandPaletteItem{
 	{Title: "Previous HTTP method", Action: keybindings.ActionMethodPrev},
 	{Title: "Delete selected request", Action: keybindings.ActionDeleteRequest},
 	{Title: "Schedule request", Action: keybindings.ActionScheduleRun},
+	{Title: "Copy request as curl", Action: keybindings.ActionExportCurl},
 	{Title: "Open environment editor", Action: keybindings.ActionEnvOpen},
 	{Title: "Next environment", Action: keybindings.ActionEnvNext},
 	{Title: "Previous environment", Action: keybindings.ActionEnvPrev},
@@ -1277,6 +1294,9 @@ func (m Model) executeSelectedCommand() (tea.Model, tea.Cmd) {
 		m.focus = requestPane
 		return m.handleRequestAction(action)
 	case keybindings.ActionScheduleRun:
+		m.focus = requestPane
+		return m.handleRequestAction(action)
+	case keybindings.ActionExportCurl:
 		m.focus = requestPane
 		return m.handleRequestAction(action)
 	case keybindings.ActionImportCurl,
