@@ -403,12 +403,32 @@ func TestNormalPaneActionBranches(t *testing.T) {
 		keybindings.ActionEditURL, keybindings.ActionMethodNext, keybindings.ActionMethodPrev,
 		keybindings.ActionSendRequest, keybindings.ActionScheduleRun, keybindings.ActionEditBody,
 		keybindings.ActionEnvOpen, keybindings.ActionEnvNext, keybindings.ActionEnvPrev,
-		keybindings.ActionEditAuth, keybindings.ActionEditHeaders,
+		keybindings.ActionEditAuth, keybindings.ActionEditHeaders, keybindings.ActionExportCurl,
 	} {
 		updated, _ := newModel().handleRequestAction(action)
 		require.NotNil(t, updated, action)
 	}
-	updated, _ := interactionModel().handleRequestAction(keybindings.ActionDeleteRequest)
+	updated, _ := newModel().handleRequestAction(keybindings.ActionExportCurl)
+	require.NotNil(t, updated)
+	_, cmd := newModel().handleRequestAction(keybindings.ActionExportCurl)
+	require.NotNil(t, cmd, "a valid request should dispatch a clipboard command")
+
+	invalid := newModel()
+	invalid.activeRequest = &domain.Request{URL: "https://example.test", AuthType: "bearer", AuthConfig: "{"}
+	updated, cmd = invalid.handleRequestAction(keybindings.ActionExportCurl)
+	require.Nil(t, cmd)
+	require.Contains(t, updatedCertificateModel(t, updated).statusErr, "Export curl: parse request authorization")
+	noSelection := newModel()
+	noSelection.activeRequest = nil
+	updated, cmd = noSelection.handleRequestAction(keybindings.ActionExportCurl)
+	require.Nil(t, cmd)
+	require.Equal(t, "Select a request first", updatedCertificateModel(t, updated).statusErr)
+
+	updated, _ = newModel().Update(curlExportClipboardMsg{})
+	require.Equal(t, "Copied curl command", updatedCertificateModel(t, updated).statusSuccess)
+	updated, _ = newModel().Update(curlExportClipboardMsg{err: errors.New("clipboard unavailable")})
+	require.Equal(t, "Copy failed: clipboard unavailable", updatedCertificateModel(t, updated).statusErr)
+	updated, _ = interactionModel().handleRequestAction(keybindings.ActionDeleteRequest)
 	require.Contains(t, updatedCertificateModel(t, updated).statusErr, "Select a request")
 	updated, _ = newModel().handleRequestAction(keybindings.ActionDeleteRequest)
 	require.Equal(t, promptDeleteTiny, updatedCertificateModel(t, updated).promptMode)
@@ -423,7 +443,7 @@ func TestNormalPaneActionBranches(t *testing.T) {
 		RequestID:       request.ID,
 		RequestSnapshot: `{"method":"GET","url":"https://snapshot.test","headers":"{}","body":""}`,
 	}}
-	updated, cmd := raw.handleResponseAction("retry_request")
+	updated, cmd = raw.handleResponseAction("retry_request")
 	require.NotNil(t, updated)
 	require.NotNil(t, cmd)
 
@@ -433,6 +453,30 @@ func TestNormalPaneActionBranches(t *testing.T) {
 	}
 	updated, _ = interactionModel().handleSidebarAction("add_request")
 	require.Contains(t, updatedCertificateModel(t, updated).statusErr, "Select a collection")
+}
+
+func TestAuthEditorViewportShowsIndicatorsAndSelectedInputWarning(t *testing.T) {
+	request := &domain.Request{URL: "https://example.test", AuthType: domain.AuthTypeBasic,
+		AuthConfig: `{"username":"alice","password":"` + strings.Repeat("p", 300) + `"}`}
+	m := interactionModel().WithActiveRequest(request).beginAuthEdit()
+	m.authEditor.cursor = 2
+	m.authEditor.editing = true
+
+	view := m.viewAuthEditor(5, 100)
+	require.Contains(t, view, "↑ more above")
+	require.Contains(t, view, "Large single-line input (300 characters)")
+	require.Contains(t, view, "Password")
+	require.LessOrEqual(t, lipgloss.Height(view), 5)
+
+	apiKeyModel := interactionModel().WithActiveRequest(&domain.Request{
+		URL: "https://example.test", AuthType: domain.AuthTypeAPIKey,
+	}).beginAuthEdit()
+	apiKeyModel.authEditor.cursor = 2
+	viewport := apiKeyModel.viewAuthEditor(4, 80)
+	require.Contains(t, viewport, "↑ more above")
+	require.Contains(t, viewport, "↓ more below")
+	require.Contains(t, viewport, "Key")
+	require.LessOrEqual(t, lipgloss.Height(viewport), 4)
 }
 
 func TestClientCertificateKeyBranches(t *testing.T) {

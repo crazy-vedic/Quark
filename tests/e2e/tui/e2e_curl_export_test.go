@@ -12,10 +12,12 @@ import (
 
 	"github.com/crazy-vedic/quark/internal/curl"
 	"github.com/crazy-vedic/quark/internal/domain"
+	"github.com/crazy-vedic/quark/internal/keybindings"
 	"github.com/crazy-vedic/quark/internal/tui"
 )
 
 func TestE2E_CurlExportFromPersistedRequest(t *testing.T) {
+	assertCurlExportKeybinding(t)
 	collection := &domain.Collection{ID: "curl-export", Name: "Curl export"}
 	st := setupStore(t, collection)
 	request := &domain.Request{
@@ -52,6 +54,16 @@ func TestE2E_CurlExportFromPersistedRequest(t *testing.T) {
 
 	_, paletteCmd := choosePaletteCommand(t, model, "copy request as curl")
 	require.NotNil(t, paletteCmd, "the command palette should dispatch the curl export clipboard action")
+}
+
+func assertCurlExportKeybinding(t *testing.T) {
+	t.Helper()
+	binds := keybindings.DefaultKeybindings()
+	resolver := keybindings.NewResolver(binds)
+	action, ok := resolver.Resolve(0, 1, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(binds.ExportCurl)})
+	require.True(t, ok)
+	require.Equal(t, keybindings.ActionExportCurl, action)
+	require.Empty(t, keybindings.Validate(binds))
 }
 
 func TestE2E_CurlExportAuthAndURLVariants(t *testing.T) {
@@ -152,6 +164,7 @@ func TestE2E_CurlExportRejectsInvalidPersistedRequests(t *testing.T) {
 		{name: "malformed headers", url: "https://example.test", headers: "{", wantErr: "parse request headers"},
 		{name: "malformed auth config", url: "https://example.test", auth: domain.AuthTypeBearer, config: "{", wantErr: "parse request authorization"},
 		{name: "unsupported auth type", url: "https://example.test", auth: "digest", config: `{}`, wantErr: `unsupported authorization type "digest"`},
+		{name: "invalid URL for query API key", url: "https://example.test/%zz", auth: domain.AuthTypeAPIKey, config: `{"in":"query","name":"key","value":"value"}`, wantErr: "parse request URL"},
 	}
 
 	for i, tc := range cases {
