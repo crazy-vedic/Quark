@@ -172,7 +172,9 @@ file_in_tui_suite_scope() {
 file_in_cli_suite_scope() {
     local file="$1"
     case "$file" in
-        internal/tui/*|internal/tuitest/*) return 1 ;;
+        # These shared packages contain TUI-only paths; the CLI binary suite
+        # cannot exercise them, so their coverage belongs to UT/TUI metrics.
+        internal/tui/*|internal/tuitest/*|internal/curl/exporter.go|internal/keybindings/resolver.go) return 1 ;;
         *) return 0 ;;
     esac
 }
@@ -217,7 +219,8 @@ sum_summary_column_for_scope() {
             return path !~ /^internal\/cli\// && path !~ /^cmd\//
         }
         if (scope == "cli") {
-            return path !~ /^internal\/tui\// && path !~ /^internal\/tuitest\//
+            return path !~ /^internal\/tui\// && path !~ /^internal\/tuitest\// &&
+                path != "internal/curl/exporter.go" && path != "internal/keybindings/resolver.go"
         }
         return 1
     }
