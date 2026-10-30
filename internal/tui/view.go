@@ -716,14 +716,8 @@ func (m Model) viewAuthEditor(maxRows, contentWidth int) string {
 		rowHeights[idx] = visualRows(rowViews[idx], contentWidth)
 	}
 
-	header := m.styles.titleStyle.Render("Auth") + "\n" +
-		m.styles.mutedStyle.Render("  Secrets stay hidden in the preview.") + "\n\n"
-	footer := "\n" + m.styles.mutedStyle.Render(m.renderHints([]hintItem{
-		{Label: "move", Actions: []string{"auth_up", "auth_down"}},
-		{Label: "edit", Actions: []string{"auth_edit"}},
-		{Label: "cycle", Actions: []string{"auth_option_prev", "auth_option_next"}},
-		{Label: "save", Actions: []string{"auth_save"}},
-	}))
+	header := m.styles.titleStyle.Render("Auth") + "\n"
+	footer := ""
 	fixedRows := visualRows(header, contentWidth) + visualRows(footer, contentWidth)
 	rowBudget := max(1, maxRows-fixedRows)
 	start, end := 0, len(rows)
