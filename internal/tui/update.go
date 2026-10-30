@@ -24,6 +24,7 @@ import (
 	"github.com/crazy-vedic/quark/internal/keybindings"
 	"github.com/crazy-vedic/quark/internal/schedule"
 	"github.com/crazy-vedic/quark/internal/store"
+	"github.com/crazy-vedic/quark/internal/theme"
 	"github.com/crazy-vedic/quark/internal/timing"
 )
 
@@ -58,6 +59,38 @@ func debugHeaderKeys(headers http.Header) string {
 //nolint:gocyclo // Bubble Tea keeps the top-level message dispatcher centralized.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case themeWatchTickMsg:
+		if m.configDir == "" || m.ctx.Err() != nil {
+			return m, nil
+		}
+		if theme.IsBuiltin(m.theme.Name) {
+			if m.themePreviewBase != nil && !theme.IsBuiltin(m.themePreviewBase.Name) {
+				return m, themeWatchTick()
+			}
+			return m, nil
+		}
+		hash, err := theme.FileHash(m.configDir, m.theme.Name)
+		if err != nil {
+			if m.themeWatchError != err.Error() {
+				m.themeWatchError = err.Error()
+				m = m.status("error", "Theme reload: "+err.Error())
+			}
+			return m, themeWatchTick()
+		}
+		if hash != m.themeFileHash || m.themeWatchError != "" {
+			m.themeFileHash = hash
+			selected, err := theme.Resolve(m.configDir, m.theme.Name, m.terminalDark)
+			if err != nil {
+				if m.themeWatchError != err.Error() {
+					m.themeWatchError = err.Error()
+					m = m.status("error", "Theme reload: "+err.Error())
+				}
+			} else {
+				m = m.useTheme(selected)
+				m = m.status("success", "Theme reloaded: "+selected.Name)
+			}
+		}
+		return m, themeWatchTick()
 	case curlClipboardMsg:
 		if m.mode != importMode || m.importPreview != nil {
 			return m, nil
@@ -71,6 +104,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.importError = ""
 		m.debugCurl("clipboard read bytes=%d", len(msg.value))
 		return m, nil
+	case postmanImportResultMsg:
+		m.postmanBusy = false
+		m.postmanOutput = strings.TrimSpace(msg.output)
+		if msg.err != nil {
+			m.postmanOutput = strings.TrimSpace(m.postmanOutput + "\n" + msg.err.Error())
+			return m, nil
+		}
+		if m.lister != nil {
+			return m, loadCollectionsCmd(m.ctx, m.lister)
+		}
+		return m, nil
 
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
@@ -82,6 +126,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.mode == importMode && m.importPreview == nil {
 			m.importInput.SetWidth(max(20, min(m.width-12, 100)))
 			m.importInput.SetHeight(max(6, min(m.height/3, 14)))
+		}
+		if m.mode == postmanImportMode {
+			m.postmanPath.Width = max(20, min(m.width-12, 100))
 		}
 		return m, nil
 
@@ -95,6 +142,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.mode == importMode && m.importPreview == nil {
 			m.importInput.SetWidth(max(20, min(m.width-12, 100)))
 			m.importInput.SetHeight(max(6, min(m.height/3, 14)))
+		}
+		if m.mode == postmanImportMode {
+			m.postmanPath.Width = max(20, min(m.width-12, 100))
 		}
 		return m, nil
 
@@ -174,7 +224,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		// Also try to load persisted active env for this collection.
 		if m.activeEnvStore != nil {
-			return m, tea.Batch(historyCmd, loadActiveEnvCmd(m.ctx, m.activeEnvStore, msg.collectionID))
+			return m, tea.Batch(
+				historyCmd,
+				loadActiveEnvCmd(m.ctx, m.activeEnvStore, msg.collectionID),
+			)
 		}
 		return m, historyCmd
 
@@ -207,7 +260,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyMsg:
 		if m.debugLog != nil {
-			if m.mode == importMode {
+			if m.mode == importMode || m.mode == postmanImportMode {
 				// The import textarea can contain credentials, request bodies, and
 				// literal certificate passwords. Log only structural key metadata.
 				fmt.Fprintf(
@@ -276,6 +329,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.handleScheduleKey(msg)
 		case clientCertMode:
 			return m.handleClientCertKey(msg)
+		case postmanImportMode:
+			return m.handlePostmanImportKey(msg)
 		default:
 			return m.handleNormalKey(msg)
 		}
@@ -319,6 +374,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		// Invalidate cached env name on active-env change.
 		m.cachedEnvColID = ""
+		return m, nil
+	case activeEnvSaveErrMsg:
+		m.cachedEnvColID = ""
+		m = m.status("error", fmt.Sprintf("Save active environment: %v", msg.err))
 		return m, nil
 	case promptCompletedMsg:
 		m = m.closeCollectionPrompt()
@@ -438,6 +497,8 @@ func (m Model) handleEsc() Model {
 		return m.closeCollectionPrompt()
 	case clientCertMode:
 		return m.closeClientCertModal()
+	case postmanImportMode:
+		return m.closePostmanImportModal()
 	}
 	// In normal mode: cancel in-flight request.
 	if m.loading && m.cancel != nil {
@@ -580,9 +641,11 @@ func (m Model) dispatchNormalAction(action string) (tea.Model, tea.Cmd) {
 		return m.openClientCertModal(), nil
 	case keybindings.ActionImportCurl:
 		return m.openCurlImport(), textarea.Blink
-	case "env_next":
+	case keybindings.ActionImportPostman:
+		return m.openPostmanImportModal(), textinput.Blink
+	case keybindings.ActionEnvNext:
 		return m.cycleEnv(1)
-	case "env_prev":
+	case keybindings.ActionEnvPrev:
 		return m.cycleEnv(-1)
 	}
 
@@ -655,12 +718,14 @@ func (m Model) handleSidebarAction(action string) (tea.Model, tea.Cmd) {
 			return m.status("error", "Select a collection first"), nil
 		}
 		return m.enterCollectionPrompt(promptDeleteConfirm, colID)
-	case "rename":
+	case actionRename:
 		colID := m.activeCollectionID()
 		if colID == "" {
 			return m.status("error", "Select a collection first"), nil
 		}
 		return m.enterCollectionPrompt(promptRename, colID)
+	case keybindings.ActionImportPostman:
+		return m.openPostmanImportModal(), textinput.Blink
 	}
 	return m, nil
 }
@@ -702,11 +767,11 @@ func (m Model) handleRequestAction(action string) (tea.Model, tea.Cmd) {
 		return m.beginBodyEdit(), nil
 	case keybindings.ActionEnvOpen:
 		return m.openEnvEditor()
-	case "env_next":
+	case keybindings.ActionEnvNext:
 		return m.cycleEnv(1)
-	case "env_prev":
+	case keybindings.ActionEnvPrev:
 		return m.cycleEnv(-1)
-	case "edit_auth":
+	case keybindings.ActionEditAuth:
 		return m.beginAuthEdit(), nil
 	case keybindings.ActionEditHeaders:
 		return m.beginHeadersEdit(), nil
@@ -741,19 +806,19 @@ func (m Model) handleResponseAction(action string, parent ...*timing.Span) (tea.
 			return m.status("error", err.Error()), nil
 		}
 		return m.startRawRequest(req)
-	case "tab_body":
+	case actionTabBody:
 		m.responseTab = bodyTab
-	case "tab_headers":
+	case actionTabHeaders:
 		m.responseTab = headersTab
-	case "tab_raw":
+	case actionTabRaw:
 		m.responseTab = rawTab
-	case "tab_next":
+	case actionTabNext:
 		if m.responseTab == rawTab {
 			m.responseTab = bodyTab
 		} else {
 			m.responseTab++
 		}
-	case "tab_prev":
+	case actionTabPrev:
 		if m.responseTab == bodyTab {
 			m.responseTab = rawTab
 		} else {
@@ -948,7 +1013,7 @@ func (m Model) handleSearchKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				if len(m.commands) > 0 && m.searchCursor < len(m.commands)-1 {
 					m.searchCursor++
 				}
-				return m, nil
+				return m.ensureCommandCursorVisible().previewCommandTheme(), nil
 			}
 			if len(m.searchResults) > 0 && m.searchCursor < len(m.searchResults)-1 {
 				m.searchCursor++
@@ -960,7 +1025,7 @@ func (m Model) handleSearchKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				if m.searchCursor > 0 {
 					m.searchCursor--
 				}
-				return m, nil
+				return m.ensureCommandCursorVisible().previewCommandTheme(), nil
 			}
 			m.searchCursor--
 			if m.searchCursor < 0 {
@@ -992,12 +1057,12 @@ func (m Model) handleSearchKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 	query := m.searchInput.Value()
 	if m.isCommandPaletteQuery(query) {
-		m.commands = filterCommandPalette(strings.TrimSpace(strings.TrimPrefix(query, ">")))
+		m.commands = m.filterCommandPalette(strings.TrimSpace(strings.TrimPrefix(query, ">")))
 		m.searchResults = nil
 		m.searchCursor = 0
 		m.searchScroll = 0
 		m.searched = true
-		return m, inputCmd
+		return m.previewCommandTheme(), inputCmd
 	}
 	// dispatchSearch cancels any stale search goroutine before starting a new one.
 	var searchM Model
@@ -1023,7 +1088,7 @@ func (m Model) openHelp() Model {
 	m.helpSearch = false
 	m.searchInput.Blur()
 	m.searchInput.SetValue("")
-	m.searchInput.Placeholder = "search requests (optional)..."
+	m.searchInput.Placeholder = searchPlaceholder
 	return m
 }
 
@@ -1037,14 +1102,14 @@ func (m Model) closeHelp() Model {
 	m.helpSearch = false
 	m.searchInput.Blur()
 	m.searchInput.SetValue("")
-	m.searchInput.Placeholder = "search requests (optional)..."
+	m.searchInput.Placeholder = searchPlaceholder
 	return m
 }
 
 func (m Model) openSearch() (Model, tea.Cmd) {
 	m.mode = searchMode
 	m.searchInput.SetValue("")
-	m.searchInput.Placeholder = "search requests (optional)..."
+	m.searchInput.Placeholder = searchPlaceholder
 	m.searchInput.Focus()
 	m.searchResults = nil
 	m.commands = nil
@@ -1057,6 +1122,10 @@ func (m Model) openSearch() (Model, tea.Cmd) {
 }
 
 func (m Model) closeSearch() Model {
+	if m.themePreviewBase != nil {
+		m = m.useTheme(*m.themePreviewBase)
+		m.themePreviewBase = nil
+	}
 	if m.searchCancel != nil {
 		m.searchCancel()
 		m.searchCancel = nil
@@ -1064,7 +1133,7 @@ func (m Model) closeSearch() Model {
 	m.mode = normalMode
 	m.searchInput.Blur()
 	m.searchInput.SetValue("")
-	m.searchInput.Placeholder = "search requests (optional)..."
+	m.searchInput.Placeholder = searchPlaceholder
 	m.searchResults = nil
 	m.commands = nil
 	m.searchCursor = 0
@@ -1162,17 +1231,41 @@ func (m Model) statusScheduledRunResult(msg scheduledRunBackgroundResultMsg) Mod
 }
 
 type commandPaletteItem struct {
-	Title  string
-	Action string
+	Title     string
+	Action    string
+	ThemeName string
+}
+
+type themeWatchTickMsg struct{}
+
+func themeWatchTick() tea.Cmd {
+	return tea.Tick(2*time.Second, func(time.Time) tea.Msg { return themeWatchTickMsg{} })
 }
 
 var commandPaletteItems = []commandPaletteItem{
+	{Title: "Quit Quark", Action: "quit"},
 	{Title: "Focus sidebar", Action: keybindings.ActionFocusSidebar},
 	{Title: "Focus request", Action: keybindings.ActionFocusRequest},
 	{Title: "Focus response", Action: keybindings.ActionFocusResponse},
+	{Title: "Search saved requests", Action: keybindings.ActionSearch},
 	{Title: "Send request", Action: keybindings.ActionSendRequest},
+	{Title: "Edit request URL", Action: keybindings.ActionEditURL},
+	{Title: "Edit request body", Action: keybindings.ActionEditBody},
+	{Title: "Edit request headers", Action: keybindings.ActionEditHeaders},
+	{Title: "Edit request authorization", Action: keybindings.ActionEditAuth},
+	{Title: "Next HTTP method", Action: keybindings.ActionMethodNext},
+	{Title: "Previous HTTP method", Action: keybindings.ActionMethodPrev},
+	{Title: "Delete selected request", Action: keybindings.ActionDeleteRequest},
 	{Title: "Schedule request", Action: keybindings.ActionScheduleRun},
+	{Title: "Open environment editor", Action: keybindings.ActionEnvOpen},
+	{Title: "Next environment", Action: keybindings.ActionEnvNext},
+	{Title: "Previous environment", Action: keybindings.ActionEnvPrev},
+	{Title: "Create collection", Action: "add"},
+	{Title: "Create request in collection", Action: "add_request"},
+	{Title: "Rename selected collection", Action: actionRename},
+	{Title: "Delete selected collection", Action: deleteToken},
 	{Title: "Import curl command", Action: keybindings.ActionImportCurl},
+	{Title: "Import Postman collection", Action: keybindings.ActionImportPostman},
 	{Title: "Client certificates", Action: keybindings.ActionClientCerts},
 	{Title: "Open help", Action: "help"},
 }
@@ -1185,13 +1278,22 @@ func (m Model) isCommandPaletteQuery(query string) bool {
 	return strings.HasPrefix(strings.TrimSpace(query), ">")
 }
 
-func filterCommandPalette(query string) []commandPaletteItem {
+func (m Model) filterCommandPalette(query string) []commandPaletteItem {
+	items := append([]commandPaletteItem(nil), commandPaletteItems...)
+	if names, err := theme.List(m.configDir); err == nil {
+		for _, name := range names {
+			items = append(
+				items,
+				commandPaletteItem{Title: "Theme: " + name, Action: "theme", ThemeName: name},
+			)
+		}
+	}
 	query = strings.ToLower(strings.TrimSpace(query))
 	if query == "" {
-		return append([]commandPaletteItem(nil), commandPaletteItems...)
+		return items
 	}
 	var out []commandPaletteItem
-	for _, item := range commandPaletteItems {
+	for _, item := range items {
 		title := strings.ToLower(item.Title)
 		action := strings.ReplaceAll(item.Action, "_", " ")
 		if strings.Contains(title, query) || strings.Contains(action, query) {
@@ -1205,9 +1307,33 @@ func (m Model) executeSelectedCommand() (tea.Model, tea.Cmd) {
 	if len(m.commands) == 0 || m.searchCursor >= len(m.commands) {
 		return m.closeSearch(), nil
 	}
-	action := m.commands[m.searchCursor].Action
+	item := m.commands[m.searchCursor]
+	if item.ThemeName != "" {
+		wasWatching := !theme.IsBuiltin(m.theme.Name)
+		if m.themePreviewBase != nil {
+			wasWatching = !theme.IsBuiltin(m.themePreviewBase.Name)
+		}
+		selected, err := theme.Resolve(m.configDir, item.ThemeName, m.terminalDark)
+		if err != nil {
+			return m.status("error", err.Error()), nil
+		}
+		if err := config.SaveTheme(m.configDir, item.ThemeName); err != nil {
+			return m.status("error", fmt.Sprintf("save theme: %v", err)), nil
+		}
+		m.cfg.UI.Theme = item.ThemeName
+		m.themePreviewBase = nil
+		m = m.useTheme(selected)
+		m = m.closeSearch().status("success", "Theme: "+item.ThemeName)
+		if !wasWatching && !theme.IsBuiltin(item.ThemeName) {
+			return m, themeWatchTick()
+		}
+		return m, nil
+	}
+	action := item.Action
 	m = m.closeSearch()
 	switch action {
+	case "quit":
+		return m, tea.Quit
 	case "help":
 		return m.openHelp(), nil
 	case keybindings.ActionSendRequest:
@@ -1217,14 +1343,62 @@ func (m Model) executeSelectedCommand() (tea.Model, tea.Cmd) {
 		m.focus = requestPane
 		return m.handleRequestAction(action)
 	case keybindings.ActionImportCurl,
+		keybindings.ActionImportPostman,
 		keybindings.ActionClientCerts:
 		return m.dispatchNormalAction(action)
 	case keybindings.ActionFocusSidebar,
 		keybindings.ActionFocusRequest,
-		keybindings.ActionFocusResponse:
+		keybindings.ActionFocusResponse,
+		keybindings.ActionSearch:
+		return m.dispatchNormalAction(action)
+	case keybindings.ActionEditURL,
+		keybindings.ActionEditBody,
+		keybindings.ActionEditHeaders,
+		keybindings.ActionMethodNext,
+		keybindings.ActionMethodPrev,
+		keybindings.ActionEditAuth:
+		m.focus = requestPane
+		return m.dispatchNormalAction(action)
+	case keybindings.ActionEnvOpen, keybindings.ActionEnvNext, keybindings.ActionEnvPrev:
+		return m.dispatchNormalAction(action)
+	case "add", "add_request", actionRename, deleteToken:
+		m.focus = sidebarPane
+		return m.dispatchNormalAction(action)
+	case keybindings.ActionDeleteRequest:
+		m.focus = requestPane
 		return m.dispatchNormalAction(action)
 	}
 	return m, nil
+}
+
+func (m Model) previewCommandTheme() Model {
+	name := ""
+	if m.searchCursor < len(m.commands) {
+		name = m.commands[m.searchCursor].ThemeName
+	}
+	if name == "" {
+		if m.themePreviewBase != nil {
+			m = m.useTheme(*m.themePreviewBase)
+			m.themePreviewBase = nil
+		}
+		return m
+	}
+	selected, err := theme.Resolve(m.configDir, name, m.terminalDark)
+	if err != nil {
+		return m.status("error", err.Error())
+	}
+	if selected == m.theme {
+		return m
+	}
+	if m.themePreviewBase != nil && selected == *m.themePreviewBase {
+		m.themePreviewBase = nil
+		return m.useTheme(selected)
+	}
+	if m.themePreviewBase == nil {
+		previous := m.theme
+		m.themePreviewBase = &previous
+	}
+	return m.useTheme(selected)
 }
 
 func (m Model) openImport(preview *curl.ImportResult) (Model, tea.Cmd) {
@@ -1372,44 +1546,52 @@ func filterKeybindingEntries(entries []keybindings.Entry, query string) []keybin
 
 // --- Help overlay ---
 
+// handleHelpSearchKey handles keys while the keybinding reference search is open.
+func (m Model) handleHelpSearchKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if action, ok := m.resolver.Resolve(2, 0, msg); ok {
+		switch action {
+		case keybindings.ActionSearch:
+			return m, nil
+		case keybindings.ActionClose:
+			m.helpSearch = false
+			m.searchInput.Blur()
+			m.searchInput.SetValue("")
+			m.helpCursor = 0
+			m.helpScrollOffset = 0
+			return m, nil
+		case keybindings.ActionNavigateUp, keybindings.ActionNavigateDown:
+			// Let printable navigation keys (often j/k) become part of the
+			// query. Arrow keys remain available for moving through matches.
+			if msg.Type != tea.KeyRunes {
+				entries := filterKeybindingEntries(
+					keybindings.ListEntries(m.cfg.Keybindings),
+					m.searchInput.Value(),
+				)
+				if action == keybindings.ActionNavigateUp && m.helpCursor > 0 {
+					m.helpCursor--
+				}
+				if action == keybindings.ActionNavigateDown && m.helpCursor < len(entries)-1 {
+					m.helpCursor++
+				}
+				direction := 1
+				if action == keybindings.ActionNavigateUp {
+					direction = -1
+				}
+				return m.adjustHelpScroll(entries, direction), nil
+			}
+		}
+	}
+	var inputCmd tea.Cmd
+	m.searchInput, inputCmd = m.searchInput.Update(msg)
+	m.helpCursor = 0
+	m.helpScrollOffset = 0
+	return m, inputCmd
+}
+
 func (m Model) handleHelpKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// Search is an inline, live filter over the keybinding reference.
 	if m.helpSearch {
-		if action, ok := m.resolver.Resolve(2, 0, msg); ok {
-			switch action {
-			case keybindings.ActionSearch:
-				return m, nil
-			case keybindings.ActionClose:
-				m.helpSearch = false
-				m.searchInput.Blur()
-				m.searchInput.SetValue("")
-				m.helpCursor = 0
-				m.helpScrollOffset = 0
-				return m, nil
-			case keybindings.ActionNavigateUp, keybindings.ActionNavigateDown:
-				// Let printable navigation keys (often j/k) become part of the
-				// query. Arrow keys remain available for moving through matches.
-				if msg.Type != tea.KeyRunes {
-					entries := filterKeybindingEntries(keybindings.ListEntries(m.cfg.Keybindings), m.searchInput.Value())
-					if action == keybindings.ActionNavigateUp && m.helpCursor > 0 {
-						m.helpCursor--
-					}
-					if action == keybindings.ActionNavigateDown && m.helpCursor < len(entries)-1 {
-						m.helpCursor++
-					}
-					direction := 1
-					if action == keybindings.ActionNavigateUp {
-						direction = -1
-					}
-					return m.adjustHelpScroll(entries, direction), nil
-				}
-			}
-		}
-		var inputCmd tea.Cmd
-		m.searchInput, inputCmd = m.searchInput.Update(msg)
-		m.helpCursor = 0
-		m.helpScrollOffset = 0
-		return m, inputCmd
+		return m.handleHelpSearchKey(msg)
 	}
 
 	// Handle recording state first — capture the next keypress.

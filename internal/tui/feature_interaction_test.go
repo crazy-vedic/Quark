@@ -21,7 +21,7 @@ func TestRequestURLTabAcceptsLoadedURLSuggestion(t *testing.T) {
 	m.urlInput.SetValue("https://api.example.com/u")
 
 	updated, _ := m.handleRequestKey("", tea.KeyMsg{Type: tea.KeyTab})
-	m = updated.(Model)
+	m = requireModel(t, updated)
 
 	require.Equal(t, "https://api.example.com/users", m.urlInput.Value())
 }
@@ -35,7 +35,7 @@ func TestHeaderEditTabCompletesNameAndValue(t *testing.T) {
 	m.headerValueInput.Blur()
 
 	updated, _ := m.handleHeaderFieldEdit(tea.KeyMsg{Type: tea.KeyTab})
-	m = updated.(Model)
+	m = requireModel(t, updated)
 	require.Equal(t, "Authorization", m.headerKeyInput.Value())
 	require.True(t, m.headerKeyInput.Focused())
 
@@ -44,7 +44,7 @@ func TestHeaderEditTabCompletesNameAndValue(t *testing.T) {
 	m.headerKeyInput.Blur()
 	m.headerValueInput.Focus()
 	updated, _ = m.handleHeaderFieldEdit(tea.KeyMsg{Type: tea.KeyTab})
-	m = updated.(Model)
+	m = requireModel(t, updated)
 	require.Equal(t, "application/json", m.headerValueInput.Value())
 }
 
@@ -61,7 +61,11 @@ func TestSaveBodyFormatsJSONBeforePersisting(t *testing.T) {
 	updated, cmd := m.saveBody()
 	m = updated
 	require.NotNil(t, cmd)
-	require.Equal(t, "{\n  \"name\": \"quark\",\n  \"items\": [\n    1,\n    2\n  ]\n}", m.bodyTextarea.Value())
+	require.Equal(
+		t,
+		"{\n  \"name\": \"quark\",\n  \"items\": [\n    1,\n    2\n  ]\n}",
+		m.bodyTextarea.Value(),
+	)
 }
 
 func TestSaveBodyRejectsInvalidJSONWithoutSaving(t *testing.T) {

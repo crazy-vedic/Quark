@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/crazy-vedic/quark/internal/config"
 	"github.com/crazy-vedic/quark/internal/domain"
 )
@@ -17,7 +16,10 @@ type startupRequestReader struct {
 	history  map[string][]*domain.Execution
 }
 
-func (r startupRequestReader) ListExecutionsByRequest(_ context.Context, requestID string) ([]*domain.Execution, error) {
+func (r startupRequestReader) ListExecutionsByRequest(
+	_ context.Context,
+	requestID string,
+) ([]*domain.Execution, error) {
 	return r.history[requestID], nil
 }
 
@@ -32,31 +34,34 @@ func (r startupRequestReader) GetRequest(_ context.Context, id string) (*domain.
 	return nil, errors.New("request not found")
 }
 
-func (r startupRequestReader) ListRequests(_ context.Context, collectionID string) ([]*domain.Request, error) {
+func (r startupRequestReader) ListRequests(
+	_ context.Context,
+	collectionID string,
+) ([]*domain.Request, error) {
 	return r.requests[collectionID], nil
-}
-
-func runStartupCmd(t *testing.T, m Model, cmd func() tea.Msg) Model {
-	t.Helper()
-	updated, _ := m.Update(cmd())
-	return updated.(Model)
 }
 
 func TestStartupRestoresLastRequest(t *testing.T) {
 	first := &domain.Collection{ID: "first", Name: "First"}
 	second := &domain.Collection{ID: "second", Name: "Second"}
-	last := &domain.Request{ID: "last", CollectionID: second.ID, Name: "Last", Method: "GET", URL: "https://last.example"}
+	last := &domain.Request{
+		ID:           "last",
+		CollectionID: second.ID,
+		Name:         "Last",
+		Method:       "GET",
+		URL:          "https://last.example",
+	}
 	reader := startupRequestReader{requests: map[string][]*domain.Request{second.ID: {last}}}
 	cfg := config.Default(t.TempDir())
 	cfg.UI.LastRequestID = last.ID
 	m := New(Deps{Reader: reader, Config: cfg, ConfigDir: filepath.Dir(cfg.Logging.File)})
 
 	updated, cmd := m.Update(collectionsLoadedMsg{collections: []*domain.Collection{first, second}})
-	m = updated.(Model)
+	m = requireModel(t, updated)
 	updated, cmd = m.Update(cmd())
-	m = updated.(Model)
+	m = requireModel(t, updated)
 	updated, _ = m.Update(cmd())
-	m = updated.(Model)
+	m = requireModel(t, updated)
 
 	if m.activeRequest == nil || m.activeRequest.ID != last.ID {
 		t.Fatalf("active request = %v, want %q", m.activeRequest, last.ID)
@@ -68,15 +73,27 @@ func TestStartupRestoresLastRequest(t *testing.T) {
 
 func TestStartupSelectsFirstRequestWhenNoRequestWasPersisted(t *testing.T) {
 	col := &domain.Collection{ID: "col", Name: "Collection"}
-	first := &domain.Request{ID: "first", CollectionID: col.ID, Name: "First", Method: "GET", URL: "https://first.example"}
-	second := &domain.Request{ID: "second", CollectionID: col.ID, Name: "Second", Method: "GET", URL: "https://second.example"}
+	first := &domain.Request{
+		ID:           "first",
+		CollectionID: col.ID,
+		Name:         "First",
+		Method:       "GET",
+		URL:          "https://first.example",
+	}
+	second := &domain.Request{
+		ID:           "second",
+		CollectionID: col.ID,
+		Name:         "Second",
+		Method:       "GET",
+		URL:          "https://second.example",
+	}
 	reader := startupRequestReader{requests: map[string][]*domain.Request{col.ID: {first, second}}}
 	m := New(Deps{Reader: reader, Config: config.Default(t.TempDir())})
 
 	updated, cmd := m.Update(collectionsLoadedMsg{collections: []*domain.Collection{col}})
-	m = updated.(Model)
+	m = requireModel(t, updated)
 	updated, _ = m.Update(cmd())
-	m = updated.(Model)
+	m = requireModel(t, updated)
 
 	if m.activeRequest == nil || m.activeRequest.ID != first.ID {
 		t.Fatalf("active request = %v, want %q", m.activeRequest, first.ID)
@@ -85,7 +102,13 @@ func TestStartupSelectsFirstRequestWhenNoRequestWasPersisted(t *testing.T) {
 
 func TestStartupSelectionLoadsExecutionHistory(t *testing.T) {
 	col := &domain.Collection{ID: "col", Name: "Collection"}
-	req := &domain.Request{ID: "req", CollectionID: col.ID, Name: "Request", Method: "GET", URL: "https://example.com"}
+	req := &domain.Request{
+		ID:           "req",
+		CollectionID: col.ID,
+		Name:         "Request",
+		Method:       "GET",
+		URL:          "https://example.com",
+	}
 	execution := &domain.Execution{ID: "ex", RequestID: req.ID, StatusCode: 200}
 	reader := startupRequestReader{
 		requests: map[string][]*domain.Request{col.ID: {req}},
@@ -94,14 +117,14 @@ func TestStartupSelectionLoadsExecutionHistory(t *testing.T) {
 	m := New(Deps{Reader: reader, ExecutionReader: reader, Config: config.Default(t.TempDir())})
 
 	updated, cmd := m.Update(collectionsLoadedMsg{collections: []*domain.Collection{col}})
-	m = updated.(Model)
+	m = requireModel(t, updated)
 	updated, cmd = m.Update(cmd())
-	m = updated.(Model)
+	m = requireModel(t, updated)
 	updated, cmd = m.Update(cmd())
-	m = updated.(Model)
+	m = requireModel(t, updated)
 	if cmd != nil {
 		updated, _ = m.Update(cmd())
-		m = updated.(Model)
+		m = requireModel(t, updated)
 	}
 
 	if len(m.executions) != 1 || m.executions[0].ID != execution.ID {

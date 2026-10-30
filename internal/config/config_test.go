@@ -63,7 +63,10 @@ keep_last = 5
 
 func TestLastRequestID_RoundTripsWithoutReplacingConfig(t *testing.T) {
 	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "config.toml"), []byte("[ui]\ntheme = \"dark\"\n"), 0o600))
+	require.NoError(
+		t,
+		os.WriteFile(filepath.Join(dir, "config.toml"), []byte("[ui]\ntheme = \"dark\"\n"), 0o600),
+	)
 
 	require.NoError(t, config.SaveLastRequestID(dir, "request-123"))
 	cfg, err := config.Load(dir)
@@ -96,4 +99,21 @@ theme = "transparent"
 	assert.Equal(t, "transparent", cfg.UI.Theme)
 	assert.Equal(t, 30*time.Second, cfg.Timeout(), "timeout must default when omitted")
 	assert.Equal(t, 10, cfg.Backup.KeepLast, "keep_last must default when omitted")
+}
+
+func TestLoad_MigratesLegacyCurlImportBinding(t *testing.T) {
+	dir := t.TempDir()
+	content := "[keybindings]\nimport_curl = \"I\"\n"
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "config.toml"), []byte(content), 0o600))
+	cfg, err := config.Load(dir)
+	require.NoError(t, err)
+	assert.Equal(t, "i", cfg.Keybindings.ImportCurl)
+	assert.Equal(t, "I", cfg.Keybindings.SidebarImportPostman)
+
+	content = "[keybindings]\nimport_curl = \"I\"\nsidebar_import_postman = \"P\"\n"
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "config.toml"), []byte(content), 0o600))
+	cfg, err = config.Load(dir)
+	require.NoError(t, err)
+	assert.Equal(t, "I", cfg.Keybindings.ImportCurl)
+	assert.Equal(t, "P", cfg.Keybindings.SidebarImportPostman)
 }

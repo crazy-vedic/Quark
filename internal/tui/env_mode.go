@@ -78,6 +78,11 @@ type envLoadedMsg struct {
 	envID        string
 }
 
+type activeEnvSaveErrMsg struct {
+	collectionID string
+	err          error
+}
+
 // openEnvEditor opens the env editor for the current collection.
 func (m Model) openEnvEditor() (Model, tea.Cmd) {
 	if m.envReader == nil {
@@ -248,14 +253,14 @@ func (m Model) dispatchEnvAction(action string) (tea.Model, tea.Cmd) {
 	switch action {
 	case keybindings.ActionCancel:
 		return m.closeEnvEditor(), nil
-	case "tab_prev":
+	case actionTabPrev:
 		if len(m.envEditor.tabs) > 0 {
 			m = m.switchEnvTab(
 				(m.envEditor.tabIdx - 1 + len(m.envEditor.tabs)) % len(m.envEditor.tabs),
 			)
 		}
 		return m, nil
-	case "tab_next":
+	case actionTabNext:
 		if len(m.envEditor.tabs) > 0 {
 			m = m.switchEnvTab((m.envEditor.tabIdx + 1) % len(m.envEditor.tabs))
 		}
@@ -296,6 +301,7 @@ func (m Model) envAddVar() (tea.Model, tea.Cmd) {
 	m.envEditor.editing = true
 	m.envEditor.editKey = textinput.New()
 	m.envEditor.editVal = textinput.New()
+	m.styleInputs()
 	m.envEditor.editKey.Focus()
 	return m, textinput.Blink
 }
@@ -326,6 +332,7 @@ func (m Model) envEditVar() (tea.Model, tea.Cmd) {
 		m.envEditor.editing = true
 		m.envEditor.editKey = textinput.New()
 		m.envEditor.editVal = textinput.New()
+		m.styleInputs()
 		m.envEditor.editKey.SetValue(m.envEditor.vars[m.envEditor.varCursor].Key)
 		m.envEditor.editVal.SetValue(m.envEditor.vars[m.envEditor.varCursor].Value)
 		m.envEditor.editKey.Focus()
@@ -414,6 +421,7 @@ func (m Model) copyInheritedEnvVar() (tea.Model, tea.Cmd) {
 	m.envEditor.editing = true
 	m.envEditor.editKey = textinput.New()
 	m.envEditor.editVal = textinput.New()
+	m.styleInputs()
 	m.envEditor.editKey.SetValue(inherited.Key)
 	m.envEditor.editVal.SetValue(inherited.Value)
 	m.envEditor.editKey.Focus()
@@ -558,10 +566,6 @@ func (m Model) cycleEnv(direction int) (Model, tea.Cmd) {
 	// Cycle.
 	newIdx := (currentIdx + direction + len(envs)) % len(envs)
 	newEnv := envs[newIdx]
-	m.activeEnv[colID] = newEnv.ID
-	// Invalidate cached name so next render resolves the new env.
-	m.cachedEnvColID = ""
-	m.cachedEnvName = newEnv.Name
 
 	var cmd tea.Cmd
 	if m.activeEnvStore != nil {
@@ -569,10 +573,14 @@ func (m Model) cycleEnv(direction int) (Model, tea.Cmd) {
 			ctx2, cancel2 := context.WithTimeout(m.ctx, envDBTimeout)
 			defer cancel2()
 			if err := m.activeEnvStore.SetActiveEnvironment(ctx2, colID, newEnv.ID); err != nil {
-				return errLoadMsg{err: fmt.Errorf("save active env: %w", err)}
+				return activeEnvSaveErrMsg{collectionID: colID, err: err}
 			}
 			return envLoadedMsg{collectionID: colID, envID: newEnv.ID}
 		}
+	} else {
+		m.activeEnv[colID] = newEnv.ID
+		m.cachedEnvColID = ""
+		m.cachedEnvName = newEnv.Name
 	}
 	return m, cmd
 }

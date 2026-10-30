@@ -184,7 +184,24 @@ func NewModelWithConfig(
 	executor tui.RequestExecutor,
 	cfg config.Config,
 ) tui.Model {
+	return NewModelWithConfigDir(t, st, executor, cfg, "")
+}
+
+// NewModelWithConfigDir exercises features that read or persist files in the
+// same configuration directory used by the real application.
+func NewModelWithConfigDir(
+	t *testing.T,
+	st *store.Store,
+	executor tui.RequestExecutor,
+	cfg config.Config,
+	configDir string,
+	activeEnvStore ...store.ActiveEnvironmentStore,
+) tui.Model {
 	t.Helper()
+	var activeStore store.ActiveEnvironmentStore
+	if len(activeEnvStore) > 0 {
+		activeStore = activeEnvStore[0]
+	}
 	return tui.New(tui.Deps{
 		Lister:          st,
 		Reader:          st,
@@ -193,10 +210,12 @@ func NewModelWithConfig(
 		ExecutionReader: st,
 		EnvReader:       st,
 		EnvWriter:       st,
+		ActiveEnvStore:  activeStore,
 		Executor:        executor,
 		Searcher:        search.New(st),
 		Importer:        curl.NewImporter(),
 		Config:          cfg,
+		ConfigDir:       configDir,
 		Ctx:             context.Background(),
 		Resolver:        keybindings.NewResolver(cfg.Keybindings),
 	})

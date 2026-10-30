@@ -31,7 +31,7 @@ type Keybindings = keybindings.Keybindings
 
 // UI configures appearance and editing.
 type UI struct {
-	Theme         string `toml:"theme"`                     // auto | dark | light | transparent
+	Theme         string `toml:"theme"`                     // built-in or themes/<name>.toml
 	DefaultMethod string `toml:"default_method"`            // GET
 	Editor        string `toml:"editor"`                    // empty = $EDITOR, fallback vim
 	LastRequestID string `toml:"last_request_id,omitempty"` // last request opened in the TUI
@@ -177,6 +177,11 @@ func Load(configDir string) (Config, error) {
 			override.Keybindings.SidebarDelete == "d" {
 			cfg.Keybindings.SidebarDelete = "D"
 		}
+		if md.IsDefined("keybindings", "import_curl") &&
+			!md.IsDefined("keybindings", "sidebar_import_postman") &&
+			override.Keybindings.ImportCurl == "I" {
+			cfg.Keybindings.ImportCurl = "i"
+		}
 	}
 
 	return cfg, nil
@@ -276,6 +281,54 @@ func SaveKeybindings(configDir string, binds keybindings.Keybindings) error {
 	}
 	defer f.Close()
 	return toml.NewEncoder(f).Encode(doc)
+}
+
+// SaveTheme updates only [ui].theme. It refuses malformed existing config and
+// writes a temporary file before replacement so a failed encode cannot truncate
+// a working configuration containing credentials or keybindings.
+func SaveTheme(configDir, name string) error {
+	if err := os.MkdirAll(configDir, 0o700); err != nil {
+		return err
+	}
+	path := filepath.Join(configDir, "config.toml")
+	doc := make(map[string]any)
+	raw, err := os.ReadFile(path)
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	if len(raw) > 0 {
+		if _, err := toml.Decode(string(raw), &doc); err != nil {
+			return fmt.Errorf("decode config.toml: %w", err)
+		}
+	}
+	ui, ok := doc["ui"].(map[string]any)
+	if !ok {
+		ui = make(map[string]any)
+	}
+	ui["theme"] = name
+	doc["ui"] = ui
+
+	tmp, err := os.CreateTemp(configDir, ".config-theme-*.tmp")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(tmp.Name())
+	if err := tmp.Chmod(0o600); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := toml.NewEncoder(tmp).Encode(doc); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmp.Name(), path)
 }
 
 // SaveClientCertificates writes only the HTTP client_certificates setting,

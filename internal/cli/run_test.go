@@ -211,13 +211,15 @@ func TestNewRunCmd_ExecutesWithPositionalsNamedVarsAndEnvFallback(t *testing.T) 
 
 	cmd := NewRunCmd(st, executor)
 	var out bytes.Buffer
+	var verboseOut bytes.Buffer
 	cmd.SetOut(&out)
-	cmd.SetErr(&out)
+	cmd.SetErr(&verboseOut)
 	cmd.SetArgs([]string{
 		"API/create-item",
 		"pos-123",
 		"--var", "name=cli-name",
 		"--var", "token=cli-token",
+		"--verbose",
 	})
 	cmd.SetContext(context.Background())
 
@@ -228,7 +230,10 @@ func TestNewRunCmd_ExecutesWithPositionalsNamedVarsAndEnvFallback(t *testing.T) 
 	assert.Equal(t, `{"merchant_id":"pos-123","name":"cli-name"}`, transport.lastBody)
 	assert.Equal(t, "Bearer cli-token", transport.lastHeaders.Get("Authorization"))
 	assert.Contains(t, out.String(), "Status: 200 OK")
-	assert.Contains(t, out.String(), `{"ok":true}`)
+	assert.Contains(t, out.String(), `"ok": true`)
+	assert.Contains(t, verboseOut.String(), "Request body (43 bytes)")
+	assert.Contains(t, verboseOut.String(), "Request headers:")
+	assert.Contains(t, verboseOut.String(), "< Content-Type: application/json")
 }
 
 func TestNewRunCmd_ResolvesFileBackedValuesAndFormatsJSON(t *testing.T) {

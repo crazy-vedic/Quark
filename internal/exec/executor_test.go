@@ -199,10 +199,14 @@ func TestExecutor_SpecialHeadersProduceExpectedWireRequest(t *testing.T) {
 		mustContain []string
 	}{
 		{
-			name:        "host length and close",
-			headers:     `{"Host":"api.example.test","Content-Length":"7","Connection":"close"}`,
-			body:        "payload",
-			mustContain: []string{"Host: api.example.test\r\n", "Content-Length: 7\r\n", "Connection: close\r\n"},
+			name:    "host length and close",
+			headers: `{"Host":"api.example.test","Content-Length":"7","Connection":"close"}`,
+			body:    "payload",
+			mustContain: []string{
+				"Host: api.example.test\r\n",
+				"Content-Length: 7\r\n",
+				"Connection: close\r\n",
+			},
 		},
 		{
 			name:        "chunked transfer",

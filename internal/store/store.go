@@ -22,6 +22,7 @@ type Store struct {
 	logger     *slog.Logger
 	cacheSize  int
 	backupPath string
+	backupKeep int
 	dbPath     string
 }
 
@@ -66,6 +67,7 @@ func New(path string, opts ...Option) (*Store, error) {
 		logger:     o.logger,
 		cacheSize:  o.cacheSize,
 		backupPath: o.backupPath,
+		backupKeep: o.backupKeep,
 		dbPath:     path,
 	}
 

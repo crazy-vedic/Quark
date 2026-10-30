@@ -23,7 +23,7 @@ func TestE2E_CurlImportPersistsThroughModelAndSQLite(t *testing.T) {
 	m := newE2EModel(t, st, &mockExecutor{})
 	m = resize(t, m, 130, 42)
 	m = callUpdate(t, m, tui.CollectionsLoadedMsg([]*domain.Collection{collection}))
-	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'I'}})
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'i'}})
 	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(command), Paste: true})
 	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyCtrlS})
 	assertViewContains(t, m, "POST")

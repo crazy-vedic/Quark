@@ -5,6 +5,10 @@ import (
 	"strings"
 )
 
+// headerContentType is the Content-Type header name, referenced by name in
+// several places.
+const headerContentType = "Content-Type"
+
 // commonHeaderNames is intentionally limited to request header names. Header
 // values remain free-form because guessing a value can change request
 // semantics or expose credentials.
@@ -15,7 +19,7 @@ var commonHeaderNames = []string{
 	"Authorization",
 	"Cache-Control",
 	"Content-Length",
-	"Content-Type",
+	headerContentType,
 	"Cookie",
 	"If-Match",
 	"If-None-Match",
@@ -45,8 +49,12 @@ func headerNameSuggestion(input string) string {
 }
 
 var commonHeaderValues = map[string][]string{
-	"accept":        {"application/json", "text/plain", "*/*"},
-	"content-type":  {"application/json", "application/x-www-form-urlencoded", "multipart/form-data"},
+	"accept": {"application/json", "text/plain", "*/*"},
+	"content-type": {
+		"application/json",
+		"application/x-www-form-urlencoded",
+		"multipart/form-data",
+	},
 	"cache-control": {"no-cache", "no-store", "max-age=0"},
 	"authorization": {"Bearer ", "Basic "},
 }
@@ -67,7 +75,8 @@ func (m Model) urlSuggestion(input string) string {
 	}
 	for _, requests := range m.collectionRequests {
 		for _, req := range requests {
-			if req != nil && len(req.URL) > len(input) && strings.HasPrefix(strings.ToLower(req.URL), strings.ToLower(input)) {
+			if req != nil && len(req.URL) > len(input) &&
+				strings.HasPrefix(strings.ToLower(req.URL), strings.ToLower(input)) {
 				return req.URL
 			}
 		}
@@ -122,7 +131,8 @@ func variableCompletion(input string, names []string) string {
 	}
 	prefix := input[start+2:]
 	for _, name := range names {
-		if len(name) > len(prefix) && strings.HasPrefix(strings.ToLower(name), strings.ToLower(prefix)) {
+		if len(name) > len(prefix) &&
+			strings.HasPrefix(strings.ToLower(name), strings.ToLower(prefix)) {
 			return input[:start+2] + name + "}}" + input[start+2+len(prefix):]
 		}
 	}

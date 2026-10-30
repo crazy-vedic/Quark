@@ -449,13 +449,13 @@ func (m Model) responsePaneTabRects(layout normalLayout) responsePaneTabRects {
 		label  string
 		set    func(*responsePaneTabRects, layoutRect)
 	}{
-		{"tab_body", "Body", func(r *responsePaneTabRects, rect layoutRect) { r.body = rect }},
+		{actionTabBody, "Body", func(r *responsePaneTabRects, rect layoutRect) { r.body = rect }},
 		{
-			"tab_headers",
+			actionTabHeaders,
 			"Headers",
 			func(r *responsePaneTabRects, rect layoutRect) { r.headers = rect },
 		},
-		{"tab_raw", "Raw", func(r *responsePaneTabRects, rect layoutRect) { r.raw = rect }},
+		{actionTabRaw, "Raw", func(r *responsePaneTabRects, rect layoutRect) { r.raw = rect }},
 	}
 
 	out := responsePaneTabRects{tabBarY: y}
@@ -482,11 +482,11 @@ type requestPaneChromeRects struct {
 
 func (m Model) requestPaneChromeRects(layout normalLayout) requestPaneChromeRects {
 	content := layout.requestContentRect()
-	badgeW := methodBadgeWidth(m.method)
+	badgeW := m.methodBadgeWidth(m.method)
 	methodY := content.top + 1
 	urlLeft := content.left + badgeW + 2 // badge + "  " separator
 
-	sendW := requestSendButtonWidth()
+	sendW := m.requestSendButtonWidth()
 	rightW := m.requestTitleRightChromeWidth()
 	sendLeft := content.right - rightW + 1
 

@@ -14,7 +14,7 @@ func requestContentType(req *domain.Request) string {
 		return ""
 	}
 	for _, pair := range parseHeadersJSON(req.Headers) {
-		if strings.EqualFold(strings.TrimSpace(pair.Key), "Content-Type") {
+		if strings.EqualFold(strings.TrimSpace(pair.Key), headerContentType) {
 			return strings.TrimSpace(pair.Value)
 		}
 	}
@@ -49,6 +49,7 @@ func (m Model) beginAuthEdit() Model {
 		return m.status("error", "Select a request first")
 	}
 	m.authEditor = newAuthEditor(m.activeRequest)
+	m.styleInputs()
 	m.activeField = authField
 	return m.clearStatus()
 }

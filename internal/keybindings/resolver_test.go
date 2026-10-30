@@ -77,6 +77,20 @@ func TestResolver_Default_Sidebar(t *testing.T) {
 	assert.Equal(t, "expand", got, "key=right")
 }
 
+func TestResolver_ImportBindingsAreSeparatedByPane(t *testing.T) {
+	r := NewResolver(DefaultKeybindings())
+	postman, ok := r.Resolve(0, 0, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'I'}})
+	assert.True(t, ok)
+	assert.Equal(t, ActionImportPostman, postman)
+
+	curl, ok := r.Resolve(0, 0, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'i'}})
+	assert.True(t, ok)
+	assert.Equal(t, ActionImportCurl, curl)
+
+	_, ok = r.Resolve(0, 1, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'I'}})
+	assert.False(t, ok, "Postman import remains bound to the sidebar pane")
+}
+
 func TestResolver_Default_RequestPane(t *testing.T) {
 	r := NewResolver(DefaultKeybindings())
 
@@ -536,4 +550,30 @@ func TestResolver_RemovedAliases_DoNotResolveByDefault(t *testing.T) {
 
 	_, ok = r.Resolve(0, 1, tea.KeyMsg{Type: tea.KeyCtrlJ})
 	assert.False(t, ok, "ctrl+j should not be a hardcoded request-pane alias")
+}
+
+func TestResolver_CertificateBindings(t *testing.T) {
+	binds := DefaultKeybindings()
+	binds.CertDown = "n"
+	binds.CertAdd = "x"
+	binds.CertSave = "ctrl+s"
+	r := NewResolver(binds)
+
+	tests := []struct {
+		key  tea.KeyMsg
+		want string
+	}{
+		{tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}}, "navigate_down"},
+		{tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}}, "add"},
+		{tea.KeyMsg{Type: tea.KeyCtrlS}, "save"},
+		{tea.KeyMsg{Type: tea.KeyEnter}, "edit"},
+		{tea.KeyMsg{Type: tea.KeyDown}, "navigate_down"},
+	}
+	for _, tc := range tests {
+		got, ok := r.Resolve(9, 0, tc.key)
+		assert.True(t, ok)
+		assert.Equal(t, tc.want, got)
+	}
+	_, ok := r.Resolve(9, 0, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	assert.False(t, ok, "a customized binding replaces its default key")
 }

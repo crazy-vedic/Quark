@@ -1,8 +1,10 @@
 package tui
 
-import "testing"
+import (
+	"testing"
 
-import "github.com/crazy-vedic/quark/internal/domain"
+	"github.com/crazy-vedic/quark/internal/domain"
+)
 
 func TestHeaderNameSuggestion(t *testing.T) {
 	tests := []struct {
@@ -54,7 +56,10 @@ func TestURLSuggestionUsesLoadedRequests(t *testing.T) {
 }
 
 func TestCompletionSuffix(t *testing.T) {
-	if got := completionSuffix("https://api.example.com/u", "https://api.example.com/users"); got != "sers" {
+	if got := completionSuffix(
+		"https://api.example.com/u",
+		"https://api.example.com/users",
+	); got != "sers" {
 		t.Fatalf("completionSuffix = %q, want sers", got)
 	}
 }

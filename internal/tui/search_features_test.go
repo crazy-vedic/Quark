@@ -19,11 +19,19 @@ type recordingAllSearcher struct {
 	hits          []*search.SearchHit
 }
 
-func (s *recordingAllSearcher) Search(context.Context, string, string) (*search.SearchResult, error) {
+func (s *recordingAllSearcher) Search(
+	context.Context,
+	string,
+	string,
+) (*search.SearchResult, error) {
 	return &search.SearchResult{}, nil
 }
 
-func (s *recordingAllSearcher) SearchAll(_ context.Context, query string, collectionIDs []string) (*search.SearchResult, error) {
+func (s *recordingAllSearcher) SearchAll(
+	_ context.Context,
+	query string,
+	collectionIDs []string,
+) (*search.SearchResult, error) {
 	s.query = query
 	s.collectionIDs = append([]string(nil), collectionIDs...)
 	return &search.SearchResult{Hits: s.hits}, nil
@@ -49,7 +57,7 @@ func TestOpenSearchDispatchesOptionalEmptyQueryAndPopulatesResults(t *testing.T)
 	_, cmd := m.dispatchSearch("")
 	msg := cmd()
 	updatedModel, _ := m.Update(msg)
-	m = updatedModel.(Model)
+	m = requireModel(t, updatedModel)
 	require.Equal(t, "", searcher.query)
 	require.Equal(t, []string{"billing", "accounts"}, searcher.collectionIDs)
 	require.Len(t, m.searchResults, 1)
@@ -60,14 +68,17 @@ func TestHelpSearchFiltersKeybindingsLive(t *testing.T) {
 	m.mode = helpMode
 
 	updated, _ := m.handleHelpKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
-	m = updated.(Model)
+	m = requireModel(t, updated)
 	require.True(t, m.helpSearch)
 
 	for _, r := range "header_switch" {
 		updated, _ = m.handleHelpKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
-		m = updated.(Model)
+		m = requireModel(t, updated)
 	}
-	entries := filterKeybindingEntries(keybindings.ListEntries(m.cfg.Keybindings), m.searchInput.Value())
+	entries := filterKeybindingEntries(
+		keybindings.ListEntries(m.cfg.Keybindings),
+		m.searchInput.Value(),
+	)
 	require.NotEmpty(t, entries)
 	for _, entry := range entries {
 		require.Equal(t, "Header Editor", entry.Group)

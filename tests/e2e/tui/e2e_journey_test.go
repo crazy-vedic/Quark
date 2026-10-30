@@ -405,7 +405,7 @@ func TestE2E_CurlImportFlow(t *testing.T) {
 	m = callUpdate(t, m, tui.RequestsLoadedMsg(col.ID, nil))
 
 	// Open the dedicated import modal and paste a curl command.
-	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'I'}})
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'i'}})
 	curlCmd := "curl -X POST -H 'Authorization: Bearer secret' https://api.example.com/items"
 	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(curlCmd), Paste: true})
 	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyCtrlS})
@@ -828,6 +828,7 @@ func TestE2E_URLEditor_PersistsToStore(t *testing.T) {
 	// And the in-memory active request must reflect the change.
 	require.NotNil(t, m.ActiveRequest())
 	assert.Equal(t, newURL, m.ActiveRequest().URL, "active request URL must be updated")
+	assertViewContains(t, m, newURL)
 }
 
 // TestE2E_MethodCycle_PersistsToStore guards against the bug where cycling the
@@ -870,6 +871,7 @@ func TestE2E_MethodCycle_PersistsToStore(t *testing.T) {
 	// And the in-memory active request must reflect the change.
 	require.NotNil(t, m.ActiveRequest())
 	assert.Equal(t, newMethod, m.ActiveRequest().Method, "active request method must be updated")
+	assertViewContains(t, m, newMethod)
 }
 
 // --- E2E: Body editor ---
@@ -879,7 +881,6 @@ func TestE2E_BodyEditor_Save(t *testing.T) {
 	st := setupStore(t, col)
 	req := &domain.Request{
 		ID: "req-1", Name: "Create", Method: "POST", URL: "https://example.com/items",
-		Body: `{"name":"old"}`,
 	}
 	seedRequests(t, st, col.ID, req)
 
@@ -891,13 +892,14 @@ func TestE2E_BodyEditor_Save(t *testing.T) {
 	// Select the request so it becomes active, then switch to request pane
 	m = m.WithActiveRequest(req)
 	m = m.WithFocus(tui.RequestPane)
+	assertViewNotContains(t, m, `{"name":"new"}`)
 
 	// Press 'b' to open body editor
 	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'b'}})
 	assert.Equal(t, tui.BodyField, m.ActiveField(), "activeField must be bodyField")
-	assert.Equal(t, `{"name":"old"}`, m.BodyValue(), "body textarea must show existing body")
+	assert.Empty(t, m.BodyValue(), "body textarea must start empty")
 
-	// Type new body content
+	// Replace the existing body with new content.
 	m = callUpdate(
 		t,
 		m,
@@ -908,7 +910,7 @@ func TestE2E_BodyEditor_Save(t *testing.T) {
 	)
 	assert.Equal(
 		t,
-		`{"name":"old"}{"name":"new"}`,
+		`{"name":"new"}`,
 		m.BodyValue(),
 		"body textarea must contain new text",
 	)
@@ -919,10 +921,15 @@ func TestE2E_BodyEditor_Save(t *testing.T) {
 	require.NotNil(t, m.ActiveRequest(), "active request must be set")
 	assert.Equal(
 		t,
-		`{"name":"old"}{"name":"new"}`,
+		`{"name":"new"}`,
 		m.ActiveRequest().Body,
 		"active request body must be updated",
 	)
+
+	// Rendering immediately after the in-place edit must use the new body. No
+	// request switch, resize, or other soft refresh is allowed to be required.
+	assertViewContains(t, m, `{"name":"new"}`)
+	assertViewNotContains(t, m, `{"name":"old"}`)
 }
 
 func TestE2E_BodyEditor_Cancel(t *testing.T) {
@@ -1011,6 +1018,8 @@ func TestE2E_HeaderEditor_EditPair(t *testing.T) {
 	m = callUpdate(t, m, tui.RequestsLoadedMsg(col.ID, []*domain.Request{req}))
 	m = m.WithActiveRequest(req)
 	m = m.WithFocus(tui.RequestPane)
+	assertViewContains(t, m, "Content-Type: application/json")
+	assertViewNotContains(t, m, "Content-Type: application/json-live")
 
 	// Open header editor
 	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'h'}})
@@ -1022,6 +1031,11 @@ func TestE2E_HeaderEditor_EditPair(t *testing.T) {
 	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}})
 	assert.True(t, m.HeaderEditing(), "must enter editing sub-mode")
 
+	// Move to the value input and append a unique value without leaving the
+	// selected request.
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyTab})
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'-', 'l', 'i', 'v', 'e'}})
+
 	// Enter in field edit mode confirms the field, then Enter in list mode saves.
 	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyEnter})
 	assert.False(t, m.HeaderEditing(), "must exit editing sub-mode")
@@ -1029,6 +1043,8 @@ func TestE2E_HeaderEditor_EditPair(t *testing.T) {
 	assert.Equal(t, tui.NoneField, m.ActiveField(), "activeField must be noneField after save")
 	require.NotNil(t, m.ActiveRequest())
 	assert.Contains(t, m.ActiveRequest().Headers, "Content-Type")
+	assertViewContains(t, m, "Content-Type: application/json-live")
+	assertViewNotContains(t, m, "Content-Type: application/json\n")
 }
 
 func TestE2E_HeaderEditor_Cancel(t *testing.T) {

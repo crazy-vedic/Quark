@@ -3,10 +3,10 @@ package tui
 import (
 	"testing"
 
-	"github.com/crazy-vedic/quark/internal/search"
 	"github.com/stretchr/testify/require"
 
 	"github.com/crazy-vedic/quark/internal/domain"
+	"github.com/crazy-vedic/quark/internal/search"
 )
 
 func TestOrderCollectionsTreePlacesRootsBeforeDescendants(t *testing.T) {

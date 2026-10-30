@@ -298,6 +298,27 @@ func TestE2E_PostmanBulkImport_CompleteEnvironmentJourney(t *testing.T) {
 	}
 }
 
+func TestE2E_PostmanDuplicateDefaultsInNonInteractiveCLI(t *testing.T) {
+	home := t.TempDir()
+	collectionPath := filepath.Join(t.TempDir(), "collection.json")
+	require.NoError(t, os.WriteFile(collectionPath, []byte(
+		`{"info":{"name":"Duplicate Journey","schema":"https://schema.getpostman.com/json/collection/v2.1.0/collection.json"},"item":[]}`,
+	), 0o600))
+
+	_, stderr, code := runQuarkWithHome(t, home, "import-postman", collectionPath)
+	require.Equal(t, 0, code, stderr)
+	stdout, stderr, code := runQuarkWithHome(t, home, "import-postman", collectionPath)
+	require.Equal(t, 0, code, stderr)
+	assert.Contains(t, stdout+stderr, "duplicated")
+
+	st, err := store.New(createQuarkDBPath(t, home))
+	require.NoError(t, err)
+	defer st.Close()
+	collections, err := st.ListCollections(context.Background())
+	require.NoError(t, err)
+	require.Len(t, collections, 2)
+}
+
 func TestE2E_PostmanCollectionVariables_DuplicateActions(t *testing.T) {
 	actions := []struct {
 		name         string

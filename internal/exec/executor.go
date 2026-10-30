@@ -43,8 +43,15 @@ func New(transport http.RoundTripper, opts ...Option) *Executor {
 	for _, opt := range opts {
 		opt.apply(&o)
 	}
+	client := &http.Client{Transport: transport}
+	client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		if !o.followRedirects || o.maxRedirects <= 0 || len(via) > o.maxRedirects {
+			return http.ErrUseLastResponse
+		}
+		return nil
+	}
 	return &Executor{
-		client:            &http.Client{Transport: transport},
+		client:            client,
 		timeout:           o.timeout,
 		maxResponseSize:   o.maxResponseSize,
 		logger:            o.logger,
@@ -320,7 +327,12 @@ func applySpecialRequestHeaders(req *http.Request) error {
 		req.TransferEncoding = encodings
 		req.Header.Del("Transfer-Encoding")
 	}
-	if connection := req.Header.Get("Connection"); strings.EqualFold(strings.TrimSpace(connection), "close") {
+	if connection := req.Header.Get(
+		"Connection",
+	); strings.EqualFold(
+		strings.TrimSpace(connection),
+		"close",
+	) {
 		req.Close = true
 		req.Header.Del("Connection")
 	}

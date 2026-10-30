@@ -4,6 +4,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -18,6 +19,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/spf13/cobra"
 
 	"github.com/crazy-vedic/quark/internal/cli"
@@ -28,16 +30,24 @@ import (
 	"github.com/crazy-vedic/quark/internal/keybindings"
 	"github.com/crazy-vedic/quark/internal/search"
 	"github.com/crazy-vedic/quark/internal/store"
+	"github.com/crazy-vedic/quark/internal/theme"
 	"github.com/crazy-vedic/quark/internal/timing"
 	"github.com/crazy-vedic/quark/internal/transport"
 	"github.com/crazy-vedic/quark/internal/tui"
 )
 
 var (
+	// These values are replaced at build time by the Makefile and release
+	// workflows. Keep useful defaults for `go run` and plain `go build`.
+	Version   = "dev"
+	Commit    = "unknown"
+	BuildTime = "unknown"
+
 	debugMode  bool
 	timingMode string
 	configDir  string
 	dimFlag    string
+	themeFlag  string
 )
 
 func main() {
@@ -47,7 +57,9 @@ func main() {
 	}
 }
 
-func run() error {
+func run() error { return runWithArgs(os.Args[1:]) }
+
+func runWithArgs(args []string) error {
 	// Signal-aware root context: Ctrl+C or SIGTERM cancels in-flight operations.
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -60,6 +72,8 @@ func run() error {
 		Short: "A keyboard-driven TUI HTTP client",
 		Long:  "Quark — local-first, keyboard-driven HTTP client. No cloud dependencies.",
 	}
+	root.Version = Version
+	root.SetVersionTemplate(versionTemplate())
 	root.CompletionOptions.DisableDefaultCmd = true
 	root.SetContext(ctx)
 	root.PersistentFlags().
@@ -70,6 +84,8 @@ func run() error {
 		StringVar(&configDir, "config", defaultConfigDir, "Directory for config and db")
 	root.PersistentFlags().
 		StringVar(&dimFlag, "dim", "", "Force TUI density: wide|narrow|tiny|absurd (default: auto from terminal size)")
+	root.PersistentFlags().
+		StringVar(&themeFlag, "theme", "", "Theme for this session (overrides QUARK_THEME and config.toml)")
 
 	var debugLog *os.File
 	defer func() {
@@ -82,13 +98,18 @@ func run() error {
 
 	root.PersistentPreRun = func(cmd *cobra.Command, args []string) {
 		if debugMode && debugLog == nil {
-			debugLog = openDebugLog()
+			debugLog = debugLogFactory()
 			logger.SetFile(debugLog)
 		}
 	}
 
 	// Lazy store & config — initialised on first use so the --config flag is honoured.
 	var rt *runtime
+	defer func() {
+		if rt != nil && rt.st != nil {
+			_ = rt.st.Close()
+		}
+	}()
 	runtimeOnce := func() (*runtime, error) {
 		if rt != nil {
 			return rt, nil
@@ -98,6 +119,12 @@ func run() error {
 		if err != nil {
 			slog.Warn("config: failed to load config.toml; using defaults", "err", err)
 			cfg = config.Default(configDir)
+		}
+		if selected := os.Getenv("QUARK_THEME"); selected != "" {
+			cfg.UI.Theme = selected
+		}
+		if themeFlag != "" {
+			cfg.UI.Theme = themeFlag
 		}
 
 		// 0700: only the owner can read the directory. It contains the SQLite DB
@@ -109,7 +136,7 @@ func run() error {
 		dbPath := filepath.Join(configDir, "quark.db")
 		backupDir := cfg.BackupDir(configDir)
 
-		storeOpts := []store.Option{store.WithBackup(backupDir)}
+		storeOpts := []store.Option{store.WithBackup(backupDir, cfg.Backup.KeepLast)}
 		if !cfg.Backup.AutoBackup {
 			storeOpts = []store.Option{}
 		}
@@ -124,6 +151,7 @@ func run() error {
 		}
 		executor := exec.New(httpTransport,
 			exec.WithTimeout(cfg.Timeout()),
+			exec.WithRedirects(cfg.HTTP.FollowRedirects, cfg.HTTP.MaxRedirects),
 			exec.WithExecutionWriter(st),
 		)
 		importer := curl.NewImporter()
@@ -151,7 +179,9 @@ func run() error {
 	root.AddCommand(lazyImportCmd(runtimeOnce))
 	root.AddCommand(lazyImportPostmanCmd(runtimeOnce))
 	root.AddCommand(lazyEnvCmd(runtimeOnce))
+	root.AddCommand(lazyClientCertCmd())
 	root.AddCommand(lazyKeybindingsCmd())
+	root.AddCommand(newThemeCmd())
 	root.AddCommand(cli.NewCompletionCmd(root))
 
 	root.AddCommand(&cobra.Command{
@@ -189,7 +219,12 @@ func run() error {
 		)
 	}
 
+	root.SetArgs(args)
 	return root.Execute()
+}
+
+func versionTemplate() string {
+	return fmt.Sprintf("quark version %s\ncommit %s\nbuilt %s\n", Version, Commit, BuildTime)
 }
 
 // runtime holds lazily-initialised dependencies that depend on the --config flag.
@@ -200,6 +235,27 @@ type runtime struct {
 	transport *transport.Manager
 	importer  *curl.Importer
 	searcher  *search.Searcher
+}
+
+type tuiPostmanImporter struct {
+	st cli.ImportPostmanStore
+}
+
+func (i tuiPostmanImporter) ImportPostman(ctx context.Context, path string) (string, error) {
+	command := cli.NewImportPostmanCmd(i.st, cli.NewDebugLogger(nil))
+	command.SilenceUsage = true
+	command.SilenceErrors = true
+	command.SetArgs([]string{path, "--on-duplicate", "duplicate"})
+	command.SetIn(strings.NewReader(""))
+	var output, diagnostics bytes.Buffer
+	command.SetOut(&output)
+	command.SetErr(&diagnostics)
+	err := command.ExecuteContext(ctx)
+	combined := output.String()
+	if diagnostics.Len() > 0 {
+		combined += diagnostics.String()
+	}
+	return combined, err
 }
 
 func saveRuntimeImportedCertificate(r *runtime, spec *curl.CertificateSpec, rawURL string) error {
@@ -243,8 +299,11 @@ func saveRuntimeImportedCertificate(r *runtime, spec *curl.CertificateSpec, rawU
 // openDebugLog opens /tmp/quark_debug_logs/debug.log, archiving any existing file.
 // The first line of the new log is the current epoch time.
 // Returns nil on error (debug logging is best-effort).
-func openDebugLog() *os.File {
-	debugDir := filepath.Join("/tmp", "quark_debug_logs")
+var debugLogDirectory = filepath.Join("/tmp", "quark_debug_logs")
+
+func openDebugLog() *os.File { return openDebugLogAt(debugLogDirectory) }
+
+func openDebugLogAt(debugDir string) *os.File {
 	if err := os.MkdirAll(debugDir, 0o700); err != nil {
 		return nil
 	}
@@ -262,6 +321,17 @@ func openDebugLog() *os.File {
 	return f
 }
 
+type teaProgramRunner interface {
+	Run() (tea.Model, error)
+	Send(tea.Msg)
+}
+
+var newTeaProgram = func(model tea.Model, opts ...tea.ProgramOption) teaProgramRunner {
+	return tea.NewProgram(model, opts...)
+}
+
+var debugLogFactory = openDebugLog
+
 // launchTUI constructs the TUI model and runs the bubbletea program.
 // bubbletea v1.3.10 catches panics by default and restores the terminal
 // before returning — no explicit panic recovery is needed here.
@@ -276,6 +346,9 @@ func launchTUI(
 	debugLog *os.File,
 	configDir string,
 ) error {
+	if _, err := theme.Resolve(configDir, cfg.UI.Theme, lipgloss.HasDarkBackground()); err != nil {
+		return err
+	}
 	forceDim := tui.DimAuto
 	if dimFlag != "" {
 		parsed, err := tui.ParseDimMode(dimFlag)
@@ -299,6 +372,7 @@ func launchTUI(
 		Executor:           executor,
 		Searcher:           searcher,
 		Importer:           importer,
+		PostmanImporter:    tuiPostmanImporter{st: st},
 		EnvReader:          st,
 		EnvWriter:          st,
 		ActiveEnvStore:     st,
@@ -316,7 +390,7 @@ func launchTUI(
 	// Coalesce WindowSizeMsg bursts: Bubble Tea's renderer force-repaints the
 	// entire screen on every resize event, which flickers under rapid SIGWINCH.
 	resize := tui.NewResizeCoalescer()
-	p := tea.NewProgram(
+	p := newTeaProgram(
 		model,
 		tea.WithAltScreen(),
 		tea.WithMouseCellMotion(),
@@ -349,9 +423,11 @@ func defaultConfigDir() (string, error) {
 
 // lazy wrapper functions create cobra commands that lazily initialise the runtime.
 
+const collectionCommandName = "collection"
+
 func lazyCollectionCmd(rt func() (*runtime, error)) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "collection",
+		Use:   collectionCommandName,
 		Short: "Manage collections",
 	}
 	cmd.AddCommand(&cobra.Command{
@@ -387,6 +463,40 @@ func lazyCollectionCmd(rt func() (*runtime, error)) *cobra.Command {
 			return fmt.Errorf("create subcommand not found")
 		},
 	})
+	cmd.AddCommand(&cobra.Command{
+		Use:   "rename <collection> <new-name>",
+		Short: "Rename a collection",
+		Args:  cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			r, err := rt()
+			if err != nil {
+				return err
+			}
+			for _, c := range cli.NewCollectionCmd(r.st).Commands() {
+				if c.Name() == "rename" {
+					return c.RunE(cmd, args)
+				}
+			}
+			return fmt.Errorf("rename subcommand not found")
+		},
+	})
+	cmd.AddCommand(&cobra.Command{
+		Use:   "delete <collection>",
+		Short: "Delete a collection and its requests",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			r, err := rt()
+			if err != nil {
+				return err
+			}
+			for _, c := range cli.NewCollectionCmd(r.st).Commands() {
+				if c.Name() == "delete" {
+					return c.RunE(cmd, args)
+				}
+			}
+			return fmt.Errorf("delete subcommand not found")
+		},
+	})
 	return cmd
 }
 
@@ -406,7 +516,8 @@ func lazyRequestCmd(rt func() (*runtime, error)) *cobra.Command {
 			}
 			for _, c := range cli.NewRequestCmd(r.st).Commands() {
 				if c.Name() == "list" {
-					if err := c.Flags().Set("collection", collectionID); err != nil {
+					c.SetContext(cmd.Context())
+					if err := c.Flags().Set(collectionCommandName, collectionID); err != nil {
 						return err
 					}
 					return c.RunE(c, args)
@@ -415,8 +526,8 @@ func lazyRequestCmd(rt func() (*runtime, error)) *cobra.Command {
 			return fmt.Errorf("list subcommand not found")
 		},
 	}
-	listCmd.Flags().StringVar(&collectionID, "collection", "", "Collection ID")
-	_ = listCmd.RegisterFlagCompletionFunc("collection", cli.CompleteCollectionIDs(
+	listCmd.Flags().StringVar(&collectionID, collectionCommandName, "", "Collection ID")
+	_ = listCmd.RegisterFlagCompletionFunc(collectionCommandName, cli.CompleteCollectionIDs(
 		func(ctx context.Context) ([]*domain.Collection, error) {
 			r, err := rt()
 			if err != nil {
@@ -430,17 +541,37 @@ func lazyRequestCmd(rt func() (*runtime, error)) *cobra.Command {
 }
 
 func lazyRunCmd(rt func() (*runtime, error)) *cobra.Command {
+	var namedVars []string
+	var verbose bool
 	cmd := &cobra.Command{
 		Use:   "run <Collection/Request>",
 		Short: "Execute a saved request",
 		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			r, err := rt()
-			if err != nil {
+	}
+	cmd.Flags().StringArrayVarP(
+		&namedVars,
+		"var",
+		"v",
+		nil,
+		"Override a request variable as key=value; overrides collection/global envs",
+	)
+	cmd.Flags().BoolVar(&verbose, "verbose", false,
+		"Print request and response headers and request details (may include credentials)")
+	cmd.RunE = func(cmd *cobra.Command, args []string) error {
+		r, err := rt()
+		if err != nil {
+			return err
+		}
+		inner := cli.NewRunCmd(r.st, r.executor)
+		if err := inner.Flags().Set("verbose", strconv.FormatBool(verbose)); err != nil {
+			return err
+		}
+		for _, assignment := range namedVars {
+			if err := inner.Flags().Set("var", assignment); err != nil {
 				return err
 			}
-			return cli.NewRunCmd(r.st, r.executor).RunE(cmd, args)
-		},
+		}
+		return inner.RunE(cmd, args)
 	}
 	cmd.ValidArgsFunction = cli.CompleteRequestPaths(
 		func(ctx context.Context) ([]*domain.Collection, error) {
@@ -583,7 +714,7 @@ func lazyImportCmd(rt func() (*runtime, error)) *cobra.Command {
 			return inner.Execute()
 		},
 	}
-	curlCmd.Flags().StringVar(&collectionID, "collection", "", "Target collection ID")
+	curlCmd.Flags().StringVar(&collectionID, collectionCommandName, "", "Target collection ID")
 	curlCmd.Flags().StringVar(&name, "name", "", "Request name")
 	cmd.AddCommand(curlCmd)
 	return cmd
@@ -730,4 +861,11 @@ func lazyKeybindingsCmd() *cobra.Command {
 		},
 	})
 	return cmd
+}
+
+func lazyClientCertCmd() *cobra.Command {
+	return cli.NewClientCertificatesCmd(configDir, func(cfg config.Config) error {
+		_, err := transport.New(cfg)
+		return err
+	})
 }
