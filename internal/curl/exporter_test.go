@@ -29,7 +29,12 @@ func TestExportRequest(t *testing.T) {
 		},
 		{
 			name:    "defaults method and ignores blank optional fields",
-			request: &domain.Request{URL: "https://example.test/path", Method: "  ", Headers: "  ", AuthType: "  "},
+			request: &domain.Request{
+				URL:      "https://example.test/path",
+				Method:   "  ",
+				Headers:  "  ",
+				AuthType: "  ",
+			},
 			want:    "curl -X 'GET' 'https://example.test/path'",
 		},
 		{

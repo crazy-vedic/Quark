@@ -414,7 +414,9 @@ func TestNormalPaneActionBranches(t *testing.T) {
 	require.NotNil(t, cmd, "a valid request should dispatch a clipboard command")
 
 	invalid := newModel()
-	invalid.activeRequest = &domain.Request{URL: "https://example.test", AuthType: "bearer", AuthConfig: "{"}
+	invalid.activeRequest = &domain.Request{
+		URL: "https://example.test", AuthType: "bearer", AuthConfig: "{",
+	}
 	updated, cmd = invalid.handleRequestAction(keybindings.ActionExportCurl)
 	require.Nil(t, cmd)
 	require.Contains(t, updatedCertificateModel(t, updated).statusErr, "Export curl: parse request authorization")
