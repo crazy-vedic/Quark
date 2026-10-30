@@ -70,6 +70,11 @@ func TestSearcher_EmptyQuery_ReturnsAll(t *testing.T) {
 	result, err := s.Search(context.Background(), testCollectionID, "")
 	require.NoError(t, err)
 	assert.Len(t, result.Hits, 3)
+	assert.Equal(t, []string{"A", "B", "C"}, []string{
+		result.Hits[0].Request.Name,
+		result.Hits[1].Request.Name,
+		result.Hits[2].Request.Name,
+	})
 }
 
 func TestSearcher_NoMatch(t *testing.T) {

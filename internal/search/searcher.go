@@ -60,6 +60,9 @@ func (s *Searcher) Search(ctx context.Context, collectionID, query string) (*Sea
 
 	// Stable sort: score DESC, ID ASC as deterministic tiebreaker.
 	sort.SliceStable(hits, func(i, j int) bool {
+		if q == "" {
+			return requestNameLess(hits[i].Request, hits[j].Request)
+		}
 		if hits[i].Score != hits[j].Score {
 			return hits[i].Score > hits[j].Score
 		}
@@ -105,7 +108,11 @@ func (s *Searcher) SearchAll(
 		allHits = append(allHits, result.Hits...)
 	}
 
+	q := strings.TrimSpace(query)
 	sort.SliceStable(allHits, func(i, j int) bool {
+		if q == "" {
+			return requestNameLess(allHits[i].Request, allHits[j].Request)
+		}
 		if allHits[i].Score != allHits[j].Score {
 			return allHits[i].Score > allHits[j].Score
 		}
@@ -116,6 +123,15 @@ func (s *Searcher) SearchAll(
 		Hits:     allHits,
 		Duration: time.Since(start),
 	}, nil
+}
+
+func requestNameLess(a, b *domain.Request) bool {
+	nameA := strings.ToLower(strings.TrimSpace(a.Name))
+	nameB := strings.ToLower(strings.TrimSpace(b.Name))
+	if nameA != nameB {
+		return nameA < nameB
+	}
+	return a.ID < b.ID
 }
 
 // scoreRequest computes a score in (0, 1] for a request against a lowercase query.
