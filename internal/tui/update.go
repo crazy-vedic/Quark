@@ -1571,7 +1571,7 @@ func (m Model) handleHelpSearchKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if action, ok := m.resolver.Resolve(2, 0, msg); ok {
 		switch action {
 		case keybindings.ActionSearch:
-			return m, nil
+			// Don't consume "/" — let it be typed into the search input.
 		case keybindings.ActionClose:
 			m.helpSearch = false
 			m.searchInput.Blur()
@@ -1865,17 +1865,21 @@ func (m Model) handleImportKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	var cmd tea.Cmd
-	if m.importPreview == nil {
-		m.importInput, cmd = m.importInput.Update(msg)
-	} else {
-		if msg.String() == "e" {
+	// Check for edit action when naming the imported request.
+	if m.importPreview != nil {
+		if action, ok := m.resolver.Resolve(3, 0, msg); ok && action == keybindings.ActionImportEdit {
 			m.importPreview = nil
 			m.importError = ""
 			m.importName.Blur()
 			m.importInput.Focus()
 			return m, textarea.Blink
 		}
+	}
+
+	var cmd tea.Cmd
+	if m.importPreview == nil {
+		m.importInput, cmd = m.importInput.Update(msg)
+	} else {
 		m.importName, cmd = m.importName.Update(msg)
 	}
 	return m, cmd
