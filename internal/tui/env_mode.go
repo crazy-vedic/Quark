@@ -8,6 +8,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
 	"github.com/crazy-vedic/quark/internal/domain"
 	"github.com/crazy-vedic/quark/internal/exec"
@@ -240,12 +241,40 @@ func (m Model) handleEnvKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleEnvEditKey(msg)
 	}
 
+	// Number keys 1-3 jump to tabs (1-indexed, excluding Global tab at index 0).
+	if msg.Type == tea.KeyRunes && len(msg.Runes) == 1 {
+		r := msg.Runes[0]
+		if r >= '1' && r <= '3' {
+			tabNum := int(r - '1')
+			targetIdx := tabNum + 1 // Skip Global tab at index 0
+			if targetIdx < len(m.envEditor.tabs) {
+				m = m.switchEnvTab(targetIdx)
+				return m, nil
+			}
+		}
+	}
+
 	// Resolver lookup: when wired, the resolver is the single source of truth.
 	if action, ok := m.resolver.Resolve(6, 0, msg); ok {
 		return m.dispatchEnvAction(action)
 	}
 	// Key didn't map to any action — intentional no-op.
 	return m, nil
+}
+
+// handleEnvMouse handles mouse events in the env editor modal.
+func (m Model) handleEnvMouse(msg tea.MouseMsg) tea.Model {
+	if msg.Action != tea.MouseActionPress || msg.Button != tea.MouseButtonLeft {
+		return m
+	}
+
+	// Check if clicked on an environment tab.
+	tabIdx := m.envTabAtPoint(msg.X, msg.Y)
+	if tabIdx >= 0 && tabIdx < len(m.envEditor.tabs) {
+		return m.switchEnvTab(tabIdx)
+	}
+
+	return m
 }
 
 // dispatchEnvAction routes a resolver action in the env editor.
@@ -634,6 +663,108 @@ func (m Model) activeEnvName() string {
 	m.cachedEnvName = env.Name
 	m.cachedEnvColID = colID
 	return env.Name
+}
+
+// envTabAtPoint returns the tab index at the given (x, y) in the env modal viewport,
+// or -1 if no tab is at that position.
+func (m Model) envTabAtPoint(x, y int) int {
+	// Environment modal is centered on screen. Calculate its bounds.
+	// The box has: border (1 char) + padding (1 top, 2 left/right)
+	modalX := (m.width - m.envModalWidth()) / 2
+	modalY := (m.height - m.envModalHeight()) / 2
+	// Content Y starts after border (1) + top padding (1)
+	modalContentY := modalY + 2
+
+	// Tabs are on the third line of content (title + blank + tabs).
+	tabLineY := modalContentY + 2
+	if y != tabLineY {
+		return -1
+	}
+
+	// Build a mapping of tab positions.
+	tabs := m.envEditor.tabs
+	if len(tabs) == 0 {
+		return -1
+	}
+
+	// Calculate the pixel offset within the rendered tabs string
+	// The modalX is where the left edge of the box starts
+	// Border takes 1 char, padding takes 2, so content starts at modalX + 3
+	offsetX := x - (modalX + 3)
+	if offsetX < 0 {
+		return -1
+	}
+
+	// Track position while iterating through tabs to find which one contains the click
+	// We'll re-render knowing which tabs are visible
+	activeIndex := m.envEditor.tabIdx
+	start, end := activeIndex, activeIndex+1
+	maxWidth := max(1, m.envModalWidth()-4)
+
+	// Calculate rowWidth like in renderEnvTabViewport
+	labelWidth := min(34, max(3, maxWidth-10))
+	labels := make([]string, len(tabs))
+	for i, tab := range tabs {
+		text := envTabLabel(tab)
+		if tab.ReadOnly {
+			text += " (read-only)"
+		}
+		labels[i] = "[" + truncate(text, max(1, labelWidth-2)) + "]"
+	}
+
+	rowWidth := func(start, end int) int {
+		parts := end - start
+		width := 2 // indent
+		if start > 0 {
+			parts++
+			width++ // left ellipsis
+		}
+		if end < len(labels) {
+			parts++
+			width++ // right ellipsis
+		}
+		for _, label := range labels[start:end] {
+			width += lipgloss.Width(label)
+		}
+		if parts > 1 {
+			width += (parts - 1) * 2
+		}
+		return width
+	}
+
+	// Expand viewport to show as many tabs as fit
+	for {
+		expanded := false
+		if start > 0 && rowWidth(start-1, end) <= maxWidth {
+			start--
+			expanded = true
+		}
+		if end < len(labels) && rowWidth(start, end+1) <= maxWidth {
+			end++
+			expanded = true
+		}
+		if !expanded {
+			break
+		}
+	}
+
+	// Track position within the rendered string
+	pos := 2 // Start after "  " indent
+	if start > 0 {
+		pos += 1 // "…"
+		pos += 2 // gap
+	}
+
+	for i := start; i < end; i++ {
+		label := labels[i]
+		w := lipgloss.Width(label)
+		if offsetX >= pos && offsetX < pos+w {
+			return i
+		}
+		pos += w + 2 // tab width + gap
+	}
+
+	return -1
 }
 
 // resolveEnvVars delegates to exec.ResolveEnvVars, the single source of truth
