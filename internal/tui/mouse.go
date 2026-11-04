@@ -36,6 +36,9 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	if m.mode == viewerMode {
 		return m.handleViewerMouse(msg), nil
 	}
+	if m.mode == envMode {
+		return m.handleEnvMouse(msg)
+	}
 	if m.mode != normalMode {
 		return m, nil
 	}

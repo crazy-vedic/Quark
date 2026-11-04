@@ -266,8 +266,9 @@ func TestUpdate_EnvModal_ClickSelectsVisibleEnvironmentTab(t *testing.T) {
 	m := newEnvPaneNavigationModel(t)
 
 	// With a 100x30 terminal, the centered tab row places "Alpha/dev" here.
+	// Tab positions: Global [15-34], default [37-51], dev [54-64], prod [67-78]
 	m = callUpdate(t, m, tea.MouseMsg{
-		X:      47,
+		X:      54,
 		Y:      6,
 		Button: tea.MouseButtonLeft,
 		Action: tea.MouseActionPress,
