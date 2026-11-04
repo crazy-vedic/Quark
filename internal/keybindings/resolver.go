@@ -119,6 +119,7 @@ type Keybindings struct {
 	ImportConfirm string `toml:"import_confirm"`
 	ImportParse   string `toml:"import_parse"`
 	ImportCancel  string `toml:"import_cancel"`
+	ImportEdit    string `toml:"import_edit"`
 }
 
 // Resolver maps Bubble Tea key strings to action names per mode.
@@ -247,6 +248,7 @@ func NewResolver(binds Keybindings) *Resolver {
 		binds.ImportParse:   ActionImportParse,
 		binds.ImportConfirm: ActionConfirm,
 		binds.ImportCancel:  ActionCancel,
+		binds.ImportEdit:    ActionImportEdit,
 	}
 
 	// Env editor
@@ -482,7 +484,7 @@ func Validate(binds Keybindings) map[string][]string {
 			{binds.HelpReset, "help_reset"}, {binds.HelpResetAll, "help_reset_all"},
 			{binds.HelpUnbind, "help_unbind"}},
 		{{binds.ImportParse, ActionImportParse}, {binds.ImportConfirm, "import_confirm"},
-			{binds.ImportCancel, ActionImportCancel}},
+			{binds.ImportCancel, ActionImportCancel}, {binds.ImportEdit, ActionImportEdit}},
 		{{binds.BodySave, "body_save"}, {binds.BodyNewline, "body_newline"},
 			{binds.BodyCancel, "body_cancel"}},
 		{{binds.HeaderDown, "header_down"}, {binds.HeaderUp, "header_up"},
