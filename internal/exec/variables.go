@@ -284,18 +284,17 @@ func substituteHeaders(headersJSON string, resolve placeholderResolver) (string,
 		return headersJSON, nil
 	}
 
-	var headers map[string]string
+	// Header values are either plain strings or, in the array-valued
+	// representation used for multi-value headers, lists of strings.
+	var headers map[string]any
 	if err := json.Unmarshal([]byte(headersJSON), &headers); err != nil {
 		// Malformed JSON — don't fail; return as-is and let the caller handle it.
 		return headersJSON, nil
 	}
 
 	var unresolved string
-	for key, value := range headers {
-		if !placeholderRE.MatchString(value) {
-			continue
-		}
-		newValue := placeholderRE.ReplaceAllStringFunc(value, func(match string) string {
+	substitute := func(value string) string {
+		return placeholderRE.ReplaceAllStringFunc(value, func(match string) string {
 			expr := match[2 : len(match)-2]
 			if val, ok := resolve(expr); ok {
 				return val
@@ -303,7 +302,21 @@ func substituteHeaders(headersJSON string, resolve placeholderResolver) (string,
 			unresolved = expr
 			return match
 		})
-		headers[key] = newValue
+	}
+
+	for key, raw := range headers {
+		switch value := raw.(type) {
+		case string:
+			if placeholderRE.MatchString(value) {
+				headers[key] = substitute(value)
+			}
+		case []any:
+			for i, item := range value {
+				if str, ok := item.(string); ok && placeholderRE.MatchString(str) {
+					value[i] = substitute(str)
+				}
+			}
+		}
 	}
 
 	if unresolved != "" {

@@ -550,6 +550,30 @@ func TestInterpolateRequest_Headers(t *testing.T) {
 			colEnv:  map[string]string{"empty": ""},
 			want:    `{"X-Custom":""}`,
 		},
+		{
+			name:    "array-valued header substitution",
+			headers: `{"X-Region-Code": ["{{regionCode}}"]}`,
+			colEnv:  map[string]string{"regionCode": "demo-west"},
+			want:    `{"X-Region-Code":["demo-west"]}`,
+		},
+		{
+			name:    "array-valued header with multiple elements",
+			headers: `{"Accept": ["{{mime}}", "text/plain"], "X-Id": ["{{id}}"]}`,
+			colEnv:  map[string]string{"mime": "application/json", "id": "42"},
+			want:    `{"Accept":["application/json","text/plain"],"X-Id":["42"]}`,
+		},
+		{
+			name:    "array-valued header unresolved",
+			headers: `{"X-Region-Code": ["{{regionCode}}"]}`,
+			colEnv:  map[string]string{"other": "value"},
+			wantErr: true,
+		},
+		{
+			name:    "mixed string and array-valued headers",
+			headers: `{"Authorization": "Bearer {{token}}", "X-Tags": ["{{tag}}"]}`,
+			colEnv:  map[string]string{"token": "abc", "tag": "beta"},
+			want:    `{"Authorization":"Bearer abc","X-Tags":["beta"]}`,
+		},
 	}
 
 	for _, tt := range tests {
