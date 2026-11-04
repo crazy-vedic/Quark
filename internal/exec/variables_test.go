@@ -567,6 +567,21 @@ func TestInterpolateRequest_Headers(t *testing.T) {
 	}
 }
 
+func TestInterpolateRequest_HeadersWithArrayValues(t *testing.T) {
+	req := &domain.Request{
+		Headers: `{"X-Region-Code":["{{regionCode}}"]}`,
+	}
+
+	out, err := exec.InterpolateRequest(
+		req,
+		map[string]string{"regionCode": "demo-west"},
+		nil,
+	)
+
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"X-Region-Code":["demo-west"]}`, out.Headers)
+}
+
 func TestInterpolateRequest_AuthConfig(t *testing.T) {
 	tests := []struct {
 		name       string
