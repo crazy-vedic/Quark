@@ -1867,7 +1867,8 @@ func (m Model) handleImportKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	// Check for edit action when naming the imported request.
 	if m.importPreview != nil {
-		if action, ok := m.resolver.Resolve(3, 0, msg); ok && action == keybindings.ActionImportEdit {
+		if action, ok := m.resolver.Resolve(3, 0, msg); ok &&
+			action == keybindings.ActionImportEdit {
 			m.importPreview = nil
 			m.importError = ""
 			m.importName.Blur()
