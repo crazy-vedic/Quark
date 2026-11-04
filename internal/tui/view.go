@@ -421,14 +421,17 @@ func (m Model) viewHeadersPreview(w int) string {
 	var preview strings.Builder
 	if m.headerEditing {
 		preview.WriteString("Key:\n")
-		preview.WriteString(m.headerKeyInput.View() + "\n\n")
+		preview.WriteString(m.headerKeyInput.View())
+		preview.WriteString("\n\n")
 		if m.headerKeyInput.Focused() {
 			if suggestion := headerNameSuggestion(m.headerKeyInput.Value()); suggestion != "" {
-				preview.WriteString(m.styles.mutedStyle.Render("  Tab → "+suggestion) + "\n")
+				preview.WriteString(m.styles.mutedStyle.Render("  Tab → " + suggestion))
+				preview.WriteString("\n")
 			}
 		}
 		preview.WriteString("Value:\n")
-		preview.WriteString(m.headerValueInput.View() + "\n")
+		preview.WriteString(m.headerValueInput.View())
+		preview.WriteString("\n")
 		if m.headerKeyInput.Focused() {
 			if warning := m.singleLineInputWarning(m.headerKeyInput.Value()); warning != "" {
 				preview.WriteString(warning + "\n")
@@ -438,14 +441,11 @@ func (m Model) viewHeadersPreview(w int) string {
 		}
 	} else {
 		if len(m.headerPairs) == 0 {
-			preview.WriteString(
-				m.styles.mutedStyle.Render(
-					"  No headers. Press " + m.renderHintKeys(
-						[]string{"header_add"},
-						false,
-					) + " to add.\n",
-				),
-			)
+			var msg strings.Builder
+			msg.WriteString("  No headers. Press ")
+			msg.WriteString(m.renderHintKeys([]string{"header_add"}, false))
+			msg.WriteString(" to add.\n")
+			preview.WriteString(m.styles.mutedStyle.Render(msg.String()))
 		} else {
 			for i, p := range m.headerPairs {
 				cursor := "  "
@@ -459,7 +459,8 @@ func (m Model) viewHeadersPreview(w int) string {
 				} else {
 					line = lipgloss.NewStyle().Foreground(m.styles.info).Render(plain)
 				}
-				preview.WriteString(line + "\n")
+				preview.WriteString(line)
+				preview.WriteString("\n")
 			}
 		}
 	}
