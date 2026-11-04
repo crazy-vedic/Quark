@@ -16,7 +16,12 @@ import (
 type modalTextInputCase struct {
 	name  string
 	setup func(Model) Model
-	value func(Model) string
+}
+
+type textControl struct {
+	name    string
+	focused func() bool
+	value   func() string
 }
 
 func TestModalTextInputsAcceptEveryPrintableKeybinding(t *testing.T) {
@@ -31,7 +36,6 @@ func TestModalTextInputsAcceptEveryPrintableKeybinding(t *testing.T) {
 				m, _ = m.openSearch()
 				return m
 			},
-			value: func(m Model) string { return m.searchInput.Value() },
 		},
 		{
 			name: "help search",
@@ -41,7 +45,6 @@ func TestModalTextInputsAcceptEveryPrintableKeybinding(t *testing.T) {
 				m.searchInput.Focus()
 				return m
 			},
-			value: func(m Model) string { return m.searchInput.Value() },
 		},
 		{
 			name: "response viewer find",
@@ -50,27 +53,21 @@ func TestModalTextInputsAcceptEveryPrintableKeybinding(t *testing.T) {
 				m, _ = m.openViewerFind()
 				return m
 			},
-			value: func(m Model) string { return m.viewerFind.Value() },
 		},
 		{
 			name:  "curl command",
 			setup: func(m Model) Model { return m.openCurlImport() },
-			value: func(m Model) string { return m.importInput.Value() },
 		},
 		{
 			name: "curl request name",
 			setup: func(m Model) Model {
-				m = m.openCurlImport()
-				m.importPreview = &curl.ImportResult{}
-				m.importName.Focus()
+				m, _ = m.openImport(&curl.ImportResult{})
 				return m
 			},
-			value: func(m Model) string { return m.importName.Value() },
 		},
 		{
 			name:  "Postman path",
 			setup: func(m Model) Model { return m.openPostmanImportModal() },
-			value: func(m Model) string { return m.postmanPath.Value() },
 		},
 		{
 			name: "collection prompt",
@@ -78,7 +75,6 @@ func TestModalTextInputsAcceptEveryPrintableKeybinding(t *testing.T) {
 				m, _ = m.enterCollectionPrompt(promptAdd, "collection-id")
 				return m
 			},
-			value: func(m Model) string { return m.promptInput.Value() },
 		},
 		{
 			name: "schedule prompt",
@@ -87,21 +83,19 @@ func TestModalTextInputsAcceptEveryPrintableKeybinding(t *testing.T) {
 				m.scheduleInput.Focus()
 				return m
 			},
-			value: func(m Model) string { return m.scheduleInput.Value() },
 		},
 	}
 
 	for _, field := range []struct {
 		name  string
 		field int
-		value func(Model) string
 	}{
-		{name: "client certificate host", field: clientCertHostField, value: func(m Model) string { return m.clientCertHost.Value() }},
-		{name: "client certificate type", field: clientCertTypeField, value: func(m Model) string { return m.clientCertType.Value() }},
-		{name: "client certificate file", field: clientCertFileField, value: func(m Model) string { return m.clientCertFile.Value() }},
-		{name: "client certificate key file", field: clientCertKeyFileField, value: func(m Model) string { return m.clientCertKeyFile.Value() }},
-		{name: "client certificate CA file", field: clientCertCAFileField, value: func(m Model) string { return m.clientCertCAFile.Value() }},
-		{name: "client certificate password", field: clientCertPasswordField, value: func(m Model) string { return m.clientCertPassword.Value() }},
+		{name: "client certificate host", field: clientCertHostField},
+		{name: "client certificate type", field: clientCertTypeField},
+		{name: "client certificate file", field: clientCertFileField},
+		{name: "client certificate key file", field: clientCertKeyFileField},
+		{name: "client certificate CA file", field: clientCertCAFileField},
+		{name: "client certificate password", field: clientCertPasswordField},
 	} {
 		field := field
 		cases = append(cases, modalTextInputCase{
@@ -112,17 +106,15 @@ func TestModalTextInputsAcceptEveryPrintableKeybinding(t *testing.T) {
 				m.focusClientCertField()
 				return m
 			},
-			value: field.value,
 		})
 	}
 
 	for _, field := range []struct {
-		name  string
-		key   bool
-		value func(Model) string
+		name string
+		key  bool
 	}{
-		{name: "environment variable name", key: true, value: func(m Model) string { return m.envEditor.editKey.Value() }},
-		{name: "environment variable value", value: func(m Model) string { return m.envEditor.editVal.Value() }},
+		{name: "environment variable name", key: true},
+		{name: "environment variable value"},
 	} {
 		field := field
 		cases = append(cases, modalTextInputCase{
@@ -144,7 +136,6 @@ func TestModalTextInputsAcceptEveryPrintableKeybinding(t *testing.T) {
 				}
 				return m
 			},
-			value: field.value,
 		})
 	}
 
@@ -158,12 +149,71 @@ func TestModalTextInputsAcceptEveryPrintableKeybinding(t *testing.T) {
 			t.Run(input.name+"/"+entry.Action+"="+entry.Key, func(t *testing.T) {
 				m := New(Deps{Config: config.Default(configDir), ConfigDir: configDir})
 				m = input.setup(m)
+				active := focusedTextControls(&m)
+				require.NotEmpty(t, active, "modal should have a focused text control")
+
 				updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{key}})
 				m = requireModel(t, updated)
-				require.Equal(t, string(key), input.value(m), "binding consumed instead of typed")
+				controls := textControls(&m)
+				for _, activeControl := range active {
+					control, ok := findTextControl(controls, activeControl.name)
+					require.True(t, ok, "input inventory lost %q", activeControl.name)
+					require.Equal(t, string(key), control.value(), "%s: binding consumed instead of typed", control.name)
+				}
 			})
 		}
 	}
+}
+
+// textControls inventories the model's text-entry widgets; focusedTextControls
+// discovers which one(s) receive input in the modal state created by each case.
+func textControls(m *Model) []textControl {
+	controls := []textControl{
+		{name: "url", focused: m.urlInput.Focused, value: m.urlInput.Value},
+		{name: "request search", focused: m.searchInput.Focused, value: m.searchInput.Value},
+		{name: "viewer find", focused: m.viewerFind.Focused, value: m.viewerFind.Value},
+		{name: "curl command", focused: m.importInput.Focused, value: m.importInput.Value},
+		{name: "curl request name", focused: m.importName.Focused, value: m.importName.Value},
+		{name: "Postman path", focused: m.postmanPath.Focused, value: m.postmanPath.Value},
+		{name: "collection prompt", focused: m.promptInput.Focused, value: m.promptInput.Value},
+		{name: "schedule prompt", focused: m.scheduleInput.Focused, value: m.scheduleInput.Value},
+		{name: "client certificate host", focused: m.clientCertHost.Focused, value: m.clientCertHost.Value},
+		{name: "client certificate type", focused: m.clientCertType.Focused, value: m.clientCertType.Value},
+		{name: "client certificate file", focused: m.clientCertFile.Focused, value: m.clientCertFile.Value},
+		{name: "client certificate key file", focused: m.clientCertKeyFile.Focused, value: m.clientCertKeyFile.Value},
+		{name: "client certificate CA file", focused: m.clientCertCAFile.Focused, value: m.clientCertCAFile.Value},
+		{name: "client certificate password", focused: m.clientCertPassword.Focused, value: m.clientCertPassword.Value},
+		{name: "header key", focused: m.headerKeyInput.Focused, value: m.headerKeyInput.Value},
+		{name: "header value", focused: m.headerValueInput.Focused, value: m.headerValueInput.Value},
+		{name: "auth token", focused: m.authEditor.tokenInput.Focused, value: m.authEditor.tokenInput.Value},
+		{name: "auth username", focused: m.authEditor.usernameInput.Focused, value: m.authEditor.usernameInput.Value},
+		{name: "auth password", focused: m.authEditor.passwordInput.Focused, value: m.authEditor.passwordInput.Value},
+		{name: "auth API key name", focused: m.authEditor.apiKeyNameInput.Focused, value: m.authEditor.apiKeyNameInput.Value},
+		{name: "auth API key value", focused: m.authEditor.apiKeyValueInput.Focused, value: m.authEditor.apiKeyValueInput.Value},
+		{name: "environment variable name", focused: m.envEditor.editKey.Focused, value: m.envEditor.editKey.Value},
+		{name: "environment variable value", focused: m.envEditor.editVal.Focused, value: m.envEditor.editVal.Value},
+		{name: "body editor", focused: m.bodyTextarea.Focused, value: m.bodyTextarea.Value},
+	}
+	return controls
+}
+
+func focusedTextControls(m *Model) []textControl {
+	var focused []textControl
+	for _, control := range textControls(m) {
+		if control.focused() {
+			focused = append(focused, control)
+		}
+	}
+	return focused
+}
+
+func findTextControl(controls []textControl, name string) (textControl, bool) {
+	for _, control := range controls {
+		if control.name == name {
+			return control, true
+		}
+	}
+	return textControl{}, false
 }
 
 func printableBindingRune(key string) (rune, bool) {
