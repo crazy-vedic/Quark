@@ -219,6 +219,63 @@ func TestUpdate_EnvModal_TabsCycleAndCreateFromGlobal(t *testing.T) {
 	assert.Equal(t, tui.PromptAddEnv, m.PromptMode())
 }
 
+func newEnvPaneNavigationModel(t *testing.T) tui.Model {
+	t.Helper()
+
+	global := &domain.Environment{ID: "global", Name: "Global"}
+	global.SetVars(map[string]string{})
+	defaultEnv := &domain.Environment{ID: "env-default", CollectionID: col1, Name: "default"}
+	defaultEnv.SetVars(map[string]string{})
+	devEnv := &domain.Environment{ID: "env-dev", CollectionID: col1, Name: "dev"}
+	devEnv.SetVars(map[string]string{})
+	prodEnv := &domain.Environment{ID: "env-prod", CollectionID: col1, Name: "prod"}
+	prodEnv.SetVars(map[string]string{})
+	reader := &fakeEnvReader{
+		global: global,
+		envs: map[string]*domain.Environment{
+			global.ID:     global,
+			defaultEnv.ID: defaultEnv,
+			devEnv.ID:     devEnv,
+			prodEnv.ID:    prodEnv,
+		},
+		byCol: map[string][]*domain.Environment{
+			col1: {defaultEnv, devEnv, prodEnv},
+		},
+	}
+
+	m := newModel(defaultConfig()).WithEnvReader(reader)
+	m = callUpdate(t, m, tea.WindowSizeMsg{Width: 100, Height: 30})
+	m = callUpdate(t, m, tui.CollectionsLoadedMsg([]*domain.Collection{{ID: col1, Name: "Alpha"}}))
+	m = m.WithFocus(tui.RequestPane)
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}})
+	require.True(t, m.EnvEditorActive())
+	return m
+}
+
+func TestUpdate_EnvModal_NumberKeysSelectEnvironmentTabs(t *testing.T) {
+	m := newEnvPaneNavigationModel(t)
+
+	for number, wantTab := range []int{1, 2, 3} {
+		key := rune('1' + number)
+		m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{key}})
+		assert.Equal(t, wantTab, m.EnvEditorTabIdx(), "pressing %q should select environment %d", key, wantTab)
+	}
+}
+
+func TestUpdate_EnvModal_ClickSelectsVisibleEnvironmentTab(t *testing.T) {
+	m := newEnvPaneNavigationModel(t)
+
+	// With a 100x30 terminal, the centered tab row places "Alpha/dev" here.
+	m = callUpdate(t, m, tea.MouseMsg{
+		X:      47,
+		Y:      6,
+		Button: tea.MouseButtonLeft,
+		Action: tea.MouseActionPress,
+	})
+
+	assert.Equal(t, 2, m.EnvEditorTabIdx(), "clicking Alpha/dev should select its tab")
+}
+
 func TestUpdate_EnvModal_UnsavedDraftSurvivesTabNavigation(t *testing.T) {
 	global := &domain.Environment{ID: "global", Name: "Global", Data: `{}`}
 	childDefault := &domain.Environment{
