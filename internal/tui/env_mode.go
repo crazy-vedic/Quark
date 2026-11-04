@@ -263,19 +263,18 @@ func (m Model) handleEnvKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 // handleEnvMouse handles mouse events in the env editor modal.
-func (m Model) handleEnvMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+func (m Model) handleEnvMouse(msg tea.MouseMsg) tea.Model {
 	if msg.Action != tea.MouseActionPress || msg.Button != tea.MouseButtonLeft {
-		return m, nil
+		return m
 	}
 
 	// Check if clicked on an environment tab.
 	tabIdx := m.envTabAtPoint(msg.X, msg.Y)
 	if tabIdx >= 0 && tabIdx < len(m.envEditor.tabs) {
-		m = m.switchEnvTab(tabIdx)
-		return m, nil
+		return m.switchEnvTab(tabIdx)
 	}
 
-	return m, nil
+	return m
 }
 
 // dispatchEnvAction routes a resolver action in the env editor.

@@ -258,7 +258,10 @@ func TestUpdate_EnvModal_NumberKeysSelectEnvironmentTabs(t *testing.T) {
 	for number, wantTab := range []int{1, 2, 3} {
 		key := rune('1' + number)
 		m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{key}})
-		assert.Equal(t, wantTab, m.EnvEditorTabIdx(), "pressing %q should select environment %d", key, wantTab)
+		assert.Equal(
+			t, wantTab, m.EnvEditorTabIdx(),
+			"pressing %q should select environment %d", key, wantTab,
+		)
 	}
 }
 
