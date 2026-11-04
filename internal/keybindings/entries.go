@@ -77,7 +77,7 @@ var groups = []struct {
 		"help_edit", "help_reset", "help_reset_all", "help_unbind",
 	}},
 	{"Import", []string{
-		ActionImportParse, "import_confirm", ActionImportCancel,
+		ActionImportParse, "import_confirm", ActionImportCancel, ActionImportEdit,
 	}},
 }
 
