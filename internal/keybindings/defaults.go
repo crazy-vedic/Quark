@@ -122,5 +122,6 @@ func DefaultKeybindings() Keybindings {
 		ImportConfirm: KeyEnter,
 		ImportParse:   "ctrl+s",
 		ImportCancel:  "esc",
+		ImportEdit:    "ctrl+e",
 	}
 }

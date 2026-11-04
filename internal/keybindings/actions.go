@@ -23,6 +23,7 @@ const (
 	ActionImportPostman = "sidebar_import_postman"
 	ActionImportParse   = "import_parse"
 	ActionImportCancel  = "import_cancel"
+	ActionImportEdit    = "import_edit"
 
 	ActionNavigateDown = "navigate_down"
 	ActionNavigateUp   = "navigate_up"
