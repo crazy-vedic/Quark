@@ -7,11 +7,9 @@ import (
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
-
 	"github.com/crazy-vedic/quark/internal/config"
 	"github.com/crazy-vedic/quark/internal/curl"
 	"github.com/crazy-vedic/quark/internal/keybindings"
-
 	"github.com/stretchr/testify/require"
 )
 
@@ -215,13 +213,41 @@ func textControls(m *Model) []textControl {
 		},
 		{name: "header key", focused: m.headerKeyInput.Focused, value: m.headerKeyInput.Value},
 		{name: "header value", focused: m.headerValueInput.Focused, value: m.headerValueInput.Value},
-		{name: "auth token", focused: m.authEditor.tokenInput.Focused, value: m.authEditor.tokenInput.Value},
-		{name: "auth username", focused: m.authEditor.usernameInput.Focused, value: m.authEditor.usernameInput.Value},
-		{name: "auth password", focused: m.authEditor.passwordInput.Focused, value: m.authEditor.passwordInput.Value},
-		{name: "auth API key name", focused: m.authEditor.apiKeyNameInput.Focused, value: m.authEditor.apiKeyNameInput.Value},
-		{name: "auth API key value", focused: m.authEditor.apiKeyValueInput.Focused, value: m.authEditor.apiKeyValueInput.Value},
-		{name: "environment variable name", focused: m.envEditor.editKey.Focused, value: m.envEditor.editKey.Value},
-		{name: "environment variable value", focused: m.envEditor.editVal.Focused, value: m.envEditor.editVal.Value},
+		{
+			name:    "auth token",
+			focused: m.authEditor.tokenInput.Focused,
+			value:   m.authEditor.tokenInput.Value,
+		},
+		{
+			name:    "auth username",
+			focused: m.authEditor.usernameInput.Focused,
+			value:   m.authEditor.usernameInput.Value,
+		},
+		{
+			name:    "auth password",
+			focused: m.authEditor.passwordInput.Focused,
+			value:   m.authEditor.passwordInput.Value,
+		},
+		{
+			name:    "auth API key name",
+			focused: m.authEditor.apiKeyNameInput.Focused,
+			value:   m.authEditor.apiKeyNameInput.Value,
+		},
+		{
+			name:    "auth API key value",
+			focused: m.authEditor.apiKeyValueInput.Focused,
+			value:   m.authEditor.apiKeyValueInput.Value,
+		},
+		{
+			name:    "environment variable name",
+			focused: m.envEditor.editKey.Focused,
+			value:   m.envEditor.editKey.Value,
+		},
+		{
+			name:    "environment variable value",
+			focused: m.envEditor.editVal.Focused,
+			value:   m.envEditor.editVal.Value,
+		},
 		{name: "body editor", focused: m.bodyTextarea.Focused, value: m.bodyTextarea.Value},
 	}
 	return controls
