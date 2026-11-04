@@ -7,9 +7,11 @@ import (
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
+
 	"github.com/crazy-vedic/quark/internal/config"
 	"github.com/crazy-vedic/quark/internal/curl"
 	"github.com/crazy-vedic/quark/internal/keybindings"
+
 	"github.com/stretchr/testify/require"
 )
 
@@ -97,7 +99,6 @@ func TestModalTextInputsAcceptEveryPrintableKeybinding(t *testing.T) {
 		{name: "client certificate CA file", field: clientCertCAFileField},
 		{name: "client certificate password", field: clientCertPasswordField},
 	} {
-		field := field
 		cases = append(cases, modalTextInputCase{
 			name: field.name,
 			setup: func(m Model) Model {
@@ -116,7 +117,6 @@ func TestModalTextInputsAcceptEveryPrintableKeybinding(t *testing.T) {
 		{name: "environment variable name", key: true},
 		{name: "environment variable value"},
 	} {
-		field := field
 		cases = append(cases, modalTextInputCase{
 			name: field.name,
 			setup: func(m Model) Model {
@@ -158,7 +158,13 @@ func TestModalTextInputsAcceptEveryPrintableKeybinding(t *testing.T) {
 				for _, activeControl := range active {
 					control, ok := findTextControl(controls, activeControl.name)
 					require.True(t, ok, "input inventory lost %q", activeControl.name)
-					require.Equal(t, string(key), control.value(), "%s: binding consumed instead of typed", control.name)
+					require.Equal(
+						t,
+						string(key),
+						control.value(),
+						"%s: binding consumed instead of typed",
+						control.name,
+					)
 				}
 			})
 		}
@@ -177,12 +183,36 @@ func textControls(m *Model) []textControl {
 		{name: "Postman path", focused: m.postmanPath.Focused, value: m.postmanPath.Value},
 		{name: "collection prompt", focused: m.promptInput.Focused, value: m.promptInput.Value},
 		{name: "schedule prompt", focused: m.scheduleInput.Focused, value: m.scheduleInput.Value},
-		{name: "client certificate host", focused: m.clientCertHost.Focused, value: m.clientCertHost.Value},
-		{name: "client certificate type", focused: m.clientCertType.Focused, value: m.clientCertType.Value},
-		{name: "client certificate file", focused: m.clientCertFile.Focused, value: m.clientCertFile.Value},
-		{name: "client certificate key file", focused: m.clientCertKeyFile.Focused, value: m.clientCertKeyFile.Value},
-		{name: "client certificate CA file", focused: m.clientCertCAFile.Focused, value: m.clientCertCAFile.Value},
-		{name: "client certificate password", focused: m.clientCertPassword.Focused, value: m.clientCertPassword.Value},
+		{
+			name:    "client certificate host",
+			focused: m.clientCertHost.Focused,
+			value:   m.clientCertHost.Value,
+		},
+		{
+			name:    "client certificate type",
+			focused: m.clientCertType.Focused,
+			value:   m.clientCertType.Value,
+		},
+		{
+			name:    "client certificate file",
+			focused: m.clientCertFile.Focused,
+			value:   m.clientCertFile.Value,
+		},
+		{
+			name:    "client certificate key file",
+			focused: m.clientCertKeyFile.Focused,
+			value:   m.clientCertKeyFile.Value,
+		},
+		{
+			name:    "client certificate CA file",
+			focused: m.clientCertCAFile.Focused,
+			value:   m.clientCertCAFile.Value,
+		},
+		{
+			name:    "client certificate password",
+			focused: m.clientCertPassword.Focused,
+			value:   m.clientCertPassword.Value,
+		},
 		{name: "header key", focused: m.headerKeyInput.Focused, value: m.headerKeyInput.Value},
 		{name: "header value", focused: m.headerValueInput.Focused, value: m.headerValueInput.Value},
 		{name: "auth token", focused: m.authEditor.tokenInput.Focused, value: m.authEditor.tokenInput.Value},
