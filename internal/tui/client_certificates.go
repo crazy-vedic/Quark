@@ -317,32 +317,48 @@ func (m Model) viewClientCertModal() string {
 		}
 	}
 	if m.clientCertEditing {
-		sb.WriteString("\n" + m.styles.titleStyle.Render("Add / Edit Certificate") + "\n")
-		sb.WriteString("Host:     " + m.clientCertHost.View() + "\n")
-		sb.WriteString("Type:     " + m.clientCertType.View() + "\n")
-		sb.WriteString("Cert:     " + m.clientCertFile.View() + "\n")
-		sb.WriteString("Key:      " + m.clientCertKeyFile.View() + "\n")
-		sb.WriteString("CA:       " + m.clientCertCAFile.View() + "\n")
-		sb.WriteString("Password: " + m.clientCertPassword.View() + "\n")
+		sb.WriteString("\n")
+		sb.WriteString(m.styles.titleStyle.Render("Add / Edit Certificate"))
+		sb.WriteString("\n")
+		sb.WriteString("Host:     ")
+		sb.WriteString(m.clientCertHost.View())
+		sb.WriteString("\n")
+		sb.WriteString("Type:     ")
+		sb.WriteString(m.clientCertType.View())
+		sb.WriteString("\n")
+		sb.WriteString("Cert:     ")
+		sb.WriteString(m.clientCertFile.View())
+		sb.WriteString("\n")
+		sb.WriteString("Key:      ")
+		sb.WriteString(m.clientCertKeyFile.View())
+		sb.WriteString("\n")
+		sb.WriteString("CA:       ")
+		sb.WriteString(m.clientCertCAFile.View())
+		sb.WriteString("\n")
+		sb.WriteString("Password: ")
+		sb.WriteString(m.clientCertPassword.View())
+		sb.WriteString("\n")
 		sb.WriteString(m.styles.mutedStyle.Render(m.renderHints([]hintItem{
 			{Label: "next field", Actions: []string{"cert_next_field"}},
 			{Label: "previous field", Actions: []string{"cert_prev_field"}},
 			{Label: "save", Actions: []string{"cert_save"}},
 			{Label: "cancel", Actions: []string{"cert_close"}},
-		})) + "\n")
+		})))
+		sb.WriteString("\n")
 	}
 	if m.clientCertError != "" {
-		sb.WriteString("\n" + m.styles.errorStyle.Render("✗ "+m.clientCertError) + "\n")
+		sb.WriteString("\n")
+		sb.WriteString(m.styles.errorStyle.Render("✗ " + m.clientCertError))
+		sb.WriteString("\n")
 	}
-	sb.WriteString(
-		"\n" + m.styles.mutedStyle.Render(m.renderHints([]hintItem{
-			{Label: "add", Actions: []string{"cert_add"}},
-			{Label: "edit", Actions: []string{"cert_edit"}, IncludeAliases: true},
-			{Label: "delete", Actions: []string{"cert_delete"}},
-			{Label: "move", Actions: []string{"cert_up", "cert_down"}, IncludeAliases: true},
-			{Label: "close", Actions: []string{"cert_close"}},
-		})),
-	)
+	sb.WriteString("\n")
+	sb.WriteString(m.styles.mutedStyle.Render(m.renderHints([]hintItem{
+		{Label: "add", Actions: []string{"cert_add"}},
+		{Label: "edit", Actions: []string{"cert_edit"}, IncludeAliases: true},
+		{Label: "delete", Actions: []string{"cert_delete"}},
+		{Label: "move", Actions: []string{"cert_up", "cert_down"}, IncludeAliases: true},
+		{Label: "close", Actions: []string{"cert_close"}},
+	})))
 	box := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(m.styles.accent).
