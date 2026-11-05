@@ -14,8 +14,8 @@ import (
 
 // SelfUpdater handles binary self-update operations.
 type SelfUpdater struct {
-	gh            *GitHubSource
-	currentPath   string
+	gh             *GitHubSource
+	currentPath    string
 	currentVersion string
 }
 
@@ -79,7 +79,9 @@ func (su *SelfUpdater) Update(ctx context.Context, targetVersion string) (string
 	if runtime.GOOS == "windows" && backupPath != "" {
 		oldPath := su.currentPath + ".old"
 		os.Remove(oldPath) // Try to remove stale .old from previous update
-		os.Rename(backupPath, oldPath)
+		if err := os.Rename(backupPath, oldPath); err != nil {
+			return "", fmt.Errorf("rename backup to .old: %w", err)
+		}
 	} else {
 		os.Remove(backupPath)
 	}
