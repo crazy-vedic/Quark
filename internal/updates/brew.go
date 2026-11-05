@@ -9,7 +9,7 @@ import (
 
 // BrewSource checks for updates using Homebrew.
 type BrewSource struct {
-	tap    string // e.g., "crazy-vedic/quark"
+	tap     string // e.g., "crazy-vedic/quark"
 	formula string // e.g., "quark"
 }
 

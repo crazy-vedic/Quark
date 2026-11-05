@@ -10,10 +10,10 @@ import (
 
 // ReleaseState tracks the last known update status and timing.
 type ReleaseState struct {
-	LastCheckedAt  time.Time `json:"last_checked_at"`
-	NextAttemptAt  time.Time `json:"next_attempt_at"`
-	LatestVersion  string    `json:"latest_version,omitempty"`
-	LastError      string    `json:"last_error,omitempty"`
+	LastCheckedAt time.Time `json:"last_checked_at"`
+	NextAttemptAt time.Time `json:"next_attempt_at"`
+	LatestVersion string    `json:"latest_version,omitempty"`
+	LastError     string    `json:"last_error,omitempty"`
 }
 
 // LoadReleaseState reads the release-state.json file from the config directory.

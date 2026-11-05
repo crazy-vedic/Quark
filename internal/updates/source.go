@@ -24,16 +24,16 @@ type Source interface {
 
 // VersionCheckResult holds the result of a version check.
 type VersionCheckResult struct {
-	Channel              Channel
-	Current              string
-	Latest               string
-	UpdateAvailable      bool
-	UpgradeCommand       string
-	CanSelfUpdate        bool
-	CheckedAt            time.Time
-	Error                error
-	ListsAgeDays         int // For apt only
-	DowngradeWarning     string
+	Channel          Channel
+	Current          string
+	Latest           string
+	UpdateAvailable  bool
+	UpgradeCommand   string
+	CanSelfUpdate    bool
+	CheckedAt        time.Time
+	Error            error
+	ListsAgeDays     int // For apt only
+	DowngradeWarning string
 }
 
 // Result strings for display.
