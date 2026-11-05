@@ -91,6 +91,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		return m, themeWatchTick()
+
+	case updateCheckMsg:
+		if msg.available && msg.latest != "" {
+			m.updateStatus = "update: " + msg.latest
+		}
+		return m, nil
+
 	case curlClipboardMsg:
 		if m.mode != importMode || m.importPreview != nil {
 			return m, nil

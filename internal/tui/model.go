@@ -24,6 +24,7 @@ import (
 	"github.com/crazy-vedic/quark/internal/store"
 	"github.com/crazy-vedic/quark/internal/theme"
 	"github.com/crazy-vedic/quark/internal/timing"
+	"github.com/crazy-vedic/quark/internal/updates"
 )
 
 // --- Layout enums ---
@@ -192,6 +193,12 @@ type scheduledRunSuccess struct {
 type scheduledRunFailure struct {
 	name string
 	err  error
+}
+
+type updateCheckMsg struct {
+	available bool
+	latest    string
+	err       error
 }
 
 // --- Model ---
@@ -599,6 +606,8 @@ func (m Model) Init() tea.Cmd {
 	if m.configDir != "" && !theme.IsBuiltin(m.theme.Name) {
 		cmds = append(cmds, themeWatchTick())
 	}
+	// Check for updates in background (non-blocking)
+	cmds = append(cmds, checkUpdatesCmd(m.ctx, m.cfg.Updates.Timeout.Duration))
 	if m.lister != nil {
 		cmds = append(cmds, loadCollectionsCmd(m.ctx, m.lister))
 	}
@@ -615,6 +624,48 @@ func (m Model) Init() tea.Cmd {
 }
 
 // --- Commands ---
+
+func checkUpdatesCmd(ctx context.Context, timeout time.Duration) tea.Cmd {
+	return func() tea.Msg {
+		// Create a short timeout for update check (don't block startup)
+		checkCtx, cancel := context.WithTimeout(ctx, timeout)
+		defer cancel()
+
+		// Detect installation channel
+		channel := updates.DetectChannel()
+
+		// Create appropriate source based on channel
+		var source updates.Source
+		switch channel {
+		case updates.ChannelBrew:
+			source = updates.NewBrewSource("crazy-vedic/quark", "quark")
+		case updates.ChannelApt:
+			source = updates.NewAptSource("quark")
+		case updates.ChannelWinget:
+			source = updates.NewWingetSource("Quark.Quark")
+		case updates.ChannelBinary:
+			// Use a version string that won't match (we check against the version from cmd/quark/main.go)
+			// For TUI purposes, we'll get the version dynamically if possible
+			// For now, just detect binary channel without checking
+			return updateCheckMsg{available: false, latest: "", err: nil}
+		default:
+			return updateCheckMsg{available: false, latest: "", err: nil}
+		}
+
+		// Check for updates
+		available, latest, err := source.IsUpdateAvailable(checkCtx, "")
+		if err != nil {
+			// Silently ignore check failures
+			return updateCheckMsg{available: false, latest: "", err: nil}
+		}
+
+		if available && latest != "" {
+			return updateCheckMsg{available: true, latest: latest, err: nil}
+		}
+
+		return updateCheckMsg{available: false, latest: latest, err: nil}
+	}
+}
 
 func loadCollectionsCmd(ctx context.Context, lister store.CollectionLister) tea.Cmd {
 	return func() tea.Msg {
