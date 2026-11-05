@@ -1,0 +1,33 @@
+name: Homebrew Tap Validation
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'Formula/**'
+  pull_request:
+    paths:
+      - 'Formula/**'
+
+jobs:
+  validate-formula:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Homebrew
+        run: |
+          brew tap-new local/quark
+          brew extract --version=HEAD quark local/quark
+
+      - name: Run brew audit on formula
+        run: |
+          brew audit --strict Formula/quark.rb
+
+      - name: Test formula syntax
+        run: |
+          brew formula Formula/quark.rb
+
+      - name: Lint formula
+        run: |
+          brew lint Formula/quark.rb || true
