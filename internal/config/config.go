@@ -22,6 +22,7 @@ type Config struct {
 	HTTP        HTTP        `toml:"http"`
 	Logging     Logging     `toml:"logging"`
 	Backup      Backup      `toml:"backup"`
+	Updates     Updates     `toml:"updates"`
 	Keybindings Keybindings `toml:"keybindings"`
 }
 
@@ -71,6 +72,15 @@ type Backup struct {
 	KeepLast   int  `toml:"keep_last"`
 }
 
+// Updates configures version checking and self-update behavior.
+type Updates struct {
+	Check              bool      `toml:"check"`
+	CheckInterval      duration  `toml:"check_interval"`
+	RetryAfterFailure  duration  `toml:"retry_after_failure"`
+	Timeout            duration  `toml:"timeout"`
+	AutoApply          bool      `toml:"auto_apply"`
+}
+
 // duration is a TOML-decodable wrapper for time.Duration.
 type duration struct{ time.Duration }
 
@@ -106,6 +116,13 @@ func Default(configDir string) Config {
 		Backup: Backup{
 			AutoBackup: true,
 			KeepLast:   10,
+		},
+		Updates: Updates{
+			Check:             true,
+			CheckInterval:     duration{12 * time.Hour},
+			RetryAfterFailure: duration{1 * time.Hour},
+			Timeout:           duration{10 * time.Second},
+			AutoApply:         false,
 		},
 		Keybindings: keybindings.DefaultKeybindings(),
 	}
@@ -166,6 +183,21 @@ func Load(configDir string) (Config, error) {
 	}
 	if md.IsDefined("backup", "keep_last") {
 		cfg.Backup.KeepLast = override.Backup.KeepLast
+	}
+	if md.IsDefined("updates", "check") {
+		cfg.Updates.Check = override.Updates.Check
+	}
+	if md.IsDefined("updates", "check_interval") {
+		cfg.Updates.CheckInterval = override.Updates.CheckInterval
+	}
+	if md.IsDefined("updates", "retry_after_failure") {
+		cfg.Updates.RetryAfterFailure = override.Updates.RetryAfterFailure
+	}
+	if md.IsDefined("updates", "timeout") {
+		cfg.Updates.Timeout = override.Updates.Timeout
+	}
+	if md.IsDefined("updates", "auto_apply") {
+		cfg.Updates.AutoApply = override.Updates.AutoApply
 	}
 	if md.IsDefined("keybindings") {
 		cfg.Keybindings = mergeKeybindings(cfg.Keybindings, override.Keybindings)
