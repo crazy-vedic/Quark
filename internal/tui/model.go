@@ -285,6 +285,7 @@ type Model struct {
 	requestValidationErrs map[string]string // request ID → Tier 1 validation error (invalid URL etc.)
 	statusErr             string            // Tier 2 — timeout, retryable
 	statusSuccess         string            // Tier 3 — body/headers saved, etc.
+	updateStatus          string            // update available notification (e.g., "update: v1.2.3")
 
 	// --- Search modal ---
 	searchInput      textinput.Model
