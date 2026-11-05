@@ -70,7 +70,8 @@ func (su *SelfUpdater) Update(ctx context.Context, targetVersion string) (string
 	if err := su.verifyPostInstall(ctx); err != nil {
 		// Attempt rollback
 		if rollbackErr := su.restore(backupPath, su.currentPath); rollbackErr != nil {
-			return "", fmt.Errorf("post-install check failed: %w, and rollback failed: %w", err, rollbackErr)
+			msg := "post-install check failed: %w, and rollback failed: %w"
+			return "", fmt.Errorf(msg, err, rollbackErr)
 		}
 		return "", fmt.Errorf("post-install check failed (rolled back): %w", err)
 	}
@@ -102,7 +103,10 @@ func (su *SelfUpdater) getBinaryName() string {
 }
 
 // downloadBinary downloads the binary from the GitHub release.
-func (su *SelfUpdater) downloadBinary(ctx context.Context, version, binaryName string) (string, error) {
+func (su *SelfUpdater) downloadBinary(
+	ctx context.Context,
+	version, binaryName string,
+) (string, error) {
 	downloadURL := fmt.Sprintf("https://github.com/%s/releases/download/%s/%s",
 		su.gh.repo, version, binaryName)
 
@@ -143,7 +147,10 @@ func (su *SelfUpdater) downloadBinary(ctx context.Context, version, binaryName s
 }
 
 // verifyChecksum downloads SHA256SUMS and verifies the binary.
-func (su *SelfUpdater) verifyChecksum(ctx context.Context, version, binaryName, filePath string) error {
+func (su *SelfUpdater) verifyChecksum(
+	ctx context.Context,
+	version, binaryName, filePath string,
+) error {
 	checksumData, err := su.gh.FetchChecksumFile(ctx, version)
 	if err != nil {
 		return fmt.Errorf("failed to fetch SHA256SUMS: %w", err)
@@ -260,7 +267,7 @@ func (su *SelfUpdater) restore(backupPath, dst string) error {
 
 // verifyPostInstall runs the new binary to verify it works.
 func (su *SelfUpdater) verifyPostInstall(ctx context.Context) error {
-	cmd := exec.CommandContext(ctx, su.currentPath, "--version")
+	cmd := exec.CommandContext(ctx, su.currentPath, "--version") //nolint:gosec
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("post-install check failed: %w (output: %s)", err, string(output))

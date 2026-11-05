@@ -43,7 +43,9 @@ func (s *GitHubSource) LatestVersion(ctx context.Context) (string, error) {
 	defer resp.Body.Close()
 
 	// GitHub redirects /releases/latest to /releases/tag/vX.Y.Z
-	if resp.StatusCode != http.StatusMovedPermanently && resp.StatusCode != http.StatusFound && resp.StatusCode != http.StatusSeeOther {
+	if resp.StatusCode != http.StatusMovedPermanently &&
+		resp.StatusCode != http.StatusFound &&
+		resp.StatusCode != http.StatusSeeOther {
 		return "", fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 	}
 
@@ -69,7 +71,10 @@ func (s *GitHubSource) LatestVersion(ctx context.Context) (string, error) {
 }
 
 // IsUpdateAvailable checks if a newer version is available.
-func (s *GitHubSource) IsUpdateAvailable(ctx context.Context, current string) (bool, string, error) {
+func (s *GitHubSource) IsUpdateAvailable(
+	ctx context.Context,
+	current string,
+) (bool, string, error) {
 	latest, err := s.LatestVersion(ctx)
 	if err != nil {
 		return false, "", err
@@ -97,8 +102,13 @@ func (s *GitHubSource) DowngradeWarning(current, target string) string {
 }
 
 // FetchChecksumFile downloads SHA256SUMS for a specific release.
-func (s *GitHubSource) FetchChecksumFile(ctx context.Context, version string) (string, error) {
-	checksumURL := fmt.Sprintf("https://github.com/%s/releases/download/%s/SHA256SUMS", s.repo, version)
+func (s *GitHubSource) FetchChecksumFile(
+	ctx context.Context,
+	version string,
+) (string, error) {
+	const checksumFile = "SHA256SUMS"
+	const urlTemplate = "https://github.com/%s/releases/download/%s/%s"
+	checksumURL := fmt.Sprintf(urlTemplate, s.repo, version, checksumFile)
 
 	req, err := http.NewRequestWithContext(ctx, "GET", checksumURL, nil)
 	if err != nil {

@@ -21,7 +21,9 @@ func NewBrewSource(tap, formula string) *BrewSource {
 // LatestVersion gets the latest version from the Homebrew tap.
 // Uses `brew info --json=v2 <tap>/<formula>`.
 func (s *BrewSource) LatestVersion(ctx context.Context) (string, error) {
-	cmd := exec.CommandContext(ctx, "brew", "info", "--json=v2", fmt.Sprintf("%s/%s", s.tap, s.formula))
+	path := fmt.Sprintf("%s/%s", s.tap, s.formula)
+	//nolint:gosec
+	cmd := exec.CommandContext(ctx, "brew", "info", "--json=v2", path)
 
 	output, err := cmd.Output()
 	if err != nil {
@@ -83,5 +85,6 @@ func (s *BrewSource) UpgradeCommand() string {
 
 // DowngradeWarning returns a message for downgrades.
 func (s *BrewSource) DowngradeWarning(current, target string) string {
-	return fmt.Sprintf("Homebrew does not support pinning to specific versions. Current: %s", current)
+	msg := "Homebrew does not support pinning to specific versions. Current: %s"
+	return fmt.Sprintf(msg, current)
 }
