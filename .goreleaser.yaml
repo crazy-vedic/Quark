@@ -91,36 +91,6 @@ brews:
       zsh_completion.install Dir["completions/quark.zsh"].first => "_quark"
       fish_completion.install Dir["completions/quark.fish"].first => "quark.fish"
 
-winget:
-  - repository:
-      owner: crazy-vedic
-      name: winget-pkgs
-      branch: master
-      token: "{{ .Env.GITHUB_TOKEN }}"
-      pull_request:
-        enabled: true
-        draft: false
-    skip: "{{ isSnapshot }}"
-    ids:
-      - quark
-    package_identifier: Quark.Quark
-    publisher: Quark
-    publisher_url: https://github.com/crazy-vedic
-    publisher_support_url: https://github.com/crazy-vedic/Quark/issues
-    author: Quark Contributors
-    homepage: https://github.com/crazy-vedic/Quark
-    license: MIT
-    license_url: https://github.com/crazy-vedic/Quark/blob/master/LICENSE
-    short_description: "A local-first, keyboard-driven HTTP client"
-    description: "Quark is a local-first, keyboard-driven HTTP client with a TUI and CLI, powered by Go and Bubble Tea. No cloud. No accounts. No data leaves your machine."
-    tags:
-      - http-client
-      - cli
-      - tui
-      - postman-alternative
-    release_notes: "See https://github.com/crazy-vedic/Quark/releases/tag/{{ .Tag }}"
-    release_notes_url: "https://github.com/crazy-vedic/Quark/releases/tag/{{ .Tag }}"
-
 changelog:
   sort: asc
   filters:
