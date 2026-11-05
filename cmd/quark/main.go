@@ -451,7 +451,13 @@ func checkUpdateAndPrint(ctx context.Context) {
 	}
 
 	if available && latest != "" {
-		fmt.Fprintf(os.Stderr, "\nUpdate available: %s → %s\nRun: %s\n", Version, latest, source.UpgradeCommand())
+		fmt.Fprintf(
+			os.Stderr,
+			"\nUpdate available: %s → %s\nRun: %s\n",
+			Version,
+			latest,
+			source.UpgradeCommand(),
+		)
 	}
 }
 
