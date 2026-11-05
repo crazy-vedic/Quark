@@ -23,7 +23,9 @@ func NewWingetSource(packageID string) *WingetSource {
 // Uses `winget show --id <package-id> --exact`.
 // Runs with English locale forced to ensure consistent output parsing.
 func (s *WingetSource) LatestVersion(ctx context.Context) (string, error) {
-	cmd := exec.CommandContext(ctx, "winget", "show", "--id", s.packageID, "--exact", "--source", "winget")
+	args := []string{"show", "--id", s.packageID, "--exact", "--source", "winget"}
+	//nolint:gosec
+	cmd := exec.CommandContext(ctx, "winget", args...)
 
 	// Force English output for consistent parsing
 	cmd.Env = append(os.Environ(), "LANG=en_US.UTF-8")
@@ -50,7 +52,10 @@ func (s *WingetSource) LatestVersion(ctx context.Context) (string, error) {
 }
 
 // IsUpdateAvailable checks if a newer version is available via Winget.
-func (s *WingetSource) IsUpdateAvailable(ctx context.Context, current string) (bool, string, error) {
+func (s *WingetSource) IsUpdateAvailable(
+	ctx context.Context,
+	current string,
+) (bool, string, error) {
 	latest, err := s.LatestVersion(ctx)
 	if err != nil {
 		return false, "", err

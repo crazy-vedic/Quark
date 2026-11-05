@@ -23,7 +23,7 @@ func NewAptSource(packageName string) *AptSource {
 // LatestVersion gets the latest version from apt.
 // Uses `apt-cache policy <package>`.
 func (s *AptSource) LatestVersion(ctx context.Context) (string, error) {
-	cmd := exec.CommandContext(ctx, "apt-cache", "policy", s.packageName)
+	cmd := exec.CommandContext(ctx, "apt-cache", "policy", s.packageName) //nolint:gosec
 	output, err := cmd.Output()
 	if err != nil {
 		return "", fmt.Errorf("apt-cache policy failed: %w", err)

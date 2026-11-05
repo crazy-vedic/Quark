@@ -80,7 +80,8 @@ func newVersionCmd() *cobra.Command {
 	}
 
 	cmd.Flags().BoolVar(&outputJSON, "json", false, "Output as JSON")
-	cmd.Flags().BoolVar(&checkOnly, "check", false, "Check for updates without installing (alias for dry-run)")
+	const checkFlagDesc = "Check for updates without installing (alias for dry-run)"
+	cmd.Flags().BoolVar(&checkOnly, "check", false, checkFlagDesc)
 	_ = checkOnly // Accepted for compatibility but not used in dry-run mode
 
 	return cmd
@@ -111,12 +112,13 @@ func newUpdateCmd() *cobra.Command {
 				case updates.ChannelBrew:
 					source := updates.NewBrewSource("crazy-vedic/quark", "quark")
 					available, latest, err := source.IsUpdateAvailable(ctx, Version)
-					if err == nil && available {
+					switch {
+					case err != nil:
+						fmt.Fprintf(cmd.OutOrStderr(), "Could not check for updates: %v\n", err)
+					case available:
 						fmt.Fprintf(cmd.OutOrStderr(), "Update available: %s\n", latest)
 						fmt.Fprintf(cmd.OutOrStderr(), "Command: %s\n", source.UpgradeCommand())
-					} else if err != nil {
-						fmt.Fprintf(cmd.OutOrStderr(), "Could not check for updates: %v\n", err)
-					} else {
+					default:
 						fmt.Fprintf(cmd.OutOrStderr(), "Already up to date\n")
 					}
 					return nil
@@ -124,12 +126,13 @@ func newUpdateCmd() *cobra.Command {
 				case updates.ChannelApt:
 					source := updates.NewAptSource("quark")
 					available, latest, err := source.IsUpdateAvailable(ctx, Version)
-					if err == nil && available {
+					switch {
+					case err != nil:
+						fmt.Fprintf(cmd.OutOrStderr(), "Could not check for updates: %v\n", err)
+					case available:
 						fmt.Fprintf(cmd.OutOrStderr(), "Update available: %s\n", latest)
 						fmt.Fprintf(cmd.OutOrStderr(), "Command: %s\n", source.UpgradeCommand())
-					} else if err != nil {
-						fmt.Fprintf(cmd.OutOrStderr(), "Could not check for updates: %v\n", err)
-					} else {
+					default:
 						fmt.Fprintf(cmd.OutOrStderr(), "Already up to date\n")
 					}
 					return nil
@@ -137,12 +140,13 @@ func newUpdateCmd() *cobra.Command {
 				case updates.ChannelWinget:
 					source := updates.NewWingetSource("Quark.Quark")
 					available, latest, err := source.IsUpdateAvailable(ctx, Version)
-					if err == nil && available {
+					switch {
+					case err != nil:
+						fmt.Fprintf(cmd.OutOrStderr(), "Could not check for updates: %v\n", err)
+					case available:
 						fmt.Fprintf(cmd.OutOrStderr(), "Update available: %s\n", latest)
 						fmt.Fprintf(cmd.OutOrStderr(), "Command: %s\n", source.UpgradeCommand())
-					} else if err != nil {
-						fmt.Fprintf(cmd.OutOrStderr(), "Could not check for updates: %v\n", err)
-					} else {
+					default:
 						fmt.Fprintf(cmd.OutOrStderr(), "Already up to date\n")
 					}
 					return nil
@@ -151,12 +155,13 @@ func newUpdateCmd() *cobra.Command {
 					// For binary, show what self-update would do
 					source := updates.NewGitHubSource("crazy-vedic/quark")
 					available, latest, err := source.IsUpdateAvailable(ctx, Version)
-					if err == nil && available {
+					switch {
+					case err != nil:
+						fmt.Fprintf(cmd.OutOrStderr(), "Could not check for updates: %v\n", err)
+					case available:
 						fmt.Fprintf(cmd.OutOrStderr(), "Update available: %s\n", latest)
 						fmt.Fprintf(cmd.OutOrStderr(), "Run: quark update (without --check)\n")
-					} else if err != nil {
-						fmt.Fprintf(cmd.OutOrStderr(), "Could not check for updates: %v\n", err)
-					} else {
+					default:
 						fmt.Fprintf(cmd.OutOrStderr(), "Already up to date\n")
 					}
 					return nil
@@ -177,7 +182,8 @@ func newUpdateCmd() *cobra.Command {
 					fmt.Fprintf(cmd.OutOrStderr(), "To upgrade: %s\n", aptSource.UpgradeCommand())
 				case updates.ChannelWinget:
 					wingetSource := updates.NewWingetSource("Quark.Quark")
-					fmt.Fprintf(cmd.OutOrStderr(), "To upgrade: %s\n", wingetSource.UpgradeCommand())
+					upgrade := wingetSource.UpgradeCommand()
+					fmt.Fprintf(cmd.OutOrStderr(), "To upgrade: %s\n", upgrade)
 				}
 
 				return nil
@@ -186,7 +192,8 @@ func newUpdateCmd() *cobra.Command {
 			// Check if self-update is allowed
 			if !updates.CanSelfUpdate(channel, exePath) {
 				fmt.Fprintf(cmd.OutOrStderr(), "Self-update not allowed from system paths\n")
-				fmt.Fprintf(cmd.OutOrStderr(), "Please reinstall using: brew install quark (or apt/winget)\n")
+				fmt.Fprint(cmd.OutOrStderr(),
+					"Please reinstall using: brew install quark (or apt/winget)\n")
 				return nil
 			}
 
@@ -215,7 +222,8 @@ func newUpdateCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().BoolVar(&checkOnly, "check", false, "Check for updates without installing (dry-run mode)")
+	const dryRunDesc = "Check for updates without installing (dry-run mode)"
+	cmd.Flags().BoolVar(&checkOnly, "check", false, dryRunDesc)
 
 	return cmd
 }
