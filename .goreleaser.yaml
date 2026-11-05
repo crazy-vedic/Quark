@@ -37,7 +37,6 @@ archives:
         {{- else -}}
         {{- end -}}
     wrap_in_directory: false
-    strip: true
 
 checksum:
   name_template: SHA256SUMS
