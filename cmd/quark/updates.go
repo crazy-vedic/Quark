@@ -44,9 +44,9 @@ func newVersionCmd() *cobra.Command {
 
 			// Build result
 			result := versionResult{
-				Current:  Version,
-				Latest:   latest,
-				Channel:  string(channel),
+				Current:   Version,
+				Latest:    latest,
+				Channel:   string(channel),
 				Available: available,
 			}
 
@@ -222,9 +222,9 @@ func newUpdateCmd() *cobra.Command {
 
 // versionResult is the JSON output structure for the version command.
 type versionResult struct {
-	Current        string `json:"current"`
-	Latest         string `json:"latest,omitempty"`
-	Channel        string `json:"channel"`
-	Available      bool   `json:"available"`
-	UpdateCommand  string `json:"update_command,omitempty"`
+	Current       string `json:"current"`
+	Latest        string `json:"latest,omitempty"`
+	Channel       string `json:"channel"`
+	Available     bool   `json:"available"`
+	UpdateCommand string `json:"update_command,omitempty"`
 }
