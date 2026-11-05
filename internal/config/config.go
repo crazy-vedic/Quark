@@ -74,11 +74,11 @@ type Backup struct {
 
 // Updates configures version checking and self-update behavior.
 type Updates struct {
-	Check              bool      `toml:"check"`
-	CheckInterval      duration  `toml:"check_interval"`
-	RetryAfterFailure  duration  `toml:"retry_after_failure"`
-	Timeout            duration  `toml:"timeout"`
-	AutoApply          bool      `toml:"auto_apply"`
+	Check             bool     `toml:"check"`
+	CheckInterval     duration `toml:"check_interval"`
+	RetryAfterFailure duration `toml:"retry_after_failure"`
+	Timeout           duration `toml:"timeout"`
+	AutoApply         bool     `toml:"auto_apply"`
 }
 
 // duration is a TOML-decodable wrapper for time.Duration.

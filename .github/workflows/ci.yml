@@ -80,6 +80,7 @@ jobs:
         uses: goreleaser/goreleaser-action@v5
         with:
           install-only: true
+          version: v1.26.2
 
       - name: Validate GoReleaser config
         run: goreleaser check
