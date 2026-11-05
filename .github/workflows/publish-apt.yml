@@ -1,0 +1,185 @@
+name: Publish to apt Repository
+
+on:
+  release:
+    types: [published, created]
+
+permissions:
+  contents: write
+
+jobs:
+  publish-apt:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main branch
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Checkout or create gh-pages branch
+        run: |
+          git fetch origin gh-pages 2>/dev/null || true
+          if git rev-parse --verify origin/gh-pages >/dev/null 2>&1; then
+            git checkout gh-pages
+          else
+            git checkout --orphan gh-pages
+            git rm -rf .
+            echo "# Quark apt Repository" > README.md
+            git add README.md
+            git commit -m "Initial gh-pages commit"
+          fi
+
+      - name: Set up apt repository structure
+        run: |
+          mkdir -p apt/conf apt/pool/main/q/quark
+
+          # Create distributions file if it doesn't exist
+          if [ ! -f apt/conf/distributions ]; then
+            cat > apt/conf/distributions <<'EOF'
+Origin: Quark
+Label: Quark
+Suite: stable
+Codename: stable
+Version: 1.0
+Components: main
+Architectures: amd64 arm64
+SignWith: no
+EOF
+          fi
+
+      - name: Install reprepro and dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y reprepro gnupg2
+
+      - name: Download .deb packages from release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          RELEASE_TAG="${{ github.event.release.tag_name }}"
+          echo "Downloading packages for release: $RELEASE_TAG"
+
+          # Create temp directory for downloads
+          mkdir -p /tmp/debs
+          cd /tmp/debs
+
+          # Download all .deb files from the release
+          gh release download "$RELEASE_TAG" \
+            --repo "${{ github.repository }}" \
+            --pattern "*.deb" \
+            || echo "No .deb files found in release (expected if using GoReleaser nfpms)"
+
+          ls -lah *.deb 2>/dev/null || echo "No .deb packages downloaded"
+
+      - name: Import GPG key (optional)
+        if: vars.APT_GPG_KEY != ''
+        run: |
+          echo "${{ secrets.APT_GPG_KEY }}" | base64 -d | gpg --import --batch --no-tty
+          echo "GPG key imported"
+
+      - name: Add packages to apt repository
+        run: |
+          cd ${{ github.workspace }}
+          RELEASE_TAG="${{ github.event.release.tag_name }}"
+
+          # Add each .deb file to the repository
+          for deb in /tmp/debs/*.deb; do
+            if [ -f "$deb" ]; then
+              echo "Adding: $deb"
+              if [ -n "${{ secrets.APT_GPG_KEY_PASSPHRASE }}" ]; then
+                echo "${{ secrets.APT_GPG_KEY_PASSPHRASE }}" | \
+                  reprepro -b apt -S main --gpg-sign "${{ secrets.APT_GPG_KEY_ID }}" \
+                  --passphrase-file /dev/stdin includedeb stable "$deb"
+              else
+                reprepro -b apt -S main includedeb stable "$deb"
+              fi
+            fi
+          done
+
+          # Verify packages were added
+          reprepro -b apt list stable || echo "Repository may be empty (first release)"
+
+      - name: Generate repository index
+        run: |
+          cd ${{ github.workspace }}/apt
+
+          # Create symlinks for direct package access
+          reprepro -b . -S main createsymlinks || true
+
+          # Ensure Release file exists and is readable
+          ls -lah dists/stable/Release* 2>/dev/null || echo "Release file will be created"
+
+      - name: Create public key file
+        run: |
+          mkdir -p ${{ github.workspace }}/apt
+          if [ -n "${{ secrets.APT_GPG_KEY_ID }}" ]; then
+            gpg --export "${{ secrets.APT_GPG_KEY_ID }}" > ${{ github.workspace }}/apt/KEY.pub
+          fi
+
+          # Always create a README for apt repository
+          cat > ${{ github.workspace }}/apt/README.md <<'EOF'
+# Quark apt Repository
+
+Install Quark from this repository:
+
+```bash
+echo "deb [trusted=yes] https://crazy-vedic.github.io/Quark/apt stable main" | \
+  sudo tee /etc/apt/sources.list.d/quark.list
+
+sudo apt update
+sudo apt install quark
+```
+
+For signed packages (requires GPG key):
+
+```bash
+curl -fsSL https://crazy-vedic.github.io/Quark/apt/KEY.pub | \
+  sudo apt-key add -
+
+echo "deb https://crazy-vedic.github.io/Quark/apt stable main" | \
+  sudo tee /etc/apt/sources.list.d/quark.list
+
+sudo apt update
+sudo apt install quark
+```
+EOF
+
+      - name: Commit and push to gh-pages
+        run: |
+          cd ${{ github.workspace }}
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add apt/
+
+          # Check if there are changes to commit
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Publish packages from release ${{ github.event.release.tag_name }}"
+            git push origin gh-pages
+            echo "Published to gh-pages branch"
+          fi
+
+      - name: Verify apt repository
+        run: |
+          echo "Repository structure:"
+          find ${{ github.workspace }}/apt -type f | head -20
+
+          echo ""
+          echo "Packages in repository:"
+          reprepro -b ${{ github.workspace }}/apt list stable || echo "Repository may be empty"
+
+      - name: Comment on release
+        if: github.event.action == 'published'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '✅ apt packages published to https://crazy-vedic.github.io/Quark/apt'
+            })
