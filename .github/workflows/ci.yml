@@ -60,6 +60,32 @@ jobs:
           retention-days: 1
 
   # ---------------------------------------------------------------------------
+  # Stage 1: Package validation — check GoReleaser config and snapshot build
+  # ---------------------------------------------------------------------------
+  package-validation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.26'
+          check-latest: true
+          cache: true
+
+      - name: Install GoReleaser
+        uses: goreleaser/setup-action@v6
+
+      - name: Validate GoReleaser config
+        run: goreleaser check
+
+      - name: Build snapshot
+        run: goreleaser release --snapshot --clean
+
+  # ---------------------------------------------------------------------------
   # Stage 1: Lint — parallel with build, no artifacts needed
   # ---------------------------------------------------------------------------
   lint:
@@ -335,7 +361,7 @@ jobs:
   # so PRs can fetch instead of re-running all master tests.
   # ---------------------------------------------------------------------------
   persist-baseline:
-    needs: [test-unit, test-e2e-tui, test-e2e-cli, lint]
+    needs: [test-unit, test-e2e-tui, test-e2e-cli, lint, package-validation]
     runs-on: ubuntu-latest
     if: github.event_name == 'push'
     steps:
