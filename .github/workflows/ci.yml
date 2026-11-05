@@ -77,7 +77,9 @@ jobs:
           cache: true
 
       - name: Install GoReleaser
-        uses: goreleaser/setup-action@v6
+        uses: goreleaser/goreleaser-action@v5
+        with:
+          install-only: true
 
       - name: Validate GoReleaser config
         run: goreleaser check
