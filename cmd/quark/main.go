@@ -34,6 +34,7 @@ import (
 	"github.com/crazy-vedic/quark/internal/timing"
 	"github.com/crazy-vedic/quark/internal/transport"
 	"github.com/crazy-vedic/quark/internal/tui"
+	"github.com/crazy-vedic/quark/internal/updates"
 )
 
 var (
@@ -400,6 +401,10 @@ func launchTUI(
 	)
 	resize.Bind(p.Send)
 	_, err = p.Run()
+
+	// Check for updates and print message after alt-screen restores
+	checkUpdateAndPrint(ctx)
+
 	if timingEnabled {
 		// Print the opt-in timing summary after the alternate screen is closed.
 		switch timingFormat {
@@ -413,6 +418,41 @@ func launchTUI(
 		return fmt.Errorf("tui: %w", err)
 	}
 	return nil
+}
+
+func checkUpdateAndPrint(ctx context.Context) {
+	// Create a short timeout for update check (don't block on exit)
+	checkCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+
+	// Detect installation channel
+	channel := updates.DetectChannel()
+
+	// Create appropriate source based on channel
+	var source updates.Source
+	switch channel {
+	case updates.ChannelBrew:
+		source = updates.NewBrewSource("crazy-vedic/quark", "quark")
+	case updates.ChannelApt:
+		source = updates.NewAptSource("quark")
+	case updates.ChannelWinget:
+		source = updates.NewWingetSource("Quark.Quark")
+	case updates.ChannelBinary:
+		source = updates.NewGitHubSource("crazy-vedic/quark")
+	default:
+		return
+	}
+
+	// Check for updates
+	available, latest, err := source.IsUpdateAvailable(checkCtx, Version)
+	if err != nil {
+		// Silently ignore check failures on exit
+		return
+	}
+
+	if available && latest != "" {
+		fmt.Fprintf(os.Stderr, "\nUpdate available: %s → %s\nRun: %s\n", Version, latest, source.UpgradeCommand())
+	}
 }
 
 func defaultConfigDir() (string, error) {
