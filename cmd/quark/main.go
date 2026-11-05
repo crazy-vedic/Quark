@@ -182,6 +182,8 @@ func runWithArgs(args []string) error {
 	root.AddCommand(lazyClientCertCmd())
 	root.AddCommand(lazyKeybindingsCmd())
 	root.AddCommand(newThemeCmd())
+	root.AddCommand(newVersionCmd())
+	root.AddCommand(newUpdateCmd())
 	root.AddCommand(cli.NewCompletionCmd(root))
 
 	root.AddCommand(&cobra.Command{
