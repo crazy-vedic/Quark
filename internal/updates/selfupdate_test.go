@@ -15,7 +15,7 @@ import (
 func TestNewSelfUpdater(t *testing.T) {
 	tmpDir := t.TempDir()
 	exe := filepath.Join(tmpDir, "quark")
-	require.NoError(t, os.WriteFile(exe, []byte("fake"), 0o755))
+	require.NoError(t, os.WriteFile(exe, []byte("fake"), 0o600))
 
 	updater := updates.NewSelfUpdater("owner/repo", exe, "1.0.0")
 	assert.NotNil(t, updater)
@@ -24,7 +24,7 @@ func TestNewSelfUpdater(t *testing.T) {
 func TestSelfUpdater_CheckUpdate(t *testing.T) {
 	tmpDir := t.TempDir()
 	exe := filepath.Join(tmpDir, "quark")
-	require.NoError(t, os.WriteFile(exe, []byte("fake"), 0o755))
+	require.NoError(t, os.WriteFile(exe, []byte("fake"), 0o600))
 
 	updater := updates.NewSelfUpdater("owner/repo", exe, "1.0.0")
 	ctx := context.Background()
@@ -41,7 +41,8 @@ func TestSelfUpdater_CreatedWithValidPath(t *testing.T) {
 	// Create a temporary file to represent the binary
 	f, err := os.Create(exe)
 	require.NoError(t, err)
-	f.WriteString("test binary content")
+	_, err = f.WriteString("test binary content")
+	require.NoError(t, err)
 	f.Close()
 
 	updater := updates.NewSelfUpdater("test/repo", exe, "2.0.0")
@@ -53,7 +54,7 @@ func TestSelfUpdater_WithSymlink(t *testing.T) {
 	actualBinary := filepath.Join(tmpDir, "actual")
 	symlinkPath := filepath.Join(tmpDir, "link")
 
-	require.NoError(t, os.WriteFile(actualBinary, []byte("binary"), 0o755))
+	require.NoError(t, os.WriteFile(actualBinary, []byte("binary"), 0o600))
 	require.NoError(t, os.Symlink(actualBinary, symlinkPath))
 
 	updater := updates.NewSelfUpdater("owner/repo", symlinkPath, "1.0.0")

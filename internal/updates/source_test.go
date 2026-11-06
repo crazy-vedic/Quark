@@ -14,10 +14,10 @@ import (
 
 // mockSource is a test implementation of the Source interface.
 type mockSource struct {
-	latestVersion  string
-	latestErr      error
-	upgradeCmd     string
-	downgradeMsg   string
+	latestVersion string
+	latestErr     error
+	upgradeCmd    string
+	downgradeMsg  string
 }
 
 func (m *mockSource) LatestVersion(ctx context.Context) (string, error) {

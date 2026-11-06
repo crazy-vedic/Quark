@@ -26,7 +26,7 @@ func TestCanSelfUpdate_Binary_Writable(t *testing.T) {
 	testExe := filepath.Join(tmpDir, "quark")
 
 	// Create a dummy executable
-	require.NoError(t, os.WriteFile(testExe, []byte("fake binary"), 0o755))
+	require.NoError(t, os.WriteFile(testExe, []byte("fake binary"), 0o600))
 
 	result := updates.CanSelfUpdate(updates.ChannelBinary, testExe)
 	assert.True(t, result, "should allow self-update for writable user directory")
@@ -71,7 +71,7 @@ func TestCanSelfUpdate_Binary_UserWritablePaths(t *testing.T) {
 			testExe := filepath.Join(tmpDir, "quark")
 
 			// Create a dummy executable in a writable directory
-			require.NoError(t, os.WriteFile(testExe, []byte("fake"), 0o755))
+			require.NoError(t, os.WriteFile(testExe, []byte("fake"), 0o600))
 
 			result := updates.CanSelfUpdate(updates.ChannelBinary, testExe)
 			assert.True(t, result, "should allow self-update for writable path: %s", tt.path)
@@ -82,7 +82,7 @@ func TestCanSelfUpdate_Binary_UserWritablePaths(t *testing.T) {
 func TestCanSelfUpdate_NonBinaryChannel(t *testing.T) {
 	tmpDir := t.TempDir()
 	testExe := filepath.Join(tmpDir, "quark")
-	require.NoError(t, os.WriteFile(testExe, []byte("fake"), 0o755))
+	require.NoError(t, os.WriteFile(testExe, []byte("fake"), 0o600))
 
 	channels := []updates.Channel{
 		updates.ChannelBrew,
@@ -109,7 +109,7 @@ func TestCanSelfUpdate_SymlinkResolution(t *testing.T) {
 	symlinkPath := filepath.Join(tmpDir, "quark-link")
 
 	// Create the actual binary
-	require.NoError(t, os.WriteFile(actualPath, []byte("fake"), 0o755))
+	require.NoError(t, os.WriteFile(actualPath, []byte("fake"), 0o600))
 
 	// Create a symlink to it
 	require.NoError(t, os.Symlink(actualPath, symlinkPath))
@@ -125,7 +125,7 @@ func TestCanSelfUpdate_PathWithoutSeparator(t *testing.T) {
 	tmpDir := t.TempDir()
 	testExe := filepath.Join(tmpDir, "binfoo", "quark")
 	require.NoError(t, os.MkdirAll(filepath.Dir(testExe), 0o755))
-	require.NoError(t, os.WriteFile(testExe, []byte("fake"), 0o755))
+	require.NoError(t, os.WriteFile(testExe, []byte("fake"), 0o600))
 
 	result := updates.CanSelfUpdate(updates.ChannelBinary, testExe)
 	assert.True(t, result, "should allow paths that don't exactly match system paths")

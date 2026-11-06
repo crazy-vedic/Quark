@@ -233,7 +233,8 @@ func newUpdateCmd() *cobra.Command {
 
 			// Ask for confirmation unless --yes is set
 			if !yes {
-				fmt.Fprintf(cmd.OutOrStderr(), "Update available: %s → %s\n", Version, updateToVersion)
+				fmt.Fprintf(cmd.OutOrStderr(), "Update available: %s → %s\n",
+					Version, updateToVersion)
 				fmt.Fprint(cmd.OutOrStderr(), "Proceed with update? [y/N] ")
 				var reply string
 				if _, err := fmt.Scanln(&reply); err != nil {

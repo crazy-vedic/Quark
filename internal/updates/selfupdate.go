@@ -256,7 +256,8 @@ func (su *SelfUpdater) replace(src, dst string) error {
 		if err := os.Rename(src, dst); err != nil {
 			// Try to restore original binary
 			if restoreErr := os.Rename(aside, dst); restoreErr != nil {
-				return fmt.Errorf("replace failed and restoration failed: replace=%w, restore=%w", err, restoreErr)
+				msg := "replace failed and restoration failed: replace=%w, restore=%w"
+				return fmt.Errorf(msg, err, restoreErr)
 			}
 			return fmt.Errorf("failed to rename new binary into place: %w", err)
 		}
