@@ -129,14 +129,14 @@ function Verify-Checksum {
         try {
             Invoke-WebRequest -Uri $ChecksumsUrl -OutFile $tempChecksumFile -UseBasicParsing -ErrorAction Stop | Out-Null
         } catch {
-            Write-Host "⚠️  Warning: Failed to download checksum file, proceeding without verification" -ForegroundColor Yellow
-            return $true
+            Write-Host "❌ Failed to download checksum file" -ForegroundColor Red
+            return $false
         }
 
         if ((Get-Item $tempChecksumFile).Length -eq 0) {
-            Write-Host "⚠️  Warning: Checksum file is empty, proceeding without verification" -ForegroundColor Yellow
+            Write-Host "❌ Checksum file is empty" -ForegroundColor Red
             Remove-Item $tempChecksumFile -Force -ErrorAction SilentlyContinue
-            return $true
+            return $false
         }
 
         $checksumContent = Get-Content $tempChecksumFile -Raw
@@ -144,8 +144,8 @@ function Verify-Checksum {
 
         $fileHashEntry = $checksumContent -split "`n" | Where-Object { $_ -match [regex]::Escape($asset) } | Select-Object -First 1
         if (-not $fileHashEntry) {
-            Write-Host "⚠️  Warning: Checksum for $asset not found in SHA256SUMS, proceeding without verification" -ForegroundColor Yellow
-            return $true
+            Write-Host "❌ Checksum for $asset not found in SHA256SUMS" -ForegroundColor Red
+            return $false
         }
 
         $expectedHash = ($fileHashEntry -split '\s+')[0].ToUpper()
@@ -161,8 +161,8 @@ function Verify-Checksum {
         Write-Host "✅ Checksum verified" -ForegroundColor Green
         return $true
     } catch {
-        Write-Host "⚠️  Warning: Error during checksum verification: $_" -ForegroundColor Yellow
-        return $true
+        Write-Host "❌ Error during checksum verification: $_" -ForegroundColor Red
+        return $false
     }
 }
 
