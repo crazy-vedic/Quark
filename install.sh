@@ -344,21 +344,21 @@ verify_checksum() {
     trap "rm -f '$sums_file'" RETURN
 
     if ! "${CURL[@]}" "$sums_url" -o "$sums_file"; then
-        echo "⚠️  Warning: Failed to download checksum file, proceeding without verification"
-        return 0
+        echo "❌ Failed to download checksum file"
+        return 1
     fi
 
     if [[ ! -s "$sums_file" ]]; then
-        echo "⚠️  Warning: Checksum file is empty, proceeding without verification"
-        return 0
+        echo "❌ Checksum file is empty"
+        return 1
     fi
 
     local expected_sha
     expected_sha=$(grep -F "$ASSET" "$sums_file" | awk '{print $1}' || true)
 
     if [[ -z "$expected_sha" ]]; then
-        echo "⚠️  Warning: Checksum for $ASSET not found in SHA256SUMS, proceeding without verification"
-        return 0
+        echo "❌ Checksum for $ASSET not found in SHA256SUMS"
+        return 1
     fi
 
     echo "==> Verifying checksum..."
@@ -376,8 +376,8 @@ verify_checksum() {
             return 1
         fi
     else
-        echo "⚠️  Warning: sha256sum/shasum not found, skipping checksum verification"
-        return 0
+        echo "❌ sha256sum/shasum not found, cannot verify checksum"
+        return 1
     fi
 
     echo "✅ Checksum verified"
