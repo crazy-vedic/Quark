@@ -92,7 +92,7 @@ jobs:
 
       - name: Run GoReleaser
         env:
-          GITHUB_TOKEN: ${{ secrets.RELEASE_PAT || secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.RELEASE_PAT }}
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
         run: |
           goreleaser release --skip=validate
@@ -117,7 +117,7 @@ jobs:
 
       - name: Upload binaries and install scripts to release
         env:
-          GH_TOKEN: ${{ secrets.RELEASE_PAT || secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
         run: |
           TAG="${{ inputs.tag }}"
           # Upload extracted binaries
