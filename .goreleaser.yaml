@@ -37,6 +37,8 @@ archives:
         {{- else -}}
         {{- end -}}
     wrap_in_directory: false
+    files:
+      - completions/**
 
 checksum:
   name_template: SHA256SUMS

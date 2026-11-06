@@ -36,7 +36,11 @@ jobs:
 
           # Create distributions file if it doesn't exist
           if [ ! -f apt/conf/distributions ]; then
-            cat > apt/conf/distributions <<'EOF'
+            SIGN_WITH="${{ vars.APT_GPG_KEY_ID }}"
+            if [ -z "$SIGN_WITH" ]; then
+              SIGN_WITH="no"
+            fi
+            cat > apt/conf/distributions <<EOF
 Origin: Quark
 Label: Quark
 Suite: stable
@@ -44,7 +48,7 @@ Codename: stable
 Version: 1.0
 Components: main
 Architectures: amd64 arm64
-SignWith: no
+SignWith: $SIGN_WITH
 EOF
           fi
 

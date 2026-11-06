@@ -124,6 +124,9 @@ jobs:
           # Upload extracted binaries
           gh release upload "$TAG" dist/binaries/quark-* \
             --repo crazy-vedic/Quark --clobber
+          # Upload checksums
+          gh release upload "$TAG" dist/SHA256SUMS \
+            --repo crazy-vedic/Quark --clobber
           # Upload install scripts
           gh release upload "$TAG" install.sh install.ps1 \
             --repo crazy-vedic/Quark --clobber
