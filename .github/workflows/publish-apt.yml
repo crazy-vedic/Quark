@@ -89,7 +89,7 @@ EOF
               echo "Adding: $deb"
               if [ -n "${{ secrets.APT_GPG_KEY_PASSPHRASE }}" ]; then
                 echo "${{ secrets.APT_GPG_KEY_PASSPHRASE }}" | \
-                  reprepro -b apt -S main --gpg-sign "${{ secrets.APT_GPG_KEY_ID }}" \
+                  reprepro -b apt -S main --gpg-sign "${{ vars.APT_GPG_KEY_ID }}" \
                   --passphrase-file /dev/stdin includedeb stable "$deb"
               else
                 reprepro -b apt -S main includedeb stable "$deb"
@@ -113,8 +113,8 @@ EOF
       - name: Create public key file
         run: |
           mkdir -p ${{ github.workspace }}/apt
-          if [ -n "${{ secrets.APT_GPG_KEY_ID }}" ]; then
-            gpg --export "${{ secrets.APT_GPG_KEY_ID }}" > ${{ github.workspace }}/apt/KEY.pub
+          if [ -n "${{ vars.APT_GPG_KEY_ID }}" ]; then
+            gpg --export "${{ vars.APT_GPG_KEY_ID }}" > ${{ github.workspace }}/apt/KEY.pub
           fi
 
           # Always create a README for apt repository
