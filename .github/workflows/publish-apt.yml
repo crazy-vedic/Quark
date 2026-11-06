@@ -44,7 +44,7 @@ Codename: stable
 Version: 1.0
 Components: main
 Architectures: amd64 arm64
-SignWith: no
+SignWith: ${{ secrets.APT_GPG_KEY_ID }}
 EOF
           fi
 
