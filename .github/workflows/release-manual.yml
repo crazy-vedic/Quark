@@ -1,0 +1,128 @@
+name: Manual Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to release (e.g. v1.1.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Verify tag exists
+        run: |
+          TAG="${{ inputs.tag }}"
+          if ! git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "ERROR: Tag $TAG does not exist."
+            echo ""
+            echo "Create the tag first:"
+            echo "  git tag -a $TAG -m \"Release $TAG\""
+            echo "  git push origin $TAG"
+            exit 1
+          fi
+          echo "Tag $TAG exists."
+
+      - name: Verify tag was created by automation
+        id: verify
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG_NAME="${{ inputs.tag }}"
+          REPO="${{ github.repository }}"
+
+          # Use GitHub API to get the tag message (more reliable than git cat-file in actions/checkout)
+          # This works for both annotated and lightweight tags
+          TAG_MESSAGE=$(gh api "repos/${REPO}/git/ref/tags/${TAG_NAME}" | jq -r '.object.url' | xargs gh api | jq -r '.message // empty')
+
+          # Check for the automation marker added by tag-on-merge.yml
+          if ! echo "$TAG_MESSAGE" | grep -q "automated-release: tag-on-merge.yml"; then
+            echo "WARNING: Tag $TAG_NAME was not created by the automated release workflow."
+            echo ""
+            echo "Tag annotation:"
+            echo "$TAG_MESSAGE"
+            echo ""
+            echo "Proceeding anyway since this is a manual backfill."
+          fi
+
+          # Extract PR link and commit SHA from the tag annotation
+          PR_LINK=$(echo "$TAG_MESSAGE" | grep -oP 'https://github.com/[^ ]+/pull/\d+' || true)
+          COMMIT_SHA=$(echo "$TAG_MESSAGE" | grep -oP 'Commit: \K[0-9a-f]{40}' || true)
+
+          if [ -z "$COMMIT_SHA" ]; then
+            # Fallback to the tag's target commit
+            COMMIT_SHA=$(git rev-parse "${TAG_NAME}^{commit}")
+          fi
+
+          echo "Tag $TAG_NAME verified."
+          echo "pr_link=${PR_LINK}" >> "$GITHUB_OUTPUT"
+          echo "commit_sha=${COMMIT_SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout tag
+        run: |
+          git checkout "${{ inputs.tag }}"
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.26'
+          cache: true
+
+      - name: Generate completion files
+        run: |
+          go build -o quark ./cmd/quark
+          mkdir -p completions
+          ./quark completion bash > completions/quark.bash
+          ./quark completion zsh > completions/quark.zsh
+          ./quark completion fish > completions/quark.fish
+
+      - name: Install GoReleaser
+        uses: goreleaser/goreleaser-action@v5
+        with:
+          version: v1.26.2
+
+      - name: Run GoReleaser
+        env:
+          GITHUB_TOKEN: ${{ secrets.RELEASE_PAT || secrets.GITHUB_TOKEN }}
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          goreleaser release --skip=validate
+
+      - name: Extract binaries and regenerate checksums
+        run: |
+          cd dist
+          mkdir -p binaries
+          # Extract from tar.gz (all have "quark" inside)
+          for arch in amd64 arm64; do
+            tar -xzf quark-linux-${arch}.tar.gz -C binaries/
+            mv binaries/quark binaries/quark-linux-${arch}
+            tar -xzf quark-darwin-${arch}.tar.gz -C binaries/
+            mv binaries/quark binaries/quark-darwin-${arch}
+          done
+          # Extract from zip (has quark.exe inside)
+          unzip -o quark-windows-amd64.zip -d binaries/
+          mv binaries/quark.exe binaries/quark-windows-amd64.exe
+          # Regenerate SHA256SUMS with both archives and binaries
+          rm SHA256SUMS
+          sha256sum quark-*.tar.gz quark-*.zip binaries/quark-* > SHA256SUMS
+
+      - name: Upload binaries and install scripts to release
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PAT || secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ inputs.tag }}"
+          # Upload extracted binaries
+          gh release upload "$TAG" dist/binaries/quark-* \
+            --repo crazy-vedic/Quark --clobber
+          # Upload install scripts
+          gh release upload "$TAG" install.sh install.ps1 \
+            --repo crazy-vedic/Quark --clobber

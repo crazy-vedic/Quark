@@ -1,0 +1,638 @@
+package store
+
+import (
+	"context"
+	"database/sql"
+	"fmt"
+	"log/slog"
+	"strings"
+
+	"github.com/crazy-vedic/quark/internal/domain"
+)
+
+// schema is the initial v1 schema for all tables.
+const schema = `
+CREATE TABLE IF NOT EXISTS schema_versions (
+    version INTEGER PRIMARY KEY,
+    applied_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS collections (
+    id          TEXT PRIMARY KEY,
+    name        TEXT NOT NULL,
+    description TEXT,
+    meta        TEXT DEFAULT '{}',
+    created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+    version     INTEGER DEFAULT 1
+);
+
+CREATE TABLE IF NOT EXISTS requests (
+    id            TEXT PRIMARY KEY,
+    collection_id TEXT NOT NULL,
+    name          TEXT NOT NULL,
+    method        TEXT NOT NULL CHECK(method IN ('GET','POST','PUT','DELETE','PATCH','HEAD','OPTIONS')),
+    url           TEXT NOT NULL,
+    headers       TEXT DEFAULT '{}',
+    body          TEXT,
+    sort_order    INTEGER DEFAULT 0,
+    enabled       BOOLEAN DEFAULT 1,
+    created_at    DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at    DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (collection_id) REFERENCES collections(id) ON DELETE CASCADE,
+    UNIQUE(collection_id, name)
+);
+
+CREATE INDEX IF NOT EXISTS idx_requests_collection ON requests(collection_id, sort_order);
+`
+
+// migration represents a single schema migration.
+type migration struct {
+	version int
+	name    string
+	upSQL   string
+	downSQL string
+}
+
+// migrations holds all schema migrations in order.
+// Add new migrations at the end of the slice.
+// DO NOT remove or reorder existing migrations.
+var migrations = []migration{
+	{
+		version: 1,
+		name:    "initial_schema",
+		upSQL:   schema,
+	},
+	{
+		version: 2,
+		name:    "add_environments",
+		upSQL: `
+CREATE TABLE IF NOT EXISTS environments (
+    id            TEXT PRIMARY KEY,
+    collection_id TEXT,
+    name          TEXT NOT NULL,
+    data          TEXT NOT NULL DEFAULT '{}',
+    sort_order    INTEGER DEFAULT 0,
+    created_at    DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at    DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (collection_id) REFERENCES collections(id) ON DELETE CASCADE,
+    UNIQUE(collection_id, name)
+);
+CREATE INDEX IF NOT EXISTS idx_envs_collection ON environments(collection_id, sort_order);
+`,
+		downSQL: `
+DROP INDEX IF EXISTS idx_envs_collection;
+DROP TABLE IF EXISTS environments;
+`,
+	},
+	{
+		version: 3,
+		name:    "add_active_env",
+		upSQL: `
+CREATE TABLE IF NOT EXISTS collection_active_env (
+    collection_id TEXT PRIMARY KEY,
+    env_id        TEXT NOT NULL,
+    updated_at    DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (collection_id) REFERENCES collections(id) ON DELETE CASCADE,
+    FOREIGN KEY (env_id) REFERENCES environments(id) ON DELETE CASCADE
+);
+`,
+		downSQL: `
+DROP TABLE IF EXISTS collection_active_env;
+`,
+	},
+	{
+		version: 4,
+		name:    "add_executions",
+		upSQL: `
+CREATE TABLE IF NOT EXISTS executions (
+    id               TEXT PRIMARY KEY,
+    request_id       TEXT NOT NULL,
+    request_snapshot TEXT NOT NULL,
+    status_code      INTEGER NOT NULL DEFAULT 0,
+    response_headers TEXT NOT NULL DEFAULT '{}',
+    response_body    TEXT NOT NULL DEFAULT '',
+    response_time_ms INTEGER NOT NULL DEFAULT 0,
+    started_at       DATETIME NOT NULL,
+    completed_at     DATETIME NOT NULL,
+    error            TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_executions_request_completed
+ON executions(request_id, completed_at DESC, started_at DESC, id DESC);
+`,
+		downSQL: `
+DROP INDEX IF EXISTS idx_executions_request_completed;
+DROP TABLE IF EXISTS executions;
+`,
+	},
+	{
+		version: 5,
+		name:    "add_request_auth",
+		upSQL: `
+ALTER TABLE requests ADD COLUMN auth_type TEXT NOT NULL DEFAULT '';
+ALTER TABLE requests ADD COLUMN auth_config TEXT NOT NULL DEFAULT '{}';
+`,
+	},
+	{
+		version: 6,
+		name:    "add_scheduled_runs",
+		upSQL: `
+CREATE TABLE IF NOT EXISTS scheduled_runs (
+    id          TEXT PRIMARY KEY,
+    request_id  TEXT NOT NULL,
+    run_at      DATETIME NOT NULL,
+    status      TEXT NOT NULL DEFAULT 'pending',
+    last_error  TEXT NOT NULL DEFAULT '',
+    created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (request_id) REFERENCES requests(id) ON DELETE CASCADE,
+    CHECK(status IN ('pending','running','completed','failed','cancelled'))
+);
+CREATE INDEX IF NOT EXISTS idx_scheduled_runs_due
+ON scheduled_runs(status, run_at ASC, id ASC);
+`,
+		downSQL: `
+DROP INDEX IF EXISTS idx_scheduled_runs_due;
+DROP TABLE IF EXISTS scheduled_runs;
+`,
+	},
+	{
+		version: 7,
+		name:    "repair_empty_request_ids",
+		upSQL: `
+PRAGMA defer_foreign_keys = ON;
+
+CREATE TEMP TABLE request_id_repairs (
+    old_id TEXT PRIMARY KEY,
+    new_id TEXT NOT NULL
+);
+
+INSERT INTO request_id_repairs (old_id, new_id)
+SELECT id, lower(hex(randomblob(16)))
+FROM requests
+WHERE id = '';
+
+UPDATE executions
+SET request_id = (SELECT new_id FROM request_id_repairs WHERE old_id = executions.request_id)
+WHERE request_id IN (SELECT old_id FROM request_id_repairs);
+
+UPDATE scheduled_runs
+SET request_id = (SELECT new_id FROM request_id_repairs WHERE old_id = scheduled_runs.request_id)
+WHERE request_id IN (SELECT old_id FROM request_id_repairs);
+
+UPDATE requests
+SET id = (SELECT new_id FROM request_id_repairs WHERE old_id = requests.id)
+WHERE id IN (SELECT old_id FROM request_id_repairs);
+
+DROP TABLE request_id_repairs;
+`,
+	},
+	{
+		version: 8,
+		name:    "nested_collections",
+		upSQL: `
+ALTER TABLE collections ADD COLUMN parent_id TEXT REFERENCES collections(id) ON DELETE CASCADE;
+CREATE INDEX IF NOT EXISTS idx_collections_parent ON collections(parent_id, name);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_collections_sibling_name
+ON collections(COALESCE(parent_id, ''), name);
+`,
+		downSQL: `DROP INDEX IF EXISTS idx_collections_sibling_name; DROP INDEX IF EXISTS idx_collections_parent;`,
+	},
+	{
+		version: 9,
+		name:    "canonical_global_environment",
+	},
+}
+
+// migrate runs all pending migrations in order.
+// It is idempotent: calling it multiple times is safe.
+func (s *Store) migrate() error {
+	// Ensure schema_versions table exists (part of migration v1 logic).
+	if err := s.createSchemaVersionsTable(); err != nil {
+		return err
+	}
+
+	// Get current schema version.
+	currentVersion, err := s.currentSchemaVersion()
+	if err != nil {
+		return err
+	}
+
+	// Apply pending migrations.
+	for _, m := range migrations {
+		if m.version > currentVersion {
+			if err := s.applyMigration(m); err != nil {
+				return fmt.Errorf("store: migrate v%d %s: %w", m.version, m.name, err)
+			}
+		}
+	}
+	// Keep the legacy repair safe to rerun. This also handles databases where
+	// an older migration was manually rolled back or repaired data was added
+	// after the migration record was written.
+	if err := s.repairEmptyRequestIDs(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (s *Store) repairEmptyRequestIDs() error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err = tx.Exec(
+		`PRAGMA defer_foreign_keys = ON;
+CREATE TEMP TABLE IF NOT EXISTS request_id_repairs (
+    old_id TEXT PRIMARY KEY,
+    new_id TEXT NOT NULL
+);
+DELETE FROM request_id_repairs;
+INSERT INTO request_id_repairs (old_id, new_id)
+SELECT id, lower(hex(randomblob(16))) FROM requests WHERE id = '';
+UPDATE executions
+SET request_id = (SELECT new_id FROM request_id_repairs WHERE old_id = executions.request_id)
+WHERE request_id IN (SELECT old_id FROM request_id_repairs);
+UPDATE scheduled_runs
+SET request_id = (SELECT new_id FROM request_id_repairs WHERE old_id = scheduled_runs.request_id)
+WHERE request_id IN (SELECT old_id FROM request_id_repairs);
+UPDATE requests
+SET id = (SELECT new_id FROM request_id_repairs WHERE old_id = requests.id)
+WHERE id IN (SELECT old_id FROM request_id_repairs);
+DROP TABLE request_id_repairs;`,
+	); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// createSchemaVersionsTable creates the migration tracking table.
+func (s *Store) createSchemaVersionsTable() error {
+	_, err := s.db.Exec(`
+		CREATE TABLE IF NOT EXISTS schema_versions (
+			version INTEGER PRIMARY KEY,
+			applied_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+	if err != nil {
+		return fmt.Errorf("store: create schema_versions table: %w", err)
+	}
+	return nil
+}
+
+// currentSchemaVersion returns the highest applied migration version.
+// Returns 0 if no migrations have been applied (fresh database).
+func (s *Store) currentSchemaVersion() (int, error) {
+	var version int
+	err := s.db.QueryRow(`
+		SELECT COALESCE(MAX(version), 0) FROM schema_versions
+	`).Scan(&version)
+	if err != nil {
+		return 0, fmt.Errorf("store: get current schema version: %w", err)
+	}
+	return version, nil
+}
+
+// applyMigration runs a single migration within a transaction.
+func (s *Store) applyMigration(m migration) error {
+	if m.version == 8 {
+		return s.applyNestedCollectionsMigration(m)
+	}
+	if m.version == 9 {
+		return s.applyCanonicalGlobalEnvironmentMigration(m)
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	// Execute migration SQL.
+	if _, err := tx.Exec(m.upSQL); err != nil {
+		return fmt.Errorf("execute SQL: %w", err)
+	}
+
+	// Record migration as applied.
+	_, err = tx.Exec(
+		`INSERT INTO schema_versions (version) VALUES (?)`,
+		m.version,
+	)
+	if err != nil {
+		return fmt.Errorf("record version: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit: %w", err)
+	}
+	return nil
+}
+
+// applyCanonicalGlobalEnvironmentMigration consolidates legacy collection-less
+// rows into the canonical Global without ever exposing variable values.
+func (s *Store) applyCanonicalGlobalEnvironmentMigration(m migration) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	rows, err := tx.Query(
+		`SELECT id, name, data FROM environments WHERE collection_id IS NULL ORDER BY CASE WHEN id = 'global' THEN 0 ELSE 1 END, created_at, id`,
+	)
+	if err != nil {
+		return fmt.Errorf("read legacy Global rows: %w", err)
+	}
+	type legacyGlobal struct {
+		id, name, data string
+	}
+	var globals []legacyGlobal
+	for rows.Next() {
+		var row legacyGlobal
+		if err := rows.Scan(&row.id, &row.name, &row.data); err != nil {
+			rows.Close()
+			return fmt.Errorf("scan legacy Global row: %w", err)
+		}
+		globals = append(globals, row)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return fmt.Errorf("read legacy Global rows: %w", err)
+	}
+	if err := rows.Close(); err != nil {
+		return fmt.Errorf("close legacy Global rows: %w", err)
+	}
+
+	merged := make(map[string]string)
+	for _, row := range globals {
+		// Earlier releases allowed an empty TEXT value even though the schema
+		// declared a JSON-object default. Treat it as the empty object so a
+		// perfectly usable legacy database can be upgraded. Non-empty malformed
+		// data remains an explicit, rollback-safe migration failure.
+		data := row.data
+		if strings.TrimSpace(data) == "" {
+			data = "{}"
+		}
+		environment := &domain.Environment{ID: row.id, Name: row.name, Data: data}
+		vars, decodeErr := environment.DecodeVars()
+		if decodeErr != nil {
+			return fmt.Errorf("validate legacy Global row %q: %w", row.id, decodeErr)
+		}
+		for key, value := range vars {
+			if _, exists := merged[key]; !exists {
+				merged[key] = value
+			}
+		}
+	}
+	canonical := &domain.Environment{ID: "global", Name: "global"}
+	canonical.SetVars(merged)
+	if _, err := tx.Exec(
+		`INSERT INTO environments (id, collection_id, name, data, sort_order)
+VALUES ('global', NULL, 'global', ?, 0)
+ON CONFLICT(id) DO UPDATE SET
+    collection_id=NULL,
+    name='global',
+    data=excluded.data,
+    sort_order=0,
+    updated_at=CURRENT_TIMESTAMP`,
+		canonical.Data,
+	); err != nil {
+		return fmt.Errorf("write canonical Global: %w", err)
+	}
+	if _, err := tx.Exec(
+		`DELETE FROM environments WHERE collection_id IS NULL AND id <> 'global'`,
+	); err != nil {
+		return fmt.Errorf("remove redundant Global rows: %w", err)
+	}
+	if _, err := tx.Exec(
+		`DELETE FROM collection_active_env
+WHERE NOT EXISTS (
+    SELECT 1 FROM collections c WHERE c.id = collection_active_env.collection_id
+) OR NOT EXISTS (
+    SELECT 1 FROM environments e
+    WHERE e.id = collection_active_env.env_id
+      AND e.collection_id = collection_active_env.collection_id
+)`,
+	); err != nil {
+		return fmt.Errorf("remove invalid active environment mappings: %w", err)
+	}
+	if _, err := tx.Exec(
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_environments_single_global ON environments((1)) WHERE collection_id IS NULL`,
+	); err != nil {
+		return fmt.Errorf("create Global uniqueness index: %w", err)
+	}
+	if _, err := tx.Exec(
+		`INSERT INTO schema_versions (version) VALUES (?)`,
+		m.version,
+	); err != nil {
+		return fmt.Errorf("record version: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit: %w", err)
+	}
+	return nil
+}
+
+// applyNestedCollectionsMigration rebuilds collections so databases created
+// before nesting no longer retain the old global UNIQUE(name) constraint.
+// It also repairs slash-containing legacy names before paths are exposed.
+func (s *Store) applyNestedCollectionsMigration(m migration) error {
+	if _, err := s.db.Exec(
+		`PRAGMA foreign_keys = OFF; PRAGMA legacy_alter_table = ON`,
+	); err != nil {
+		return err
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err = tx.Exec(`ALTER TABLE collections RENAME TO collections_legacy`); err != nil {
+		return err
+	}
+	if _, err = tx.Exec(`CREATE TABLE collections (
+    id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT, meta TEXT DEFAULT '{}',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    version INTEGER DEFAULT 1, parent_id TEXT REFERENCES collections(id) ON DELETE CASCADE
+)`); err != nil {
+		return err
+	}
+	rows, err := tx.Query(
+		`SELECT id, name, description, meta, created_at, updated_at, version FROM collections_legacy`,
+	)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	names := make(map[string]bool)
+	for rows.Next() {
+		var c domain.Collection
+		var description, meta sql.NullString
+		if err := rows.Scan(
+			&c.ID,
+			&c.Name,
+			&description,
+			&meta,
+			&c.CreatedAt,
+			&c.UpdatedAt,
+			&c.Version,
+		); err != nil {
+			return err
+		}
+		c.Description, c.Meta = description.String, meta.String
+		c.Name, _ = NormalizeName(c.Name)
+		base := c.Name
+		for i := 2; names[c.Name]; i++ {
+			c.Name = fmt.Sprintf("%s-%d", base, i)
+		}
+		names[c.Name] = true
+		if _, err := tx.Exec(
+			`INSERT INTO collections (id,name,description,meta,created_at,updated_at,version,parent_id) VALUES (?,?,?,?,?,?,?,NULL)`,
+			c.ID,
+			c.Name,
+			c.Description,
+			c.Meta,
+			c.CreatedAt,
+			c.UpdatedAt,
+			c.Version,
+		); err != nil {
+			return err
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	rows.Close()
+	if _, err = tx.Exec(
+		`DROP TABLE collections_legacy; CREATE INDEX idx_collections_parent ON collections(parent_id,name); CREATE UNIQUE INDEX idx_collections_sibling_name ON collections(COALESCE(parent_id,''),name)`,
+	); err != nil {
+		return err
+	}
+	requestRows, err := tx.Query(
+		`SELECT id, collection_id, name FROM requests ORDER BY collection_id, created_at, id`,
+	)
+	if err != nil {
+		return err
+	}
+	for requestRows.Next() {
+		var id, collectionID, name string
+		if err := requestRows.Scan(&id, &collectionID, &name); err != nil {
+			requestRows.Close()
+			return err
+		}
+		name, repaired := NormalizeName(name)
+		if repaired {
+			base := name
+			for i := 2; ; i++ {
+				var count int
+				if err := tx.QueryRow(`SELECT COUNT(*) FROM requests WHERE collection_id=? AND name=? AND id<>?`, collectionID, name, id).
+					Scan(&count); err != nil {
+					requestRows.Close()
+					return err
+				}
+				if count == 0 {
+					break
+				}
+				name = fmt.Sprintf("%s-%d", base, i)
+			}
+			if _, err := tx.Exec(`UPDATE requests SET name=? WHERE id=?`, name, id); err != nil {
+				requestRows.Close()
+				return err
+			}
+		}
+	}
+	requestRows.Close()
+	if err := requestRows.Err(); err != nil {
+		return err
+	}
+	if _, err = tx.Exec(`INSERT INTO schema_versions (version) VALUES (?)`, m.version); err != nil {
+		return err
+	}
+	if err = tx.Commit(); err != nil {
+		return err
+	}
+	_, _ = s.db.Exec(`PRAGMA legacy_alter_table = OFF; PRAGMA foreign_keys = ON`)
+	return nil
+}
+
+// initGlobalEnvironment creates the global environment if it doesn't exist.
+func (s *Store) initGlobalEnvironment(ctx context.Context) error {
+	var count int
+	err := s.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM environments WHERE collection_id IS NULL`,
+	).Scan(&count)
+	if err != nil {
+		return fmt.Errorf("store: check global environment: %w", err)
+	}
+	if count > 0 {
+		return nil // already exists
+	}
+
+	_, err = s.db.ExecContext(ctx,
+		`INSERT INTO environments (id, collection_id, name, data, sort_order)
+		 VALUES (?, NULL, ?, ?, ?)`,
+		"global", "global", "{}", 0,
+	)
+	if err != nil {
+		return fmt.Errorf("store: create global environment: %w", err)
+	}
+	if s.logger != nil {
+		s.logger.Info("store: created global environment")
+	}
+	return nil
+}
+
+// initDefaultEnvironments creates default environments for all collections
+// that don't have one.
+func (s *Store) initDefaultEnvironments(ctx context.Context) error {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT c.id FROM collections c
+		WHERE NOT EXISTS (
+			SELECT 1 FROM environments e
+			WHERE e.collection_id = c.id AND e.name = 'default'
+		)
+	`)
+	if err != nil {
+		return fmt.Errorf("store: find collections without default env: %w", err)
+	}
+	defer rows.Close()
+
+	var collectionIDs []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return fmt.Errorf("store: scan collection id: %w", err)
+		}
+		collectionIDs = append(collectionIDs, id)
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("store: rows error: %w", err)
+	}
+
+	for _, colID := range collectionIDs {
+		_, err := s.db.ExecContext(ctx,
+			`INSERT INTO environments (id, collection_id, name, data, sort_order)
+			 VALUES (?, ?, ?, ?, ?)`,
+			fmt.Sprintf("default-%s", colID), colID, "default", "{}", 0,
+		)
+		if err != nil {
+			return fmt.Errorf("store: create default environment for %s: %w", colID, err)
+		}
+	}
+
+	if s.logger != nil && len(collectionIDs) > 0 {
+		s.logger.Info("store: created default environments", slog.Int("count", len(collectionIDs)))
+	}
+	return nil
+}
+
+// ensureEnvSetup initializes global and default environments.
+func (s *Store) ensureEnvSetup(ctx context.Context) error {
+	if err := s.initGlobalEnvironment(ctx); err != nil {
+		return err
+	}
+	if err := s.initDefaultEnvironments(ctx); err != nil {
+		return err
+	}
+	return nil
+}

@@ -1,0 +1,2519 @@
+package tui
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"net/http"
+	"net/url"
+	"sort"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/charmbracelet/bubbles/textarea"
+	"github.com/charmbracelet/bubbles/textinput"
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/google/uuid"
+
+	"github.com/crazy-vedic/quark/internal/config"
+	"github.com/crazy-vedic/quark/internal/curl"
+	"github.com/crazy-vedic/quark/internal/domain"
+	"github.com/crazy-vedic/quark/internal/exec"
+	"github.com/crazy-vedic/quark/internal/keybindings"
+	"github.com/crazy-vedic/quark/internal/schedule"
+	"github.com/crazy-vedic/quark/internal/store"
+	"github.com/crazy-vedic/quark/internal/theme"
+	"github.com/crazy-vedic/quark/internal/timing"
+)
+
+func (m Model) debugCurl(format string, args ...interface{}) {
+	if m.debugLog == nil {
+		return
+	}
+	importID := m.importID
+	if importID == "" {
+		importID = "-"
+	}
+	fmt.Fprintf(
+		m.debugLog,
+		"[%s] CURL_IMPORT id=%s %s\n",
+		time.Now().Format("15:04:05.000"),
+		importID,
+		fmt.Sprintf(format, args...),
+	)
+}
+
+func debugHeaderKeys(headers http.Header) string {
+	keys := make([]string, 0, len(headers))
+	for key := range headers {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return strings.Join(keys, ",")
+}
+
+// Update implements tea.Model — routes every message to the correct handler.
+//
+//nolint:gocyclo // Bubble Tea keeps the top-level message dispatcher centralized.
+func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case themeWatchTickMsg:
+		if m.configDir == "" || m.ctx.Err() != nil {
+			return m, nil
+		}
+		if theme.IsBuiltin(m.theme.Name) {
+			if m.themePreviewBase != nil && !theme.IsBuiltin(m.themePreviewBase.Name) {
+				return m, themeWatchTick()
+			}
+			return m, nil
+		}
+		hash, err := theme.FileHash(m.configDir, m.theme.Name)
+		if err != nil {
+			if m.themeWatchError != err.Error() {
+				m.themeWatchError = err.Error()
+				m = m.status("error", "Theme reload: "+err.Error())
+			}
+			return m, themeWatchTick()
+		}
+		if hash != m.themeFileHash || m.themeWatchError != "" {
+			m.themeFileHash = hash
+			selected, err := theme.Resolve(m.configDir, m.theme.Name, m.terminalDark)
+			if err != nil {
+				if m.themeWatchError != err.Error() {
+					m.themeWatchError = err.Error()
+					m = m.status("error", "Theme reload: "+err.Error())
+				}
+			} else {
+				m = m.useTheme(selected)
+				m = m.status("success", "Theme reloaded: "+selected.Name)
+			}
+		}
+		return m, themeWatchTick()
+
+	case updateCheckMsg:
+		if msg.available && msg.latest != "" {
+			m.updateStatus = "update: " + msg.latest
+		}
+		return m, nil
+
+	case curlClipboardMsg:
+		if m.mode != importMode || m.importPreview != nil {
+			return m, nil
+		}
+		if msg.err != nil {
+			m.importError = "Clipboard read failed: " + msg.err.Error()
+			return m, nil
+		}
+		m.importInput.SetValue(msg.value)
+		m.importInput.CursorEnd()
+		m.importError = ""
+		m.debugCurl("clipboard read bytes=%d", len(msg.value))
+		return m, nil
+	case postmanImportResultMsg:
+		m.postmanBusy = false
+		m.postmanOutput = strings.TrimSpace(msg.output)
+		if msg.err != nil {
+			m.postmanOutput = strings.TrimSpace(m.postmanOutput + "\n" + msg.err.Error())
+			return m, nil
+		}
+		if m.lister != nil {
+			return m, loadCollectionsCmd(m.ctx, m.lister)
+		}
+		return m, nil
+
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
+		m = m.applyDimSticky()
+		if m.activeField == bodyField {
+			m = m.resizeBodyTextarea()
+		}
+		if m.mode == importMode && m.importPreview == nil {
+			m.importInput.SetWidth(max(20, min(m.width-12, 100)))
+			m.importInput.SetHeight(max(6, min(m.height/3, 14)))
+		}
+		if m.mode == postmanImportMode {
+			m.postmanPath.Width = max(20, min(m.width-12, 100))
+		}
+		return m, nil
+
+	case softWindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
+		m = m.applyDimSticky()
+		if m.activeField == bodyField {
+			m = m.resizeBodyTextarea()
+		}
+		if m.mode == importMode && m.importPreview == nil {
+			m.importInput.SetWidth(max(20, min(m.width-12, 100)))
+			m.importInput.SetHeight(max(6, min(m.height/3, 14)))
+		}
+		if m.mode == postmanImportMode {
+			m.postmanPath.Width = max(20, min(m.width-12, 100))
+		}
+		return m, nil
+
+	case tea.MouseMsg:
+		return m.handleMouse(msg)
+
+	case collectionsLoadedMsg:
+		m.collections = orderCollectionsTree(msg.collections)
+		m.colCursor = 0
+		m.reqCursor = -1
+		if m.cfg.UI.LastRequestID != "" && m.reader != nil {
+			return m, loadLastRequestCmd(m.ctx, m.reader, m.cfg.UI.LastRequestID)
+		}
+		// Auto-load requests for the first collection.
+		if len(m.collections) > 0 && m.reader != nil {
+			id := m.collections[0].ID
+			m.expanded[id] = true
+			return m, loadRequestsCmd(m.ctx, m.reader, id)
+		}
+		return m, nil
+
+	case lastRequestLoadedMsg:
+		if msg.request != nil {
+			for idx, col := range m.collections {
+				if col != nil && col.ID == msg.request.CollectionID {
+					m.colCursor = idx
+					m.reqCursor = -1
+					m.expanded[col.ID] = true
+					return m, loadRequestsCmd(m.ctx, m.reader, col.ID)
+				}
+			}
+		}
+		// The remembered request may have been deleted. Start from the first
+		// visible collection and let requestsLoadedMsg choose its first request.
+		m.cfg.UI.LastRequestID = ""
+		if len(m.collections) > 0 && m.reader != nil {
+			id := m.collections[0].ID
+			m.expanded[id] = true
+			return m, loadRequestsCmd(m.ctx, m.reader, id)
+		}
+		return m, nil
+
+	case requestsLoadedMsg:
+		m.collectionRequests[msg.collectionID] = msg.requests
+		var historyCmd tea.Cmd
+		// If this is the currently selected collection, also set m.requests
+		// for the Enter handler on a request.
+		if m.activeCollectionID() == msg.collectionID {
+			m.requests = msg.requests
+			if m.initialSelectionPending {
+				m.initialSelectionPending = false
+				if len(msg.requests) > 0 {
+					m.reqCursor = 0
+					if m.cfg.UI.LastRequestID != "" {
+						for idx, req := range msg.requests {
+							if req != nil && req.ID == m.cfg.UI.LastRequestID {
+								m.reqCursor = idx
+								break
+							}
+						}
+					}
+					m, historyCmd = m.selectRequest(msg.requests[m.reqCursor])
+				}
+			}
+			if m.activeRequest != nil {
+				found := false
+				for _, req := range msg.requests {
+					if req.ID == m.activeRequest.ID {
+						found = true
+						break
+					}
+				}
+				if !found {
+					m, _ = m.selectRequest(nil)
+				}
+			}
+		}
+		// Also try to load persisted active env for this collection.
+		if m.activeEnvStore != nil {
+			return m, tea.Batch(
+				historyCmd,
+				loadActiveEnvCmd(m.ctx, m.activeEnvStore, msg.collectionID),
+			)
+		}
+		return m, historyCmd
+
+	case errLoadMsg:
+		m.err = fmt.Errorf("load: %w", msg.err)
+		return m, nil
+
+	case searchResultsMsg:
+		m.searchResults = msg.hits
+		m.searchCursor = 0
+		m.searchScroll = 0
+		m.searched = true // BUG-008: mark that at least one search has completed
+		return m, nil
+
+	case viewerClipboardMsg:
+		if msg.err != nil {
+			m.statusErr = "Copy failed: " + msg.err.Error()
+		} else {
+			m.statusSuccess = "Copied body"
+		}
+		return m, nil
+	case curlExportClipboardMsg:
+		if msg.err != nil {
+			m.statusErr = "Copy failed: " + msg.err.Error()
+		} else {
+			m.statusSuccess = "Copied curl command"
+		}
+		return m, nil
+
+	case executionHistoryLoadedMsg:
+		if m.activeRequest == nil || msg.requestID != m.activeRequest.ID {
+			return m, nil
+		}
+		m.executions = msg.executions
+		m.execCursor = 0
+		return m, nil
+
+	case tea.KeyMsg:
+		if m.debugLog != nil {
+			if m.mode == importMode || m.mode == postmanImportMode {
+				// The import textarea can contain credentials, request bodies, and
+				// literal certificate passwords. Log only structural key metadata.
+				fmt.Fprintf(
+					m.debugLog,
+					"[%s] key=[REDACTED] type=%d type_name=%q rune_count=%d alt=%v paste=%v focus=%d mode=%d colCursor=%d reqCursor=%d requests=%d expanded=%v\n",
+					time.Now().Format("15:04:05.000"),
+					msg.Type,
+					msg.Type.String(),
+					len(msg.Runes),
+					msg.Alt,
+					msg.Paste,
+					m.focus,
+					m.mode,
+					m.colCursor,
+					m.reqCursor,
+					len(m.requests),
+					m.expanded,
+				)
+			} else {
+				fmt.Fprintf(
+					m.debugLog,
+					"[%s] key=%q type=%d type_name=%q runes=%q rune_codes=%s alt=%v paste=%v focus=%d mode=%d colCursor=%d reqCursor=%d requests=%d expanded=%v\n",
+					time.Now().Format("15:04:05.000"),
+					msg.String(),
+					msg.Type,
+					msg.Type.String(),
+					string(msg.Runes),
+					debugRuneCodes(msg.Runes),
+					msg.Alt,
+					msg.Paste,
+					m.focus,
+					m.mode,
+					m.colCursor,
+					m.reqCursor,
+					len(m.requests),
+					m.expanded,
+				)
+			}
+		}
+		// Global shortcuts that work in all modes.
+		switch msg.Type {
+		case tea.KeyCtrlC:
+			return m, tea.Quit
+		case tea.KeyEsc:
+			if m.mode == normalMode {
+				m = m.handleEsc()
+				return m, nil
+			}
+		}
+
+		// Mode-specific routing.
+		switch m.mode {
+		case searchMode:
+			return m.handleSearchKey(msg)
+		case viewerMode:
+			return m.handleViewerKey(msg)
+		case helpMode:
+			return m.handleHelpKey(msg)
+		case envMode:
+			return m.handleEnvKey(msg)
+		case importMode:
+			return m.handleImportKey(msg)
+		case collectionPromptMode:
+			return m.handleCollectionPromptKey(msg)
+		case scheduleMode:
+			return m.handleScheduleKey(msg)
+		case clientCertMode:
+			return m.handleClientCertKey(msg)
+		case postmanImportMode:
+			return m.handlePostmanImportKey(msg)
+		default:
+			return m.handleNormalKey(msg)
+		}
+
+	case httpResponseMsg:
+		return m.handleHTTPResponse(msg)
+
+	case httpErrMsg:
+		return m.handleHTTPErr(msg)
+	case envSavedMsg:
+		m = m.status("success", "Environment saved")
+		if draft, ok := m.envEditor.drafts[msg.envID]; ok {
+			draft.dirty = false
+			for i := range draft.vars {
+				draft.vars[i].Saved = true
+			}
+			m.envEditor.drafts[msg.envID] = draft
+		}
+		if len(m.envEditor.tabs) > 0 && m.envEditor.tabs[m.envEditor.tabIdx].ID == msg.envID {
+			m.envEditor.dirty = false
+			for i := range m.envEditor.vars {
+				m.envEditor.vars[i].Saved = true
+			}
+			m = m.stashEnvDraft()
+		}
+		// Invalidate cached env name — saved env may be the active one.
+		m.cachedEnvColID = ""
+		return m, nil
+	case envSaveErrMsg:
+		m.envEditor.saveErr = fmt.Sprintf("Save failed: %v", msg.err)
+		return m, nil
+	case envCreatedMsg:
+		m = m.status("success", "Environment created")
+		if m.envReader != nil {
+			return m.openEnvEditor()
+		}
+		return m, nil
+	case envLoadedMsg:
+		if msg.envID != "" {
+			m.activeEnv[msg.collectionID] = msg.envID
+		}
+		// Invalidate cached env name on active-env change.
+		m.cachedEnvColID = ""
+		return m, nil
+	case activeEnvSaveErrMsg:
+		m.cachedEnvColID = ""
+		m = m.status("error", fmt.Sprintf("Save active environment: %v", msg.err))
+		return m, nil
+	case promptCompletedMsg:
+		m = m.closeCollectionPrompt()
+		if msg.inner == nil {
+			return m, nil
+		}
+		return m.Update(msg.inner)
+	case collectionSavedMsg:
+		if m.mode == collectionPromptMode {
+			m = m.closeCollectionPrompt()
+		}
+		if m.lister != nil {
+			return m, loadCollectionsCmd(m.ctx, m.lister)
+		}
+		return m, nil
+	case collectionSavedErrMsg:
+		m = m.status("error", fmt.Sprintf("Collection failed: %v", msg.err))
+		return m, nil
+	case scheduledRunSavedMsg:
+		m = m.closeSchedulePrompt()
+		m = m.status("success", "Scheduled for "+msg.runAt.Format(time.RFC3339))
+		return m.armScheduleTimer()
+	case scheduledRunSaveErrMsg:
+		m = m.status("error", fmt.Sprintf("Schedule failed: %v", msg.err))
+		return m, nil
+	case scheduledRunMissedMsg:
+		if msg.seq != m.scheduleTimerSeq {
+			return m, nil
+		}
+		m = m.status(
+			"error",
+			fmt.Sprintf("We missed executing your scheduled request %q", msg.name),
+		)
+		return m, scheduleWakeAfterCmd(m.ctx, 15*time.Second, msg.seq)
+	case scheduledRunWakeMsg:
+		if msg.seq != m.scheduleTimerSeq {
+			return m, nil
+		}
+		return m, executeDueScheduledRunsCmd(
+			m.ctx,
+			m.scheduler,
+			m.lister,
+			m.reader,
+			m.executor,
+			m.envReader,
+			m.activeEnvStore,
+			m.activeEnv,
+			m.now,
+		)
+	case scheduledRunBackgroundResultMsg:
+		m, historyCmd := m.applyScheduledRunBackgroundResult(msg)
+		m, timerCmd := m.armScheduleTimer()
+		return m, tea.Batch(historyCmd, timerCmd)
+
+	}
+	// Delegate to active inline fields for non-key messages (cursor blink, etc.).
+	if m.activeField == urlField {
+		var cmd tea.Cmd
+		m.urlInput, cmd = m.urlInput.Update(msg)
+		return m, cmd
+	}
+	if m.mode == importMode && m.importPreview == nil {
+		var cmd tea.Cmd
+		m.importInput, cmd = m.importInput.Update(msg)
+		return m, cmd
+	}
+	if m.activeField == bodyField {
+		var cmd tea.Cmd
+		m.bodyTextarea, cmd = m.bodyTextarea.Update(msg)
+		return m, cmd
+	}
+	if m.activeField == authField {
+		if !m.authEditor.editing {
+			return m, nil
+		}
+		var cmd tea.Cmd
+		switch m.authEditor.currentRow() {
+		case authRowToken:
+			m.authEditor.tokenInput, cmd = m.authEditor.tokenInput.Update(msg)
+		case authRowUsername:
+			m.authEditor.usernameInput, cmd = m.authEditor.usernameInput.Update(msg)
+		case authRowPassword:
+			m.authEditor.passwordInput, cmd = m.authEditor.passwordInput.Update(msg)
+		case authRowAPIKeyName:
+			m.authEditor.apiKeyNameInput, cmd = m.authEditor.apiKeyNameInput.Update(msg)
+		case authRowAPIKeyValue:
+			m.authEditor.apiKeyValueInput, cmd = m.authEditor.apiKeyValueInput.Update(msg)
+		}
+		return m, cmd
+	}
+	if m.activeField == headersField && m.headerEditing {
+		var cmd tea.Cmd
+		if m.headerKeyInput.Focused() {
+			m.headerKeyInput, cmd = m.headerKeyInput.Update(msg)
+		} else {
+			m.headerValueInput, cmd = m.headerValueInput.Update(msg)
+		}
+		return m, cmd
+	}
+
+	return m, nil
+}
+
+// --- Global handlers ---
+
+func (m Model) handleEsc() Model {
+	switch m.mode {
+	case searchMode:
+		return m.closeSearch()
+	case helpMode:
+		return m.closeHelp()
+	case envMode:
+		return m.closeEnvEditor()
+	case importMode:
+		return m.closeImport()
+	case collectionPromptMode:
+		return m.closeCollectionPrompt()
+	case clientCertMode:
+		return m.closeClientCertModal()
+	case postmanImportMode:
+		return m.closePostmanImportModal()
+	}
+	// In normal mode: cancel in-flight request.
+	if m.loading && m.cancel != nil {
+		m.cancel()
+		m.cancel = nil
+		m.loading = false
+	}
+	// Blur active inline field and revert changes.
+	return m.cancelActiveFieldEdit()
+}
+
+// --- Normal mode ---
+
+func (m Model) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	timingSpan := m.timing.Track("tui.handle_normal_key")
+	defer timingSpan.Done()
+	started := time.Now()
+	defer func() {
+		logDebugTiming(m.debugLog, "handle_normal_key", started,
+			fmt.Sprintf("key=%q focus=%d", msg.String(), m.focus))
+	}()
+	// BUG-010: dismiss tmux warning on first interaction.
+	m.showTmuxWarning = false
+
+	// When any inline field is active, all keys go directly to the request handler.
+	// This prevents 'q', '/', '?' etc. from firing global shortcuts mid-edit.
+	if m.activeField != noneField {
+		return m.handleRequestKey("", msg)
+	}
+	if m.focus == responsePane && isResponseHistoryKey(msg) {
+		if msg.Type == tea.KeyShiftDown || msg.Type == tea.KeyPgDown ||
+			msg.String() == "shift+pgdown" {
+			return m.handleResponseAction("history_next", timingSpan)
+		}
+		return m.handleResponseAction("history_prev", timingSpan)
+	}
+	if m.focus == requestPane && m.activeField == noneField && isVerticalScrollKey(msg) {
+		m.requestText.SetDebugLog(m.debugLog, "request")
+		m.requestText.SetTiming(m.timing)
+		m.setRequestTextContent(timingSpan)
+		r := m.requestBodyPreviewRect(m.currentLayout())
+		if r.right >= r.left && r.bottom >= r.top {
+			delta := -1
+			if msg.Type == tea.KeyDown || msg.Type == tea.KeyPgDown {
+				delta = 1
+			}
+			if msg.Type == tea.KeyPgUp || msg.Type == tea.KeyPgDown {
+				delta *= max(1, r.bottom-r.top)
+			}
+			m.requestText.Scroll(
+				delta,
+				max(1, r.right-r.left+1),
+				max(1, r.bottom-r.top+1),
+				timingSpan,
+			)
+		}
+		return m, nil
+	}
+	if m.focus == responsePane &&
+		(msg.Type == tea.KeyUp || msg.Type == tea.KeyDown || msg.Type == tea.KeyPgUp || msg.Type == tea.KeyPgDown) {
+		m.responseText.SetDebugLog(m.debugLog, "response")
+		m.responseText.SetTiming(m.timing)
+		m.setResponseTextContent(timingSpan)
+		textRect := m.responseTextRect(m.currentLayout())
+		width := max(1, textRect.right-textRect.left+1)
+		height := max(1, textRect.bottom-textRect.top+1)
+		delta := -1
+		if msg.Type == tea.KeyDown || msg.Type == tea.KeyPgDown {
+			delta = 1
+		}
+		if msg.Type == tea.KeyPgUp || msg.Type == tea.KeyPgDown {
+			delta *= max(1, height-1)
+		}
+		m.responseText.Scroll(delta, width, height, timingSpan)
+		return m, nil
+	}
+
+	if action, ok := m.resolver.Resolve(0, int(m.focus), msg); ok {
+		return m.dispatchNormalAction(action)
+	}
+	// Key didn't map to any action — intentional no-op.
+	return m, nil
+}
+
+func isVerticalScrollKey(msg tea.KeyMsg) bool {
+	return msg.Type == tea.KeyUp || msg.Type == tea.KeyDown || msg.Type == tea.KeyPgUp ||
+		msg.Type == tea.KeyPgDown
+}
+
+func isResponseHistoryKey(msg tea.KeyMsg) bool {
+	switch msg.Type {
+	case tea.KeyShiftUp, tea.KeyShiftDown:
+		return true
+	case tea.KeyPgUp, tea.KeyPgDown:
+		// Bubble Tea does not expose a separate Shift+PageUp key type on
+		// every terminal. Accept the modified form when the terminal reports
+		// it through the Alt flag, while plain PageUp/PageDown still scroll.
+		return msg.Alt
+	}
+	switch msg.String() {
+	case "shift+pgup", "shift+pageup", "shift+pgdown", "shift+pagedown":
+		return true
+	default:
+		return false
+	}
+}
+
+// dispatchNormalAction routes a resolver action in normal mode.
+// It mirrors the exact logic from the hardcoded switch above.
+func (m Model) dispatchNormalAction(action string) (tea.Model, tea.Cmd) {
+	switch action {
+	case "quit":
+		return m, tea.Quit
+	case "help":
+		return m.openHelp(), nil
+	case keybindings.ActionSearch:
+		return m.openSearch()
+	case keybindings.ActionFocusSidebar:
+		m.focus = sidebarPane
+		m.activeField = noneField
+		return m, nil
+	case keybindings.ActionFocusRequest:
+		m.focus = requestPane
+		return m, nil
+	case keybindings.ActionFocusResponse:
+		m.focus = responsePane
+		m.activeField = noneField
+		return m, nil
+	case "pane_next":
+		m.focus = (m.focus + 1) % 3
+		m.activeField = noneField
+		return m, nil
+	case "pane_prev":
+		m.focus = (m.focus + 2) % 3
+		m.activeField = noneField
+		return m, nil
+	case keybindings.ActionEnvOpen:
+		return m.openEnvEditor()
+	case keybindings.ActionClientCerts:
+		return m.openClientCertModal(), nil
+	case keybindings.ActionImportCurl:
+		return m.openCurlImport(), textarea.Blink
+	case keybindings.ActionImportPostman:
+		return m.openPostmanImportModal(), textinput.Blink
+	case keybindings.ActionEnvNext:
+		return m.cycleEnv(1)
+	case keybindings.ActionEnvPrev:
+		return m.cycleEnv(-1)
+	}
+
+	// Pane-specific actions.
+	switch m.focus {
+	case sidebarPane:
+		return m.handleSidebarAction(action)
+	case requestPane:
+		return m.handleRequestAction(action)
+	case responsePane:
+		return m.handleResponseAction(action)
+	}
+	return m, nil
+}
+
+// handleSidebarAction is the action-based version of handleSidebarKey.
+func (m Model) handleSidebarAction(action string) (tea.Model, tea.Cmd) {
+	switch action {
+	case keybindings.ActionDeleteRequest:
+		return m.handleRequestAction(action)
+	case "cursor_down":
+		return m.sidebarDown()
+	case "cursor_up":
+		return m.sidebarUp()
+	case "expand":
+		colID := m.activeCollectionID()
+		if colID == "" {
+			return m, nil
+		}
+		// If a request is selected, load it and shift focus.
+		if m.expanded[colID] && m.reqCursor >= 0 {
+			reqs := m.collectionRequests[colID]
+			if m.reqCursor < len(reqs) {
+				m.requests = reqs
+				m.focus = requestPane
+				return m.selectRequest(reqs[m.reqCursor])
+			}
+		}
+		// Otherwise toggle expand/collapse.
+		if m.expanded[colID] {
+			m.expanded[colID] = false
+			delete(m.collectionRequests, colID)
+			m.reqCursor = -1
+		} else {
+			m.expanded[colID] = true
+			if m.reader != nil {
+				return m, loadRequestsCmd(m.ctx, m.reader, colID)
+			}
+		}
+		return m, nil
+	case "collapse":
+		colID := m.activeCollectionID()
+		if colID != "" {
+			m.collapseCollectionSubtree(colID)
+			m.reqCursor = -1
+			m, _ = m.selectRequest(nil)
+		}
+		return m, nil
+	case "add":
+		return m.enterCollectionPrompt(promptAdd, "")
+	case "add_request":
+		colID := m.activeCollectionID()
+		if colID == "" {
+			return m.status("error", "Select a collection first"), nil
+		}
+		return m.enterCollectionPrompt(promptAddRequest, colID)
+	case deleteToken:
+		colID := m.activeCollectionID()
+		if colID == "" {
+			return m.status("error", "Select a collection first"), nil
+		}
+		return m.enterCollectionPrompt(promptDeleteConfirm, colID)
+	case actionRename:
+		colID := m.activeCollectionID()
+		if colID == "" {
+			return m.status("error", "Select a collection first"), nil
+		}
+		return m.enterCollectionPrompt(promptRename, colID)
+	case keybindings.ActionImportPostman:
+		return m.openPostmanImportModal(), textinput.Blink
+	}
+	return m, nil
+}
+
+// handleRequestAction is the action-based version of handleRequestKey.
+func (m Model) handleRequestAction(action string) (tea.Model, tea.Cmd) {
+	switch action {
+	case keybindings.ActionDeleteRequest:
+		var req *domain.Request
+		if m.focus == sidebarPane && m.reqCursor >= 0 {
+			colID := m.activeCollectionID()
+			if requests := m.collectionRequests[colID]; m.reqCursor < len(requests) {
+				req = requests[m.reqCursor]
+			}
+		} else {
+			req = m.activePaneRequest()
+		}
+		if req == nil || req.ID == "" {
+			return m.status("error", "Select a request first"), nil
+		}
+		m, cmd := m.enterCollectionPrompt(promptDeleteTiny, req.ID)
+		m.promptTargetCollectionID = req.CollectionID
+		return m, cmd
+	case keybindings.ActionEditURL:
+		return m.beginURLEdit()
+	case keybindings.ActionMethodNext:
+		return m.cycleMethod(nextMethod)
+	case keybindings.ActionMethodPrev:
+		return m.cycleMethod(prevMethod)
+	case keybindings.ActionSendRequest:
+		if m.loading || m.executor == nil {
+			return m, nil
+		}
+		req := m.activePaneRequest()
+		return m.startRequest(req)
+	case keybindings.ActionScheduleRun:
+		return m.openSchedulePrompt()
+	case keybindings.ActionExportCurl:
+		if m.activeRequest == nil {
+			return m.status("error", "Select a request first"), nil
+		}
+		command, err := curl.ExportRequest(m.activeRequest)
+		if err != nil {
+			return m.status("error", "Export curl: "+err.Error()), nil
+		}
+		return m, copyCurlCommandCmd(command)
+	case keybindings.ActionEditBody:
+		return m.beginBodyEdit(), nil
+	case keybindings.ActionEnvOpen:
+		return m.openEnvEditor()
+	case keybindings.ActionEnvNext:
+		return m.cycleEnv(1)
+	case keybindings.ActionEnvPrev:
+		return m.cycleEnv(-1)
+	case keybindings.ActionEditAuth:
+		return m.beginAuthEdit(), nil
+	case keybindings.ActionEditHeaders:
+		return m.beginHeadersEdit(), nil
+	}
+	return m, nil
+}
+
+// handleResponseAction routes resolver actions for the response pane.
+func (m Model) handleResponseAction(action string, parent ...*timing.Span) (tea.Model, tea.Cmd) {
+	timingSpan := m.timing.Track("tui.handle_response_action", timingParent(parent))
+	defer timingSpan.Done()
+	started := time.Now()
+	defer func() {
+		logDebugTiming(m.debugLog, "handle_response_action", started,
+			fmt.Sprintf("action=%s cursor=%d", action, m.execCursor))
+	}()
+	switch action {
+	case "history_next":
+		if m.execCursor < len(m.executions)-1 {
+			m.execCursor++
+		}
+	case "history_prev":
+		if m.execCursor > 0 {
+			m.execCursor--
+		}
+	case "retry_request":
+		if m.loading || m.executor == nil {
+			return m, nil
+		}
+		req, err := m.retryableRawRequest()
+		if err != nil {
+			return m.status("error", err.Error()), nil
+		}
+		return m.startRawRequest(req)
+	case actionTabBody:
+		m.responseTab = bodyTab
+	case actionTabHeaders:
+		m.responseTab = headersTab
+	case actionTabRaw:
+		m.responseTab = rawTab
+	case actionTabNext:
+		if m.responseTab == rawTab {
+			m.responseTab = bodyTab
+		} else {
+			m.responseTab++
+		}
+	case actionTabPrev:
+		if m.responseTab == bodyTab {
+			m.responseTab = rawTab
+		} else {
+			m.responseTab--
+		}
+	}
+	return m, nil
+}
+
+type executionRequestSnapshot struct {
+	Method     string `json:"method"`
+	URL        string `json:"url"`
+	Headers    string `json:"headers"`
+	AuthType   string `json:"auth_type,omitempty"`
+	AuthConfig string `json:"auth_config,omitempty"`
+	Body       string `json:"body"`
+}
+
+func (m Model) retryableRawRequest() (*domain.Request, error) {
+	if ex := m.selectedExecution(); ex != nil {
+		var snapshot executionRequestSnapshot
+		if err := json.Unmarshal([]byte(ex.RequestSnapshot), &snapshot); err != nil {
+			return nil, fmt.Errorf("retry unavailable: invalid execution snapshot")
+		}
+
+		req := &domain.Request{
+			ID:         ex.RequestID,
+			Method:     snapshot.Method,
+			URL:        snapshot.URL,
+			Headers:    snapshot.Headers,
+			AuthType:   snapshot.AuthType,
+			AuthConfig: snapshot.AuthConfig,
+			Body:       snapshot.Body,
+		}
+		if m.activeRequest != nil {
+			req.CollectionID = m.activeRequest.CollectionID
+			req.Name = m.activeRequest.Name
+		}
+		if req.Method == "" {
+			req.Method = "GET"
+		}
+		return req, nil
+	}
+
+	req := m.activePaneRequest()
+	if req == nil || strings.TrimSpace(req.URL) == "" {
+		return nil, fmt.Errorf("retry unavailable: no request to replay")
+	}
+	return req, nil
+}
+
+// --- Sidebar ---
+
+// sidebarDown moves cursor down through the full sidebar tree.
+// Navigation goes: collection → (if expanded) its requests → next collection.
+func (m Model) sidebarDown() (tea.Model, tea.Cmd) {
+	rows, selected := m.buildSidebarRows()
+	if selected+1 >= len(rows) {
+		return m, nil
+	}
+	return m.selectSidebarRow(rows[selected+1]), nil
+}
+
+// sidebarUp moves cursor up through the full sidebar tree.
+// Navigation goes: request → previous request (or collection) → previous collection's last request.
+func (m Model) sidebarUp() (tea.Model, tea.Cmd) {
+	rows, selected := m.buildSidebarRows()
+	if selected <= 0 || len(rows) == 0 {
+		return m, nil
+	}
+	return m.selectSidebarRow(rows[selected-1]), nil
+}
+
+func (m Model) selectSidebarRow(row sidebarRow) Model {
+	m.colCursor = row.colIndex
+	m.reqCursor = -1
+	if row.kind == sidebarRequestRow {
+		m.reqCursor = row.reqIndex
+	}
+	if row.colIndex >= 0 && row.colIndex < len(m.collections) {
+		m.requests = m.collectionRequests[m.collections[row.colIndex].ID]
+	}
+	return m.ensureSidebarCollectionVisible()
+}
+
+// --- Request pane ---
+
+func (m Model) handleRequestKey(_ string, msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Inline field routing — when active, all keys go to the field.
+	switch m.activeField {
+	case urlField:
+		if msg.Type == tea.KeyTab {
+			if suggestion := m.urlSuggestion(m.urlInput.Value()); suggestion != "" {
+				m.urlInput.SetValue(suggestion)
+				m.urlInput.SetCursor(len([]rune(suggestion)))
+				return m, nil
+			}
+		}
+		var cmd tea.Cmd
+		m.urlInput, cmd = m.urlInput.Update(msg)
+		if msg.Type == tea.KeyEnter {
+			if strings.HasPrefix(strings.TrimSpace(m.urlInput.Value()), "curl") {
+				return m.status(
+					"error",
+					"This looks like curl; press I to open the curl importer",
+				), nil
+			}
+			return m.finishURLEdit()
+		}
+		return m, cmd
+	case bodyField:
+		return m.handleBodyFieldKey(msg)
+	case authField:
+		return m.handleAuthFieldKey(msg)
+	case headersField:
+		return m.handleHeadersFieldKey(msg)
+	}
+
+	// Alt+Enter (macOS cmd+enter) sends request.
+	if msg.Type == tea.KeyEnter && msg.Alt {
+		if m.loading || m.executor == nil {
+			return m, nil
+		}
+		req := m.activePaneRequest()
+		return m.startRequest(req)
+	}
+
+	// Dead code removed: inline field routing (urlField/bodyField/headersField)
+	// above handles all active-field keys. Remaining actions (u/m/M/s/b/h) are
+	// dispatched via the resolver through handleRequestAction when focus is on
+	// the request pane and no field is active.
+	return m, nil
+}
+
+// triggerCurlImport parses a complete command already collected by the
+// dedicated multiline importer.
+func (m Model) triggerCurlImport(raw string) (Model, tea.Cmd) {
+	m.debugCurl("parse start input_bytes=%d", len(raw))
+	if m.importer == nil {
+		m.debugCurl("parse skipped: importer is nil")
+		m.importError = "curl importer is unavailable"
+		return m, nil
+	}
+	result, err := m.importer.Parse(strings.NewReader(strings.TrimSpace(raw)))
+	if err != nil {
+		m.debugCurl("parse failed")
+		m.importError = err.Error()
+		return m, nil
+	}
+	m.debugCurl(
+		"parse success method=%s url=%q header_count=%d header_keys=%q body_len=%d warning_count=%d",
+		result.Method,
+		result.URL,
+		len(result.Headers),
+		debugHeaderKeys(result.Headers),
+		len(result.Body),
+		len(result.Warnings),
+	)
+	if result.Certificate != nil {
+		m.debugCurl(
+			"certificate type=%s file=%q key_file=%q ca_file=%q",
+			result.Certificate.Type,
+			result.Certificate.File,
+			result.Certificate.KeyFile,
+			result.Certificate.CAFile,
+		)
+	}
+	return m.openImport(result)
+}
+
+// --- Search modal ---
+
+func (m Model) handleSearchKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Resolver lookup for overlay mode.
+	if action, ok := m.resolver.Resolve(1, 0, msg); ok {
+		switch action {
+		case "select":
+			if m.isCommandPalette() {
+				return m.executeSelectedCommand()
+			}
+			if len(m.searchResults) > 0 && m.searchCursor < len(m.searchResults) {
+				hit := m.searchResults[m.searchCursor]
+				m.focus = requestPane
+				var cmd tea.Cmd
+				m, cmd = m.selectRequest(hit.Request)
+				m = m.closeSearch()
+				return m, cmd
+			}
+			return m.closeSearch(), nil
+		case keybindings.ActionNavigateDown:
+			if m.isCommandPalette() {
+				if len(m.commands) > 0 && m.searchCursor < len(m.commands)-1 {
+					m.searchCursor++
+				}
+				return m.ensureCommandCursorVisible().previewCommandTheme(), nil
+			}
+			if len(m.searchResults) > 0 && m.searchCursor < len(m.searchResults)-1 {
+				m.searchCursor++
+				m = m.ensureSearchCursorVisible()
+			}
+			return m, nil
+		case keybindings.ActionNavigateUp:
+			if m.isCommandPalette() {
+				if m.searchCursor > 0 {
+					m.searchCursor--
+				}
+				return m.ensureCommandCursorVisible().previewCommandTheme(), nil
+			}
+			m.searchCursor--
+			if m.searchCursor < 0 {
+				m.searchCursor = 0
+			}
+			m = m.ensureSearchCursorVisible()
+			return m, nil
+		case keybindings.ActionCancel:
+			return m.closeSearch(), nil
+		}
+	}
+
+	// Route character input to the search textinput.
+	beforeValue := m.searchInput.Value()
+	beforeCursor := m.searchInput.Position()
+	var inputCmd tea.Cmd
+	m.searchInput, inputCmd = m.searchInput.Update(msg)
+	if m.debugLog != nil {
+		fmt.Fprintf(
+			m.debugLog,
+			"[%s] search_input key=%q before=%q before_cursor=%d after=%q after_cursor=%d\n",
+			time.Now().Format("15:04:05.000"),
+			msg.String(),
+			beforeValue,
+			beforeCursor,
+			m.searchInput.Value(),
+			m.searchInput.Position(),
+		)
+	}
+	query := m.searchInput.Value()
+	if m.isCommandPaletteQuery(query) {
+		m.commands = m.filterCommandPalette(strings.TrimSpace(strings.TrimPrefix(query, ">")))
+		m.searchResults = nil
+		m.searchCursor = 0
+		m.searchScroll = 0
+		m.searched = true
+		return m.previewCommandTheme(), inputCmd
+	}
+	// dispatchSearch cancels any stale search goroutine before starting a new one.
+	var searchM Model
+	var searchC tea.Cmd
+	searchM, searchC = m.dispatchSearch(query)
+	m = searchM
+	return m, tea.Batch(inputCmd, searchC)
+}
+
+func debugRuneCodes(runes []rune) string {
+	if len(runes) == 0 {
+		return "[]"
+	}
+	parts := make([]string, 0, len(runes))
+	for _, r := range runes {
+		parts = append(parts, strconv.Itoa(int(r)))
+	}
+	return "[" + strings.Join(parts, ",") + "]"
+}
+
+func (m Model) openHelp() Model {
+	m.mode = helpMode
+	m.helpSearch = false
+	m.searchInput.Blur()
+	m.searchInput.SetValue("")
+	m.searchInput.Placeholder = searchPlaceholder
+	return m
+}
+
+func (m Model) closeHelp() Model {
+	m.mode = normalMode
+	m.helpCursor = 0
+	m.helpScrollOffset = 0
+	m.helpEditState = helpViewing
+	m.helpEditAction = ""
+	m.helpEditErrMsg = ""
+	m.helpSearch = false
+	m.searchInput.Blur()
+	m.searchInput.SetValue("")
+	m.searchInput.Placeholder = searchPlaceholder
+	return m
+}
+
+func (m Model) openSearch() (Model, tea.Cmd) {
+	m.mode = searchMode
+	m.searchInput.SetValue("")
+	m.searchInput.Placeholder = searchPlaceholder
+	m.searchInput.Focus()
+	m.searchResults = nil
+	m.commands = nil
+	m.searchCursor = 0
+	m.searchScroll = 0
+	m.searchCancel = nil
+	m.searched = false
+	searchM, searchCmd := m.dispatchSearch("")
+	return searchM, tea.Batch(textinput.Blink, searchCmd)
+}
+
+func (m Model) closeSearch() Model {
+	if m.themePreviewBase != nil {
+		m = m.useTheme(*m.themePreviewBase)
+		m.themePreviewBase = nil
+	}
+	if m.searchCancel != nil {
+		m.searchCancel()
+		m.searchCancel = nil
+	}
+	m.mode = normalMode
+	m.searchInput.Blur()
+	m.searchInput.SetValue("")
+	m.searchInput.Placeholder = searchPlaceholder
+	m.searchResults = nil
+	m.commands = nil
+	m.searchCursor = 0
+	m.searchScroll = 0
+	m.searched = false
+	return m
+}
+
+func (m Model) openSchedulePrompt() (Model, tea.Cmd) {
+	if m.activePaneRequest() == nil || strings.TrimSpace(m.activePaneRequest().ID) == "" {
+		return m.status("error", "Select a saved request first"), nil
+	}
+	m.mode = scheduleMode
+	m.scheduleInput.SetValue("")
+	m.scheduleInput.Focus()
+	return m, textinput.Blink
+}
+
+func (m Model) closeSchedulePrompt() Model {
+	m.mode = normalMode
+	m.scheduleInput.Blur()
+	m.scheduleInput.SetValue("")
+	return m
+}
+
+func (m Model) handleScheduleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if action, ok := m.resolver.Resolve(7, 0, msg); ok {
+		switch action {
+		case keybindings.ActionConfirm:
+			req := m.activePaneRequest()
+			if req == nil || req.ID == "" {
+				return m.closeSchedulePrompt().status("error", "Select a saved request first"), nil
+			}
+			runAt, err := schedule.ParseWhen(m.scheduleInput.Value(), m.now())
+			if err != nil {
+				return m.status("error", err.Error()), nil
+			}
+			return m.closeSchedulePrompt(), saveScheduledRunCmd(m.ctx, m.scheduler, req.ID, runAt)
+		case keybindings.ActionCancel:
+			return m.closeSchedulePrompt(), nil
+		}
+	}
+	var cmd tea.Cmd
+	m.scheduleInput, cmd = m.scheduleInput.Update(msg)
+	return m, cmd
+}
+
+func (m Model) applyScheduledRunBackgroundResult(
+	msg scheduledRunBackgroundResultMsg,
+) (Model, tea.Cmd) {
+	m = m.statusScheduledRunResult(msg)
+	if m.activeRequest == nil {
+		return m, nil
+	}
+	for _, sent := range msg.sent {
+		if sent.requestID != m.activeRequest.ID || sent.result == nil {
+			continue
+		}
+		if m.response != nil {
+			_ = m.response.Cleanup()
+		}
+		m.response = sent.result
+		m.responseTab = bodyTab
+		m.execCursor = 0
+		return m, loadExecutionHistoryCmd(m.ctx, m.executionReader, sent.requestID)
+	}
+	return m, nil
+}
+
+func (m Model) statusScheduledRunResult(msg scheduledRunBackgroundResultMsg) Model {
+	switch {
+	case len(msg.failed) > 0:
+		first := msg.failed[0]
+		if first.err == nil {
+			return m.status("error", fmt.Sprintf("Scheduled request %q failed", first.name))
+		}
+		return m.status(
+			"error",
+			fmt.Sprintf("Scheduled request %q failed: %v", first.name, first.err),
+		)
+	case len(msg.sent) == 1:
+		label := msg.sent[0].label
+		if strings.TrimSpace(label) == "" {
+			label = msg.sent[0].name
+		}
+		return m.status("success", fmt.Sprintf("Sent %q in the background", label))
+	case len(msg.sent) > 1:
+		return m.status(
+			"success",
+			fmt.Sprintf("Sent %d scheduled requests in the background", len(msg.sent)),
+		)
+	default:
+		return m
+	}
+}
+
+type commandPaletteItem struct {
+	Title     string
+	Action    string
+	ThemeName string
+}
+
+type themeWatchTickMsg struct{}
+
+func themeWatchTick() tea.Cmd {
+	return tea.Tick(2*time.Second, func(time.Time) tea.Msg { return themeWatchTickMsg{} })
+}
+
+var commandPaletteItems = []commandPaletteItem{
+	{Title: "Quit Quark", Action: "quit"},
+	{Title: "Focus sidebar", Action: keybindings.ActionFocusSidebar},
+	{Title: "Focus request", Action: keybindings.ActionFocusRequest},
+	{Title: "Focus response", Action: keybindings.ActionFocusResponse},
+	{Title: "Search saved requests", Action: keybindings.ActionSearch},
+	{Title: "Send request", Action: keybindings.ActionSendRequest},
+	{Title: "Edit request URL", Action: keybindings.ActionEditURL},
+	{Title: "Edit request body", Action: keybindings.ActionEditBody},
+	{Title: "Edit request headers", Action: keybindings.ActionEditHeaders},
+	{Title: "Edit request authorization", Action: keybindings.ActionEditAuth},
+	{Title: "Next HTTP method", Action: keybindings.ActionMethodNext},
+	{Title: "Previous HTTP method", Action: keybindings.ActionMethodPrev},
+	{Title: "Delete selected request", Action: keybindings.ActionDeleteRequest},
+	{Title: "Schedule request", Action: keybindings.ActionScheduleRun},
+	{Title: "Copy request as curl", Action: keybindings.ActionExportCurl},
+	{Title: "Open environment editor", Action: keybindings.ActionEnvOpen},
+	{Title: "Next environment", Action: keybindings.ActionEnvNext},
+	{Title: "Previous environment", Action: keybindings.ActionEnvPrev},
+	{Title: "Create collection", Action: "add"},
+	{Title: "Create request in collection", Action: "add_request"},
+	{Title: "Rename selected collection", Action: actionRename},
+	{Title: "Delete selected collection", Action: deleteToken},
+	{Title: "Import curl command", Action: keybindings.ActionImportCurl},
+	{Title: "Import Postman collection", Action: keybindings.ActionImportPostman},
+	{Title: "Client certificates", Action: keybindings.ActionClientCerts},
+	{Title: "Open help", Action: "help"},
+}
+
+func (m Model) isCommandPalette() bool {
+	return m.isCommandPaletteQuery(m.searchInput.Value())
+}
+
+func (m Model) isCommandPaletteQuery(query string) bool {
+	return strings.HasPrefix(strings.TrimSpace(query), ">")
+}
+
+func (m Model) filterCommandPalette(query string) []commandPaletteItem {
+	items := append([]commandPaletteItem(nil), commandPaletteItems...)
+	if names, err := theme.List(m.configDir); err == nil {
+		for _, name := range names {
+			items = append(
+				items,
+				commandPaletteItem{Title: "Theme: " + name, Action: "theme", ThemeName: name},
+			)
+		}
+	}
+	query = strings.ToLower(strings.TrimSpace(query))
+	if query == "" {
+		return items
+	}
+	var out []commandPaletteItem
+	for _, item := range items {
+		title := strings.ToLower(item.Title)
+		action := strings.ReplaceAll(item.Action, "_", " ")
+		if strings.Contains(title, query) || strings.Contains(action, query) {
+			out = append(out, item)
+		}
+	}
+	return out
+}
+
+func (m Model) executeSelectedCommand() (tea.Model, tea.Cmd) {
+	if len(m.commands) == 0 || m.searchCursor >= len(m.commands) {
+		return m.closeSearch(), nil
+	}
+	item := m.commands[m.searchCursor]
+	if item.ThemeName != "" {
+		wasWatching := !theme.IsBuiltin(m.theme.Name)
+		if m.themePreviewBase != nil {
+			wasWatching = !theme.IsBuiltin(m.themePreviewBase.Name)
+		}
+		selected, err := theme.Resolve(m.configDir, item.ThemeName, m.terminalDark)
+		if err != nil {
+			return m.status("error", err.Error()), nil
+		}
+		if err := config.SaveTheme(m.configDir, item.ThemeName); err != nil {
+			return m.status("error", fmt.Sprintf("save theme: %v", err)), nil
+		}
+		m.cfg.UI.Theme = item.ThemeName
+		m.themePreviewBase = nil
+		m = m.useTheme(selected)
+		m = m.closeSearch().status("success", "Theme: "+item.ThemeName)
+		if !wasWatching && !theme.IsBuiltin(item.ThemeName) {
+			return m, themeWatchTick()
+		}
+		return m, nil
+	}
+	action := item.Action
+	m = m.closeSearch()
+	switch action {
+	case "quit":
+		return m, tea.Quit
+	case "help":
+		return m.openHelp(), nil
+	case keybindings.ActionSendRequest:
+		m.focus = requestPane
+		return m.handleRequestAction(action)
+	case keybindings.ActionScheduleRun:
+		m.focus = requestPane
+		return m.handleRequestAction(action)
+	case keybindings.ActionExportCurl:
+		m.focus = requestPane
+		return m.handleRequestAction(action)
+	case keybindings.ActionImportCurl,
+		keybindings.ActionImportPostman,
+		keybindings.ActionClientCerts:
+		return m.dispatchNormalAction(action)
+	case keybindings.ActionFocusSidebar,
+		keybindings.ActionFocusRequest,
+		keybindings.ActionFocusResponse,
+		keybindings.ActionSearch:
+		return m.dispatchNormalAction(action)
+	case keybindings.ActionEditURL,
+		keybindings.ActionEditBody,
+		keybindings.ActionEditHeaders,
+		keybindings.ActionMethodNext,
+		keybindings.ActionMethodPrev,
+		keybindings.ActionEditAuth:
+		m.focus = requestPane
+		return m.dispatchNormalAction(action)
+	case keybindings.ActionEnvOpen, keybindings.ActionEnvNext, keybindings.ActionEnvPrev:
+		return m.dispatchNormalAction(action)
+	case "add", "add_request", actionRename, deleteToken:
+		m.focus = sidebarPane
+		return m.dispatchNormalAction(action)
+	case keybindings.ActionDeleteRequest:
+		m.focus = requestPane
+		return m.dispatchNormalAction(action)
+	}
+	return m, nil
+}
+
+func (m Model) previewCommandTheme() Model {
+	name := ""
+	if m.searchCursor < len(m.commands) {
+		name = m.commands[m.searchCursor].ThemeName
+	}
+	if name == "" {
+		if m.themePreviewBase != nil {
+			m = m.useTheme(*m.themePreviewBase)
+			m.themePreviewBase = nil
+		}
+		return m
+	}
+	selected, err := theme.Resolve(m.configDir, name, m.terminalDark)
+	if err != nil {
+		return m.status("error", err.Error())
+	}
+	if selected == m.theme {
+		return m
+	}
+	if m.themePreviewBase != nil && selected == *m.themePreviewBase {
+		m.themePreviewBase = nil
+		return m.useTheme(selected)
+	}
+	if m.themePreviewBase == nil {
+		previous := m.theme
+		m.themePreviewBase = &previous
+	}
+	return m.useTheme(selected)
+}
+
+func (m Model) openImport(preview *curl.ImportResult) (Model, tea.Cmd) {
+	m.debugCurl(
+		"open import modal method=%s url=%q header_count=%d body_len=%d",
+		preview.Method,
+		preview.URL,
+		len(preview.Headers),
+		len(preview.Body),
+	)
+	m.importPreview = preview
+	m.importError = ""
+	m.importColID = m.activeCollectionID()
+	m.mode = importMode
+	m.importInput.Blur()
+	m.importName.SetValue("")
+	m.importName.Focus()
+	return m, textinput.Blink
+}
+
+func (m Model) openCurlImport() Model {
+	m.mode = importMode
+	m.importPreview = nil
+	m.importError = ""
+	m.importID = uuid.NewString()
+	m.importColID = m.activeCollectionID()
+	m.importName.SetValue("")
+	m.importName.Blur()
+	m.importInput.SetValue("")
+	m.importInput.SetWidth(max(20, min(m.width-12, 100)))
+	m.importInput.SetHeight(max(6, min(m.height/3, 14)))
+	m.importInput.Focus()
+	m.activeField = noneField
+	m.urlInput.Blur()
+	m.debugCurl("open input modal")
+	return m
+}
+
+func (m Model) closeImport() Model {
+	m.mode = normalMode
+	m.importPreview = nil
+	m.importError = ""
+	m.importID = ""
+	m.importInput.SetValue("")
+	m.importInput.Blur()
+	m.importName.Blur()
+	m.activeField = noneField
+	m.urlInput.Blur()
+	return m
+}
+
+func (m Model) ensureSidebarCollectionVisible() Model {
+	rows, selectedRow := m.buildSidebarRows()
+	m.sidebarOffset = adjustListViewport(listViewport{
+		Scroll:      m.sidebarOffset,
+		SelectedRow: selectedRow,
+		TotalRows:   len(rows),
+		VisibleRows: m.sidebarVisible(),
+	})
+	return m
+}
+
+const (
+	helpModalMarginLines      = 4
+	helpMinimumBoxHeight      = 8
+	helpHeaderLines           = 2
+	helpInstructionLines      = 2
+	helpFooterLines           = 2
+	helpBorderAndPaddingLines = 4
+	helpRecordingHintLines    = 2
+	helpErrorHintLines        = 2
+	helpMinimumVisibleRows    = 3
+)
+
+func (m Model) helpMaxLines() int {
+	boxHeight := m.height - helpModalMarginLines
+	if boxHeight < helpMinimumBoxHeight {
+		boxHeight = helpMinimumBoxHeight
+	}
+	// Reserve vertical budget for the title, instructions, footer, and modal chrome.
+	overhead := helpHeaderLines + helpInstructionLines + helpFooterLines + helpBorderAndPaddingLines
+	if m.helpEditState == helpRecording {
+		overhead += helpRecordingHintLines
+	}
+	if m.helpEditState == helpError {
+		overhead += helpErrorHintLines
+	}
+	maxLines := boxHeight - overhead
+	if maxLines < helpMinimumVisibleRows {
+		maxLines = helpMinimumVisibleRows
+	}
+	return maxLines
+}
+
+func (m Model) adjustHelpScroll(entries []keybindings.Entry, direction int) Model {
+	rows, selectedRow := buildHelpRows(entries, m.helpCursor)
+	if len(rows) == 0 {
+		m.helpCursor = 0
+		m.helpScrollOffset = 0
+		return m
+	}
+
+	if m.helpCursor < 0 {
+		m.helpCursor = 0
+	}
+	if m.helpCursor >= len(entries) {
+		m.helpCursor = len(entries) - 1
+	}
+	if m.helpScrollOffset < 0 {
+		m.helpScrollOffset = 0
+	}
+	maxLines := m.helpMaxLines()
+	pad := max(1, maxLines/4)
+	if pad*2 >= maxLines {
+		pad = 1
+	}
+	m.helpScrollOffset = adjustListViewport(listViewport{
+		Scroll:      m.helpScrollOffset,
+		SelectedRow: selectedRow,
+		TotalRows:   len(rows),
+		VisibleRows: maxLines,
+		Direction:   direction,
+		LeadingPad:  pad,
+		TrailingPad: pad,
+	})
+	return m
+}
+
+func filterKeybindingEntries(entries []keybindings.Entry, query string) []keybindings.Entry {
+	query = strings.ToLower(strings.TrimSpace(query))
+	if query == "" {
+		return entries
+	}
+	filtered := make([]keybindings.Entry, 0, len(entries))
+	for _, entry := range entries {
+		if strings.Contains(strings.ToLower(entry.Action), query) ||
+			strings.Contains(strings.ToLower(helpActionLabel(entry.Action)), query) ||
+			strings.Contains(strings.ToLower(entry.Key), query) ||
+			strings.Contains(strings.ToLower(entry.Group), query) {
+			filtered = append(filtered, entry)
+		}
+	}
+	return filtered
+}
+
+// --- Help overlay ---
+
+// handleHelpSearchKey handles keys while the keybinding reference search is open.
+func (m Model) handleHelpSearchKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if action, ok := m.resolver.Resolve(2, 0, msg); ok {
+		switch action {
+		case keybindings.ActionSearch:
+			// Don't consume "/" — let it be typed into the search input.
+		case keybindings.ActionClose:
+			m.helpSearch = false
+			m.searchInput.Blur()
+			m.searchInput.SetValue("")
+			m.helpCursor = 0
+			m.helpScrollOffset = 0
+			return m, nil
+		case keybindings.ActionNavigateUp, keybindings.ActionNavigateDown:
+			// Let printable navigation keys (often j/k) become part of the
+			// query. Arrow keys remain available for moving through matches.
+			if msg.Type != tea.KeyRunes {
+				entries := filterKeybindingEntries(
+					keybindings.ListEntries(m.cfg.Keybindings),
+					m.searchInput.Value(),
+				)
+				if action == keybindings.ActionNavigateUp && m.helpCursor > 0 {
+					m.helpCursor--
+				}
+				if action == keybindings.ActionNavigateDown && m.helpCursor < len(entries)-1 {
+					m.helpCursor++
+				}
+				direction := 1
+				if action == keybindings.ActionNavigateUp {
+					direction = -1
+				}
+				return m.adjustHelpScroll(entries, direction), nil
+			}
+		}
+	}
+	var inputCmd tea.Cmd
+	m.searchInput, inputCmd = m.searchInput.Update(msg)
+	m.helpCursor = 0
+	m.helpScrollOffset = 0
+	return m, inputCmd
+}
+
+func (m Model) handleHelpKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Search is an inline, live filter over the keybinding reference.
+	if m.helpSearch {
+		return m.handleHelpSearchKey(msg)
+	}
+
+	// Handle recording state first — capture the next keypress.
+	if m.helpEditState == helpRecording {
+		switch msg.String() {
+		case m.cfg.Keybindings.HelpClose:
+			m.helpEditState = helpViewing
+			m.helpEditAction = ""
+			return m, nil
+		case m.cfg.Keybindings.HelpUnbind:
+			msg = tea.KeyMsg{}
+		}
+
+		key := msg.String()
+		// Apply change.
+		newBinds, err := keybindings.RecordBinding(m.cfg.Keybindings, m.helpEditAction, key)
+		if err != nil {
+			m.helpEditState = helpError
+			m.helpEditErrMsg = err.Error()
+			return m, nil
+		}
+
+		// Persist.
+		if err := config.SaveKeybindings(m.configDir, newBinds); err != nil {
+			m.helpEditState = helpError
+			m.helpEditErrMsg = fmt.Sprintf("save failed: %v", err)
+			return m, nil
+		}
+
+		// Update config in model.
+		m.cfg.Keybindings = newBinds
+		// Rebuild resolver.
+		m.resolver = keybindings.NewResolver(newBinds)
+		action := m.helpEditAction
+		m.helpEditState = helpViewing
+		m.helpEditAction = ""
+		if key == "" {
+			m = m.status("success", fmt.Sprintf("Unbound %s", action))
+		} else {
+			m = m.status("success", fmt.Sprintf("Bound %s -> %s", action, key))
+		}
+		return m, nil
+	}
+
+	if m.helpEditState == helpConfirmResetAll {
+		if msg.Type == tea.KeyEnter {
+			defaults := keybindings.DefaultKeybindings()
+			if err := config.SaveKeybindings(m.configDir, defaults); err != nil {
+				m.helpEditState = helpError
+				m.helpEditErrMsg = fmt.Sprintf("save failed: %v", err)
+				return m, nil
+			}
+			m.cfg.Keybindings = defaults
+			m.resolver = keybindings.NewResolver(defaults)
+			m.helpEditState = helpViewing
+			m.helpCursor = 0
+			m.helpScrollOffset = 0
+			m = m.status("success", "Reset all keybindings to defaults")
+			return m, nil
+		}
+		if action, ok := m.resolver.Resolve(2, 0, msg); ok && action == keybindings.ActionClose {
+			m.helpEditState = helpViewing
+			return m, nil
+		}
+		return m, nil
+	}
+
+	// Error state — any key dismisses.
+	if m.helpEditState == helpError {
+		m.helpEditState = helpViewing
+		m.helpEditErrMsg = ""
+		return m, nil
+	}
+
+	// Viewing state — navigate, edit, reset, or close.
+	entries := keybindings.ListEntries(m.cfg.Keybindings)
+
+	if action, ok := m.resolver.Resolve(2, 0, msg); ok {
+		switch action {
+		case keybindings.ActionSearch:
+			m.helpSearch = true
+			m.searchInput.SetValue("")
+			m.searchInput.Placeholder = "search keybindings (optional)..."
+			m.searchInput.Focus()
+			m.helpCursor = 0
+			m.helpScrollOffset = 0
+			return m, textinput.Blink
+		case "quit":
+			return m, tea.Quit
+		case keybindings.ActionClose:
+			m.mode = normalMode
+			m.helpCursor = 0
+			m.helpScrollOffset = 0
+			return m, nil
+		case keybindings.ActionNavigateUp:
+			if m.helpCursor > 0 {
+				m.helpCursor--
+			}
+			return m.adjustHelpScroll(entries, -1), nil
+		case keybindings.ActionNavigateDown:
+			if m.helpCursor < len(entries)-1 {
+				m.helpCursor++
+			}
+			return m.adjustHelpScroll(entries, 1), nil
+		case "edit":
+			if m.helpCursor >= 0 && m.helpCursor < len(entries) {
+				m.helpEditState = helpRecording
+				m.helpEditAction = entries[m.helpCursor].Action
+				m.helpEditErrMsg = ""
+			}
+			return m, nil
+		case "reset":
+			if m.helpCursor >= 0 && m.helpCursor < len(entries) {
+				action := entries[m.helpCursor].Action
+				defaults := keybindings.DefaultKeybindings()
+				key := keybindings.GetAction(defaults, action)
+				newBinds, err := keybindings.RecordBinding(m.cfg.Keybindings, action, key)
+				if err != nil {
+					m.helpEditState = helpError
+					m.helpEditErrMsg = err.Error()
+					return m, nil
+				}
+				if err := config.SaveKeybindings(m.configDir, newBinds); err != nil {
+					m.helpEditState = helpError
+					m.helpEditErrMsg = fmt.Sprintf("save failed: %v", err)
+					return m, nil
+				}
+				m.cfg.Keybindings = newBinds
+				m.resolver = keybindings.NewResolver(newBinds)
+				m = m.status("success", fmt.Sprintf("Reset %s to %s", action, key))
+			}
+			return m, nil
+		case "reset_all":
+			if len(helpResetAllDiffs(m.cfg.Keybindings)) == 0 {
+				m = m.status("success", "All keybindings already match defaults")
+				return m, nil
+			}
+			m.helpEditState = helpConfirmResetAll
+			return m, nil
+		}
+	}
+
+	return m, nil
+}
+
+func helpResetAllDiffs(current keybindings.Keybindings) []string {
+	defaults := keybindings.DefaultKeybindings()
+	currentEntries := keybindings.ListEntries(current)
+	diffs := make([]string, 0)
+	for _, entry := range currentEntries {
+		defaultKey := keybindings.GetAction(defaults, entry.Action)
+		if entry.Key == defaultKey {
+			continue
+		}
+
+		currentKey := "(unbound)"
+		if entry.Key != "" {
+			currentKey = keybindings.FormatKey(entry.Key)
+		}
+		defaultLabel := "(unbound)"
+		if defaultKey != "" {
+			defaultLabel = keybindings.FormatKey(defaultKey)
+		}
+		diffs = append(
+			diffs,
+			fmt.Sprintf("%s: %s -> %s", helpActionLabel(entry.Action), currentKey, defaultLabel),
+		)
+	}
+	return diffs
+}
+
+// --- Import modal ---
+
+func (m Model) handleImportKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.importPreview == nil && msg.Type == tea.KeyCtrlV {
+		m.debugCurl("clipboard read requested")
+		return m, readCurlClipboardCmd()
+	}
+	// Resolver lookup for overlay mode.
+	if action, ok := m.resolver.Resolve(3, 0, msg); ok && action != keybindings.ActionImportCurl {
+		switch action {
+		case keybindings.ActionImportParse:
+			if m.importPreview == nil {
+				return m.triggerCurlImport(m.importInput.Value())
+			}
+		case keybindings.ActionConfirm:
+			if m.importPreview == nil {
+				break // Enter remains a newline in the multiline input stage.
+			}
+			if m.importPreview.Certificate != nil && m.writer == nil {
+				m.importError = "Cannot save imported request: request storage is unavailable"
+				return m, nil
+			}
+			previousConfig := m.cfg
+			previousCerts := append([]config.ClientCertificate(nil), m.clientCerts...)
+			var saveCmd tea.Cmd
+			if m.importPreview.Certificate != nil {
+				var certErr error
+				m, certErr = m.persistImportedCertificate(
+					m.importPreview.Certificate,
+					m.importPreview.URL,
+				)
+				if certErr != nil {
+					m.importError = "Certificate configuration failed: " + certErr.Error()
+					m.debugCurl("confirm certificate failed: %v", certErr)
+					return m, nil
+				}
+			}
+			if m.writer != nil {
+				name := strings.TrimSpace(m.importName.Value())
+				if name == "" {
+					name = m.importPreview.URL
+				}
+				headersJSON, err := json.Marshal(m.importPreview.Headers)
+				if err != nil {
+					m.debugCurl("confirm failed marshaling headers: %v", err)
+					return m.status(
+						"error",
+						"Failed to marshal imported headers: "+err.Error(),
+					), nil
+				}
+				req := &domain.Request{
+					CollectionID: m.importColID,
+					Name:         name,
+					Method:       m.importPreview.Method,
+					URL:          m.importPreview.URL,
+					Headers:      string(headersJSON),
+					Body:         m.importPreview.Body,
+				}
+				m.debugCurl(
+					"confirm save name=%q method=%s url=%q header_names=%q body_len=%d",
+					name,
+					req.Method,
+					req.URL,
+					debugHeaderKeys(m.importPreview.Headers),
+					len(req.Body),
+				)
+				saveCmd = saveRequestCmdWithRollback(m.ctx, m.writer, m.reader, req, func() {
+					_ = m.writer.DeleteRequest(m.ctx, req.ID)
+					_ = config.SaveClientCertificates(m.configDir, previousCerts)
+					if m.certificateManager != nil {
+						_ = m.certificateManager.Reload(previousConfig)
+					}
+				})
+			}
+			m.debugCurl("confirm complete")
+			return m.closeImport(), saveCmd
+		case keybindings.ActionCancel:
+			m.debugCurl("cancel")
+			return m.closeImport(), nil
+		}
+	}
+
+	// Check for edit action when naming the imported request.
+	if m.importPreview != nil {
+		if action, ok := m.resolver.Resolve(3, 0, msg); ok &&
+			action == keybindings.ActionImportEdit {
+			m.importPreview = nil
+			m.importError = ""
+			m.importName.Blur()
+			m.importInput.Focus()
+			return m, textarea.Blink
+		}
+	}
+
+	var cmd tea.Cmd
+	if m.importPreview == nil {
+		m.importInput, cmd = m.importInput.Update(msg)
+	} else {
+		m.importName, cmd = m.importName.Update(msg)
+	}
+	return m, cmd
+}
+
+func (m Model) persistImportedCertificate(
+	spec *curl.CertificateSpec,
+	rawURL string,
+) (Model, error) {
+	parsedURL, err := url.Parse(rawURL)
+	if err != nil || parsedURL.Hostname() == "" {
+		return m, fmt.Errorf("cannot determine request hostname")
+	}
+	certType := strings.ToUpper(strings.TrimSpace(spec.Type))
+	if certType != "" && certType != "P12" && certType != "PEM" {
+		return m, fmt.Errorf("unsupported certificate type %q", certType)
+	}
+	if spec.File == "" && spec.CAFile == "" {
+		return m, fmt.Errorf("certificate or CA file is required")
+	}
+	entry := config.ClientCertificate{
+		Host:     strings.ToLower(parsedURL.Hostname()),
+		File:     spec.File,
+		Type:     certType,
+		KeyFile:  spec.KeyFile,
+		CAFile:   spec.CAFile,
+		Password: spec.Password,
+	}
+	next := append([]config.ClientCertificate(nil), m.cfg.HTTP.ClientCertificates...)
+	replaced := false
+	for index := range next {
+		if strings.EqualFold(next[index].Host, entry.Host) {
+			next[index] = entry
+			replaced = true
+			break
+		}
+	}
+	if !replaced {
+		next = append(next, entry)
+	}
+	nextConfig := m.cfg
+	nextConfig.HTTP.ClientCertificates = next
+	if m.certificateManager != nil {
+		if err := m.certificateManager.Reload(nextConfig); err != nil {
+			return m, err
+		}
+	}
+	if err := config.SaveClientCertificates(m.configDir, next); err != nil {
+		if m.certificateManager != nil {
+			_ = m.certificateManager.Reload(m.cfg)
+		}
+		return m, err
+	}
+	m.cfg = nextConfig
+	m.clientCerts = append([]config.ClientCertificate(nil), next...)
+	return m, nil
+}
+
+// --- HTTP response/error handlers ---
+
+func (m Model) handleHTTPResponse(msg httpResponseMsg) (tea.Model, tea.Cmd) {
+	if msg.requestID != "" && m.activeRequest != nil && m.activeRequest.ID != msg.requestID {
+		m.loading = false
+		m.cancel = nil
+		return m, nil
+	}
+	m.loading = false
+	m.cancel = nil
+	m.err = nil
+	m = m.clearStatus()
+	m = m.clearRequestValidationErr(msg.requestID)
+	if m.response != nil {
+		_ = m.response.Cleanup() // release any temp file from previous response
+	}
+	m.response = msg.result
+	m.responseTab = bodyTab
+	m.focus = responsePane
+	if msg.requestID == "" {
+		return m, nil
+	}
+	return m, loadExecutionHistoryCmd(m.ctx, m.executionReader, msg.requestID)
+}
+
+func (m Model) handleHTTPErr(msg httpErrMsg) (tea.Model, tea.Cmd) {
+	if msg.requestID != "" && (m.activeRequest == nil || m.activeRequest.ID != msg.requestID) {
+		m.loading = false
+		m.cancel = nil
+		if errors.Is(msg.err, exec.ErrInvalidURL) {
+			m = m.setRequestValidationErr(msg.requestID, msg.err.Error())
+		}
+		return m, nil
+	}
+	m.loading = false
+	m.cancel = nil
+	m = m.clearStatus()
+	historyCmd := tea.Cmd(nil)
+	if msg.requestID != "" {
+		historyCmd = loadExecutionHistoryCmd(m.ctx, m.executionReader, msg.requestID)
+	}
+
+	if errors.Is(msg.err, exec.ErrInvalidURL) {
+		requestID := msg.requestID
+		if requestID == "" && m.activeRequest != nil {
+			requestID = m.activeRequest.ID
+		}
+		m = m.setRequestValidationErr(requestID, msg.err.Error())
+		return m, historyCmd
+	}
+	if errors.Is(msg.err, exec.ErrRequestCancelled) {
+		return m, historyCmd
+	}
+	if errors.Is(msg.err, exec.ErrTimeout) {
+		m = m.status("error", "Request timed out. Press [⌘+Enter] to retry.")
+		return m, historyCmd
+	}
+	m.err = fmt.Errorf("unexpected error: %w", msg.err)
+	return m, historyCmd
+}
+
+// --- Inline body / header field handlers ---
+
+func (m Model) handleBodyFieldKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Resolver lookup for body editor mode.
+	if action, ok := m.resolver.Resolve(4, 0, msg); ok {
+		switch action {
+		case "save":
+			return m.saveBody()
+		case "insert_newline":
+			m.bodyTextarea.InsertString("\n")
+			return m, nil
+		}
+	}
+	var cmd tea.Cmd
+	m.bodyTextarea, cmd = m.bodyTextarea.Update(msg)
+	return m, cmd
+}
+
+func (m Model) saveBody() (Model, tea.Cmd) {
+	if m.activeRequest == nil {
+		return m, nil
+	}
+	formatted, err := exec.FormatRequestBody(
+		m.bodyTextarea.Value(),
+		requestContentType(m.activeRequest),
+	)
+	if err != nil {
+		return m.status("error", err.Error()), nil
+	}
+	m.bodyTextarea.SetValue(formatted)
+	m = m.finishBodyEdit()
+	return m, saveRequestCmd(m.ctx, m.writer, m.reader, m.activeRequest)
+}
+
+func (m Model) handleAuthFieldKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.authEditor.editing {
+		return m.handleAuthFieldEdit(msg)
+	}
+
+	if action, ok := m.resolver.Resolve(8, 0, msg); ok {
+		switch action {
+		case "save":
+			return m.saveAuth()
+		case keybindings.ActionNavigateDown:
+			m.authEditor.cursor++
+			m.authEditor.clampCursor()
+			return m, nil
+		case keybindings.ActionNavigateUp:
+			m.authEditor.cursor--
+			m.authEditor.clampCursor()
+			return m, nil
+		case "edit":
+			switch m.authEditor.currentRow() {
+			case authRowType:
+				m.authEditor.cycleType(1)
+			case authRowAPIKeyIn:
+				m.authEditor.cycleAPIKeyIn(1)
+			default:
+				m.authEditor.beginEdit()
+				if m.authEditor.editing {
+					return m, textinput.Blink
+				}
+			}
+			return m, nil
+		case "option_next":
+			switch m.authEditor.currentRow() {
+			case authRowType:
+				m.authEditor.cycleType(1)
+			case authRowAPIKeyIn:
+				m.authEditor.cycleAPIKeyIn(1)
+			}
+			return m, nil
+		case "option_prev":
+			switch m.authEditor.currentRow() {
+			case authRowType:
+				m.authEditor.cycleType(-1)
+			case authRowAPIKeyIn:
+				m.authEditor.cycleAPIKeyIn(-1)
+			}
+			return m, nil
+		}
+	}
+	return m, nil
+}
+
+func (m Model) handleAuthFieldEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if msg.Type == tea.KeyTab {
+		return m, nil
+	}
+	if msg.Type == tea.KeyEnter {
+		m.authEditor.endEdit()
+		return m, nil
+	}
+	var cmd tea.Cmd
+	switch m.authEditor.currentRow() {
+	case authRowToken:
+		m.authEditor.tokenInput, cmd = m.authEditor.tokenInput.Update(msg)
+	case authRowUsername:
+		m.authEditor.usernameInput, cmd = m.authEditor.usernameInput.Update(msg)
+	case authRowPassword:
+		m.authEditor.passwordInput, cmd = m.authEditor.passwordInput.Update(msg)
+	case authRowAPIKeyName:
+		m.authEditor.apiKeyNameInput, cmd = m.authEditor.apiKeyNameInput.Update(msg)
+	case authRowAPIKeyValue:
+		m.authEditor.apiKeyValueInput, cmd = m.authEditor.apiKeyValueInput.Update(msg)
+	}
+	return m, cmd
+}
+
+func (m Model) saveAuth() (Model, tea.Cmd) {
+	if m.activeRequest == nil {
+		return m, nil
+	}
+	m = m.finishAuthEdit()
+	return m, saveRequestCmd(m.ctx, m.writer, m.reader, m.activeRequest)
+}
+
+func (m Model) handleHeadersFieldKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Editing sub-mode takes precedence over the resolver. When editing a
+	// single pair, keys go directly to the textinputs (Enter confirms, Tab
+	// switches field, etc.) so the resolver can't intercept them.
+	if m.headerEditing {
+		return m.handleHeaderFieldEdit(msg)
+	}
+
+	// Resolver lookup for header editor mode (list mode only).
+	if action, ok := m.resolver.Resolve(5, 0, msg); ok {
+		switch action {
+		case "save":
+			return m.saveHeaders()
+		case keybindings.ActionNavigateDown:
+			if m.headerCursor < len(m.headerPairs)-1 {
+				m.headerCursor++
+			}
+			return m, nil
+		case keybindings.ActionNavigateUp:
+			if m.headerCursor > 0 {
+				m.headerCursor--
+			}
+			return m, nil
+		case "add_pair":
+			m.headerPairs = append(m.headerPairs, headerPair{})
+			m.headerCursor = len(m.headerPairs) - 1
+			return m.beginHeaderPairEdit(headerPair{})
+		case "delete_pair":
+			if len(m.headerPairs) > 0 && m.headerCursor < len(m.headerPairs) {
+				m.headerPairs = append(
+					m.headerPairs[:m.headerCursor], m.headerPairs[m.headerCursor+1:]...,
+				)
+				if m.headerCursor >= len(m.headerPairs) && m.headerCursor > 0 {
+					m.headerCursor--
+				}
+			}
+			return m, nil
+		case "edit_pair":
+			if len(m.headerPairs) > 0 && m.headerCursor < len(m.headerPairs) {
+				return m.beginHeaderPairEdit(m.headerPairs[m.headerCursor])
+			}
+			return m, nil
+		}
+	}
+	return m, nil
+}
+
+func (m Model) handleHeaderFieldEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if msg.Type == tea.KeyTab {
+		if m.headerKeyInput.Focused() {
+			if suggestion := headerNameSuggestion(m.headerKeyInput.Value()); suggestion != "" {
+				m.headerKeyInput.SetValue(suggestion)
+				m.headerKeyInput.SetCursor(len([]rune(suggestion)))
+				return m, nil
+			}
+			m.headerKeyInput.Blur()
+			m.headerValueInput.Focus()
+		} else if suggestion := headerValueSuggestion(m.headerKeyInput.Value(), m.headerValueInput.Value()); suggestion != "" {
+			m.headerValueInput.SetValue(suggestion)
+			m.headerValueInput.SetCursor(len([]rune(suggestion)))
+			return m, nil
+		} else {
+			m.headerValueInput.Blur()
+			m.headerKeyInput.Focus()
+		}
+		return m, nil
+	}
+	if msg.Type == tea.KeyEnter {
+		return m.finishHeaderPairEdit(), nil
+	}
+	var cmd tea.Cmd
+	if m.headerKeyInput.Focused() {
+		m.headerKeyInput, cmd = m.headerKeyInput.Update(msg)
+	} else {
+		m.headerValueInput, cmd = m.headerValueInput.Update(msg)
+	}
+	return m, cmd
+}
+
+func (m Model) saveHeaders() (Model, tea.Cmd) {
+	if m.activeRequest == nil {
+		return m, nil
+	}
+	headersMap := make(http.Header, len(m.headerPairs))
+	for _, p := range m.headerPairs {
+		if p.Key != "" {
+			headersMap.Add(p.Key, p.Value)
+		}
+	}
+	headersJSON, err := json.Marshal(headersMap)
+	if err != nil {
+		m = m.status("error", "Failed to marshal headers: "+err.Error())
+		return m, nil
+	}
+	m.activeRequest.Headers = string(headersJSON)
+	m.headerPairs = nil
+	m.activeField = noneField
+	m = m.status("success", "Headers updated")
+	return m, saveRequestCmd(m.ctx, m.writer, m.reader, m.activeRequest)
+}
+
+// parseHeadersJSON parses a JSON object string into a slice of headerPair.
+// Returns empty slice on invalid JSON or empty input.
+func parseHeadersJSON(raw string) []headerPair {
+	if raw == "" || raw == "{}" {
+		return nil
+	}
+	var encoded map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(raw), &encoded); err != nil {
+		return nil
+	}
+	pairs := make([]headerPair, 0, len(encoded))
+	for key, valueJSON := range encoded {
+		var values []string
+		if err := json.Unmarshal(valueJSON, &values); err != nil {
+			var value string
+			if err := json.Unmarshal(valueJSON, &value); err != nil {
+				return nil
+			}
+			values = []string{value}
+		}
+		for _, value := range values {
+			pairs = append(pairs, headerPair{Key: key, Value: value})
+		}
+	}
+	sort.Slice(pairs, func(i, j int) bool {
+		if pairs[i].Key == pairs[j].Key {
+			return pairs[i].Value < pairs[j].Value
+		}
+		return pairs[i].Key < pairs[j].Key
+	})
+	return pairs
+}
+
+// enterCollectionPrompt switches to collectionPromptMode with the given type and target.
+func (m Model) enterCollectionPrompt(pt promptType, targetID string) (Model, tea.Cmd) {
+	m.mode = collectionPromptMode
+	m.promptMode = pt
+	m.promptTargetID = targetID
+	m.promptInput.SetValue("")
+	// Clear stale status from prior actions (e.g. 'a' with no collection) so it
+	// does not appear inside the new prompt overlay.
+	m.statusErr = ""
+	m.statusSuccess = ""
+
+	switch pt {
+	case promptAdd:
+		m.promptInput.Placeholder = "Collection name"
+	case promptAddRequest:
+		m.promptInput.Placeholder = "Request name"
+	case promptRename:
+		m.promptInput.Placeholder = "New name"
+	case promptDeleteConfirm:
+		m.promptInput.Placeholder = "Type 'delete' to confirm"
+	case promptDeleteTiny:
+		m.promptInput.Placeholder = "Press (d) again to confirm"
+	case promptDeleteRequestConfirm:
+		m.promptInput.Placeholder = "Type 'delete' to confirm"
+	}
+
+	m.promptInput.Focus()
+	return m, textinput.Blink
+}
+
+func (m Model) closeCollectionPrompt() Model {
+	m.mode = normalMode
+	m.promptMode = promptNone
+	m.promptTargetID = ""
+	m.promptTargetCollectionID = ""
+	m.promptInput.SetValue("")
+	m.promptInput.Blur()
+	return m
+}
+
+func wrapPromptSuccess(cmd tea.Cmd) tea.Cmd {
+	return func() tea.Msg {
+		if cmd == nil {
+			return nil
+		}
+		msg := cmd()
+		switch msg.(type) {
+		case collectionSavedMsg, envCreatedMsg, requestsLoadedMsg:
+			return promptCompletedMsg{inner: msg}
+		default:
+			return msg
+		}
+	}
+}
+
+// handleCollectionPromptKey handles key input in the collection prompt overlay.
+func (m Model) handleCollectionPromptKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Tiny prompts confirm the action by requiring the same delete key again.
+	if m.promptMode == promptDeleteTiny && msg.String() == m.cfg.Keybindings.RequestDelete {
+		if m.promptTargetCollectionID != "" {
+			if m.writer == nil {
+				m = m.status("error", "Request writer not available")
+				m = m.closeCollectionPrompt()
+				return m, nil
+			}
+			return m, wrapPromptSuccess(deleteRequestCmd(
+				m.ctx,
+				m.writer,
+				m.promptTargetID,
+				m.promptTargetCollectionID,
+				m.reader,
+			))
+		}
+		if m.colWriter == nil {
+			m = m.status("error", "Collection writer not available")
+			m = m.closeCollectionPrompt()
+			return m, nil
+		}
+		return m, deleteCollectionCmd(m.ctx, m.colWriter, m.promptTargetID)
+	}
+
+	if action, ok := m.resolver.Resolve(7, 0, msg); ok {
+		switch action {
+		case keybindings.ActionCancel:
+			return m.closeCollectionPrompt(), nil
+		case keybindings.ActionConfirm:
+			val := strings.TrimSpace(m.promptInput.Value())
+
+			switch m.promptMode {
+			case promptAdd:
+				if val == "" {
+					m = m.status("error", "Collection name cannot be empty")
+					return m, nil
+				}
+				if m.colWriter == nil {
+					m = m.status("error", "Collection writer not available")
+					return m, nil
+				}
+				c := &domain.Collection{Name: val}
+				return m, wrapPromptSuccess(saveCollectionCmd(m.ctx, m.colWriter, c))
+
+			case promptRename:
+				if val == "" {
+					m = m.status("error", "Collection name cannot be empty")
+					return m, nil
+				}
+				if m.colWriter == nil {
+					m = m.status("error", "Collection writer not available")
+					return m, nil
+				}
+				c := &domain.Collection{ID: m.promptTargetID, Name: val}
+				return m, wrapPromptSuccess(saveCollectionCmd(m.ctx, m.colWriter, c))
+
+			case promptDeleteConfirm:
+				if val != deleteToken {
+					m = m.status("error", "Delete cancelled")
+					return m.closeCollectionPrompt(), nil
+				}
+				if m.colWriter == nil {
+					m = m.status("error", "Collection writer not available")
+					return m, nil
+				}
+				return m, wrapPromptSuccess(
+					deleteCollectionCmd(m.ctx, m.colWriter, m.promptTargetID),
+				)
+
+			case promptDeleteTiny:
+				// Handled in the outer switch by checking the configured collection-delete key.
+				// This case is unreachable from Enter but kept for completeness.
+				return m, nil
+
+			case promptDeleteRequestConfirm:
+				if val != "yes" {
+					m = m.status("error", "Delete cancelled")
+					return m.closeCollectionPrompt(), nil
+				}
+				if m.writer == nil {
+					m = m.status("error", "Request writer not available")
+					return m, nil
+				}
+				return m, wrapPromptSuccess(deleteRequestCmd(
+					m.ctx,
+					m.writer,
+					m.promptTargetID,
+					m.promptTargetCollectionID,
+					m.reader,
+				))
+
+			case promptAddRequest:
+				if val == "" {
+					m = m.status("error", "Request name cannot be empty")
+					return m, nil
+				}
+				if m.writer == nil {
+					m = m.status("error", "Request writer not available")
+					return m, nil
+				}
+				req := &domain.Request{
+					CollectionID: m.promptTargetID,
+					Name:         val,
+					Method:       m.method,
+					URL:          "",
+					Headers:      "{}",
+					Body:         "",
+				}
+				return m, wrapPromptSuccess(saveRequestCmd(m.ctx, m.writer, m.reader, req))
+
+			case promptAddEnv:
+				if val == "" {
+					m = m.status("error", "Environment name cannot be empty")
+					return m, nil
+				}
+				if val == defaultEnvironmentName {
+					m = m.status("error", "'default' is a reserved name")
+					return m, nil
+				}
+				if m.envWriter == nil {
+					m = m.status("error", "Environment writer not available")
+					return m, nil
+				}
+				env := &domain.Environment{
+					ID:           uuid.New().String(),
+					CollectionID: m.promptTargetID,
+					Name:         val,
+					Data:         "{}",
+				}
+				return m, wrapPromptSuccess(
+					saveEnvAndReloadCmd(m.ctx, m.envWriter, env),
+				)
+			}
+			return m, nil
+		}
+	}
+
+	var cmd tea.Cmd
+	m.promptInput, cmd = m.promptInput.Update(msg)
+	return m, cmd
+}
+
+// saveEnvAndReloadCmd saves an environment and returns a message that triggers a reload.
+func saveEnvAndReloadCmd(
+	ctx context.Context,
+	w store.EnvironmentWriter,
+	env *domain.Environment,
+) tea.Cmd {
+	return func() tea.Msg {
+		if err := w.SaveEnvironment(ctx, env); err != nil {
+			return collectionSavedErrMsg{err: err}
+		}
+		// Return success — the caller will reload envs on success.
+		return envCreatedMsg{}
+	}
+}
+
+// saveCollectionCmd wraps a SaveCollection call in a tea.Cmd.
+func saveCollectionCmd(
+	ctx context.Context,
+	w store.CollectionWriter,
+	c *domain.Collection,
+) tea.Cmd {
+	return func() tea.Msg {
+		if err := w.SaveCollection(ctx, c); err != nil {
+			return collectionSavedErrMsg{err: err}
+		}
+		return collectionSavedMsg{}
+	}
+}
+
+// deleteCollectionCmd wraps a DeleteCollection call in a tea.Cmd.
+func deleteCollectionCmd(ctx context.Context, w store.CollectionWriter, id string) tea.Cmd {
+	return func() tea.Msg {
+		if err := w.DeleteCollection(ctx, id); err != nil {
+			return collectionSavedErrMsg{err: err}
+		}
+		return collectionSavedMsg{}
+	}
+}
+
+func deleteRequestCmd(
+	ctx context.Context,
+	w store.RequestWriter,
+	id string,
+	collectionID string,
+	r store.RequestReader,
+) tea.Cmd {
+	return func() tea.Msg {
+		if err := w.DeleteRequest(ctx, id); err != nil {
+			return collectionSavedErrMsg{err: err}
+		}
+		if r == nil {
+			return requestsLoadedMsg{collectionID: collectionID}
+		}
+		requests, err := r.ListRequests(ctx, collectionID)
+		if err != nil {
+			return collectionSavedErrMsg{err: fmt.Errorf("reload requests: %w", err)}
+		}
+		return requestsLoadedMsg{collectionID: collectionID, requests: requests}
+	}
+}

@@ -1,0 +1,2796 @@
+package tui
+
+import (
+	"crypto/sha256"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"regexp"
+	"sort"
+	"strings"
+	"time"
+	"unicode/utf8"
+
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+
+	"github.com/crazy-vedic/quark/internal/domain"
+	"github.com/crazy-vedic/quark/internal/highlight"
+	"github.com/crazy-vedic/quark/internal/keybindings"
+	"github.com/crazy-vedic/quark/internal/search"
+	"github.com/crazy-vedic/quark/internal/timing"
+)
+
+// ansiEscape strips ANSI/VT100 escape sequences from untrusted terminal output.
+// Prevents terminal injection (OSC 52 clipboard hijack, screen clear, etc.)
+// from hostile HTTP response bodies.
+var ansiEscape = regexp.MustCompile(
+	`\x1b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\))`,
+)
+
+func stripANSI(s string) string { return ansiEscape.ReplaceAllString(s, "") }
+
+var helpActionLabels = map[string]string{
+	"quit":                          "quit",
+	"help":                          "help",
+	keybindings.ActionSearch:        keybindings.ActionSearch,
+	keybindings.ActionFocusSidebar:  "focus sidebar",
+	keybindings.ActionFocusRequest:  "focus request",
+	keybindings.ActionFocusResponse: "focus response",
+	keybindings.ActionClientCerts:   "client certificates",
+	keybindings.ActionImportCurl:    "import curl",
+	keybindings.ActionImportPostman: "import Postman collection",
+	keybindings.ActionImportParse:   "parse curl",
+	"pane_next":                     "next pane",
+	"pane_prev":                     "prev pane",
+	"sidebar_down":                  helpLabelMoveDown,
+	"sidebar_up":                    helpLabelMoveUp,
+	"sidebar_expand":                "expand",
+	"sidebar_collapse":              "collapse",
+	"sidebar_add_request":           "new request",
+	"sidebar_add":                   "new collection",
+	"sidebar_delete":                "delete collection",
+	"sidebar_rename":                "rename collection",
+	keybindings.ActionEditURL:       "edit url",
+	keybindings.ActionMethodNext:    "next method",
+	keybindings.ActionMethodPrev:    "prev method",
+	keybindings.ActionSendRequest:   "send request",
+	keybindings.ActionEditBody:      "edit body",
+	keybindings.ActionEditHeaders:   "edit headers",
+	"edit_auth":                     "edit auth",
+	keybindings.ActionScheduleRun:   "schedule request",
+	keybindings.ActionExportCurl:    "copy as curl",
+	"response_down":                 "next history item",
+	"response_up":                   "prev history item",
+	"response_retry":                "retry request",
+	actionTabBody:                   "show body",
+	actionTabHeaders:                "show headers",
+	actionTabRaw:                    "show raw",
+	actionTabNext:                   "next view",
+	actionTabPrev:                   "prev view",
+	"search_select":                 "select result",
+	"search_down":                   helpLabelMoveDown,
+	"search_up":                     helpLabelMoveUp,
+	"search_cancel":                 "close search",
+	actionHelpClose:                 "close help",
+	"help_down":                     helpLabelMoveDown,
+	"help_up":                       helpLabelMoveUp,
+	"help_edit":                     "edit binding",
+	"help_reset":                    "reset binding",
+	"help_reset_all":                "reset all bindings",
+	"help_unbind":                   "unbind key",
+	"import_confirm":                "import request",
+	keybindings.ActionImportCancel:  "cancel import",
+	"env_save":                      "save env",
+	"env_cancel":                    "close env editor",
+	"env_create":                    "new environment",
+	"env_tab_next":                  "next env tab",
+	"env_tab_prev":                  "prev env tab",
+	"env_down":                      helpLabelMoveDown,
+	"env_up":                        helpLabelMoveUp,
+	"env_add":                       "add variable",
+	"env_delete":                    "delete variable",
+	"env_edit":                      "edit variable",
+	"env_edit_confirm":              "confirm edit",
+	"env_edit_switch_field":         "switch field",
+	"body_save":                     "save body",
+	"body_newline":                  "insert newline",
+	"body_cancel":                   "cancel body edit",
+	"header_down":                   helpLabelMoveDown,
+	"header_up":                     helpLabelMoveUp,
+	"header_add":                    "add header",
+	"header_delete":                 "delete header",
+	"header_edit":                   "edit header",
+	"header_save":                   "save headers",
+	"header_cancel":                 "cancel header edit",
+	"header_switch_field":           "switch field",
+	"auth_down":                     helpLabelMoveDown,
+	"auth_up":                       helpLabelMoveUp,
+	"auth_edit":                     "edit auth row",
+	"auth_save":                     "save auth",
+	"auth_cancel":                   "cancel auth edit",
+	"auth_option_next":              "next option",
+	"auth_option_prev":              "prev option",
+}
+
+const (
+	historyPopupVisibleRows = 6
+	helpLabelMoveDown       = "move down"
+	helpLabelMoveUp         = "move up"
+	helpLabelClose          = "close"
+	helpLabelCancel         = "cancel"
+	helpLabelConfirm        = "confirm"
+)
+
+type hintItem struct {
+	Label          string
+	Actions        []string
+	IncludeAliases bool
+}
+
+// View implements tea.Model. Renders all panes and overlays.
+func (m Model) View() string {
+	if m.width == 0 {
+		return "Loading..."
+	}
+	var out string
+	if m.effectiveDim() == DimAbsurd {
+		out = m.viewTooSmall()
+	} else {
+		// Overlay modes take precedence.
+		switch m.mode {
+		case helpMode:
+			out = m.viewHelp()
+		case envMode:
+			out = m.viewEnvModal()
+		case importMode:
+			out = m.viewImportModal()
+		case searchMode:
+			out = m.viewSearchModal()
+		case collectionPromptMode:
+			out = m.viewCollectionPromptModal()
+		case scheduleMode:
+			out = m.viewScheduleModal()
+		case viewerMode:
+			out = m.viewViewer()
+		case clientCertMode:
+			out = m.viewClientCertModal()
+		case postmanImportMode:
+			out = m.viewPostmanImportModal()
+		default:
+			out = m.viewByDim()
+		}
+	}
+
+	m.maybeLogVisualOverflow(out, nil)
+	if m.theme.Background != "" {
+		return m.paintThemeFrame(out)
+	}
+	return out
+}
+
+// viewByDim renders the normal-mode frame for the active density tier.
+func (m Model) viewByDim() string {
+	switch m.effectiveDim() {
+	case DimNarrow:
+		return m.viewStacked()
+	case DimTiny:
+		return m.viewSinglePane()
+	default:
+		return m.viewWide()
+	}
+}
+
+// viewTooSmall renders a centered message when the terminal is absurdly small
+// (or --dim=absurd is forced).
+func (m Model) viewTooSmall() string {
+	msg := fmt.Sprintf(
+		"Terminal too small (%dx%d).\nResize to at least %dx%d.",
+		m.width,
+		m.height,
+		MinTerminalWidth,
+		MinTerminalHeight,
+	)
+	if m.forceDim == DimAbsurd {
+		msg = fmt.Sprintf(
+			"Forced --dim=absurd (%dx%d).\nUnset --dim or pass another tier.",
+			m.width,
+			m.height,
+		)
+	}
+	boxW := max(1, m.width-2)
+	box := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(m.styles.warning).
+		Padding(0, 1).
+		Width(max(1, boxW-2)).
+		MaxWidth(boxW).
+		Render(m.styles.warnStyle.Render(msg))
+	if m.width > 0 && m.height > 0 {
+		placed := lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box)
+		// Hard-clamp in case Place still expands on tiny terminals.
+		return clipToRows(placed, m.width, m.height)
+	}
+	return box
+}
+
+// Ensure tea.Model is satisfied at compile time.
+var _ tea.Model = Model{}
+
+// --- Density layouts ---
+
+func (m Model) viewWide() string {
+	paneLayout := m.currentLayout()
+
+	sidebar := m.viewSidebar(paneLayout.sidebarW, paneLayout.sidebarInnerH)
+	request := m.viewRequestPane(paneLayout.mainW, paneLayout.requestH)
+	response := m.viewResponsePane(paneLayout.mainW, paneLayout.responseH)
+	right := lipgloss.JoinVertical(lipgloss.Left, request, response)
+
+	joined := lipgloss.JoinHorizontal(lipgloss.Top, sidebar, right)
+	statusBar := m.viewStatusBar("")
+
+	out := lipgloss.JoinVertical(lipgloss.Left, joined, statusBar)
+	if frameOverflows(out, m.width, m.height) {
+		report := &visualOverflowReport{
+			layout:    &paneLayout,
+			sidebar:   sidebar,
+			request:   request,
+			response:  response,
+			joined:    joined,
+			statusBar: statusBar,
+		}
+		m.maybeLogVisualOverflow(out, report)
+		statusBar = m.viewStatusBar(visualOverflowStatus)
+		out = lipgloss.JoinVertical(lipgloss.Left, joined, statusBar)
+	}
+	return out
+}
+
+func (m Model) viewStacked() string {
+	paneLayout := m.currentLayout()
+
+	sidebar := m.viewSidebar(paneLayout.sidebarW, paneLayout.sidebarInnerH)
+	request := m.viewRequestPane(paneLayout.mainW, paneLayout.requestH)
+	response := m.viewResponsePane(paneLayout.mainW, paneLayout.responseH)
+	statusBar := m.viewStatusBar("")
+
+	joined := lipgloss.JoinVertical(lipgloss.Left, sidebar, request, response)
+	out := lipgloss.JoinVertical(lipgloss.Left, joined, statusBar)
+	if frameOverflows(out, m.width, m.height) {
+		report := &visualOverflowReport{
+			layout:    &paneLayout,
+			sidebar:   sidebar,
+			request:   request,
+			response:  response,
+			joined:    joined,
+			statusBar: statusBar,
+		}
+		m.maybeLogVisualOverflow(out, report)
+		statusBar = m.viewStatusBar(visualOverflowStatus)
+		out = lipgloss.JoinVertical(lipgloss.Left, joined, statusBar)
+	}
+	return out
+}
+
+func (m Model) viewSinglePane() string {
+	paneLayout := m.currentLayout()
+	var pane string
+	switch m.focus {
+	case requestPane:
+		pane = m.viewRequestPane(paneLayout.mainW, paneLayout.requestH)
+	case responsePane:
+		pane = m.viewResponsePane(paneLayout.mainW, paneLayout.responseH)
+	default:
+		pane = m.viewSidebar(paneLayout.sidebarW, paneLayout.sidebarInnerH)
+	}
+	statusBar := m.viewStatusBar("")
+	out := lipgloss.JoinVertical(lipgloss.Left, pane, statusBar)
+	if frameOverflows(out, m.width, m.height) {
+		report := &visualOverflowReport{
+			layout:    &paneLayout,
+			statusBar: statusBar,
+		}
+		m.maybeLogVisualOverflow(out, report)
+		statusBar = m.viewStatusBar(visualOverflowStatus)
+		out = lipgloss.JoinVertical(lipgloss.Left, pane, statusBar)
+	}
+	return out
+}
+
+// --- Sidebar ---
+
+func (m Model) viewSidebar(w, h int) string {
+	border := m.styles.inactiveBorder
+	if m.focus == sidebarPane {
+		border = m.styles.activeBorder
+	}
+
+	var sb strings.Builder
+	sb.WriteString(m.styles.titleStyle.Render("Collections") + "\n")
+
+	rows, start, end := m.sidebarListWindow()
+	if start > 0 {
+		sb.WriteString(m.styles.mutedStyle.Render("  ↑ more above") + "\n")
+	}
+	for i := start; i < end; i++ {
+		row := rows[i]
+		switch row.kind {
+		case sidebarCollectionRow:
+			col := m.collections[row.colIndex]
+			indent := strings.Repeat("  ", row.depth)
+			branch := ""
+			if row.depth > 0 {
+				branch = "└─ "
+			}
+			cursor := indent + "  "
+			if row.colIndex == m.colCursor && m.reqCursor == -1 && m.focus == sidebarPane {
+				cursor = indent + "▸ "
+			}
+			expanded := m.expanded[col.ID]
+			icon := "▶ "
+			if expanded {
+				icon = "▼ "
+			}
+			innerW := max(1, w-2)
+			name := truncate(col.Name, innerW-4)
+			line := cursor + branch + icon + name
+			if row.colIndex == m.colCursor && m.reqCursor == -1 {
+				line = lipgloss.NewStyle().Foreground(m.styles.accent).Bold(true).Render(line)
+			} else {
+				line = lipgloss.NewStyle().Foreground(m.styles.foreground).Render(line)
+			}
+			sb.WriteString(line + "\n")
+		case sidebarRequestRow:
+			col := m.collections[row.colIndex]
+			req := m.collectionRequests[col.ID][row.reqIndex]
+			isSelected := row.colIndex == m.colCursor && row.reqIndex == m.reqCursor
+			cursor := strings.Repeat("  ", row.depth) + "  "
+			if isSelected {
+				cursor = strings.Repeat("  ", row.depth) + "▸ "
+			}
+			innerW := max(1, w-2)
+			badge := m.methodBadge(req.Method)
+			nameWidth := innerW - lipgloss.Width(cursor) - lipgloss.Width(badge) - 1
+			line := cursor + badge + " " + truncate(req.Name, nameWidth)
+			if isSelected {
+				line = lipgloss.NewStyle().Foreground(m.styles.info).Render(line)
+			} else {
+				line = m.styles.mutedStyle.Render(line)
+			}
+			sb.WriteString(line + "\n")
+		}
+	}
+	if end < len(rows) {
+		sb.WriteString(m.styles.mutedStyle.Render("  ↓ more below") + "\n")
+	}
+
+	if len(m.collections) == 0 {
+		addCollection := m.renderHintKeys([]string{"sidebar_add"}, false)
+		sb.WriteString(
+			"\n" + m.styles.mutedStyle.Render(
+				"  No collections.\n  Press "+addCollection+" to add.",
+			),
+		)
+	}
+
+	inner := sb.String()
+	return border.Width(w).Height(h).MaxHeight(h + 2).Render(inner)
+}
+
+// --- Request pane ---
+
+const requestSendButtonLabel = "[ Send ]"
+
+func (m Model) renderMethodBadge(method string) string {
+	if method == "" {
+		method = "GET"
+	}
+	return m.styles.methodStyle.Render(fmt.Sprintf(" %s ", method))
+}
+
+func (m Model) renderSendButton() string {
+	return m.styles.sendButtonStyle.Render(requestSendButtonLabel)
+}
+
+func (m Model) methodBadgeWidth(method string) int {
+	return lipgloss.Width(m.renderMethodBadge(method))
+}
+
+func (m Model) requestSendButtonWidth() int {
+	return lipgloss.Width(m.renderSendButton())
+}
+
+func (m Model) renderRequestTitleRightChrome() string {
+	sendBtn := m.renderSendButton()
+	envName := m.activeEnvName()
+	if envName == "" {
+		return sendBtn
+	}
+	envText := fmt.Sprintf("◀ %s ▶", envName)
+	envStyled := lipgloss.NewStyle().Foreground(m.styles.warning).Render(envText)
+	return sendBtn + " " + envStyled
+}
+
+func (m Model) requestTitleRightChromeWidth() int {
+	return lipgloss.Width(m.renderRequestTitleRightChrome())
+}
+
+// viewHeadersPreview renders the inline header editor or the header list.
+func (m Model) viewHeadersPreview(w int) string {
+	var preview strings.Builder
+	if m.headerEditing {
+		preview.WriteString("Key:\n")
+		preview.WriteString(m.headerKeyInput.View())
+		preview.WriteString("\n\n")
+		if m.headerKeyInput.Focused() {
+			if suggestion := headerNameSuggestion(m.headerKeyInput.Value()); suggestion != "" {
+				preview.WriteString(m.styles.mutedStyle.Render("  Tab → " + suggestion))
+				preview.WriteString("\n")
+			}
+		}
+		preview.WriteString("Value:\n")
+		preview.WriteString(m.headerValueInput.View())
+		preview.WriteString("\n")
+		if m.headerKeyInput.Focused() {
+			if warning := m.singleLineInputWarning(m.headerKeyInput.Value()); warning != "" {
+				preview.WriteString(warning + "\n")
+			}
+		} else if warning := m.singleLineInputWarning(m.headerValueInput.Value()); warning != "" {
+			preview.WriteString(warning + "\n")
+		}
+	} else {
+		if len(m.headerPairs) == 0 {
+			var msg strings.Builder
+			msg.WriteString("  No headers. Press ")
+			msg.WriteString(m.renderHintKeys([]string{"header_add"}, false))
+			msg.WriteString(" to add.\n")
+			preview.WriteString(m.styles.mutedStyle.Render(msg.String()))
+		} else {
+			for i, p := range m.headerPairs {
+				cursor := "  "
+				if i == m.headerCursor {
+					cursor = "▸ "
+				}
+				plain := truncate(cursor+p.Key+": "+p.Value, w-4)
+				var line string
+				if i == m.headerCursor {
+					line = lipgloss.NewStyle().Bold(true).Render(plain)
+				} else {
+					line = lipgloss.NewStyle().Foreground(m.styles.info).Render(plain)
+				}
+				preview.WriteString(line)
+				preview.WriteString("\n")
+			}
+		}
+	}
+	return preview.String()
+}
+
+func (m Model) viewRequestPane(w, h int) string {
+	timingSpan := m.timing.Track("tui.view_request_pane")
+	defer timingSpan.Done()
+	started := time.Now()
+	defer func() {
+		logDebugTiming(m.debugLog, "view_request_pane", started,
+			fmt.Sprintf("width=%d height=%d field=%d", w, h, m.activeField))
+	}()
+	border := m.styles.inactiveBorder
+	if m.focus == requestPane {
+		border = m.styles.activeBorder
+	}
+
+	var top []string
+
+	// Title line with the request label first, then send/env chrome aligned right.
+	titleLabel := requestTitleLabel
+	if m.activeRequest != nil && strings.TrimSpace(m.activeRequest.Name) != "" {
+		titleLabel = "Request " + truncate(m.activeRequest.Name, max(12, w/2))
+	}
+	titleLine := m.styles.titleStyle.Render(titleLabel)
+	rightChrome := m.renderRequestTitleRightChrome()
+	padding := w - 2 - lipgloss.Width(titleLine) - lipgloss.Width(rightChrome)
+	if padding < 0 {
+		padding = 0
+	}
+	top = append(top, titleLine+strings.Repeat(" ", padding)+rightChrome)
+
+	// Method badge + URL on one line — truncate URL to available width.
+	badge := m.renderMethodBadge(m.method)
+	badgeW := lipgloss.Width(badge)
+	urlAvail := w - badgeW - 4 // padding around badge/url
+	if urlAvail < 1 {
+		urlAvail = 1
+	}
+	var urlDisplay string
+	if m.activeField == urlField {
+		urlDisplay = m.urlInput.View()
+		if suggestion := m.urlSuggestion(m.urlInput.Value()); suggestion != "" {
+			urlDisplay += m.styles.mutedStyle.Render(
+				completionSuffix(m.urlInput.Value(), suggestion),
+			)
+		}
+	} else {
+		urlVal := m.urlInput.Value()
+		if urlVal == "" {
+			urlDisplay = m.styles.mutedStyle.Render(
+				"press " + m.renderHintKeys(
+					[]string{keybindings.ActionEditURL},
+					false,
+				) + " to enter a URL",
+			)
+		} else {
+			// Truncate long URLs so they don't wrap to next line.
+			urlDisplay = lipgloss.NewStyle().
+				Foreground(m.styles.foreground).
+				Render(truncate(urlVal, urlAvail))
+		}
+	}
+	top = append(top, badge+"  "+urlDisplay)
+
+	if m.activeRequest != nil {
+		authLabel := m.styles.mutedStyle.Render("  Auth: ")
+		authSummary := truncate(
+			newAuthEditor(m.activeRequest).summary(),
+			max(1, w-2-lipgloss.Width("  Auth: ")),
+		)
+		top = append(
+			top,
+			authLabel+lipgloss.NewStyle().
+				Foreground(m.styles.foreground).
+				Render(authSummary),
+		)
+		if m.activeField == urlField {
+			if warning := m.singleLineInputWarning(m.urlInput.Value()); warning != "" {
+				top = append(top, warning)
+			}
+		}
+	}
+
+	top = append(top, "")
+
+	// Validation / status errors — strip Go error chain prefix for readability.
+	if m.activeValidationErr() != "" {
+		msg := cleanError(m.activeValidationErr())
+		top = append(top, m.styles.errorStyle.Render("✗ "+truncate(msg, w-4)))
+	}
+
+	// Loading indicator.
+	if m.loading {
+		top = append(top, m.styles.warnStyle.Render("  ⟳ Sending…  [Esc] cancel"))
+	}
+
+	var content string
+	// Inline body / headers field.
+	switch {
+	case m.activeField == bodyField && m.activeRequest != nil:
+		content = m.bodyTextarea.View()
+	case m.activeField == authField && m.activeRequest != nil:
+		// Render after measuring the request pane so the auth editor can keep
+		// its selected row inside the available content viewport.
+		content = ""
+	case m.activeField == headersField && m.activeRequest != nil:
+		content = m.viewHeadersPreview(w)
+	case m.activeRequest != nil:
+		// The read-only preview is formatted lazily by requestText below.
+		content = ""
+	default:
+		content = m.styles.mutedStyle.Render(
+			"No request selected.\n\n" +
+				"Get started by importing a curl command with " +
+				m.renderHintKeys([]string{keybindings.ActionImportCurl}, false) +
+				", or create a collection with " +
+				m.renderHintKeys([]string{"sidebar_add"}, false) +
+				" and add a request with " +
+				m.renderHintKeys([]string{"sidebar_add_request"}, false) + ".",
+		)
+	}
+
+	// Responsive key hints — shorten at narrow terminals, then hard-clamp to one
+	// row so long bindings never wrap onto a second line inside the pane.
+	innerWidth := max(1, w-2)
+	var hintsPlain string
+	switch {
+	case w < 55:
+		hintsPlain = m.renderHints([]hintItem{
+			{Label: "url", Actions: []string{keybindings.ActionEditURL}},
+			{
+				Label:   "cycle method",
+				Actions: []string{keybindings.ActionMethodNext, keybindings.ActionMethodPrev},
+			},
+			{Label: "send", Actions: []string{keybindings.ActionSendRequest}, IncludeAliases: true},
+		})
+	case w < 90:
+		hintsPlain = m.renderHints([]hintItem{
+			{Label: "url", Actions: []string{keybindings.ActionEditURL}},
+			{
+				Label:   "cycle method",
+				Actions: []string{keybindings.ActionMethodNext, keybindings.ActionMethodPrev},
+			},
+			{Label: "send", Actions: []string{keybindings.ActionSendRequest}, IncludeAliases: true},
+			{Label: "body", Actions: []string{keybindings.ActionEditBody}},
+			{Label: "headers", Actions: []string{keybindings.ActionEditHeaders}},
+			{Label: "env", Actions: []string{keybindings.ActionEnvOpen}},
+		})
+	case w < 110:
+		hintsPlain = m.renderHints([]hintItem{
+			{Label: "url", Actions: []string{keybindings.ActionEditURL}},
+			{
+				Label:   "cycle method",
+				Actions: []string{keybindings.ActionMethodNext, keybindings.ActionMethodPrev},
+			},
+			{Label: "send", Actions: []string{keybindings.ActionSendRequest}, IncludeAliases: true},
+			{Label: "body", Actions: []string{keybindings.ActionEditBody}},
+			{Label: "headers", Actions: []string{keybindings.ActionEditHeaders}},
+			{Label: "env", Actions: []string{keybindings.ActionEnvOpen}},
+			{Label: "cycle env", Actions: []string{"env_prev", "env_next"}},
+		})
+	default:
+		hintsPlain = m.renderHints([]hintItem{
+			{Label: "url", Actions: []string{keybindings.ActionEditURL}},
+			{
+				Label:   "cycle method",
+				Actions: []string{keybindings.ActionMethodNext, keybindings.ActionMethodPrev},
+			},
+			{Label: "send", Actions: []string{keybindings.ActionSendRequest}, IncludeAliases: true},
+			{Label: "body", Actions: []string{keybindings.ActionEditBody}},
+			{Label: "headers", Actions: []string{keybindings.ActionEditHeaders}},
+			{Label: "auth", Actions: []string{"edit_auth"}},
+			{Label: "env", Actions: []string{keybindings.ActionEnvOpen}},
+			{Label: "cycle env", Actions: []string{"env_prev", "env_next"}},
+		})
+	}
+	hints := m.styles.mutedStyle.Render(truncate(hintsPlain, innerWidth))
+
+	// Measure chrome (title/url/auth + separator/hints) in visual rows so wrapped
+	// lines cannot steal body budget unnoticed — same approach as the response pane.
+	chromeTop := strings.Join(top, "\n")
+	sepAndHints := m.styles.mutedStyle.Render(strings.Repeat("─", innerWidth)) + "\n" + hints
+	chromeRows := visualRows(chromeTop, innerWidth) + visualRows(sepAndHints, innerWidth)
+	contentLines := h - chromeRows
+	if contentLines < 0 {
+		contentLines = 0
+	}
+	var renderedContent string
+	switch {
+	case m.activeField == noneField && m.activeRequest != nil:
+		m.requestText.SetDebugLog(m.debugLog, "request")
+		m.requestText.SetTiming(m.timing)
+		m.requestText.SetFormattedContent(m.requestBodyPreviewSourceKey(), func() string {
+			return m.requestBodyPreviewContent(timingSpan)
+		}, timingSpan)
+		renderedContent = m.requestText.View(innerWidth, contentLines, timingSpan)
+	case m.activeField == authField && m.activeRequest != nil:
+		renderedContent = m.viewAuthEditor(contentLines, innerWidth)
+	default:
+		renderedContent = limitLines(content, innerWidth, contentLines)
+	}
+	paddingLines := contentLines - visualRows(renderedContent, innerWidth)
+	if paddingLines < 0 {
+		paddingLines = 0
+	}
+
+	var sb strings.Builder
+	sb.WriteString(chromeTop)
+	sb.WriteString("\n")
+	if renderedContent != "" {
+		sb.WriteString(renderedContent)
+		if !strings.HasSuffix(renderedContent, "\n") {
+			sb.WriteString("\n")
+		}
+	}
+	if paddingLines > 0 {
+		sb.WriteString(strings.Repeat("\n", paddingLines))
+	}
+	sb.WriteString(sepAndHints)
+
+	return border.Width(w).Height(h).MaxHeight(h + 2).Render(clipToRows(sb.String(), innerWidth, h))
+}
+
+func (m Model) requestBodyPreviewContent(parent ...*timing.Span) string {
+	timingSpan := m.timing.Track("tui.request_body_preview_content", timingParent(parent))
+	defer timingSpan.Done()
+	started := time.Now()
+	defer func() {
+		logDebugTiming(m.debugLog, "request_body_preview_content", started,
+			fmt.Sprintf("has_request=%t", m.activeRequest != nil))
+	}()
+	if m.activeRequest == nil {
+		return ""
+	}
+	if m.activeRequest.Body != "" {
+		lines := strings.Split(m.activeRequest.Body, "\n")
+		for i := range lines {
+			lines[i] = "  " + lines[i]
+		}
+		return strings.Join(lines, "\n")
+	}
+	if m.activeRequest.Headers == "" || m.activeRequest.Headers == "{}" {
+		return ""
+	}
+	pairs := parseHeadersJSON(m.activeRequest.Headers)
+	lines := make([]string, 0, len(pairs))
+	for _, pair := range pairs {
+		lines = append(lines, "  "+pair.Key+": "+pair.Value)
+	}
+	return strings.Join(lines, "\n")
+}
+
+func (m Model) viewAuthEditor(maxRows, contentWidth int) string {
+	rows := m.authEditor.rows()
+	selected := min(max(0, m.authEditor.cursor), len(rows)-1)
+	rowViews := make([]string, len(rows))
+	rowHeights := make([]int, len(rows))
+	for idx, row := range rows {
+		cursor := "  "
+		if idx == selected {
+			cursor = "▸ "
+		}
+		label := lipgloss.NewStyle().Foreground(m.styles.info).Render(authRowLabel(row))
+		value := m.authEditor.valueForRow(row, m.authEditor.editing, m.styles.mutedStyle)
+		line := cursor + label + ": " + value
+		if idx == selected {
+			line = lipgloss.NewStyle().Bold(true).Render(line)
+		}
+		rowViews[idx] = line
+		if idx == selected && m.authEditor.editing {
+			if warning := m.singleLineInputWarning(
+				m.authEditor.singleLineValue(row),
+			); warning != "" {
+				rowViews[idx] += "\n" + warning
+			}
+		}
+		rowHeights[idx] = visualRows(rowViews[idx], contentWidth)
+	}
+
+	header := m.styles.titleStyle.Render("Auth") + "\n"
+	footer := ""
+	fixedRows := visualRows(header, contentWidth) + visualRows(footer, contentWidth)
+	rowBudget := max(1, maxRows-fixedRows)
+	var start, end int
+	for range 3 {
+		start, end = authRowViewport(rowHeights, selected, rowBudget)
+		indicatorRows := 0
+		if start > 0 {
+			indicatorRows++
+		}
+		if end < len(rows) {
+			indicatorRows++
+		}
+		available := max(1, maxRows-fixedRows-indicatorRows)
+		if available >= rowBudget {
+			break
+		}
+		rowBudget = available
+	}
+	start, end = authRowViewport(rowHeights, selected, rowBudget)
+
+	var sb strings.Builder
+	sb.WriteString(header)
+	if start > 0 {
+		sb.WriteString(m.styles.mutedStyle.Render("  ↑ more above") + "\n")
+	}
+	for idx := start; idx < end; idx++ {
+		if idx > start {
+			sb.WriteString("\n")
+		}
+		sb.WriteString(rowViews[idx])
+	}
+	if end < len(rows) {
+		sb.WriteString("\n" + m.styles.mutedStyle.Render("  ↓ more below"))
+	}
+	sb.WriteString(footer)
+	return clipToRows(sb.String(), contentWidth, maxRows)
+}
+
+func authRowViewport(rowHeights []int, selected, visibleRows int) (int, int) {
+	if len(rowHeights) == 0 {
+		return 0, 0
+	}
+	selected = min(max(0, selected), len(rowHeights)-1)
+	visibleRows = max(1, visibleRows)
+
+	start := selected
+	usedRows := rowHeights[selected]
+	for start > 0 && usedRows+rowHeights[start-1] <= visibleRows {
+		start--
+		usedRows += rowHeights[start]
+	}
+	end := selected + 1
+	for end < len(rowHeights) && usedRows+rowHeights[end] <= visibleRows {
+		usedRows += rowHeights[end]
+		end++
+	}
+	return start, end
+}
+
+// --- Response pane ---
+
+func (m Model) viewResponsePane(w, h int) string {
+	timingSpan := m.timing.Track("tui.view_response_pane")
+	defer timingSpan.Done()
+	started := time.Now()
+	defer func() {
+		logDebugTiming(m.debugLog, "view_response_pane", started,
+			fmt.Sprintf("width=%d height=%d tab=%d cursor=%d", w, h, m.responseTab, m.execCursor))
+	}()
+	border := m.styles.inactiveBorder
+	if m.focus == responsePane {
+		border = m.styles.activeBorder
+	}
+
+	var sb strings.Builder
+	sb.WriteString(m.styles.titleStyle.Render("Response") + "\n")
+
+	currentExec := m.selectedExecution()
+	if currentExec == nil && m.response == nil {
+		sendHint := m.renderHintKeys([]string{keybindings.ActionSendRequest}, true)
+		sb.WriteString(
+			"\n" + m.styles.mutedStyle.Render("  No response yet — press "+sendHint+" to send."),
+		)
+		return border.Width(w).Height(h).MaxHeight(h + 2).Render(sb.String())
+	}
+
+	if currentExec != nil {
+		sb.WriteString(
+			m.styles.mutedStyle.Render(
+				fmt.Sprintf(
+					"  Run %d/%d  %s",
+					m.execCursor+1,
+					len(m.executions),
+					currentExec.CompletedAt.In(time.Local).Format("2006-01-02 15:04:05"),
+				),
+			) + "\n",
+		)
+		sb.WriteString(m.viewExecutionStatus(currentExec) + "\n")
+	} else {
+		sb.WriteString(m.viewLiveResponseStatus() + "\n")
+	}
+
+	// Body gets whatever inner height remains after chrome. Measure the actual
+	// chrome rows at the pane's inner width (w-2, since the border consumes a
+	// column on each side) so that a wrapped tab bar — or a body line near the
+	// width boundary — can't push the pane one row past its budget and scroll
+	// the whole app off the top. The trailing "\n" delimits the body start, so
+	// it must not be counted as a chrome row.
+	innerWidth := max(1, w-2)
+
+	// Tab bar — clamp helper hints so the bar stays a single row.
+	tabs := m.viewTabBar(innerWidth)
+	sb.WriteString(tabs + "\n\n")
+	chromeRows := visualRows(strings.TrimSuffix(sb.String(), "\n"), innerWidth)
+	// Body may shrink to zero: on very small panes the chrome (status + a
+	// wrapped tab bar) can consume the entire budget, and forcing a minimum of
+	// one body row would push the pane past its height and scroll the app.
+	bodyLines := h - chromeRows
+	if bodyLines < 0 {
+		bodyLines = 0
+	}
+
+	// Tab content is formatted lazily by the scrollable component.
+	var formatBody func() string
+	if currentExec != nil {
+		switch m.responseTab {
+		case bodyTab:
+			formatBody = func() string { return m.viewExecutionBody(currentExec, timingSpan) }
+		case headersTab:
+			formatBody = func() string { return m.viewExecutionHeaders(currentExec) }
+		case rawTab:
+			formatBody = func() string {
+				if currentExec.ResponseBody == "" {
+					return m.styles.mutedStyle.Render("  (empty body)")
+				}
+				return stripANSI(currentExec.ResponseBody)
+			}
+		}
+	} else if r := m.response; r != nil {
+		switch m.responseTab {
+		case bodyTab:
+			formatBody = func() string { return m.viewResponseBody(timingSpan) }
+		case headersTab:
+			formatBody = m.viewResponseHeaders
+		case rawTab:
+			formatBody = func() string {
+				if r.Body != nil {
+					return stripANSI(string(r.Body))
+				}
+				if r.TempPath != "" {
+					return m.styles.mutedStyle.Render(fmt.Sprintf("[streamed → %s]", r.TempPath))
+				}
+				return ""
+			}
+		}
+	}
+	// Body/Raw content is owned by a scrollable text component. Keep the
+	// response history popup as a separate column, but let wheel and arrows
+	// move through the body instead of changing history.
+	m.responseText.SetDebugLog(m.debugLog, "response")
+	m.responseText.SetTiming(m.timing)
+	m.responseText.SetFormattedContent(m.responseTextSourceKey(), formatBody, timingSpan)
+
+	popup := m.viewExecutionHistoryPopup(w, bodyLines)
+	if popup != "" && w >= 64 {
+		popupWidth := lipgloss.Width(popup)
+		bodyWidth := w - popupWidth - 4
+		if bodyWidth >= 18 {
+			left := lipgloss.NewStyle().Width(bodyWidth).MaxHeight(bodyLines).
+				Render(m.responseText.View(bodyWidth, bodyLines, timingSpan))
+			sb.WriteString(lipgloss.JoinHorizontal(lipgloss.Top, left, "  ", popup))
+			return border.Width(w).
+				Height(h).
+				MaxHeight(h + 2).
+				Render(clipToRows(sb.String(), innerWidth, h))
+		}
+	}
+
+	if popup != "" {
+		popupRows := lipgloss.Height(popup)
+		if popupRows < bodyLines {
+			sb.WriteString(popup + "\n")
+			bodyLines -= popupRows + 1
+			if bodyLines < 1 {
+				bodyLines = 1
+			}
+		}
+	}
+
+	sb.WriteString(m.responseText.View(innerWidth, bodyLines, timingSpan))
+
+	return border.Width(w).Height(h).MaxHeight(h + 2).Render(clipToRows(sb.String(), innerWidth, h))
+}
+
+func (m Model) requestBodyPreviewSourceKey() string {
+	if m.activeRequest == nil {
+		return "request:none"
+	}
+
+	// The active request is edited in place, so identity alone is not enough to
+	// invalidate the formatted preview cache. Keep the key bounded while making
+	// body/header edits visible on the next render.
+	source := m.activeRequest.Body + "\x00" + m.activeRequest.Headers
+	digest := sha256.Sum256([]byte(source))
+	return fmt.Sprintf("request:%p:%s:%x", m.activeRequest, m.activeRequest.ID, digest[:8])
+}
+
+func (m Model) responseTextSourceKey() string {
+	if currentExec := m.selectedExecution(); currentExec != nil {
+		return fmt.Sprintf(
+			"execution:%p:%s:%d:%s:%s",
+			currentExec,
+			currentExec.ID,
+			m.responseTab,
+			m.theme.Name,
+			m.theme.Variant,
+		)
+	}
+	if m.response != nil {
+		return fmt.Sprintf(
+			"response:%p:%d:%s:%s",
+			m.response,
+			m.responseTab,
+			m.theme.Name,
+			m.theme.Variant,
+		)
+	}
+	return fmt.Sprintf("response:none:%d", m.responseTab)
+}
+
+// formatResponseTextContent produces the formatted response content. The
+// scrollable component owns caching; callers should use setResponseTextContent.
+func (m Model) formatResponseTextContent(parent ...*timing.Span) string {
+	timingSpan := m.timing.Track("tui.response_text_content", timingParent(parent))
+	defer timingSpan.Done()
+	started := time.Now()
+	defer func() {
+		logDebugTiming(m.debugLog, "response_text_content", started,
+			fmt.Sprintf("tab=%d cursor=%d", m.responseTab, m.execCursor))
+	}()
+	currentExec := m.selectedExecution()
+	if currentExec != nil {
+		switch m.responseTab {
+		case bodyTab:
+			return m.viewExecutionBody(currentExec, timingSpan)
+		case headersTab:
+			return m.viewExecutionHeaders(currentExec)
+		case rawTab:
+			if currentExec.ResponseBody == "" {
+				return m.styles.mutedStyle.Render("  (empty body)")
+			}
+			return stripANSI(currentExec.ResponseBody)
+		}
+	} else if r := m.response; r != nil {
+		switch m.responseTab {
+		case bodyTab:
+			return m.viewResponseBody(timingSpan)
+		case headersTab:
+			return m.viewResponseHeaders()
+		case rawTab:
+			if r.Body != nil {
+				return stripANSI(string(r.Body))
+			}
+			if r.TempPath != "" {
+				return m.styles.mutedStyle.Render(fmt.Sprintf("[streamed â†’ %s]", r.TempPath))
+			}
+		}
+	}
+	return ""
+}
+
+func (m *Model) setRequestTextContent(parent ...*timing.Span) {
+	m.requestText.SetDebugLog(m.debugLog, "request")
+	m.requestText.SetTiming(m.timing)
+	m.requestText.SetFormattedContent(m.requestBodyPreviewSourceKey(), func() string {
+		return m.requestBodyPreviewContent(timingParent(parent))
+	}, timingParent(parent))
+}
+
+func (m *Model) setResponseTextContent(parent ...*timing.Span) {
+	m.responseText.SetDebugLog(m.debugLog, "response")
+	m.responseText.SetTiming(m.timing)
+	m.responseText.SetFormattedContent(m.responseTextSourceKey(), func() string {
+		return m.formatResponseTextContent(timingParent(parent))
+	}, timingParent(parent))
+}
+
+func (m Model) viewTabBar(maxWidth int) string {
+	tabs := []struct {
+		label string
+		id    responseTabID
+	}{
+		{"Body", bodyTab},
+		{"Headers", headersTab},
+		{"Raw", rawTab},
+	}
+	var parts []string
+	for _, t := range tabs {
+		action := map[responseTabID]string{
+			bodyTab:    actionTabBody,
+			headersTab: actionTabHeaders,
+			rawTab:     actionTabRaw,
+		}[t.id]
+		label := fmt.Sprintf(
+			"[%s] %s",
+			keybindings.FormatKey(keybindings.GetAction(m.cfg.Keybindings, action)),
+			t.label,
+		)
+		if m.responseTab == t.id {
+			parts = append(
+				parts,
+				lipgloss.NewStyle().
+					Foreground(m.styles.accent).
+					Underline(true).
+					Bold(true).
+					Render(label),
+			)
+		} else {
+			parts = append(parts, m.styles.mutedStyle.Render(label))
+		}
+	}
+	tabPart := "  " + strings.Join(parts, "  ")
+
+	hintItems := []hintItem{
+		{Label: "view", Actions: []string{actionTabPrev, actionTabNext}},
+		{Label: "retry", Actions: []string{"response_retry"}},
+	}
+	if len(m.executions) > 1 {
+		hintItems = append(hintItems, hintItem{
+			Label:   "history",
+			Actions: []string{"response_up", "response_down"},
+		})
+	}
+	hintsPlain := m.renderHints(hintItems)
+	if hintsPlain == "" {
+		if maxWidth > 0 && lipgloss.Width(tabPart) > maxWidth {
+			return m.styles.mutedStyle.Render(truncate(stripANSI(tabPart), maxWidth))
+		}
+		return tabPart
+	}
+
+	const gap = "    "
+	if maxWidth <= 0 {
+		return tabPart + gap + m.styles.mutedStyle.Render(hintsPlain)
+	}
+	avail := maxWidth - lipgloss.Width(tabPart) - lipgloss.Width(gap)
+	if avail < 1 {
+		if lipgloss.Width(tabPart) > maxWidth {
+			return m.styles.mutedStyle.Render(truncate(stripANSI(tabPart), maxWidth))
+		}
+		return tabPart
+	}
+	return tabPart + gap + m.styles.mutedStyle.Render(truncate(hintsPlain, avail))
+}
+
+func (m Model) selectedExecution() *domain.Execution {
+	if len(m.executions) == 0 || m.execCursor < 0 || m.execCursor >= len(m.executions) {
+		return nil
+	}
+	return m.executions[m.execCursor]
+}
+
+func (m Model) viewingHistoricalExecution() bool {
+	return len(m.executions) > 1 && m.execCursor > 0
+}
+
+func (m Model) viewLiveResponseStatus() string {
+	r := m.response
+	statusColor := m.styles.goodStyle
+	if r.StatusCode >= 400 {
+		statusColor = m.styles.errorStyle
+	} else if r.StatusCode >= 300 {
+		statusColor = m.styles.warnStyle
+	}
+	return statusColor.Render(fmt.Sprintf("  %s", r.Status)) +
+		"  " + m.styles.mutedStyle.Render(fmt.Sprintf("%v  %d bytes", r.Duration.Round(1_000_000), r.Size))
+}
+
+func (m Model) viewExecutionStatus(ex *domain.Execution) string {
+	statusLabel := fmt.Sprintf("%d", ex.StatusCode)
+	responseStatusStyle := m.styles.goodStyle
+	switch {
+	case ex.Error != "" && ex.StatusCode == 0:
+		statusLabel = "ERROR"
+		responseStatusStyle = m.styles.errorStyle
+	case ex.StatusCode >= 400:
+		responseStatusStyle = m.styles.errorStyle
+	case ex.StatusCode >= 300:
+		responseStatusStyle = m.styles.warnStyle
+	}
+	return responseStatusStyle.Render("  "+statusLabel) +
+		"  " + m.styles.mutedStyle.Render(
+		fmt.Sprintf("%dms  %d bytes", ex.ResponseTimeMs, len(ex.ResponseBody)),
+	)
+}
+
+// isBinaryBody reports whether body bytes look like binary/non-textual content.
+// Uses utf8.Valid as a fast heuristic; also catches null bytes.
+func isBinaryBody(b []byte) bool {
+	if len(b) == 0 {
+		return false
+	}
+	// Null bytes are a strong indicator of binary content.
+	for _, c := range b {
+		if c == 0x00 {
+			return true
+		}
+	}
+	return !utf8.Valid(b)
+}
+
+func (m Model) viewResponseBody(parent ...*timing.Span) string {
+	timingSpan := m.timing.Track("tui.view_response_body", timingParent(parent))
+	defer timingSpan.Done()
+	started := time.Now()
+	defer func() {
+		bodyBytes := 0
+		if m.response != nil {
+			bodyBytes = len(m.response.Body)
+		}
+		logDebugTiming(m.debugLog, "view_response_body", started,
+			fmt.Sprintf("bytes=%d", bodyBytes))
+	}()
+	r := m.response
+	if r.Body == nil {
+		if r.TempPath != "" {
+			return m.styles.mutedStyle.Render(fmt.Sprintf("  [large response → %s]", r.TempPath))
+		}
+		return m.styles.mutedStyle.Render("  (empty body)")
+	}
+
+	// BUG-002: binary content must not be rendered raw — it can corrupt the terminal.
+	if isBinaryBody(r.Body) {
+		ct := http.Header(r.Headers).Get(headerContentType)
+		if ct == "" {
+			ct = "application/octet-stream"
+		}
+		return m.styles.warnStyle.Render(fmt.Sprintf(
+			"  [binary content, %d bytes, content-type: %s]\n  Use Raw tab to view raw bytes path.",
+			len(r.Body), ct,
+		))
+	}
+
+	// Pretty-print JSON if content-type matches.
+	ct := http.Header(r.Headers).Get(headerContentType)
+	if strings.Contains(ct, "application/json") || json.Valid(r.Body) {
+		var out any
+		if err := json.Unmarshal(r.Body, &out); err == nil {
+			pretty, err := json.MarshalIndent(out, "", "  ")
+			if err == nil {
+				return highlight.JSON(string(pretty), m.theme.Syntax)
+			}
+		}
+	}
+	return stripANSI(string(r.Body))
+}
+
+func (m Model) viewResponseHeaders() string {
+	if m.response == nil {
+		return ""
+	}
+	return m.renderHTTPHeaders(m.response.Headers)
+}
+
+func (m Model) viewExecutionBody(ex *domain.Execution, parent ...*timing.Span) string {
+	timingSpan := m.timing.Track("tui.view_execution_body", timingParent(parent))
+	defer timingSpan.Done()
+	started := time.Now()
+	defer func() {
+		bodyBytes := 0
+		if ex != nil {
+			bodyBytes = len(ex.ResponseBody)
+		}
+		logDebugTiming(m.debugLog, "view_execution_body", started,
+			fmt.Sprintf("bytes=%d", bodyBytes))
+	}()
+	if ex.Error != "" {
+		if ex.ResponseBody == "" {
+			return m.styles.errorStyle.Render("  " + ex.Error)
+		}
+		return m.styles.errorStyle.Render("  "+ex.Error+"\n\n") + stripANSI(ex.ResponseBody)
+	}
+	if ex.ResponseBody == "" {
+		return m.styles.mutedStyle.Render("  (empty body)")
+	}
+	bodyBytes := []byte(ex.ResponseBody)
+	if isBinaryBody(bodyBytes) {
+		return m.styles.warnStyle.Render(fmt.Sprintf(
+			"  [binary content, %d bytes]\n  Use Raw tab to inspect the stored payload.",
+			len(bodyBytes),
+		))
+	}
+	if headers := m.executionHeaders(
+		ex,
+	); strings.Contains(
+		headers.Get(headerContentType),
+		"application/json",
+	) ||
+		json.Valid(bodyBytes) {
+		var out any
+		if err := json.Unmarshal(bodyBytes, &out); err == nil {
+			pretty, err := json.MarshalIndent(out, "", "  ")
+			if err == nil {
+				return highlight.JSON(string(pretty), m.theme.Syntax)
+			}
+		}
+	}
+	return stripANSI(ex.ResponseBody)
+}
+
+func (m Model) viewExecutionHeaders(ex *domain.Execution) string {
+	headers := m.executionHeaders(ex)
+	if len(headers) == 0 {
+		if ex.Error != "" {
+			return m.styles.mutedStyle.Render(
+				"  No response headers captured for this failed execution.",
+			)
+		}
+		return m.styles.mutedStyle.Render("  (no headers)")
+	}
+	return m.renderHTTPHeaders(headers)
+}
+
+func (m Model) renderHTTPHeaders(headers http.Header) string {
+	var sb strings.Builder
+	for _, k := range sortedHeaderKeys(headers) {
+		vals := headers[k]
+		for _, v := range vals {
+			sb.WriteString("  " + lipgloss.NewStyle().Foreground(m.styles.info).Render(k))
+			sb.WriteString(
+				": " + lipgloss.NewStyle().Foreground(m.styles.foreground).Render(v) + "\n",
+			)
+		}
+	}
+	return sb.String()
+}
+
+func (m Model) executionHeaders(ex *domain.Execution) http.Header {
+	if ex == nil || ex.ResponseHeaders == "" {
+		return nil
+	}
+	var headers map[string][]string
+	if err := json.Unmarshal([]byte(ex.ResponseHeaders), &headers); err != nil {
+		return nil
+	}
+	return http.Header(headers)
+}
+
+func (m Model) viewExecutionHistoryPopup(maxWidth, maxRows int) string {
+	if !m.viewingHistoricalExecution() {
+		return ""
+	}
+
+	if maxRows < 6 {
+		return ""
+	}
+
+	maxVisible := min(historyPopupVisibleRows, maxRows-3)
+	if maxVisible < 3 {
+		return ""
+	}
+
+	indices, hasAbove, hasBelow := m.visibleExecutionHistoryWindow(maxVisible)
+	if len(indices) == 0 {
+		return ""
+	}
+
+	popupWidth := min(maxWidth-8, 34)
+	if popupWidth < 22 {
+		popupWidth = 22
+	}
+	innerWidth := max(1, popupWidth-4)
+
+	var sb strings.Builder
+	sb.WriteString(m.styles.titleStyle.Render("Execution History") + "\n")
+	if hasAbove {
+		sb.WriteString(m.styles.mutedStyle.Render("  ↑ more above") + "\n")
+	} else {
+		sb.WriteString("\n")
+	}
+	for _, idx := range indices {
+		ex := m.executions[idx]
+		sb.WriteString(m.viewExecutionHistoryLine(idx, ex, innerWidth) + "\n")
+	}
+	if hasBelow {
+		sb.WriteString(m.styles.mutedStyle.Render("  ↓ more below"))
+	} else {
+		sb.WriteString("")
+	}
+
+	return lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(m.styles.mutedColor).
+		Padding(0, 1).
+		Width(popupWidth).
+		Render(sb.String())
+}
+
+func (m Model) visibleExecutionHistoryWindow(maxVisible int) ([]int, bool, bool) {
+	if maxVisible <= 0 || len(m.executions) == 0 {
+		return nil, false, false
+	}
+	if len(m.executions) <= maxVisible {
+		indices := make([]int, len(m.executions))
+		for i := range m.executions {
+			indices[i] = i
+		}
+		return indices, false, false
+	}
+
+	indices := []int{0}
+	window := maxVisible - 1
+	if window <= 0 {
+		return indices, false, len(m.executions) > 1
+	}
+
+	start := m.execCursor - (window - 1)
+	if start < 1 {
+		start = 1
+	}
+	end := start + window
+	if end > len(m.executions) {
+		end = len(m.executions)
+		start = max(1, end-window)
+	}
+	for i := start; i < end; i++ {
+		indices = append(indices, i)
+	}
+	return indices, start > 1, end < len(m.executions)
+}
+
+func (m Model) viewExecutionHistoryLine(idx int, ex *domain.Execution, width int) string {
+	label := executionHistoryLabel(idx, ex.CompletedAt)
+	statusText, statusPaint := m.executionHistoryStatus(ex)
+
+	cursor := "  "
+	if idx == m.execCursor {
+		cursor = "▸ "
+	}
+
+	statusWidth := lipgloss.Width(statusText)
+	labelAvail := width - lipgloss.Width(cursor) - statusWidth - 2
+	if labelAvail < 8 {
+		labelAvail = 8
+	}
+	label = truncate(label, labelAvail)
+	gap := width - lipgloss.Width(cursor) - lipgloss.Width(label) - statusWidth
+	if gap < 1 {
+		gap = 1
+	}
+
+	line := cursor + label + strings.Repeat(" ", gap) + statusPaint.Render(statusText)
+	if idx == m.execCursor {
+		line = lipgloss.NewStyle().Bold(true).Render(line)
+	}
+	return line
+}
+
+func executionHistoryLabel(idx int, completedAt time.Time) string {
+	if idx == 0 {
+		return "Latest"
+	}
+	if completedAt.IsZero() {
+		return "Unknown time"
+	}
+
+	local := completedAt.In(time.Local)
+	now := time.Now().In(time.Local)
+	if sameLocalDay(local, now) {
+		return "Today, " + local.Format("3:04 PM")
+	}
+	if sameLocalDay(local, now.AddDate(0, 0, -1)) {
+		return "Yesterday, " + local.Format("3:04 PM")
+	}
+	return local.Format("2006-01-02 3:04 PM")
+}
+
+func (m Model) executionHistoryStatus(ex *domain.Execution) (string, lipgloss.Style) {
+	if ex == nil {
+		return "—", m.styles.mutedStyle
+	}
+	if ex.Error != "" && ex.StatusCode == 0 {
+		return "ERR", m.styles.errorStyle
+	}
+	if ex.StatusCode == 0 {
+		return "—", m.styles.mutedStyle
+	}
+	switch {
+	case ex.StatusCode >= 400:
+		return fmt.Sprintf("%d", ex.StatusCode), m.styles.errorStyle
+	case ex.StatusCode >= 300:
+		return fmt.Sprintf("%d", ex.StatusCode), m.styles.warnStyle
+	default:
+		return fmt.Sprintf("%d", ex.StatusCode), m.styles.goodStyle
+	}
+}
+
+func sameLocalDay(a, b time.Time) bool {
+	ay, am, ad := a.Date()
+	by, bm, bd := b.Date()
+	return ay == by && am == bm && ad == bd
+}
+
+func sortedHeaderKeys(headers http.Header) []string {
+	keys := make([]string, 0, len(headers))
+	for k := range headers {
+		keys = append(keys, k)
+	}
+	sortHeaderKeys(keys)
+	return keys
+}
+
+func sortHeaderKeys(keys []string) {
+	sort.Slice(keys, func(i, j int) bool {
+		ri := headerPriority(keys[i])
+		rj := headerPriority(keys[j])
+		if ri != rj {
+			return ri < rj
+		}
+
+		li := strings.ToLower(keys[i])
+		lj := strings.ToLower(keys[j])
+		if li != lj {
+			return li < lj
+		}
+		return keys[i] < keys[j]
+	})
+}
+
+func headerPriority(key string) int {
+	switch strings.ToLower(key) {
+	case "content-type":
+		return 0
+	case "content-length":
+		return 1
+	case "date":
+		return 2
+	case "server":
+		return 3
+	default:
+		return 100
+	}
+}
+
+// --- Status bar ---
+
+func (m Model) viewStatusBar(statusOverride string) string {
+	items := []hintItem{
+		{Label: "quit", Actions: []string{"quit"}},
+		{Label: "help", Actions: []string{"help"}},
+		{Label: "search", Actions: []string{keybindings.ActionSearch}},
+		{Label: "pane", Actions: []string{
+			keybindings.ActionFocusSidebar,
+			keybindings.ActionFocusRequest,
+			keybindings.ActionFocusResponse,
+		}},
+	}
+	if !m.tmuxDetected {
+		items = append(items, hintItem{Label: "cycle", Actions: []string{"pane_next", "pane_prev"}})
+	}
+	dim := m.effectiveDim()
+	if m.mode == normalMode && m.focus == sidebarPane && m.width >= 120 && dim == DimWide {
+		items = append(items,
+			hintItem{Label: "nav", Actions: []string{"sidebar_up", "sidebar_down"}},
+			hintItem{Label: "tree", Actions: []string{"sidebar_collapse", "sidebar_expand"}},
+			hintItem{Label: "new req", Actions: []string{"sidebar_add_request"}},
+			hintItem{Label: "new col", Actions: []string{"sidebar_add"}},
+			hintItem{Label: actionRename, Actions: []string{"sidebar_rename"}},
+			hintItem{Label: deleteToken, Actions: []string{"sidebar_delete"}},
+		)
+	}
+	// Build plain text first, then style after any truncation. Truncating
+	// already-styled strings via stripANSI drops the m.styles.mutedColor color and falls
+	// back to the terminal default foreground when the width changes.
+	hintsPlain := m.renderHints(items)
+	if dim != DimWide || m.forceDim != DimAuto {
+		tag := "[" + dim.String() + "]"
+		if m.forceDim != DimAuto {
+			tag = "[dim:" + dim.String() + "]"
+		}
+		hintsPlain = tag + " " + hintsPlain
+	}
+
+	var rightPlain string
+	var rightStyle lipgloss.Style
+	switch {
+	// User-facing action feedback takes priority over layout/debug overrides
+	// (e.g. visual overflow), so keys like 'a' still surface "Select a
+	// collection first" in the status bar.
+	case m.statusSuccess != "":
+		rightPlain = "  ✓ " + m.statusSuccess
+		rightStyle = m.styles.goodStyle
+	case m.statusErr != "":
+		rightPlain = "  ✗ " + m.statusErr
+		rightStyle = m.styles.errorStyle
+	case statusOverride != "":
+		rightPlain = "  ✗ " + statusOverride
+		rightStyle = m.styles.errorStyle
+	case m.err != nil:
+		rightPlain = "  ✗ " + m.err.Error()
+		rightStyle = m.styles.errorStyle
+	case m.tmuxDetected && m.showTmuxWarning:
+		// BUG-010: only show tmux warning briefly (first N renders), not permanently.
+		rightPlain = "  ⚠ tmux: Ctrl+w intercepted — use " + m.renderHintKeys(
+			[]string{
+				keybindings.ActionFocusSidebar,
+				keybindings.ActionFocusRequest,
+				keybindings.ActionFocusResponse,
+			},
+			false,
+		) + " for panes"
+		rightStyle = m.styles.warnStyle
+	case m.updateStatus != "":
+		rightPlain = "  " + m.updateStatus
+		rightStyle = m.styles.mutedStyle
+	}
+
+	if rightPlain == "" {
+		if m.width <= 0 {
+			return m.styles.statusStyle.Render(hintsPlain)
+		}
+		return m.styles.statusStyle.Render(truncate(hintsPlain, m.width))
+	}
+
+	if m.width <= 0 {
+		return m.styles.statusStyle.Render(hintsPlain) + " " + rightStyle.Render(rightPlain)
+	}
+
+	rightW := lipgloss.Width(rightPlain)
+	// Prefer the status/error message over hints when crowded.
+	if rightW >= m.width {
+		return rightStyle.Render(truncate(rightPlain, m.width))
+	}
+
+	// Right-align the status message when there's room.
+	gap := m.width - lipgloss.Width(hintsPlain) - rightW
+	if gap >= 1 {
+		return m.styles.statusStyle.Render(
+			hintsPlain,
+		) + strings.Repeat(
+			" ",
+			gap,
+		) + rightStyle.Render(
+			rightPlain,
+		)
+	}
+
+	avail := m.width - rightW
+	if avail < 1 {
+		return rightStyle.Render(rightPlain)
+	}
+	return m.styles.statusStyle.Render(truncate(hintsPlain, avail)) + rightStyle.Render(rightPlain)
+}
+
+// --- Search modal ---
+
+func (m Model) searchModalHeight() int {
+	// Never exceed the terminal: lipgloss.Place will grow the frame if the
+	// child is taller than the target area.
+	return max(1, m.height-4)
+}
+
+func (m Model) searchVisibleRows() int {
+	// title+blank, input+blank, scroll indicators, bottom hint, border+padding
+	overhead := 2 + 2 + 2 + 2 + 4
+	visible := m.searchModalHeight() - overhead
+	if visible < 1 {
+		visible = 1
+	}
+	return visible
+}
+
+func (m Model) ensureSearchCursorVisible() Model {
+	rows, selectedRow := m.buildSearchRows(m.searchResults, m.searchCursor)
+	m.searchScroll = adjustListViewport(listViewport{
+		Scroll:      m.searchScroll,
+		SelectedRow: selectedRow,
+		TotalRows:   len(rows),
+		VisibleRows: m.searchVisibleRows(),
+	})
+	return m
+}
+
+func (m Model) ensureCommandCursorVisible() Model {
+	m.searchScroll = adjustListViewport(listViewport{
+		Scroll: m.searchScroll, SelectedRow: m.searchCursor,
+		TotalRows: len(m.commands), VisibleRows: m.searchVisibleRows(),
+	})
+	return m
+}
+
+func (m Model) searchModalWidth() int {
+	return m.twoThirdsModalWidth()
+}
+
+// twoThirdsModalWidth returns (2/3)*width capped at modalMaxWidth.
+func (m Model) twoThirdsModalWidth() int {
+	w := m.width * 2 / 3
+	maxW := m.modalMaxWidth()
+	if w > maxW {
+		w = maxW
+	}
+	if w < 1 {
+		w = 1
+	}
+	return w
+}
+
+func (m Model) viewSearchModal() string {
+	var sb strings.Builder
+	if m.isCommandPalette() {
+		sb.WriteString(m.styles.titleStyle.Render("Command palette") + "\n\n")
+	} else {
+		sb.WriteString(m.styles.titleStyle.Render("Search all requests") + "\n\n")
+	}
+	sb.WriteString(m.searchInput.View() + "\n\n")
+	query := strings.TrimSpace(m.searchInput.Value())
+
+	switch {
+	case m.isCommandPalette():
+		if len(m.commands) == 0 {
+			sb.WriteString(m.styles.mutedStyle.Render("  No commands."))
+		} else {
+			visible := m.searchVisibleRows()
+			start := min(m.searchScroll, max(0, len(m.commands)-visible))
+			end := min(len(m.commands), start+visible)
+			if start > 0 {
+				sb.WriteString(m.styles.mutedStyle.Render("  ↑ more above") + "\n")
+			}
+			for i := start; i < end; i++ {
+				item := m.commands[i]
+				cursor := "  "
+				line := item.Title
+				if i == m.searchCursor {
+					cursor = "▸ "
+					line = lipgloss.NewStyle().Foreground(m.styles.accent).Bold(true).Render(line)
+				}
+				sb.WriteString(cursor + line + m.styles.mutedStyle.Render("  "+item.Action) + "\n")
+			}
+			if end < len(m.commands) {
+				sb.WriteString(m.styles.mutedStyle.Render("  ↓ more below") + "\n")
+			}
+		}
+	case len(m.searchResults) == 0:
+		// BUG-008: distinguish "not yet searched" from "searched and found nothing".
+		if !m.searched {
+			sb.WriteString(m.styles.mutedStyle.Render("  Type to search requests…  > for commands"))
+		} else {
+			sb.WriteString(m.styles.mutedStyle.Render("  No requests found.  > for commands"))
+		}
+	default:
+		rows, selectedRow := m.buildSearchRows(m.searchResults, m.searchCursor)
+		visible := m.searchVisibleRows()
+		start := min(m.searchScroll, max(0, len(rows)-visible))
+		end := min(len(rows), start+visible)
+		contentWidth := max(1, m.searchModalWidth()-6)
+		if start > 0 {
+			sb.WriteString(m.styles.mutedStyle.Render("  ↑ more above") + "\n")
+		}
+		for i := start; i < end; i++ {
+			row := rows[i]
+			switch row.kind {
+			case searchSpacerRow:
+				sb.WriteString("\n")
+			case searchGroupRow:
+				sb.WriteString(
+					lipgloss.NewStyle().
+						Bold(true).
+						Foreground(m.styles.warning).
+						Render(row.group) +
+						"\n",
+				)
+			case searchRequestRow:
+				hit := row.hit
+				cursor := "  "
+				if i == selectedRow {
+					cursor = "▸ "
+				}
+				prefix := cursor + m.methodBadge(hit.Request.Method) + " "
+				line := prefix + m.renderSearchHit(
+					hit,
+					query,
+					max(1, contentWidth-lipgloss.Width(prefix)),
+				)
+				if i == selectedRow {
+					line = lipgloss.NewStyle().Foreground(m.styles.accent).Bold(true).Render(line)
+				}
+				sb.WriteString(line + "\n")
+			}
+		}
+		if end < len(rows) {
+			sb.WriteString(m.styles.mutedStyle.Render("  ↓ more below") + "\n")
+		}
+	}
+
+	sb.WriteString("\n" + m.styles.mutedStyle.Render(m.renderHints([]hintItem{
+		{Label: "select", Actions: []string{"search_select"}},
+		{Label: helpLabelClose, Actions: []string{"search_cancel"}},
+		{Label: "navigate", Actions: []string{"search_up", "search_down"}},
+	})))
+
+	box := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(m.styles.accent).
+		Padding(1, 2).
+		Width(m.searchModalWidth()).
+		Height(m.searchModalHeight()).
+		Render(sb.String())
+
+	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box)
+}
+
+func (m Model) viewScheduleModal() string {
+	var sb strings.Builder
+	sb.WriteString(m.styles.titleStyle.Render("Schedule request") + "\n\n")
+	if m.activeRequest != nil {
+		sb.WriteString(m.styles.mutedStyle.Render(m.activeRequest.Name) + "\n\n")
+	}
+	sb.WriteString(m.scheduleInput.View() + "\n\n")
+	sb.WriteString(m.styles.mutedStyle.Render("Examples: 10m, in 1h, 2026-06-25 18:30") + "\n\n")
+	sb.WriteString(m.styles.mutedStyle.Render(m.renderHints([]hintItem{
+		{Label: "save", Actions: []string{"import_confirm"}},
+		{Label: helpLabelClose, Actions: []string{keybindings.ActionImportCancel}},
+	})))
+
+	box := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(m.styles.accent).
+		Padding(1, 2).
+		Width(m.twoThirdsModalWidth()).
+		Height(10).
+		Render(sb.String())
+
+	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box)
+}
+
+func (m Model) viewPostmanImportModal() string {
+	var sb strings.Builder
+	sb.WriteString(m.styles.titleStyle.Render("Import Postman collection") + "\n\n")
+	sb.WriteString("Collection file or export directory:\n")
+	sb.WriteString(m.postmanPath.View() + "\n\n")
+	sb.WriteString(
+		m.styles.mutedStyle.Render(
+			"Existing collection names are kept by creating a numbered copy.",
+		) + "\n",
+	)
+	if m.postmanOutput != "" {
+		width := max(20, m.twoThirdsModalWidth()-8)
+		output := clipToRows(stripANSI(m.postmanOutput), width, 5)
+		sb.WriteString("\n" + output + "\n")
+	}
+	if m.postmanBusy {
+		sb.WriteString("\n" + m.styles.mutedStyle.Render("Importing…"))
+	} else {
+		sb.WriteString("\n" + m.styles.mutedStyle.Render("[Enter] import  [Esc] cancel"))
+	}
+	box := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(m.styles.accent).
+		Padding(1, 2).
+		Width(m.twoThirdsModalWidth()).
+		Height(12).
+		Render(sb.String())
+	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box)
+}
+
+func (m Model) renderSearchHit(hit *search.SearchHit, query string, maxWidth int) string {
+	if hit == nil || hit.Request == nil {
+		return ""
+	}
+
+	collectionName := m.collectionNameForSearchHit(hit)
+	name := hit.Request.Name
+	if collectionName != "" {
+		name = collectionName + "/" + name
+	}
+
+	nameStyle := lipgloss.NewStyle().Foreground(m.styles.foreground)
+	urlStyle := m.styles.mutedStyle
+	matchStyle := lipgloss.NewStyle().Bold(true).Foreground(m.styles.match)
+
+	if maxWidth <= 0 {
+		return ""
+	}
+
+	if strings.TrimSpace(hit.Request.URL) == "" {
+		return highlightSearchMatch(truncate(name, maxWidth), query, nameStyle, matchStyle)
+	}
+
+	if lipgloss.Width(name) >= maxWidth {
+		return highlightSearchMatch(truncate(name, maxWidth), query, nameStyle, matchStyle)
+	}
+
+	remaining := maxWidth - lipgloss.Width(name) - 1
+	if remaining <= 0 {
+		return highlightSearchMatch(truncate(name, maxWidth), query, nameStyle, matchStyle)
+	}
+
+	urlSegment := "(" + hit.Request.URL + ")"
+	truncatedURL := truncate(urlSegment, remaining)
+	renderedName := highlightSearchMatch(name, query, nameStyle, matchStyle)
+	renderedURL := highlightSearchMatch(truncatedURL, query, urlStyle, matchStyle)
+	return renderedName + " " + renderedURL
+}
+
+func (m Model) collectionNameForSearchHit(hit *search.SearchHit) string {
+	if hit == nil {
+		return ""
+	}
+	if hit.Collection != nil && strings.TrimSpace(hit.Collection.Name) != "" {
+		return hit.Collection.Name
+	}
+	request := hit.Request
+	if request == nil || request.CollectionID == "" {
+		return ""
+	}
+	for _, col := range m.collections {
+		if col != nil && col.ID == request.CollectionID {
+			return col.Name
+		}
+	}
+	return ""
+}
+
+func highlightSearchMatch(text, query string, base, match lipgloss.Style) string {
+	if text == "" {
+		return ""
+	}
+	if strings.TrimSpace(query) == "" {
+		return base.Render(text)
+	}
+
+	lowerText := strings.ToLower(text)
+	lowerQuery := strings.ToLower(strings.TrimSpace(query))
+	if lowerQuery == "" {
+		return base.Render(text)
+	}
+
+	var sb strings.Builder
+	start := 0
+	for {
+		idx := strings.Index(lowerText[start:], lowerQuery)
+		if idx < 0 {
+			sb.WriteString(base.Render(text[start:]))
+			break
+		}
+		idx += start
+		end := idx + len(lowerQuery)
+		if idx > start {
+			sb.WriteString(base.Render(text[start:idx]))
+		}
+		sb.WriteString(match.Render(text[idx:end]))
+		start = end
+	}
+	return sb.String()
+}
+
+// --- Help overlay ---
+
+func (m Model) viewHelp() string {
+	entries := keybindings.ListEntries(m.cfg.Keybindings)
+	if m.helpSearch {
+		entries = filterKeybindingEntries(entries, m.searchInput.Value())
+	}
+	rows, selectedRow := buildHelpRows(entries, m.helpCursor)
+
+	// --- Height budget ---
+	//
+	// We reserve a 2-row margin on top and bottom of the screen.
+	// Inside the box: border(2) + padding(2) = 4 rows are consumed by lipgloss.
+	//   title(2) + blank line after title
+	//   scroll indicators (up to 2, conditional)
+	//   bottom hint (2: leading \n + hint line)
+	//   optional recording prompt(2) + error banner(2)
+	//
+	// boxHeight is the total outer height of the box (including border+padding).
+	// maxLines is the number of content lines (entries + group headers) the
+	// for-loop is allowed to render.
+	boxHeight := m.height - 4 // 2-row margin top + bottom
+	if boxHeight < 1 {
+		boxHeight = 1
+	}
+	// Do not force a minimum taller than the terminal — Place would overflow.
+	// Everything except the entry-list content:
+	overhead := 2 /*title+blank*/ + 2 /*indicators*/ + 2 /*bottom hint*/ + 4 /*border+padding*/
+	if m.helpSearch {
+		overhead += 2 /*search input*/
+	}
+	if m.helpEditState == helpRecording {
+		overhead += 2
+	}
+	if m.helpEditState == helpError {
+		overhead += 2
+	}
+	maxLines := boxHeight - overhead
+	if maxLines < 3 {
+		maxLines = 3
+	}
+
+	// Debug: log scroll state so we can verify behaviour at runtime.
+	if m.debugLog != nil {
+		fmt.Fprintf(
+			m.debugLog,
+			"[viewHelp] height=%d boxHeight=%d maxLines=%d scrollOffset=%d cursor=%d selectedRow=%d rows=%d entries=%d\n",
+			m.height,
+			boxHeight,
+			maxLines,
+			m.helpScrollOffset,
+			m.helpCursor,
+			selectedRow,
+			len(rows),
+			len(entries),
+		)
+	}
+
+	var sb strings.Builder
+	sb.WriteString(m.styles.titleStyle.Render("Keyboard Reference") + "\n\n")
+	if m.helpSearch {
+		sb.WriteString(m.searchInput.View() + "\n\n")
+	}
+
+	if m.helpEditState == helpConfirmResetAll {
+		diffs := helpResetAllDiffs(m.cfg.Keybindings)
+		sb.WriteString(m.styles.warnStyle.Render("  Reset all keybindings to defaults?") + "\n\n")
+		sb.WriteString(
+			m.styles.mutedStyle.Render(
+				"  The following custom bindings will be updated to their default values:",
+			) + "\n",
+		)
+		for _, diff := range diffs {
+			sb.WriteString("  - " + diff + "\n")
+		}
+		sb.WriteString("\n" + m.styles.mutedStyle.Render(
+			fmt.Sprintf(
+				"  [%s] confirm  [%s] cancel",
+				keybindings.FormatKey("enter"),
+				keybindings.FormatKey(keybindings.GetAction(m.cfg.Keybindings, actionHelpClose)),
+			),
+		))
+
+		box := lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(m.styles.accent).
+			Padding(1, 2).
+			Width(m.twoThirdsModalWidth()).
+			Height(boxHeight).
+			Render(sb.String())
+
+		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box)
+	}
+
+	// Top scroll indicator — placed right after the title so the user sees
+	// it before the entry list, not at the bottom.
+	if m.helpScrollOffset > 0 {
+		sb.WriteString(m.styles.mutedStyle.Render("  ↑ more above") + "\n")
+	}
+
+	start := min(m.helpScrollOffset, max(0, len(rows)-maxLines))
+	end := min(len(rows), start+maxLines)
+	if len(rows) == 0 {
+		sb.WriteString(m.styles.mutedStyle.Render("  No keybindings match.") + "\n")
+	}
+	for i := start; i < end; i++ {
+		row := rows[i]
+		switch row.kind {
+		case helpSpacerRow:
+			sb.WriteString("\n")
+		case helpGroupRow:
+			sb.WriteString(
+				lipgloss.NewStyle().
+					Bold(true).
+					Foreground(m.styles.warning).
+					Render(row.group) +
+					"\n",
+			)
+		case helpBindingRow:
+			cursor := "  "
+			if i == selectedRow {
+				cursor = "▸ "
+			}
+			key := row.entry.Key
+			if key == "" {
+				key = m.styles.mutedStyle.Render("(unbound)")
+			} else {
+				key = lipgloss.NewStyle().Foreground(m.styles.info).Render(key)
+			}
+			line := fmt.Sprintf("%s%-20s %s", cursor, helpActionLabel(row.entry.Action), key)
+			if i == selectedRow {
+				line = lipgloss.NewStyle().Bold(true).Render(line)
+			}
+			sb.WriteString(line + "\n")
+		}
+	}
+
+	// Bottom scroll indicator.
+	if end < len(rows) {
+		sb.WriteString(m.styles.mutedStyle.Render("  ↓ more below") + "\n")
+	}
+
+	// Recording prompt.
+	if m.helpEditState == helpRecording {
+		sb.WriteString(
+			"\n" + m.styles.warnStyle.Render("  Press key to bind, "+m.renderHints([]hintItem{
+				{Label: helpLabelCancel, Actions: []string{actionHelpClose}},
+				{Label: "unbind", Actions: []string{"help_unbind"}},
+			})) + "\n",
+		)
+	}
+
+	// Error banner.
+	if m.helpEditState == helpError && m.helpEditErrMsg != "" {
+		sb.WriteString("\n" + m.styles.errorStyle.Render("  ✗ "+m.helpEditErrMsg) + "\n")
+	}
+
+	// Bottom hint.
+	if m.helpEditState == helpViewing {
+		hints := []hintItem{
+			{Label: "navigate", Actions: []string{"help_up", "help_down"}},
+			{Label: "edit", Actions: []string{"help_edit"}},
+			{Label: "reset one", Actions: []string{"help_reset"}},
+			{Label: "reset all", Actions: []string{"help_reset_all"}},
+		}
+		if m.helpSearch {
+			hints = append(
+				hints,
+				hintItem{Label: helpLabelClose, Actions: []string{actionHelpClose}},
+			)
+		} else {
+			hints = append(hints,
+				hintItem{Label: "search", Actions: []string{"search"}},
+				hintItem{Label: helpLabelClose, Actions: []string{actionHelpClose}},
+			)
+		}
+		sb.WriteString("\n" + m.styles.mutedStyle.Render("  "+m.renderHints(hints)))
+	}
+
+	box := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(m.styles.accent).
+		Padding(1, 2).
+		Width(m.twoThirdsModalWidth()).
+		Height(boxHeight).
+		Render(sb.String())
+
+	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box)
+}
+
+// --- Import modal ---
+
+func (m Model) viewImportModal() string {
+	var sb strings.Builder
+	sb.WriteString(m.styles.titleStyle.Render("Import curl command") + "\n\n")
+	innerW := max(20, min(m.width-8, 96)-4)
+	if m.importPreview == nil {
+		sb.WriteString(
+			m.styles.mutedStyle.Render(
+				"Paste the complete command below. Enter inserts a newline.",
+			) + "\n\n",
+		)
+		sb.WriteString(m.importInput.View() + "\n")
+		if m.importError != "" {
+			sb.WriteString("\n" + m.styles.errorStyle.Render("✗ "+stripANSI(m.importError)) + "\n")
+		}
+		sb.WriteString(
+			"\n" + m.styles.mutedStyle.Render(
+				"Ctrl+V: read clipboard   Ctrl+S: parse   Esc: cancel",
+			),
+		)
+		box := lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(m.styles.accent).
+			Padding(1, 2).
+			Width(min(m.width-4, 104)).
+			Render(sb.String())
+		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box)
+	}
+
+	p := m.importPreview
+	secColor := m.styles.goodStyle
+	switch p.Security {
+	case 1: // Review
+		secColor = m.styles.warnStyle
+	case 2: // Dangerous
+		secColor = m.styles.errorStyle
+	}
+	fmt.Fprintf(&sb, "Method:   %s\n", m.styles.methodStyle.Render(p.Method))
+	fmt.Fprintf(
+		&sb,
+		"URL:      %s\n",
+		lipgloss.NewStyle().
+			Foreground(m.styles.foreground).
+			Render(truncate(p.URL, max(1, innerW-10))),
+	)
+	if len(p.Headers) > 0 {
+		sb.WriteString("Headers:\n")
+		keys := sortedHeaderKeys(p.Headers)
+		for _, key := range keys {
+			for _, headerValue := range p.Headers.Values(key) {
+				if isCredentialHeader(key) {
+					headerValue = "[REDACTED]"
+				}
+				fmt.Fprintf(&sb, "  %s\n", truncate(key+": "+headerValue, innerW))
+			}
+		}
+	}
+	if p.Body != "" {
+		body := stripANSI(p.Body)
+		if len(body) > 500 {
+			body = body[:500] + "…"
+		}
+		fmt.Fprintf(&sb, "Body (%d bytes):\n%s\n", len(p.Body), clipToRows(body, innerW, 6))
+	}
+	if p.Certificate != nil {
+		fmt.Fprintf(
+			&sb,
+			"mTLS:     %s %s\n",
+			p.Certificate.Type,
+			truncate(p.Certificate.File, max(1, innerW-12)),
+		)
+		if p.Certificate.KeyFile != "" {
+			fmt.Fprintf(&sb, "Key:      %s\n", truncate(p.Certificate.KeyFile, max(1, innerW-12)))
+		}
+		if p.Certificate.CAFile != "" {
+			fmt.Fprintf(&sb, "CA:       %s\n", truncate(p.Certificate.CAFile, max(1, innerW-12)))
+		}
+	}
+	fmt.Fprintf(&sb, "Security: %s\n", secColor.Render(p.Security.String()))
+	for _, w := range p.Warnings {
+		sb.WriteString(m.styles.warnStyle.Render("⚠ "+w) + "\n")
+	}
+	sb.WriteString("\n")
+	sb.WriteString("Save as: " + m.importName.View() + "\n\n")
+	if m.importError != "" {
+		sb.WriteString(m.styles.errorStyle.Render("✗ "+stripANSI(m.importError)) + "\n")
+	}
+	sb.WriteString(m.styles.mutedStyle.Render(m.renderHints([]hintItem{
+		{Label: "import", Actions: []string{"import_confirm"}},
+		{Label: helpLabelCancel, Actions: []string{keybindings.ActionImportCancel}},
+	})) + "   e: edit command")
+
+	box := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(m.styles.accent).
+		Padding(1, 2).
+		Width(min(m.width-4, 104)). //nolint:predeclared // uses Go 1.21 built-in min
+		Render(sb.String())
+
+	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box)
+}
+
+// --- Helpers ---
+
+func (m Model) renderHints(items []hintItem) string {
+	parts := make([]string, 0, len(items))
+	for _, item := range items {
+		hint := m.renderHint(item)
+		if hint == "" {
+			continue
+		}
+		parts = append(parts, hint)
+	}
+	return strings.Join(parts, "  ")
+}
+
+func (m Model) renderHint(item hintItem) string {
+	keys := m.hintKeys(item.Actions, item.IncludeAliases)
+	if len(keys) == 0 {
+		return ""
+	}
+	return fmt.Sprintf("[%s] %s", strings.Join(keys, "/"), item.Label)
+}
+
+func (m Model) renderHintKeys(actions []string, includeAliases bool) string {
+	keys := m.hintKeys(actions, includeAliases)
+	if len(keys) == 0 {
+		return ""
+	}
+	return fmt.Sprintf("[%s]", strings.Join(keys, "/"))
+}
+
+func (m Model) hintKeys(actions []string, includeAliases bool) []string {
+	keys := make([]string, 0, len(actions))
+	for i, action := range actions {
+		showAliases := includeAliases && i == 0 && len(actions) == 1
+		for _, key := range keybindings.HintKeys(m.cfg.Keybindings, action, showAliases) {
+			keys = append(keys, keybindings.FormatKey(key))
+		}
+	}
+	return dedupeHintKeys(keys)
+}
+
+func dedupeHintKeys(keys []string) []string {
+	seen := make(map[string]struct{}, len(keys))
+	out := make([]string, 0, len(keys))
+	for _, key := range keys {
+		if key == "" {
+			continue
+		}
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, key)
+	}
+	return out
+}
+
+func helpActionLabel(action string) string {
+	if label, ok := helpActionLabels[action]; ok {
+		return label
+	}
+	return strings.ReplaceAll(action, "_", " ")
+}
+
+func (m Model) methodBadge(method string) string {
+	color := m.styles.mutedStyle
+	switch method {
+	case "GET":
+		color = lipgloss.NewStyle().Foreground(m.styles.get)
+	case "POST":
+		color = lipgloss.NewStyle().Foreground(m.styles.post)
+	case "PUT", "PATCH":
+		color = lipgloss.NewStyle().Foreground(m.styles.put)
+	case "DELETE":
+		color = lipgloss.NewStyle().Foreground(m.styles.delete)
+	}
+	return color.Render(method)
+}
+
+// lineVisualRows returns how many terminal rows one logical line occupies when
+// wrapped at contentWidth.
+func lineVisualRows(line string, contentWidth int) int {
+	return lipgloss.Height(softWrap(line, contentWidth))
+}
+
+// truncateLineToVisualRows returns the longest prefix of line that fits within
+// maxVisualRows when wrapped at contentWidth.
+func truncateLineToVisualRows(line string, contentWidth, maxVisualRows int) string {
+	if maxVisualRows <= 0 {
+		return ""
+	}
+	if lineVisualRows(line, contentWidth) <= maxVisualRows {
+		return line
+	}
+	runes := []rune(line)
+	lo, hi := 0, len(runes)
+	for lo < hi {
+		mid := (lo + hi + 1) / 2
+		if lineVisualRows(string(runes[:mid]), contentWidth) <= maxVisualRows {
+			lo = mid
+		} else {
+			hi = mid - 1
+		}
+	}
+	if lo == 0 {
+		return ""
+	}
+	return string(runes[:lo])
+}
+
+// limitLines clips content to fit within maxRows VISUAL rows.
+// It accounts for line wrapping: a logical line wider than contentWidth
+// occupies ceil(lineWidth/contentWidth) visual rows.
+// A truncation notice is appended when content is clipped.
+func limitLines(s string, contentWidth, maxRows int) string {
+	if contentWidth <= 0 || maxRows <= 0 {
+		return ""
+	}
+	rowsFor := func(line string) int {
+		return lineVisualRows(line, contentWidth)
+	}
+
+	lines := strings.Split(s, "\n")
+	var kept []string
+	used := 0
+	for i, line := range lines {
+		rows := rowsFor(line)
+		if used+rows > maxRows {
+			hidden := len(lines) - i
+			// The truncation notice occupies rows too, so it must fit within
+			// maxRows. Drop already-kept lines until there's room, otherwise the
+			// pane renders one row taller than its budget and shoves the whole
+			// app up by a line (the top row scrolls off-screen).
+			notice := func() string { return fmt.Sprintf("  … %d more lines", hidden) }
+			for len(kept) > 0 && used+rowsFor(notice()) > maxRows {
+				dropped := kept[len(kept)-1]
+				kept = kept[:len(kept)-1]
+				used -= rowsFor(dropped)
+				hidden++
+			}
+			if hidden > 0 {
+				n := notice()
+				// On very small panes even the bare notice can wrap past the
+				// budget; fall back to a single-column marker so we never
+				// overflow maxRows.
+				if used+rowsFor(n) > maxRows {
+					n = "…"
+				}
+				noticeRows := rowsFor(n)
+				lineBudget := maxRows - used - noticeRows
+				if lineBudget > 0 && rows > lineBudget {
+					if partial := truncateLineToVisualRows(
+						line,
+						contentWidth,
+						lineBudget,
+					); partial != "" {
+						kept = append(kept, partial)
+					}
+				}
+				kept = append(kept, n)
+			}
+			break
+		}
+		kept = append(kept, line)
+		used += rows
+	}
+	return strings.Join(kept, "\n")
+}
+
+// softWrap re-wraps s exactly the way lipgloss does when rendering with a fixed
+// content width. We must use lipgloss' own wrapping (word-aware, not a simple
+// ceil(width/contentWidth) estimate) so our row math matches what actually gets
+// displayed — a long line containing spaces word-wraps to MORE rows than the
+// naive char-based estimate, which is what caused the response pane to spill one
+// row past its budget and scroll the top of the app off-screen.
+func softWrap(s string, contentWidth int) string {
+	if contentWidth <= 0 {
+		return s
+	}
+	return lipgloss.NewStyle().Width(contentWidth).Render(s)
+}
+
+// clipToRows hard-truncates content to at most maxRows visual rows. It pre-wraps
+// with lipgloss so the returned string is already broken into physical lines no
+// wider than contentWidth; a subsequent border render at >= contentWidth cannot
+// re-wrap it, which guarantees the pane never exceeds maxRows rows. This is the
+// final safety clamp that keeps a huge response body from pushing the whole app
+// past the terminal height.
+func clipToRows(s string, contentWidth, maxRows int) string {
+	if maxRows <= 0 || contentWidth <= 0 {
+		return ""
+	}
+	wrapped := softWrap(s, contentWidth)
+	lines := strings.Split(wrapped, "\n")
+	if len(lines) <= maxRows {
+		return wrapped
+	}
+	return strings.Join(lines[:maxRows], "\n")
+}
+
+func visualRows(s string, contentWidth int) int {
+	if s == "" || contentWidth <= 0 {
+		return 0
+	}
+	return lipgloss.Height(softWrap(s, contentWidth))
+}
+
+// truncate shortens s to at most maxCols terminal display columns, appending
+// "…" when clipped. Uses lipgloss.Width so double-width runes (CJK, emoji)
+// count correctly — unlike a byte-length cut.
+func truncate(s string, maxCols int) string {
+	if maxCols <= 0 {
+		return ""
+	}
+	if lipgloss.Width(s) <= maxCols {
+		return s
+	}
+	if maxCols <= 3 {
+		var b strings.Builder
+		width := 0
+		for _, r := range s {
+			rw := lipgloss.Width(string(r))
+			if width+rw > maxCols {
+				break
+			}
+			b.WriteRune(r)
+			width += rw
+		}
+		return b.String()
+	}
+	budget := maxCols - lipgloss.Width("…")
+	if budget < 1 {
+		return "…"
+	}
+	var b strings.Builder
+	width := 0
+	for _, r := range s {
+		rw := lipgloss.Width(string(r))
+		if width+rw > budget {
+			break
+		}
+		b.WriteRune(r)
+		width += rw
+	}
+	b.WriteString("…")
+	return b.String()
+}
+
+// cleanError strips verbose Go error-chain prefixes so only the human-readable
+// tail is shown to the user (e.g. "exec: build request: invalid URL: foo" → "invalid URL: foo").
+func cleanError(msg string) string {
+	// Strip known internal prefixes.
+	prefixes := []string{
+		"exec: build request: ",
+		"exec: ",
+		"build request: ",
+	}
+	for _, p := range prefixes {
+		msg = strings.TrimPrefix(msg, p)
+	}
+	return msg
+}
+
+// isCredentialHeader reports whether a header key holds sensitive credentials.
+func isCredentialHeader(key string) bool {
+	lower := strings.ToLower(key)
+	switch lower {
+	case "authorization", "cookie", "x-api-key", "x-auth-token", "api-key":
+		return true
+	}
+	return false
+}
+
+// --- Env modal ---
+
+func (m Model) envModalHeight() int {
+	boxHeight := max(1, m.height-4)
+	return boxHeight
+}
+
+// modalMaxWidth is the largest modal width that still fits in the terminal
+// (accounting for a small margin). Never forces a width larger than the screen.
+func (m Model) modalMaxWidth() int {
+	return max(1, m.width-4)
+}
+
+func (m Model) envModalWidth() int {
+	maxWidth := m.modalMaxWidth()
+	width := m.width * 4 / 5
+	if width < 70 && maxWidth >= 70 {
+		width = 70
+	}
+	if width > maxWidth {
+		width = maxWidth
+	}
+	if width < 1 {
+		width = 1
+	}
+	return width
+}
+
+func (m Model) envVisibleRows() int {
+	// title+blank, tabs+blank, scroll indicators, bottom hints, border+padding
+	overhead := 2 + 2 + 2 + 2 + 4
+	if m.envEditor.editing {
+		overhead += 5
+	}
+	if m.envEditor.saveErr != "" {
+		overhead += 2
+	}
+	visible := m.envModalHeight() - overhead
+	if visible < 1 {
+		visible = 1
+	}
+	return visible
+}
+
+func (m Model) viewEnvModal() string {
+	if !m.envEditor.active {
+		return ""
+	}
+
+	var sb strings.Builder
+	sb.WriteString(m.styles.titleStyle.Render("Environment Variables") + "\n\n")
+
+	// Tabs use a one-line viewport. Large inherited hierarchies can contain
+	// hundreds of tabs; allowing the full list to soft-wrap makes the modal
+	// taller than the terminal. Hidden tabs remain reachable with tab-prev/next.
+	sb.WriteString(m.renderEnvTabViewport(
+		m.envEditor.tabs,
+		m.envEditor.tabIdx,
+		max(1, m.envModalWidth()-4),
+	) + "\n\n")
+
+	// Variables.
+	if len(m.envEditor.vars) == 0 {
+		emptyMessage := "  No variables. Press " + m.renderHintKeys(
+			[]string{"env_add"},
+			false,
+		) + " to add."
+		if m.currentEnvTabReadOnly() {
+			emptyMessage = "  No variables in this read-only environment."
+		}
+		sb.WriteString(m.styles.mutedStyle.Render(emptyMessage) + "\n")
+	} else {
+		rows, selectedRow := buildEnvVarRows(m.envEditor.vars, m.envEditor.varCursor)
+		visible := m.envVisibleRows()
+		start := min(m.envEditor.scroll, max(0, len(rows)-visible))
+		end := min(len(rows), start+visible)
+		if start > 0 {
+			sb.WriteString(m.styles.mutedStyle.Render("  ↑ more above") + "\n")
+		}
+		for i := start; i < end; i++ {
+			v := rows[i].variable
+			cursor := "  "
+			if i == selectedRow {
+				cursor = "▸ "
+			}
+			unsaved := ""
+			if !v.Saved {
+				unsaved = "*"
+			}
+			plain := truncate(cursor+v.Key+unsaved+" = "+v.Value, max(1, m.envModalWidth()-4))
+			var line string
+			if i == selectedRow {
+				line = lipgloss.NewStyle().Bold(true).Render(plain)
+			} else {
+				line = lipgloss.NewStyle().Foreground(m.styles.info).Render(plain)
+			}
+			sb.WriteString(line + "\n")
+		}
+		if end < len(rows) {
+			sb.WriteString(m.styles.mutedStyle.Render("  ↓ more below") + "\n")
+		}
+	}
+
+	// Editing sub-mode.
+	if m.envEditor.editing {
+		sb.WriteString("\n")
+		sb.WriteString("Key:   " + m.envEditor.editKey.View() + "\n")
+		sb.WriteString("Value: " + m.envEditor.editVal.View() + "\n")
+		sb.WriteString("\n" + m.styles.mutedStyle.Render("  "+m.renderHints([]hintItem{
+			{Label: "switch", Actions: []string{"env_edit_switch_field"}},
+			{Label: helpLabelConfirm, Actions: []string{"env_edit_confirm"}},
+			{Label: helpLabelCancel, Actions: []string{"env_cancel"}},
+		})) + "\n")
+	}
+
+	// Save error.
+	if m.envEditor.saveErr != "" {
+		sb.WriteString("\n" + m.styles.errorStyle.Render("✗ "+m.envEditor.saveErr) + "\n")
+	}
+
+	// Hints.
+	sb.WriteString("\n" + m.styles.mutedStyle.Render(m.renderHints([]hintItem{
+		{Label: "tabs", Actions: []string{"env_tab_prev", "env_tab_next"}},
+		{Label: "nav", Actions: []string{"env_up", "env_down"}},
+		{Label: "add var", Actions: []string{"env_add"}},
+		{Label: "new env", Actions: []string{"env_create"}},
+		{Label: "edit", Actions: []string{"env_edit"}},
+		{Label: deleteToken, Actions: []string{"env_delete"}},
+		{Label: "save", Actions: []string{"env_save"}},
+		{Label: helpLabelClose, Actions: []string{"env_cancel"}},
+	})))
+
+	content := clipToRows(
+		sb.String(),
+		max(1, m.envModalWidth()-4), // horizontal padding consumes two columns per side
+		max(1, m.envModalHeight()),
+	)
+	box := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(m.styles.accent).
+		Padding(1, 2).
+		Width(m.envModalWidth()).
+		Height(m.envModalHeight()).
+		Render(content)
+
+	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box)
+}
+
+func (m Model) renderEnvTabViewport(tabs []envTab, activeIndex, maxWidth int) string {
+	if len(tabs) == 0 || maxWidth <= 0 {
+		return ""
+	}
+	activeIndex = max(0, min(activeIndex, len(tabs)-1))
+	// Leave room for the two-space indent and both overflow markers. Each label
+	// includes its brackets in this display-width budget.
+	labelWidth := min(34, max(3, maxWidth-10))
+	labels := make([]string, len(tabs))
+	for i, tab := range tabs {
+		text := envTabLabel(tab)
+		if tab.ReadOnly {
+			text += " (read-only)"
+		}
+		labels[i] = "[" + truncate(text, max(1, labelWidth-2)) + "]"
+	}
+
+	rowWidth := func(start, end int) int {
+		parts := end - start
+		width := 2 // indent
+		if start > 0 {
+			parts++
+			width++ // left ellipsis
+		}
+		if end < len(labels) {
+			parts++
+			width++ // right ellipsis
+		}
+		for _, label := range labels[start:end] {
+			width += lipgloss.Width(label)
+		}
+		if parts > 1 {
+			width += (parts - 1) * 2
+		}
+		return width
+	}
+
+	start, end := activeIndex, activeIndex+1
+	for {
+		expanded := false
+		if start > 0 && rowWidth(start-1, end) <= maxWidth {
+			start--
+			expanded = true
+		}
+		if end < len(labels) && rowWidth(start, end+1) <= maxWidth {
+			end++
+			expanded = true
+		}
+		if !expanded {
+			break
+		}
+	}
+
+	parts := make([]string, 0, end-start+2)
+	if start > 0 {
+		parts = append(parts, m.styles.mutedStyle.Render("…"))
+	}
+	for i := start; i < end; i++ {
+		label := labels[i]
+		switch {
+		case i == activeIndex:
+			label = lipgloss.NewStyle().
+				Foreground(m.styles.accent).
+				Underline(true).
+				Bold(true).
+				Render(label)
+		case tabs[i].ReadOnly:
+			label = lipgloss.NewStyle().Foreground(m.styles.warning).Faint(true).Render(label)
+		default:
+			label = m.styles.mutedStyle.Render(label)
+		}
+		parts = append(parts, label)
+	}
+	if end < len(labels) {
+		parts = append(parts, m.styles.mutedStyle.Render("…"))
+	}
+	return "  " + strings.Join(parts, "  ")
+}
+
+// viewCollectionPromptModal renders the centered collection prompt overlay.
+func (m Model) viewCollectionPromptModal() string {
+	title := "New Collection"
+	hint := "Enter name"
+	boxColor := m.styles.accent
+
+	switch m.promptMode {
+	case promptAddRequest:
+		title = "New Request"
+		hint = "Enter name"
+	case promptAddEnv:
+		title = "New Environment"
+		hint = "Enter name"
+	case promptRename:
+		title = "Rename Collection"
+		hint = "Enter new name"
+	case promptDeleteConfirm:
+		title = "Delete Collection"
+		hint = "Type 'delete' to confirm"
+		boxColor = m.styles.error
+	case promptDeleteTiny:
+		// Tiny confirmation: repeat the request-delete key without text input.
+		name := m.promptTargetID
+		if m.promptTargetCollectionID == "" {
+			for _, col := range m.collections {
+				if col != nil && col.ID == m.promptTargetID {
+					name = col.Name
+					break
+				}
+			}
+			if name == m.promptTargetID {
+				if col := m.selectedCollection(); col != nil {
+					name = col.Name
+				}
+			}
+		}
+		var sb strings.Builder
+		title := "Delete Collection"
+		confirmAction := "sidebar_delete"
+		confirmLabel := helpLabelConfirm
+		if m.promptTargetCollectionID != "" {
+			title = "Delete Request"
+			confirmAction = "request_delete"
+			confirmLabel = "continue"
+		}
+		sb.WriteString(m.styles.titleStyle.Render(title) + "\n\n")
+		sb.WriteString("Delete " + lipgloss.NewStyle().Bold(true).Render(name) + "?\n\n")
+		sb.WriteString(
+			m.styles.errorStyle.Render("This deletion is permanent and irreversible.") + "\n\n",
+		)
+		if m.statusErr != "" {
+			sb.WriteString(m.styles.errorStyle.Render("✗ "+m.statusErr) + "\n\n")
+		}
+		sb.WriteString(m.styles.mutedStyle.Render(m.renderHints([]hintItem{
+			{Label: confirmLabel, Actions: []string{confirmAction}},
+			{Label: helpLabelCancel, Actions: []string{keybindings.ActionImportCancel}},
+		})))
+		box := lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(m.styles.error).
+			Padding(1, 2).
+			Width(min(m.width-4, 40)).
+			Render(sb.String())
+		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box)
+	}
+
+	var sb strings.Builder
+	sb.WriteString(m.styles.titleStyle.Render(title) + "\n\n")
+	if m.promptMode == promptDeleteConfirm {
+		sb.WriteString(
+			m.styles.errorStyle.Render("This deletion is permanent and irreversible.") + "\n\n",
+		)
+	}
+	sb.WriteString(m.promptInput.View() + "\n")
+	sb.WriteString(m.styles.mutedStyle.Render("["+hint+"]") + "\n")
+
+	if m.statusErr != "" {
+		sb.WriteString("\n" + m.styles.errorStyle.Render("✗ "+m.statusErr) + "\n")
+	}
+
+	sb.WriteString("\n" + m.styles.mutedStyle.Render(m.renderHints([]hintItem{
+		{Label: helpLabelConfirm, Actions: []string{"import_confirm"}},
+		{Label: helpLabelCancel, Actions: []string{keybindings.ActionImportCancel}},
+	})))
+
+	box := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(boxColor).
+		Padding(1, 2).
+		Width(min(m.width-4, 60)).
+		Render(sb.String())
+
+	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box)
+}
+
+const (
+	actionHelpClose   = "help_close"
+	requestTitleLabel = "Request"
+)

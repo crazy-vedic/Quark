@@ -1,0 +1,650 @@
+name: CI
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+on:
+  pull_request:
+    branches: ["master", "main"]
+    types: ["opened", "reopened", "synchronize"]
+  push:
+    branches: ["master", "main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+env:
+  GOTESTSUM_VERSION: v1.13.0
+  # Bump when cache path layout changes. v3: store under runner.temp instead of ~/go.
+  GO_DEPS_CACHE_VERSION: v3
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Stage 1: Build — compile once, share binary with all downstream jobs
+  # ---------------------------------------------------------------------------
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.26'
+          check-latest: true
+          cache: true
+
+      - name: Build
+        run: make build
+
+      - name: Build with coverage
+        run: make build-cover
+
+      - name: Upload binary
+        uses: actions/upload-artifact@v6
+        with:
+          name: bin-quark
+          path: bin/quark
+          retention-days: 1
+
+      - name: Upload coverage binary
+        uses: actions/upload-artifact@v6
+        with:
+          name: bin-quark-cover
+          path: bin/quark-cover
+          retention-days: 1
+
+  # ---------------------------------------------------------------------------
+  # Stage 1: Package validation — check GoReleaser config and snapshot build
+  # ---------------------------------------------------------------------------
+  package-validation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.26'
+          check-latest: true
+          cache: true
+
+      - name: Install GoReleaser
+        uses: goreleaser/goreleaser-action@v5
+        with:
+          install-only: true
+          version: v1.26.2
+
+      - name: Validate GoReleaser config
+        run: goreleaser check
+
+      - name: Build snapshot
+        run: goreleaser release --snapshot --clean
+
+  # ---------------------------------------------------------------------------
+  # Stage 1: Lint — parallel with build, no artifacts needed
+  # ---------------------------------------------------------------------------
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.26'
+          check-latest: true
+          cache: true
+
+      - name: Cache golangci-lint binary
+        id: golangci-lint-cache
+        uses: actions/cache@v5
+        with:
+          path: ~/go/bin/golangci-lint
+          key: ${{ runner.os }}-golangci-lint-v2.12.2
+
+      - name: Install golangci-lint
+        if: steps.golangci-lint-cache.outputs.cache-hit != 'true'
+        run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
+
+      - name: Lint
+        run: make lint-ci 2>&1 | tee lint-output.txt || true
+
+      - name: Upload lint output
+        if: always() && !cancelled()
+        uses: actions/upload-artifact@v6
+        with:
+          name: lint-pr
+          path: lint-output.txt
+          retention-days: 1
+
+  # ---------------------------------------------------------------------------
+  # Stage 2: Test — all suites run in parallel, each downloads the binary
+  # ---------------------------------------------------------------------------
+  test-unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.26'
+          check-latest: true
+          cache: false
+
+      - name: Configure Go module/build cache dirs
+        run: |
+          echo "GOMODCACHE=${{ runner.temp }}/go-mod-cache" >> "$GITHUB_ENV"
+          echo "GOCACHE=${{ runner.temp }}/go-build-cache" >> "$GITHUB_ENV"
+          mkdir -p "${{ runner.temp }}/go-mod-cache" "${{ runner.temp }}/go-build-cache"
+
+      - name: Restore Go dependency caches
+        id: go-deps-cache
+        uses: actions/cache/restore@v5
+        with:
+          path: |
+            ${{ runner.temp }}/go-mod-cache
+            ${{ runner.temp }}/go-build-cache
+          key: ${{ runner.os }}-go-deps-${{ env.GO_DEPS_CACHE_VERSION }}-unit-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-deps-${{ env.GO_DEPS_CACHE_VERSION }}-unit-
+            ${{ runner.os }}-go-deps-${{ env.GO_DEPS_CACHE_VERSION }}-
+
+      - name: Log Go cache paths
+        run: |
+          echo "GOMODCACHE=$(go env GOMODCACHE)"
+          echo "GOCACHE=$(go env GOCACHE)"
+
+      - name: Cache gotestsum binary
+        id: gotestsum-cache
+        uses: actions/cache@v5
+        with:
+          path: ~/go/bin/gotestsum
+          key: ${{ runner.os }}-gotestsum-${{ env.GOTESTSUM_VERSION }}
+
+      - name: Install gotestsum
+        if: steps.gotestsum-cache.outputs.cache-hit != 'true'
+        run: go install gotest.tools/gotestsum@${{ env.GOTESTSUM_VERSION }}
+
+      - name: Run unit tests with coverage
+        run: make ut ARGS="-coverprofile=ut.out"
+
+      - name: Per-package timing
+        if: always() && !cancelled()
+        run: make show-slow
+
+      - name: Ensure coverage file exists
+        if: always() && !cancelled()
+        run: touch ut.out
+
+      - name: Upload coverage
+        if: always() && !cancelled()
+        uses: actions/upload-artifact@v6
+        with:
+          name: coverage-ut-pr
+          path: ut.out
+          retention-days: 1
+
+      # continue-on-error: another concurrent job may have already saved this key.
+      - name: Save Go dependency caches
+        if: always() && !cancelled() && steps.go-deps-cache.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@v5
+        with:
+          path: |
+            ${{ runner.temp }}/go-mod-cache
+            ${{ runner.temp }}/go-build-cache
+          key: ${{ steps.go-deps-cache.outputs.cache-primary-key }}
+
+  test-e2e-tui:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.26'
+          check-latest: true
+          cache: false
+
+      - name: Configure Go module/build cache dirs
+        run: |
+          echo "GOMODCACHE=${{ runner.temp }}/go-mod-cache" >> "$GITHUB_ENV"
+          echo "GOCACHE=${{ runner.temp }}/go-build-cache" >> "$GITHUB_ENV"
+          mkdir -p "${{ runner.temp }}/go-mod-cache" "${{ runner.temp }}/go-build-cache"
+
+      - name: Restore Go dependency caches
+        id: go-deps-cache
+        uses: actions/cache/restore@v5
+        with:
+          path: |
+            ${{ runner.temp }}/go-mod-cache
+            ${{ runner.temp }}/go-build-cache
+          key: ${{ runner.os }}-go-deps-${{ env.GO_DEPS_CACHE_VERSION }}-tui-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-deps-${{ env.GO_DEPS_CACHE_VERSION }}-tui-
+            ${{ runner.os }}-go-deps-${{ env.GO_DEPS_CACHE_VERSION }}-
+
+      - name: Log Go cache paths
+        run: |
+          echo "GOMODCACHE=$(go env GOMODCACHE)"
+          echo "GOCACHE=$(go env GOCACHE)"
+
+      - name: Cache gotestsum binary
+        id: gotestsum-cache
+        uses: actions/cache@v5
+        with:
+          path: ~/go/bin/gotestsum
+          key: ${{ runner.os }}-gotestsum-${{ env.GOTESTSUM_VERSION }}
+
+      - name: Install gotestsum
+        if: steps.gotestsum-cache.outputs.cache-hit != 'true'
+        run: go install gotest.tools/gotestsum@${{ env.GOTESTSUM_VERSION }}
+
+      - name: Run TUI e2e tests with coverage
+        run: QUARK_TIMING=1 make e2e-tui ARGS="-coverprofile=tui.out"
+
+      - name: Per-package timing
+        if: always() && !cancelled()
+        run: make show-slow
+
+      - name: Ensure coverage file exists
+        if: always() && !cancelled()
+        run: touch tui.out
+
+      - name: Upload coverage
+        if: always() && !cancelled()
+        uses: actions/upload-artifact@v6
+        with:
+          name: coverage-tui-pr
+          path: tui.out
+          retention-days: 1
+
+      # continue-on-error: another concurrent job may have already saved this key.
+      - name: Save Go dependency caches
+        if: always() && !cancelled() && steps.go-deps-cache.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@v5
+        with:
+          path: |
+            ${{ runner.temp }}/go-mod-cache
+            ${{ runner.temp }}/go-build-cache
+          key: ${{ steps.go-deps-cache.outputs.cache-primary-key }}
+
+  test-e2e-cli:
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.26'
+          check-latest: true
+          cache: false
+
+      - name: Configure Go module/build cache dirs
+        run: |
+          echo "GOMODCACHE=${{ runner.temp }}/go-mod-cache" >> "$GITHUB_ENV"
+          echo "GOCACHE=${{ runner.temp }}/go-build-cache" >> "$GITHUB_ENV"
+          mkdir -p "${{ runner.temp }}/go-mod-cache" "${{ runner.temp }}/go-build-cache"
+
+      - name: Restore Go dependency caches
+        id: go-deps-cache
+        uses: actions/cache/restore@v5
+        with:
+          path: |
+            ${{ runner.temp }}/go-mod-cache
+            ${{ runner.temp }}/go-build-cache
+          key: ${{ runner.os }}-go-deps-${{ env.GO_DEPS_CACHE_VERSION }}-cli-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-deps-${{ env.GO_DEPS_CACHE_VERSION }}-cli-
+            ${{ runner.os }}-go-deps-${{ env.GO_DEPS_CACHE_VERSION }}-
+
+      - name: Log Go cache paths
+        run: |
+          echo "GOMODCACHE=$(go env GOMODCACHE)"
+          echo "GOCACHE=$(go env GOCACHE)"
+
+      - name: Cache gotestsum binary
+        id: gotestsum-cache
+        uses: actions/cache@v5
+        with:
+          path: ~/go/bin/gotestsum
+          key: ${{ runner.os }}-gotestsum-${{ env.GOTESTSUM_VERSION }}
+
+      - name: Install gotestsum
+        if: steps.gotestsum-cache.outputs.cache-hit != 'true'
+        run: go install gotest.tools/gotestsum@${{ env.GOTESTSUM_VERSION }}
+
+      - name: Download coverage binary
+        uses: actions/download-artifact@v7
+        with:
+          name: bin-quark-cover
+          path: bin
+
+      - name: Run CLI e2e tests with coverage
+        run: make e2e-cli-run
+
+      - name: Per-package timing
+        if: always() && !cancelled()
+        run: make show-slow
+
+      - name: Ensure coverage file exists
+        if: always() && !cancelled()
+        run: touch bin/cover-cli.out
+
+      - name: Upload coverage
+        if: always() && !cancelled()
+        uses: actions/upload-artifact@v6
+        with:
+          name: coverage-cli-pr
+          path: bin/cover-cli.out
+          retention-days: 1
+
+      # continue-on-error: another concurrent job may have already saved this key.
+      - name: Save Go dependency caches
+        if: always() && !cancelled() && steps.go-deps-cache.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@v5
+        with:
+          path: |
+            ${{ runner.temp }}/go-mod-cache
+            ${{ runner.temp }}/go-build-cache
+          key: ${{ steps.go-deps-cache.outputs.cache-primary-key }}
+
+  # ---------------------------------------------------------------------------
+  # Stage 3a: Persist baseline — on push to master, cache coverage + lint
+  # so PRs can fetch instead of re-running all master tests.
+  # ---------------------------------------------------------------------------
+  persist-baseline:
+    needs: [test-unit, test-e2e-tui, test-e2e-cli, lint, package-validation]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    steps:
+      - name: Download coverage artifacts
+        uses: actions/download-artifact@v7
+        with:
+          path: /tmp/baseline-raw
+          pattern: coverage-*-pr
+
+      - name: Download lint artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: lint-pr
+          path: /tmp/baseline-raw/lint-pr
+
+      - name: Restructure baseline
+        run: |
+          mkdir -p /tmp/baseline/bin
+          cp /tmp/baseline-raw/coverage-ut-pr/ut.out     /tmp/baseline/ut.out
+          cp /tmp/baseline-raw/coverage-tui-pr/tui.out   /tmp/baseline/tui.out
+          if [ -f /tmp/baseline-raw/coverage-cli-pr/cover-cli.out ]; then \
+            cp /tmp/baseline-raw/coverage-cli-pr/cover-cli.out \
+               /tmp/baseline/bin/cover-cli.out; \
+          fi
+          cp /tmp/baseline-raw/lint-pr/lint-output.txt /tmp/baseline/lint-output.txt
+
+      - name: Save baseline cache
+        continue-on-error: true
+        uses: actions/cache/save@v5
+        with:
+          path: /tmp/baseline
+          key: coverage-master-${{ github.sha }}
+
+  # ---------------------------------------------------------------------------
+  # Stage 3b: Baseline — on PRs, fetch cached master data.
+  #   1. Try exact base SHA.
+  #   2. Fall back to latest master cache.
+  #   3. If still missing, generate on the fly and repopulate the cache.
+  # ---------------------------------------------------------------------------
+  coverage-master:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    continue-on-error: true
+    steps:
+      - name: Restore baseline cache
+        id: cache-baseline
+        uses: actions/cache/restore@v5
+        with:
+          path: /tmp/baseline
+          key: coverage-master-${{ github.event.pull_request.base.sha }}
+          restore-keys: |
+            coverage-master-
+
+      - name: Check if baseline files exist
+        id: check-baseline
+        run: |
+          if [ -f /tmp/baseline/ut.out ]; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v5
+        if: steps.check-baseline.outputs.found != 'true'
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v6
+        if: steps.check-baseline.outputs.found != 'true'
+        with:
+          go-version: '1.26'
+          check-latest: true
+          cache: false
+
+      - name: Configure Go module/build cache dirs
+        if: steps.check-baseline.outputs.found != 'true'
+        run: |
+          echo "GOMODCACHE=${{ runner.temp }}/go-mod-cache" >> "$GITHUB_ENV"
+          echo "GOCACHE=${{ runner.temp }}/go-build-cache" >> "$GITHUB_ENV"
+          mkdir -p "${{ runner.temp }}/go-mod-cache" "${{ runner.temp }}/go-build-cache"
+
+      - name: Restore Go dependency caches
+        if: steps.check-baseline.outputs.found != 'true'
+        id: go-deps-cache
+        uses: actions/cache/restore@v5
+        with:
+          path: |
+            ${{ runner.temp }}/go-mod-cache
+            ${{ runner.temp }}/go-build-cache
+          key: ${{ runner.os }}-go-deps-${{ env.GO_DEPS_CACHE_VERSION }}-baseline-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-deps-${{ env.GO_DEPS_CACHE_VERSION }}-baseline-
+            ${{ runner.os }}-go-deps-${{ env.GO_DEPS_CACHE_VERSION }}-
+
+      - name: Log Go cache paths
+        if: steps.check-baseline.outputs.found != 'true'
+        run: |
+          echo "GOMODCACHE=$(go env GOMODCACHE)"
+          echo "GOCACHE=$(go env GOCACHE)"
+
+      - name: Cache gotestsum binary
+        if: steps.check-baseline.outputs.found != 'true'
+        id: gotestsum-cache
+        uses: actions/cache@v5
+        with:
+          path: ~/go/bin/gotestsum
+          key: ${{ runner.os }}-gotestsum-${{ env.GOTESTSUM_VERSION }}
+
+      - name: Checkout base ref code and use PR branch Makefile
+        if: steps.check-baseline.outputs.found != 'true'
+        run: |
+          git fetch origin ${{ github.base_ref }}:base-ref
+          git checkout base-ref
+          git checkout ${{ github.sha }} -- Makefile
+          git checkout ${{ github.sha }} -- scripts/coverage-report.sh
+
+      - name: Install gotestsum
+        if: steps.check-baseline.outputs.found != 'true' && steps.gotestsum-cache.outputs.cache-hit != 'true'
+        run: go install gotest.tools/gotestsum@${{ env.GOTESTSUM_VERSION }}
+
+      - name: Run unit tests with coverage
+        if: steps.check-baseline.outputs.found != 'true'
+        continue-on-error: true
+        run: make ut ARGS="-coverprofile=ut.out"
+
+      - name: Run TUI e2e tests with coverage
+        if: steps.check-baseline.outputs.found != 'true'
+        continue-on-error: true
+        run: QUARK_TIMING=1 make e2e-tui ARGS="-coverprofile=tui.out"
+
+      - name: Run CLI e2e tests with coverage
+        if: steps.check-baseline.outputs.found != 'true'
+        continue-on-error: true
+        run: make e2e-cli
+
+      - name: Assemble generated baseline
+        if: steps.check-baseline.outputs.found != 'true'
+        run: |
+          mkdir -p /tmp/baseline/bin
+          if [ -f ut.out ]; then cp ut.out /tmp/baseline/ut.out; fi
+          if [ -f tui.out ]; then cp tui.out /tmp/baseline/tui.out; fi
+          if [ -f bin/cover-cli.out ]; then
+            cp bin/cover-cli.out /tmp/baseline/bin/cover-cli.out
+          fi
+          touch /tmp/baseline/lint-output.txt
+
+      - name: Save generated baseline to cache
+        if: steps.check-baseline.outputs.found != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@v5
+        with:
+          path: /tmp/baseline
+          key: coverage-master-${{ github.event.pull_request.base.sha }}
+
+      # continue-on-error: another concurrent job may have already saved this key.
+      - name: Save Go dependency caches
+        if: always() && !cancelled() && steps.check-baseline.outputs.found != 'true' && steps.go-deps-cache.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@v5
+        with:
+          path: |
+            ${{ runner.temp }}/go-mod-cache
+            ${{ runner.temp }}/go-build-cache
+          key: ${{ steps.go-deps-cache.outputs.cache-primary-key }}
+
+      - name: Upload baseline artifact
+        if: always() && !cancelled()
+        uses: actions/upload-artifact@v6
+        with:
+          name: coverage-master
+          path: /tmp/baseline
+
+  # ---------------------------------------------------------------------------
+  # Stage 4: Report — aggregate coverage, compare to master, post PR comment
+  # Only runs on PRs when all tests + baseline succeed. Fails the workflow if
+  # coverage drops > 5% or code-change coverage < 50%.
+  #
+  # always() keeps the report running when a suite fails; !cancelled() is
+  # required so cancel-in-progress (new PR push) does not still queue this
+  # job after its dependencies are cancelled.
+  # ---------------------------------------------------------------------------
+  coverage-report:
+    runs-on: ubuntu-latest
+    needs: [test-unit, test-e2e-tui, test-e2e-cli, coverage-master, lint]
+    if: github.event_name == 'pull_request' && always() && !cancelled()
+    env:
+      PR_UT: /tmp/coverage-pr/coverage-ut-pr/ut.out
+      PR_TUI: /tmp/coverage-pr/coverage-tui-pr/tui.out
+      PR_CLI: /tmp/coverage-pr/coverage-cli-pr/cover-cli.out
+      MASTER_UT: /tmp/coverage-master/ut.out
+      MASTER_TUI: /tmp/coverage-master/tui.out
+      MASTER_CLI: /tmp/coverage-master/bin/cover-cli.out
+      PR_LINT: /tmp/lint-pr/lint-output.txt
+      MASTER_LINT: /tmp/coverage-master/lint-output.txt
+      PR_NUMBER: ${{ github.event.number }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      COVERAGE_REPORT_COMMIT_SHA: ${{ github.event.pull_request.head.sha }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.26'
+          check-latest: true
+          cache: true
+
+      - name: Download PR coverage artifacts
+        uses: actions/download-artifact@v7
+        continue-on-error: true
+        with:
+          path: /tmp/coverage-pr
+          pattern: coverage-*-pr
+
+      - name: Download PR lint artifact
+        uses: actions/download-artifact@v7
+        continue-on-error: true
+        with:
+          name: lint-pr
+          path: /tmp/lint-pr
+
+      - name: Download master coverage artifacts
+        uses: actions/download-artifact@v7
+        continue-on-error: true
+        with:
+          name: coverage-master
+          path: /tmp/coverage-master
+
+      - name: Prepare coverage report inputs
+        run: ./scripts/coverage-report.sh prepare
+
+      - name: Compute suite coverage metrics
+        run: ./scripts/coverage-report.sh coverage-metrics
+
+      - name: Compute lint metrics
+        run: ./scripts/coverage-report.sh lint-metrics
+
+      - name: Compute code-change coverage
+        run: ./scripts/coverage-report.sh code-change
+
+      - name: Finalize coverage report
+        id: post-report
+        run: ./scripts/coverage-report.sh finalize
+
+      - name: Minimize old coverage comments
+        if: always() && !cancelled()
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const prNumber = context.issue.number;
+
+            const minimizeNode = async (nodeId, commentId) => {
+              const query = `
+                mutation($id: ID!) {
+                  minimizeComment(input: {subjectId: $id, classifier: OUTDATED}) {
+                    minimizedComment { isMinimized }
+                  }
+                }
+              `;
+              try {
+                await github.graphql(query, { id: nodeId });
+                console.log(`Minimized coverage comment ${commentId}`);
+              } catch (e) {
+                console.log(`Could not minimize comment ${commentId}: ${e.message}`);
+              }
+            };
+
+            const issueComments = await github.paginate(github.rest.issues.listComments, {
+              owner, repo, issue_number: prNumber, per_page: 100,
+            });
+
+            // Sort by created_at descending, skip the most recent one
+            const coverageComments = issueComments
+              .filter(c => c.body && c.body.includes('Coverage Report'))
+              .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+            for (const comment of coverageComments.slice(1)) {
+              await minimizeNode(comment.node_id, comment.id);
+            }

@@ -1,0 +1,38 @@
+package keybindings
+
+const (
+	ActionSearch        = "search"
+	ActionFocusSidebar  = "focus_sidebar"
+	ActionFocusRequest  = "focus_request"
+	ActionFocusResponse = "focus_response"
+	ActionEditURL       = "edit_url"
+	ActionMethodNext    = "method_next"
+	ActionMethodPrev    = "method_prev"
+	ActionSendRequest   = "send_request"
+	ActionEditBody      = "edit_body"
+	ActionEditHeaders   = "edit_headers"
+	ActionEditAuth      = "edit_auth"
+	ActionDeleteRequest = "delete_request"
+	ActionScheduleRun   = "schedule_run"
+	ActionEnvOpen       = "env_open"
+	ActionEnvNext       = "env_next"
+	ActionEnvPrev       = "env_prev"
+	ActionClientCerts   = "client_certificates"
+	ActionImportCurl    = "import_curl"
+	ActionExportCurl    = "export_curl"
+	ActionImportPostman = "sidebar_import_postman"
+	ActionImportParse   = "import_parse"
+	ActionImportCancel  = "import_cancel"
+	ActionImportEdit    = "import_edit"
+
+	ActionNavigateDown = "navigate_down"
+	ActionNavigateUp   = "navigate_up"
+	ActionCancel       = "cancel"
+	ActionConfirm      = "confirm"
+	ActionClose        = "close"
+)
+
+const (
+	KeyShiftTab = "shift+tab"
+	KeyCtrlJ    = "ctrl+j"
+)

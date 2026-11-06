@@ -1,0 +1,919 @@
+// Command quark is the TUI HTTP client.
+// This file is the only place where concrete types are constructed and wired.
+// All other consumers receive narrow interfaces.
+package main
+
+import (
+	"bytes"
+	"context"
+	"errors"
+	"fmt"
+	"log/slog"
+	"net/url"
+	"os"
+	"os/signal"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"syscall"
+	"time"
+
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/spf13/cobra"
+
+	"github.com/crazy-vedic/quark/internal/cli"
+	"github.com/crazy-vedic/quark/internal/config"
+	"github.com/crazy-vedic/quark/internal/curl"
+	"github.com/crazy-vedic/quark/internal/domain"
+	"github.com/crazy-vedic/quark/internal/exec"
+	"github.com/crazy-vedic/quark/internal/keybindings"
+	"github.com/crazy-vedic/quark/internal/search"
+	"github.com/crazy-vedic/quark/internal/store"
+	"github.com/crazy-vedic/quark/internal/theme"
+	"github.com/crazy-vedic/quark/internal/timing"
+	"github.com/crazy-vedic/quark/internal/transport"
+	"github.com/crazy-vedic/quark/internal/tui"
+	"github.com/crazy-vedic/quark/internal/updates"
+)
+
+var (
+	// These values are replaced at build time by the Makefile and release
+	// workflows. Keep useful defaults for `go run` and plain `go build`.
+	Version   = "dev"
+	Commit    = "unknown"
+	BuildTime = "unknown"
+
+	debugMode  bool
+	timingMode string
+	configDir  string
+	dimFlag    string
+	themeFlag  string
+)
+
+func main() {
+	if err := run(); err != nil {
+		fmt.Fprintf(os.Stderr, "quark: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+func run() error { return runWithArgs(os.Args[1:]) }
+
+func runWithArgs(args []string) error {
+	// Signal-aware root context: Ctrl+C or SIGTERM cancels in-flight operations.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	defaultConfigDir, err := defaultConfigDir()
+	if err != nil {
+		return err
+	}
+	root := &cobra.Command{
+		Use:   "quark",
+		Short: "A keyboard-driven TUI HTTP client",
+		Long:  "Quark — local-first, keyboard-driven HTTP client. No cloud dependencies.",
+	}
+	root.Version = Version
+	root.SetVersionTemplate(versionTemplate())
+	root.CompletionOptions.DisableDefaultCmd = true
+	root.SetContext(ctx)
+	root.PersistentFlags().
+		BoolVar(&debugMode, "debug", false, "Log keystrokes and diagnostics to /tmp/quark_debug_logs/debug.log")
+	root.PersistentFlags().
+		StringVar(&timingMode, "timing", "tree", "Timing report format with --debug: tree|flat|off")
+	root.PersistentFlags().
+		StringVar(&configDir, "config", defaultConfigDir, "Directory for config and db")
+	root.PersistentFlags().
+		StringVar(&dimFlag, "dim", "", "Force TUI density: wide|narrow|tiny|absurd (default: auto from terminal size)")
+	root.PersistentFlags().
+		StringVar(&themeFlag, "theme", "", "Theme for this session (overrides QUARK_THEME and config.toml)")
+
+	var debugLog *os.File
+	defer func() {
+		if debugLog != nil {
+			_ = debugLog.Close()
+		}
+	}()
+
+	logger := cli.NewDebugLogger(nil)
+
+	root.PersistentPreRun = func(cmd *cobra.Command, args []string) {
+		if debugMode && debugLog == nil {
+			debugLog = debugLogFactory()
+			logger.SetFile(debugLog)
+		}
+	}
+
+	// Lazy store & config — initialised on first use so the --config flag is honoured.
+	var rt *runtime
+	defer func() {
+		if rt != nil && rt.st != nil {
+			_ = rt.st.Close()
+		}
+	}()
+	runtimeOnce := func() (*runtime, error) {
+		if rt != nil {
+			return rt, nil
+		}
+		// Load user config (defaults if file absent or unreadable).
+		cfg, err := config.Load(configDir)
+		if err != nil {
+			slog.Warn("config: failed to load config.toml; using defaults", "err", err)
+			cfg = config.Default(configDir)
+		}
+		if selected := os.Getenv("QUARK_THEME"); selected != "" {
+			cfg.UI.Theme = selected
+		}
+		if themeFlag != "" {
+			cfg.UI.Theme = themeFlag
+		}
+
+		// 0700: only the owner can read the directory. It contains the SQLite DB
+		// (which stores Authorization headers and cookies) and backup copies.
+		if err := os.MkdirAll(configDir, 0o700); err != nil {
+			return nil, fmt.Errorf("create config dir: %w", err)
+		}
+
+		dbPath := filepath.Join(configDir, "quark.db")
+		backupDir := cfg.BackupDir(configDir)
+
+		storeOpts := []store.Option{store.WithBackup(backupDir, cfg.Backup.KeepLast)}
+		if !cfg.Backup.AutoBackup {
+			storeOpts = []store.Option{}
+		}
+		st, err := store.New(dbPath, storeOpts...)
+		if err != nil {
+			return nil, fmt.Errorf("open store: %w", err)
+		}
+
+		httpTransport, err := transport.New(cfg)
+		if err != nil {
+			return nil, fmt.Errorf("configure HTTP transport: %w", err)
+		}
+		executor := exec.New(httpTransport,
+			exec.WithTimeout(cfg.Timeout()),
+			exec.WithRedirects(cfg.HTTP.FollowRedirects, cfg.HTTP.MaxRedirects),
+			exec.WithExecutionWriter(st),
+		)
+		importer := curl.NewImporter()
+		searcher := search.New(st)
+
+		rt = &runtime{
+			st:        st,
+			cfg:       cfg,
+			executor:  executor,
+			transport: httpTransport,
+			importer:  importer,
+			searcher:  searcher,
+		}
+		return rt, nil
+	}
+
+	// Subcommands that need the store are registered here.
+	// Each command lazily initialises the runtime on the first invocation.
+	root.AddCommand(cli.NewWarpCompletionPluginCmd())
+	root.AddCommand(lazyCollectionCmd(runtimeOnce))
+	root.AddCommand(lazyRequestCmd(runtimeOnce))
+	root.AddCommand(lazyRunCmd(runtimeOnce))
+	root.AddCommand(lazySearchCmd(runtimeOnce))
+	root.AddCommand(lazyScheduleCmd(runtimeOnce))
+	root.AddCommand(lazyImportCmd(runtimeOnce))
+	root.AddCommand(lazyImportPostmanCmd(runtimeOnce))
+	root.AddCommand(lazyEnvCmd(runtimeOnce))
+	root.AddCommand(lazyClientCertCmd())
+	root.AddCommand(lazyKeybindingsCmd())
+	root.AddCommand(newThemeCmd())
+	root.AddCommand(newVersionCmd())
+	root.AddCommand(newUpdateCmd())
+	root.AddCommand(cli.NewCompletionCmd(root))
+
+	root.AddCommand(&cobra.Command{
+		Use:   "tui",
+		Short: "Launch the interactive TUI",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			rt, err := runtimeOnce()
+			if err != nil {
+				return err
+			}
+			return launchTUI(ctx, rt.st, rt.executor, rt.transport, rt.searcher,
+				rt.importer, rt.cfg, debugLog, configDir)
+		},
+	})
+
+	// Default: launch TUI when no subcommand is given.
+	// cobra.NoArgs ensures unknown positional arguments produce an error
+	// instead of silently succeeding.
+	root.Args = cobra.NoArgs
+	root.RunE = func(cmd *cobra.Command, args []string) error {
+		rt, err := runtimeOnce()
+		if err != nil {
+			return err
+		}
+		return launchTUI(
+			ctx,
+			rt.st,
+			rt.executor,
+			rt.transport,
+			rt.searcher,
+			rt.importer,
+			rt.cfg,
+			debugLog,
+			configDir,
+		)
+	}
+
+	root.SetArgs(args)
+	return root.Execute()
+}
+
+func versionTemplate() string {
+	return fmt.Sprintf("quark version %s\ncommit %s\nbuilt %s\n", Version, Commit, BuildTime)
+}
+
+// runtime holds lazily-initialised dependencies that depend on the --config flag.
+type runtime struct {
+	st        *store.Store
+	cfg       config.Config
+	executor  *exec.Executor
+	transport *transport.Manager
+	importer  *curl.Importer
+	searcher  *search.Searcher
+}
+
+type tuiPostmanImporter struct {
+	st cli.ImportPostmanStore
+}
+
+func (i tuiPostmanImporter) ImportPostman(ctx context.Context, path string) (string, error) {
+	command := cli.NewImportPostmanCmd(i.st, cli.NewDebugLogger(nil))
+	command.SilenceUsage = true
+	command.SilenceErrors = true
+	command.SetArgs([]string{path, "--on-duplicate", "duplicate"})
+	command.SetIn(strings.NewReader(""))
+	var output, diagnostics bytes.Buffer
+	command.SetOut(&output)
+	command.SetErr(&diagnostics)
+	err := command.ExecuteContext(ctx)
+	combined := output.String()
+	if diagnostics.Len() > 0 {
+		combined += diagnostics.String()
+	}
+	return combined, err
+}
+
+func saveRuntimeImportedCertificate(r *runtime, spec *curl.CertificateSpec, rawURL string) error {
+	parsedURL, err := url.Parse(rawURL)
+	if err != nil || parsedURL.Hostname() == "" {
+		return fmt.Errorf("cannot determine request hostname")
+	}
+	certType := strings.ToUpper(strings.TrimSpace(spec.Type))
+	if certType != "" && certType != "P12" && certType != "PEM" {
+		return fmt.Errorf("unsupported certificate type %q", certType)
+	}
+	entry := config.ClientCertificate{
+		Host: strings.ToLower(parsedURL.Hostname()), File: spec.File, Type: certType,
+		KeyFile: spec.KeyFile, CAFile: spec.CAFile, Password: spec.Password,
+	}
+	next := append([]config.ClientCertificate(nil), r.cfg.HTTP.ClientCertificates...)
+	replaced := false
+	for index := range next {
+		if strings.EqualFold(next[index].Host, entry.Host) {
+			next[index] = entry
+			replaced = true
+			break
+		}
+	}
+	if !replaced {
+		next = append(next, entry)
+	}
+	nextConfig := r.cfg
+	nextConfig.HTTP.ClientCertificates = next
+	if err := r.transport.Reload(nextConfig); err != nil {
+		return err
+	}
+	if err := config.SaveClientCertificates(configDir, next); err != nil {
+		_ = r.transport.Reload(r.cfg)
+		return err
+	}
+	r.cfg = nextConfig
+	return nil
+}
+
+// openDebugLog opens /tmp/quark_debug_logs/debug.log, archiving any existing file.
+// The first line of the new log is the current epoch time.
+// Returns nil on error (debug logging is best-effort).
+var debugLogDirectory = filepath.Join("/tmp", "quark_debug_logs")
+
+func openDebugLog() *os.File { return openDebugLogAt(debugLogDirectory) }
+
+func openDebugLogAt(debugDir string) *os.File {
+	if err := os.MkdirAll(debugDir, 0o700); err != nil {
+		return nil
+	}
+	latestPath := filepath.Join(debugDir, "debug.log")
+	if info, err := os.Stat(latestPath); err == nil && !info.IsDir() {
+		epoch := strconv.FormatInt(info.ModTime().Unix(), 10)
+		archivePath := filepath.Join(debugDir, fmt.Sprintf("debug_%s.log", epoch))
+		_ = os.Rename(latestPath, archivePath)
+	}
+	f, err := os.OpenFile(latestPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
+	if err != nil {
+		return nil
+	}
+	_, _ = fmt.Fprintf(f, "epoch: %d\n", time.Now().Unix())
+	return f
+}
+
+type teaProgramRunner interface {
+	Run() (tea.Model, error)
+	Send(tea.Msg)
+}
+
+var newTeaProgram = func(model tea.Model, opts ...tea.ProgramOption) teaProgramRunner {
+	return tea.NewProgram(model, opts...)
+}
+
+var debugLogFactory = openDebugLog
+
+// launchTUI constructs the TUI model and runs the bubbletea program.
+// bubbletea v1.3.10 catches panics by default and restores the terminal
+// before returning — no explicit panic recovery is needed here.
+func launchTUI(
+	ctx context.Context,
+	st *store.Store,
+	executor *exec.Executor,
+	httpTransport *transport.Manager,
+	searcher *search.Searcher,
+	importer *curl.Importer,
+	cfg config.Config,
+	debugLog *os.File,
+	configDir string,
+) error {
+	if _, err := theme.Resolve(configDir, cfg.UI.Theme, lipgloss.HasDarkBackground()); err != nil {
+		return err
+	}
+	forceDim := tui.DimAuto
+	if dimFlag != "" {
+		parsed, err := tui.ParseDimMode(dimFlag)
+		if err != nil {
+			return err
+		}
+		forceDim = parsed
+	}
+	timingFormat, err := timing.ParseReportFormat(timingMode)
+	if err != nil {
+		return err
+	}
+	timingEnabled := debugMode && timingFormat != timing.ReportFormatOff
+	timingCollector := timing.New(timingEnabled)
+	model := tui.New(tui.Deps{
+		Lister:             st,
+		Reader:             st,
+		Writer:             st,
+		ColWriter:          st,
+		ExecutionReader:    st,
+		Executor:           executor,
+		Searcher:           searcher,
+		Importer:           importer,
+		PostmanImporter:    tuiPostmanImporter{st: st},
+		EnvReader:          st,
+		EnvWriter:          st,
+		ActiveEnvStore:     st,
+		Scheduler:          st,
+		Config:             cfg,
+		Resolver:           keybindings.NewResolver(cfg.Keybindings),
+		Ctx:                ctx, // signal-aware context: TUI goroutines cancel on SIGINT/SIGTERM
+		DebugLog:           debugLog,
+		Timing:             timingCollector,
+		CertificateManager: httpTransport,
+		ConfigDir:          configDir,
+		ForceDim:           forceDim,
+	})
+
+	// Coalesce WindowSizeMsg bursts: Bubble Tea's renderer force-repaints the
+	// entire screen on every resize event, which flickers under rapid SIGWINCH.
+	resize := tui.NewResizeCoalescer()
+	p := newTeaProgram(
+		model,
+		tea.WithAltScreen(),
+		tea.WithMouseCellMotion(),
+		tea.WithFilter(resize.Filter),
+	)
+	resize.Bind(p.Send)
+	_, err = p.Run()
+
+	// Check for updates and print message after alt-screen restores
+	checkUpdateAndPrint(ctx)
+
+	if timingEnabled {
+		// Print the opt-in timing summary after the alternate screen is closed.
+		switch timingFormat {
+		case timing.ReportFormatFlat:
+			timingCollector.ReportFlat(os.Stderr, 30)
+		default:
+			timingCollector.ReportTree(os.Stderr, 30)
+		}
+	}
+	if err != nil && !errors.Is(err, tea.ErrProgramKilled) {
+		return fmt.Errorf("tui: %w", err)
+	}
+	return nil
+}
+
+func checkUpdateAndPrint(ctx context.Context) {
+	// Create a short timeout for update check (don't block on exit)
+	checkCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+
+	// Detect installation channel
+	channel := updates.DetectChannel()
+
+	// Create appropriate source based on channel
+	var source updates.Source
+	switch channel {
+	case updates.ChannelBrew:
+		source = updates.NewBrewSource("crazy-vedic/quark", "quark")
+	case updates.ChannelApt:
+		source = updates.NewAptSource("quark")
+	case updates.ChannelWinget:
+		source = updates.NewWingetSource("Quark.Quark")
+	case updates.ChannelBinary:
+		source = updates.NewGitHubSource("crazy-vedic/quark")
+	default:
+		return
+	}
+
+	// Check for updates
+	available, latest, err := source.IsUpdateAvailable(checkCtx, Version)
+	if err != nil {
+		// Silently ignore check failures on exit
+		return
+	}
+
+	if available && latest != "" {
+		fmt.Fprintf(
+			os.Stderr,
+			"\nUpdate available: %s → %s\nRun: %s\n",
+			Version,
+			latest,
+			source.UpgradeCommand(),
+		)
+	}
+}
+
+func defaultConfigDir() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("resolve home dir: %w", err)
+	}
+	return filepath.Join(home, ".quark"), nil
+}
+
+// lazy wrapper functions create cobra commands that lazily initialise the runtime.
+
+const collectionCommandName = "collection"
+
+func lazyCollectionCmd(rt func() (*runtime, error)) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   collectionCommandName,
+		Short: "Manage collections",
+	}
+	cmd.AddCommand(&cobra.Command{
+		Use:   "list",
+		Short: "List all collections",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			r, err := rt()
+			if err != nil {
+				return err
+			}
+			for _, c := range cli.NewCollectionCmd(r.st).Commands() {
+				if c.Name() == "list" {
+					return c.RunE(cmd, args)
+				}
+			}
+			return fmt.Errorf("list subcommand not found")
+		},
+	})
+	cmd.AddCommand(&cobra.Command{
+		Use:   "create <name>",
+		Short: "Create a new collection",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			r, err := rt()
+			if err != nil {
+				return err
+			}
+			for _, c := range cli.NewCollectionCmd(r.st).Commands() {
+				if c.Name() == "create" {
+					return c.RunE(cmd, args)
+				}
+			}
+			return fmt.Errorf("create subcommand not found")
+		},
+	})
+	cmd.AddCommand(&cobra.Command{
+		Use:   "rename <collection> <new-name>",
+		Short: "Rename a collection",
+		Args:  cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			r, err := rt()
+			if err != nil {
+				return err
+			}
+			for _, c := range cli.NewCollectionCmd(r.st).Commands() {
+				if c.Name() == "rename" {
+					return c.RunE(cmd, args)
+				}
+			}
+			return fmt.Errorf("rename subcommand not found")
+		},
+	})
+	cmd.AddCommand(&cobra.Command{
+		Use:   "delete <collection>",
+		Short: "Delete a collection and its requests",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			r, err := rt()
+			if err != nil {
+				return err
+			}
+			for _, c := range cli.NewCollectionCmd(r.st).Commands() {
+				if c.Name() == "delete" {
+					return c.RunE(cmd, args)
+				}
+			}
+			return fmt.Errorf("delete subcommand not found")
+		},
+	})
+	return cmd
+}
+
+func lazyRequestCmd(rt func() (*runtime, error)) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "request",
+		Short: "Manage requests",
+	}
+	var collectionID string
+	listCmd := &cobra.Command{
+		Use:   "list",
+		Short: "List requests in a collection",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			r, err := rt()
+			if err != nil {
+				return err
+			}
+			for _, c := range cli.NewRequestCmd(r.st).Commands() {
+				if c.Name() == "list" {
+					c.SetContext(cmd.Context())
+					if err := c.Flags().Set(collectionCommandName, collectionID); err != nil {
+						return err
+					}
+					return c.RunE(c, args)
+				}
+			}
+			return fmt.Errorf("list subcommand not found")
+		},
+	}
+	listCmd.Flags().StringVar(&collectionID, collectionCommandName, "", "Collection ID")
+	_ = listCmd.RegisterFlagCompletionFunc(collectionCommandName, cli.CompleteCollectionIDs(
+		func(ctx context.Context) ([]*domain.Collection, error) {
+			r, err := rt()
+			if err != nil {
+				return nil, err
+			}
+			return r.st.ListCollections(ctx)
+		},
+	))
+	cmd.AddCommand(listCmd)
+	return cmd
+}
+
+func lazyRunCmd(rt func() (*runtime, error)) *cobra.Command {
+	var namedVars []string
+	var verbose bool
+	cmd := &cobra.Command{
+		Use:   "run <Collection/Request>",
+		Short: "Execute a saved request",
+		Args:  cobra.ExactArgs(1),
+	}
+	cmd.Flags().StringArrayVarP(
+		&namedVars,
+		"var",
+		"v",
+		nil,
+		"Override a request variable as key=value; overrides collection/global envs",
+	)
+	cmd.Flags().BoolVar(&verbose, "verbose", false,
+		"Print request and response headers and request details (may include credentials)")
+	cmd.RunE = func(cmd *cobra.Command, args []string) error {
+		r, err := rt()
+		if err != nil {
+			return err
+		}
+		inner := cli.NewRunCmd(r.st, r.executor)
+		if err := inner.Flags().Set("verbose", strconv.FormatBool(verbose)); err != nil {
+			return err
+		}
+		for _, assignment := range namedVars {
+			if err := inner.Flags().Set("var", assignment); err != nil {
+				return err
+			}
+		}
+		return inner.RunE(cmd, args)
+	}
+	cmd.ValidArgsFunction = cli.CompleteRequestPaths(
+		func(ctx context.Context) ([]*domain.Collection, error) {
+			r, err := rt()
+			if err != nil {
+				return nil, err
+			}
+			return r.st.ListCollections(ctx)
+		},
+		func(ctx context.Context, collectionID string) ([]*domain.Request, error) {
+			r, err := rt()
+			if err != nil {
+				return nil, err
+			}
+			return r.st.ListRequests(ctx, collectionID)
+		},
+	)
+	return cmd
+}
+
+func lazySearchCmd(rt func() (*runtime, error)) *cobra.Command {
+	return &cobra.Command{
+		Use:   "search <query>",
+		Short: "Search saved requests",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			r, err := rt()
+			if err != nil {
+				return err
+			}
+			return cli.NewSearchCmd(r.st).RunE(cmd, args)
+		},
+	}
+}
+
+func lazyScheduleCmd(rt func() (*runtime, error)) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "schedule",
+		Short: "Schedule delayed request execution",
+	}
+	var when string
+	addCmd := &cobra.Command{
+		Use:   "add <Collection/Request>",
+		Short: "Schedule a saved request",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			r, err := rt()
+			if err != nil {
+				return err
+			}
+			inner := cli.NewScheduleCmd(r.st, r.executor, time.Now)
+			inner.SetContext(cmd.Context())
+			inner.SetOut(cmd.OutOrStdout())
+			inner.SetErr(cmd.ErrOrStderr())
+			inner.SetArgs([]string{"add", args[0], "--at", when})
+			return inner.Execute()
+		},
+	}
+	addCmd.ValidArgsFunction = cli.CompleteRequestPaths(
+		func(ctx context.Context) ([]*domain.Collection, error) {
+			r, err := rt()
+			if err != nil {
+				return nil, err
+			}
+			return r.st.ListCollections(ctx)
+		},
+		func(ctx context.Context, collectionID string) ([]*domain.Request, error) {
+			r, err := rt()
+			if err != nil {
+				return nil, err
+			}
+			return r.st.ListRequests(ctx, collectionID)
+		},
+	)
+	addCmd.Flags().
+		StringVar(&when, "at", "", "Run time: duration, 'in 10m', RFC3339, or 'YYYY-MM-DD HH:MM'")
+	cmd.AddCommand(addCmd)
+	cmd.AddCommand(&cobra.Command{
+		Use:   "list",
+		Short: "List scheduled runs",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			r, err := rt()
+			if err != nil {
+				return err
+			}
+			inner := cli.NewScheduleCmd(r.st, r.executor, time.Now)
+			inner.SetContext(cmd.Context())
+			inner.SetOut(cmd.OutOrStdout())
+			inner.SetErr(cmd.ErrOrStderr())
+			inner.SetArgs([]string{"list"})
+			return inner.Execute()
+		},
+	})
+	cmd.AddCommand(&cobra.Command{
+		Use:   "run-due",
+		Short: "Execute all pending scheduled runs due now",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			r, err := rt()
+			if err != nil {
+				return err
+			}
+			inner := cli.NewScheduleCmd(r.st, r.executor, time.Now)
+			inner.SetContext(cmd.Context())
+			inner.SetOut(cmd.OutOrStdout())
+			inner.SetErr(cmd.ErrOrStderr())
+			inner.SetArgs([]string{"run-due"})
+			return inner.Execute()
+		},
+	})
+	return cmd
+}
+
+func lazyImportCmd(rt func() (*runtime, error)) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "import",
+		Short: "Import requests from external formats",
+	}
+	var collectionID, name string
+	curlCmd := &cobra.Command{
+		Use:   "curl <quoted-curl-command>",
+		Short: "Import a curl command as a request",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			r, err := rt()
+			if err != nil {
+				return err
+			}
+			certificateSaver := func(_ context.Context, spec *curl.CertificateSpec, rawURL string) error {
+				return saveRuntimeImportedCertificate(r, spec, rawURL)
+			}
+			inner := cli.NewImportCmd(r.st, r.importer, certificateSaver)
+			inner.SetContext(cmd.Context())
+			inner.SetOut(cmd.OutOrStdout())
+			inner.SetErr(cmd.ErrOrStderr())
+			inner.SetArgs([]string{
+				"curl", args[0],
+				"--collection", collectionID,
+				"--name", name,
+			})
+			return inner.Execute()
+		},
+	}
+	curlCmd.Flags().StringVar(&collectionID, collectionCommandName, "", "Target collection ID")
+	curlCmd.Flags().StringVar(&name, "name", "", "Request name")
+	cmd.AddCommand(curlCmd)
+	return cmd
+}
+
+func lazyImportPostmanCmd(rt func() (*runtime, error)) *cobra.Command {
+	var collectionName, onDuplicate string
+	cmd := &cobra.Command{
+		Use:   "import-postman <collection.json|directory>",
+		Short: "Import a Postman Collection v2.1 JSON file or a bulk export directory",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			r, err := rt()
+			if err != nil {
+				return err
+			}
+			inner := cli.NewImportPostmanCmd(r.st, cli.NewDebugLogger(nil))
+			inner.SetContext(cmd.Context())
+			inner.SetIn(cmd.InOrStdin())
+			inner.SetOut(cmd.OutOrStdout())
+			inner.SetErr(cmd.ErrOrStderr())
+			inner.SetArgs([]string{
+				args[0],
+				"--collection-name", collectionName,
+				"--on-duplicate", onDuplicate,
+			})
+			return inner.Execute()
+		},
+	}
+	cmd.Flags().StringVarP(
+		&collectionName,
+		"collection-name",
+		"n",
+		"",
+		"Override the imported collection name",
+	)
+	cmd.Flags().StringVar(
+		&onDuplicate,
+		"on-duplicate",
+		"duplicate",
+		"Action when collection name already exists: replace, duplicate, merge, or skip",
+	)
+	return cmd
+}
+
+func lazyEnvCmd(rt func() (*runtime, error)) *cobra.Command {
+	root := cli.NewEnvCmd(nil)
+	// Wrap each subcommand so it resolves the runtime lazily and delegates.
+	for _, sub := range root.Commands() {
+		c := sub // capture for closure
+		root.RemoveCommand(c)
+		wrapped := *c
+		wrapped.RunE = func(cmd *cobra.Command, args []string) error {
+			r, err := rt()
+			if err != nil {
+				return err
+			}
+			for _, s := range cli.NewEnvCmd(r.st).Commands() {
+				if s.Name() == c.Name() {
+					return s.RunE(cmd, args)
+				}
+			}
+			return fmt.Errorf("%s subcommand not found", c.Name())
+		}
+		switch c.Name() {
+		case "list", "create":
+			wrapped.ValidArgsFunction = cli.CompleteCollectionIDs(
+				func(ctx context.Context) ([]*domain.Collection, error) {
+					r, err := rt()
+					if err != nil {
+						return nil, err
+					}
+					return r.st.ListCollections(ctx)
+				},
+			)
+		case "set", "delete", "active":
+			wrapped.ValidArgsFunction = cli.CompleteCollectionThenEnvironment(
+				func(ctx context.Context) ([]*domain.Collection, error) {
+					r, err := rt()
+					if err != nil {
+						return nil, err
+					}
+					return r.st.ListCollections(ctx)
+				},
+				func(ctx context.Context, collectionID string) ([]*domain.Environment, error) {
+					r, err := rt()
+					if err != nil {
+						return nil, err
+					}
+					return r.st.ListCollectionEnvironments(ctx, collectionID)
+				},
+			)
+		}
+		root.AddCommand(&wrapped)
+	}
+	return root
+}
+
+func lazyKeybindingsCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "keybindings",
+		Short: "Manage keybindings",
+	}
+	// list
+	cmd.AddCommand(&cobra.Command{
+		Use:   "list",
+		Short: "Show current keybindings",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			for _, c := range cli.NewKeybindingsCmd(configDir).Commands() {
+				if c.Name() == "list" {
+					return c.RunE(cmd, args)
+				}
+			}
+			return fmt.Errorf("list subcommand not found")
+		},
+	})
+	// set
+	cmd.AddCommand(&cobra.Command{
+		Use:   "set <action> <key>",
+		Short: "Set a keybinding",
+		Args:  cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			// cobra.Command.Commands() returns subcommands in alphabetical order,
+			// not insertion order. Look up the set command by name explicitly.
+			for _, c := range cli.NewKeybindingsCmd(configDir).Commands() {
+				if c.Name() == "set" {
+					return c.RunE(cmd, args)
+				}
+			}
+			return fmt.Errorf("set subcommand not found")
+		},
+	})
+	// reset
+	cmd.AddCommand(&cobra.Command{
+		Use:   "reset",
+		Short: "Reset all keybindings to defaults",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			for _, c := range cli.NewKeybindingsCmd(configDir).Commands() {
+				if c.Name() == "reset" {
+					return c.RunE(cmd, args)
+				}
+			}
+			return fmt.Errorf("reset subcommand not found")
+		},
+	})
+	return cmd
+}
+
+func lazyClientCertCmd() *cobra.Command {
+	return cli.NewClientCertificatesCmd(configDir, func(cfg config.Config) error {
+		_, err := transport.New(cfg)
+		return err
+	})
+}
