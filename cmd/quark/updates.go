@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -89,6 +90,7 @@ func newVersionCmd() *cobra.Command {
 
 func newUpdateCmd() *cobra.Command {
 	var checkOnly bool
+	var yes bool
 
 	cmd := &cobra.Command{
 		Use:   "update",
@@ -210,6 +212,22 @@ func newUpdateCmd() *cobra.Command {
 				return nil
 			}
 
+			// Ask for confirmation unless --yes is set
+			if !yes {
+				fmt.Fprintf(cmd.OutOrStderr(), "Update available: %s → %s\n", Version, latestVersion)
+				fmt.Fprint(cmd.OutOrStderr(), "Proceed with update? [y/N] ")
+				var reply string
+				if _, err := fmt.Scanln(&reply); err != nil {
+					fmt.Fprintf(cmd.OutOrStderr(), "Aborted\n")
+					return nil
+				}
+				reply = strings.ToLower(strings.TrimSpace(reply))
+				if reply != "y" && reply != "yes" {
+					fmt.Fprintf(cmd.OutOrStderr(), "Aborted\n")
+					return nil
+				}
+			}
+
 			fmt.Fprintf(cmd.OutOrStderr(), "Updating from %s to %s...\n", Version, latestVersion)
 			newVersion, err := updater.Update(ctx, latestVersion)
 			if err != nil {
@@ -224,6 +242,7 @@ func newUpdateCmd() *cobra.Command {
 
 	const dryRunDesc = "Check for updates without installing (dry-run mode)"
 	cmd.Flags().BoolVar(&checkOnly, "check", false, dryRunDesc)
+	cmd.Flags().BoolVar(&yes, "yes", false, "Skip confirmation prompt and proceed with update")
 
 	return cmd
 }
