@@ -44,7 +44,7 @@ Codename: stable
 Version: 1.0
 Components: main
 Architectures: amd64 arm64
-SignWith: ${{ secrets.APT_GPG_KEY_ID }}
+SignWith: no
 EOF
           fi
 
@@ -73,7 +73,7 @@ EOF
           ls -lah *.deb 2>/dev/null || echo "No .deb packages downloaded"
 
       - name: Import GPG key (optional)
-        if: vars.APT_GPG_KEY != ''
+        if: secrets.APT_GPG_KEY != ''
         run: |
           echo "${{ secrets.APT_GPG_KEY }}" | base64 -d | gpg --import --batch --no-tty
           echo "GPG key imported"
