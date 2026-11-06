@@ -93,11 +93,21 @@ func newUpdateCmd() *cobra.Command {
 	var yes bool
 
 	cmd := &cobra.Command{
-		Use:   "update",
-		Short: "Update to the latest version",
-		Args:  cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error {
+		Use:   "update [version]",
+		Short: "Update to the latest version or a specific version",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
+
+			// Get target version if provided, otherwise will use latest
+			targetVersion := ""
+			if len(args) > 0 {
+				targetVersion = args[0]
+				// Normalize version format (add v prefix if missing)
+				if !strings.HasPrefix(targetVersion, "v") {
+					targetVersion = "v" + targetVersion
+				}
+			}
 
 			// Get current executable path
 			exePath, err := os.Executable()
@@ -201,20 +211,29 @@ func newUpdateCmd() *cobra.Command {
 
 			// Perform self-update
 			updater := updates.NewSelfUpdater("crazy-vedic/quark", exePath, Version)
-			available, latestVersion, err := updater.CheckUpdate(ctx)
-			if err != nil {
-				fmt.Fprintf(cmd.OutOrStderr(), "Could not check for updates: %v\n", err)
-				return nil
-			}
 
-			if !available {
-				fmt.Fprintf(cmd.OutOrStderr(), "Already up to date (%s)\n", Version)
-				return nil
+			var updateToVersion string
+			if targetVersion != "" {
+				// User specified a target version
+				updateToVersion = targetVersion
+			} else {
+				// Check for latest version
+				available, latestVersion, err := updater.CheckUpdate(ctx)
+				if err != nil {
+					fmt.Fprintf(cmd.OutOrStderr(), "Could not check for updates: %v\n", err)
+					return nil
+				}
+
+				if !available {
+					fmt.Fprintf(cmd.OutOrStderr(), "Already up to date (%s)\n", Version)
+					return nil
+				}
+				updateToVersion = latestVersion
 			}
 
 			// Ask for confirmation unless --yes is set
 			if !yes {
-				fmt.Fprintf(cmd.OutOrStderr(), "Update available: %s → %s\n", Version, latestVersion)
+				fmt.Fprintf(cmd.OutOrStderr(), "Update available: %s → %s\n", Version, updateToVersion)
 				fmt.Fprint(cmd.OutOrStderr(), "Proceed with update? [y/N] ")
 				var reply string
 				if _, err := fmt.Scanln(&reply); err != nil {
@@ -228,8 +247,8 @@ func newUpdateCmd() *cobra.Command {
 				}
 			}
 
-			fmt.Fprintf(cmd.OutOrStderr(), "Updating from %s to %s...\n", Version, latestVersion)
-			newVersion, err := updater.Update(ctx, latestVersion)
+			fmt.Fprintf(cmd.OutOrStderr(), "Updating from %s to %s...\n", Version, updateToVersion)
+			newVersion, err := updater.Update(ctx, updateToVersion)
 			if err != nil {
 				fmt.Fprintf(cmd.OutOrStderr(), "Update failed: %v\n", err)
 				return nil
