@@ -88,9 +88,9 @@ func CanSelfUpdate(ch Channel, exe string) bool {
 	}
 
 	// Check if the path is in a system package directory (never self-update there).
+	// Note: /usr/local/bin is user-writable, so it's allowed for self-update.
 	systemPaths := []string{
 		"/usr/bin",
-		"/usr/local/bin",
 		"/usr/local/Cellar",
 		"/opt/homebrew",
 		"/opt/homebrew/bin",
@@ -98,7 +98,9 @@ func CanSelfUpdate(ch Channel, exe string) bool {
 	}
 
 	for _, sys := range systemPaths {
-		if strings.HasPrefix(resolved, sys) {
+		// Check exact path or exact prefix with separator (not just string prefix)
+		// This prevents false matches like "/usr/binfoo" matching "/usr/bin"
+		if resolved == sys || strings.HasPrefix(resolved, sys+"/") {
 			return false
 		}
 	}

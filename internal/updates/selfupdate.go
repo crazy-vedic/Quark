@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 )
@@ -125,10 +126,16 @@ func (su *SelfUpdater) downloadBinary(
 		return "", fmt.Errorf("download failed with status %d", resp.StatusCode)
 	}
 
-	// Write to temp file
-	tmp, err := os.CreateTemp("", "quark-update-*.tmp")
+	// Try to create temp file in target directory to avoid cross-filesystem issues
+	// Fallback to system /tmp if target dir not writable
+	tmpDir := filepath.Join(filepath.Dir(su.currentPath), "tmp")
+	tmp, err := os.CreateTemp(tmpDir, "quark-update-*.tmp")
 	if err != nil {
-		return "", err
+		// Fallback to system temp dir
+		tmp, err = os.CreateTemp("", "quark-update-*.tmp")
+		if err != nil {
+			return "", err
+		}
 	}
 	tmpPath := tmp.Name()
 
@@ -228,11 +235,23 @@ func (su *SelfUpdater) backup(src, dst string) error {
 // On Unix, this is a simple atomic rename.
 // On Windows, the old file must be closed first, so we use rename-aside strategy.
 func (su *SelfUpdater) replace(src, dst string) error {
-	// On Windows, we can't replace a running executable, so we'll use rename-aside.
-	// This is handled by keeping the backup as .old for cleanup on next start.
 	if runtime.GOOS == "windows" {
-		// Rename the new file to the destination (old .exe will be .old from backup)
-		return os.Rename(src, dst)
+		// On Windows, we can't replace a running executable, so move it aside first
+		aside := dst + ".aside"
+		if err := os.Rename(dst, aside); err != nil {
+			return fmt.Errorf("failed to move aside current binary: %w", err)
+		}
+		// Now rename new binary into place
+		if err := os.Rename(src, dst); err != nil {
+			// Try to restore original binary
+			if restoreErr := os.Rename(aside, dst); restoreErr != nil {
+				return fmt.Errorf("replace failed and restoration failed: replace=%w, restore=%w", err, restoreErr)
+			}
+			return fmt.Errorf("failed to rename new binary into place: %w", err)
+		}
+		// Clean up the aside copy (best effort)
+		os.Remove(aside)
+		return nil
 	}
 
 	// On Unix, atomic rename is safe

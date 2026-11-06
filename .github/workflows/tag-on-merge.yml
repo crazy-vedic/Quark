@@ -216,12 +216,52 @@ jobs:
           go-version: '1.26'
           cache: true
 
+      - name: Generate completion files
+        run: |
+          go build -o quark ./cmd/quark
+          mkdir -p completions
+          ./quark completion bash > completions/quark.bash
+          ./quark completion zsh > completions/quark.zsh
+          ./quark completion fish > completions/quark.fish
+
       - name: Install GoReleaser
         uses: goreleaser/goreleaser-action@v5
+        with:
+          version: v1.26.2
 
       - name: Run GoReleaser
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.RELEASE_PAT || secrets.GITHUB_TOKEN }}
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
         run: |
           goreleaser release --skip=validate
+
+      - name: Extract binaries and regenerate checksums
+        run: |
+          cd dist
+          mkdir -p binaries
+          # Extract from tar.gz (all have "quark" inside)
+          for arch in amd64 arm64; do
+            tar -xzf quark-linux-${arch}.tar.gz -C binaries/
+            mv binaries/quark binaries/quark-linux-${arch}
+            tar -xzf quark-darwin-${arch}.tar.gz -C binaries/
+            mv binaries/quark binaries/quark-darwin-${arch}
+          done
+          # Extract from zip (has quark.exe inside)
+          unzip -o quark-windows-amd64.zip -d binaries/
+          mv binaries/quark.exe binaries/quark-windows-amd64.exe
+          # Regenerate SHA256SUMS with both archives and binaries
+          rm SHA256SUMS
+          sha256sum quark-*.tar.gz quark-*.zip binaries/quark-* > SHA256SUMS
+
+      - name: Upload binaries and install scripts to release
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PAT || secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ needs.tag.outputs.version }}"
+          # Upload extracted binaries
+          gh release upload "$VERSION" dist/binaries/quark-* \
+            --repo crazy-vedic/Quark --clobber
+          # Upload install scripts
+          gh release upload "$VERSION" install.sh install.ps1 \
+            --repo crazy-vedic/Quark --clobber
