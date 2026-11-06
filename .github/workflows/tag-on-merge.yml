@@ -251,9 +251,10 @@ jobs:
           # Extract from zip (has quark.exe inside)
           unzip -o quark-windows-amd64.zip -d binaries/
           mv binaries/quark.exe binaries/quark-windows-amd64.exe
-          # Regenerate SHA256SUMS with both archives and binaries
+          # Regenerate SHA256SUMS with clean paths (no binaries/ prefix)
           rm SHA256SUMS
-          sha256sum quark-*.tar.gz quark-*.zip binaries/quark-* > SHA256SUMS
+          (cd binaries && sha256sum quark-* > ../SHA256SUMS)
+          sha256sum quark-*.tar.gz quark-*.zip >> SHA256SUMS
 
       - name: Upload binaries and install scripts to release
         env:

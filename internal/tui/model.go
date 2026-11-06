@@ -352,6 +352,7 @@ type Model struct {
 	tmuxDetected    bool
 	tmuxWarning     string
 	showTmuxWarning bool // BUG-010: true only until first keypress after startup
+	version         string // current app version for update checking
 
 	// DebugLog, when non-nil, receives a timestamped line for every key message.
 	debugLog *os.File
@@ -436,6 +437,9 @@ type Deps struct {
 	// ForceDim permanently forces a density tier (wide|narrow|tiny|absurd).
 	// DimAuto (zero) selects the tier from the terminal size.
 	ForceDim DimMode
+	// Version is the current application version (e.g., "1.0.0").
+	// Used for update checking. If empty, update checks are skipped.
+	Version string
 }
 
 // New constructs the root TUI model and detects multiplexer conflicts.
@@ -563,6 +567,7 @@ func New(deps Deps) Model {
 		clientCertCAFile:        clientCertCAFile,
 		clientCertPassword:      clientCertPassword,
 		scheduleTimerSeq:        1,
+		version:                 deps.Version,
 	}
 
 	// Detect tmux/screen keybinding conflicts.
@@ -607,7 +612,7 @@ func (m Model) Init() tea.Cmd {
 		cmds = append(cmds, themeWatchTick())
 	}
 	// Check for updates in background (non-blocking)
-	cmds = append(cmds, checkUpdatesCmd(m.ctx, m.cfg.Updates.Timeout.Duration))
+	cmds = append(cmds, m.checkUpdatesCmd(m.ctx, m.cfg.Updates.Timeout.Duration))
 	if m.lister != nil {
 		cmds = append(cmds, loadCollectionsCmd(m.ctx, m.lister))
 	}
@@ -625,8 +630,13 @@ func (m Model) Init() tea.Cmd {
 
 // --- Commands ---
 
-func checkUpdatesCmd(ctx context.Context, timeout time.Duration) tea.Cmd {
+func (m Model) checkUpdatesCmd(ctx context.Context, timeout time.Duration) tea.Cmd {
 	return func() tea.Msg {
+		// Skip if version not provided
+		if m.version == "" {
+			return updateCheckMsg{available: false, latest: "", err: nil}
+		}
+
 		// Create a short timeout for update check (don't block startup)
 		checkCtx, cancel := context.WithTimeout(ctx, timeout)
 		defer cancel()
@@ -644,16 +654,14 @@ func checkUpdatesCmd(ctx context.Context, timeout time.Duration) tea.Cmd {
 		case updates.ChannelWinget:
 			source = updates.NewWingetSource("Quark.Quark")
 		case updates.ChannelBinary:
-			// Use a version string that won't match (we check against the version from cmd/quark/main.go)
-			// For TUI purposes, we'll get the version dynamically if possible
-			// For now, just detect binary channel without checking
-			return updateCheckMsg{available: false, latest: "", err: nil}
+			// For binary channel installs, check against the GitHub releases source
+			source = updates.NewGitHubSource("crazy-vedic/quark")
 		default:
 			return updateCheckMsg{available: false, latest: "", err: nil}
 		}
 
 		// Check for updates
-		available, latest, err := source.IsUpdateAvailable(checkCtx, "")
+		available, latest, err := source.IsUpdateAvailable(checkCtx, m.version)
 		if err != nil {
 			// Silently ignore check failures
 			return updateCheckMsg{available: false, latest: "", err: nil}

@@ -388,6 +388,7 @@ func launchTUI(
 		CertificateManager: httpTransport,
 		ConfigDir:          configDir,
 		ForceDim:           forceDim,
+		Version:            Version,
 	})
 
 	// Coalesce WindowSizeMsg bursts: Bubble Tea's renderer force-repaints the

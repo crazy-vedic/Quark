@@ -83,21 +83,21 @@ EOF
           echo "GPG key imported"
 
       - name: Add packages to apt repository
+        env:
+          GNUPGHOME: /tmp/gnupg
         run: |
           cd ${{ github.workspace }}
           RELEASE_TAG="${{ github.event.release.tag_name }}"
+          mkdir -p "$GNUPGHOME"
+          chmod 700 "$GNUPGHOME"
 
           # Add each .deb file to the repository
           for deb in /tmp/debs/*.deb; do
             if [ -f "$deb" ]; then
               echo "Adding: $deb"
-              if [ -n "${{ secrets.APT_GPG_KEY_PASSPHRASE }}" ]; then
-                echo "${{ secrets.APT_GPG_KEY_PASSPHRASE }}" | \
-                  reprepro -b apt -S main --gpg-sign "${{ vars.APT_GPG_KEY_ID }}" \
-                  --passphrase-file /dev/stdin includedeb stable "$deb"
-              else
-                reprepro -b apt -S main includedeb stable "$deb"
-              fi
+              # reprepro uses SignWith from distributions config
+              # GPG key was already imported above; reprepro will use it via gpg-agent
+              reprepro -b apt -S main includedeb stable "$deb"
             fi
           done
 
