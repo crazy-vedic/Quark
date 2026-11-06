@@ -21,7 +21,7 @@ jobs:
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.RELEASE_PAT }}
 
       - name: Find merged PR and extract version
         id: extract
@@ -216,46 +216,52 @@ jobs:
           go-version: '1.26'
           cache: true
 
-      - name: Build binaries
+      - name: Generate completion files
         run: |
-          VERSION="${{ needs.tag.outputs.version }}"
-          COMMIT_SHA="${{ github.sha }}"
-          BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-          LDFLAGS="-s -w -X main.Version=${VERSION} -X main.Commit=${COMMIT_SHA} -X main.BuildTime=${BUILD_TIME}"
-          GOOS=darwin GOARCH=amd64 go build -ldflags="${LDFLAGS}" -o dist/quark-darwin-amd64 ./cmd/quark
-          GOOS=darwin GOARCH=arm64 go build -ldflags="${LDFLAGS}" -o dist/quark-darwin-arm64 ./cmd/quark
-          GOOS=linux GOARCH=amd64 go build -ldflags="${LDFLAGS}" -o dist/quark-linux-amd64 ./cmd/quark
-          GOOS=linux GOARCH=arm64 go build -ldflags="${LDFLAGS}" -o dist/quark-linux-arm64 ./cmd/quark
-          GOOS=windows GOARCH=amd64 go build -ldflags="${LDFLAGS}" -o dist/quark-windows-amd64.exe ./cmd/quark
+          go build -o quark ./cmd/quark
+          mkdir -p completions
+          ./quark completion bash > completions/quark.bash
+          ./quark completion zsh > completions/quark.zsh
+          ./quark completion fish > completions/quark.fish
 
-      - name: Copy install scripts
-        run: |
-          cp install.sh dist/install.sh
-          cp install.ps1 dist/install.ps1
-
-      - name: Build release notes
-        id: notes
-        run: |
-          VERSION="${{ needs.tag.outputs.version }}"
-          PR_NUMBER="${{ needs.tag.outputs.pr_number }}"
-          COMMIT_SHA="${{ github.sha }}"
-          PR_LINK="https://github.com/${{ github.repository }}/pull/${PR_NUMBER}"
-
-          # Build the custom release body
-          BODY="**Release: ${VERSION}**
-
-          **PR:** ${PR_LINK}
-          **Commit:** \`${COMMIT_SHA}\`
-          "
-
-          echo "body<<EOF" >> "$GITHUB_OUTPUT"
-          echo "$BODY" >> "$GITHUB_OUTPUT"
-          echo "EOF" >> "$GITHUB_OUTPUT"
-
-      - name: Create Release
-        uses: softprops/action-gh-release@v2
+      - name: Install GoReleaser
+        uses: goreleaser/goreleaser-action@v5
         with:
-          tag_name: ${{ needs.tag.outputs.version }}
-          files: dist/*
-          body: ${{ steps.notes.outputs.body }}
-          generate_release_notes: true
+          version: v1.26.2
+
+      - name: Run GoReleaser
+        env:
+          GITHUB_TOKEN: ${{ secrets.RELEASE_PAT }}
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          goreleaser release --skip=validate
+
+      - name: Extract binaries and regenerate checksums
+        run: |
+          cd dist
+          mkdir -p binaries
+          # Extract from tar.gz (all have "quark" inside)
+          for arch in amd64 arm64; do
+            tar -xzf quark-linux-${arch}.tar.gz -C binaries/
+            mv binaries/quark binaries/quark-linux-${arch}
+            tar -xzf quark-darwin-${arch}.tar.gz -C binaries/
+            mv binaries/quark binaries/quark-darwin-${arch}
+          done
+          # Extract from zip (has quark.exe inside)
+          unzip -o quark-windows-amd64.zip -d binaries/
+          mv binaries/quark.exe binaries/quark-windows-amd64.exe
+          # Regenerate SHA256SUMS with both archives and binaries
+          rm SHA256SUMS
+          sha256sum quark-*.tar.gz quark-*.zip binaries/quark-* > SHA256SUMS
+
+      - name: Upload binaries and install scripts to release
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
+        run: |
+          VERSION="${{ needs.tag.outputs.version }}"
+          # Upload extracted binaries
+          gh release upload "$VERSION" dist/binaries/quark-* \
+            --repo crazy-vedic/Quark --clobber
+          # Upload install scripts
+          gh release upload "$VERSION" install.sh install.ps1 \
+            --repo crazy-vedic/Quark --clobber
