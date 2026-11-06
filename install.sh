@@ -354,7 +354,7 @@ verify_checksum() {
     fi
 
     local expected_sha
-    expected_sha=$(grep -F "$ASSET" "$sums_file" | awk '{print $1}' || true)
+    expected_sha=$(awk -v name="$ASSET" '$2 == name {print $1}' "$sums_file" || true)
 
     if [[ -z "$expected_sha" ]]; then
         echo "❌ Checksum for $ASSET not found in SHA256SUMS"

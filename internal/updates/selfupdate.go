@@ -129,13 +129,24 @@ func (su *SelfUpdater) downloadBinary(
 	// Try to create temp file in target directory to avoid cross-filesystem issues
 	// Fallback to system /tmp if target dir not writable
 	tmpDir := filepath.Join(filepath.Dir(su.currentPath), "tmp")
-	tmp, err := os.CreateTemp(tmpDir, "quark-update-*.tmp")
-	if err != nil {
-		// Fallback to system temp dir
-		tmp, err = os.CreateTemp("", "quark-update-*.tmp")
-		if err != nil {
-			return "", err
+	if err := os.MkdirAll(tmpDir, 0o755); err == nil {
+		tmp, err := os.CreateTemp(tmpDir, "quark-update-*.tmp")
+		if err == nil {
+			tmpPath := tmp.Name()
+			defer tmp.Close()
+
+			if _, err := io.Copy(tmp, resp.Body); err != nil {
+				os.Remove(tmpPath)
+				return "", err
+			}
+			return tmpPath, nil
 		}
+	}
+
+	// Fallback to system temp dir
+	tmp, err := os.CreateTemp("", "quark-update-*.tmp")
+	if err != nil {
+		return "", err
 	}
 	tmpPath := tmp.Name()
 

@@ -351,7 +351,7 @@ type Model struct {
 	// --- Misc ---
 	tmuxDetected    bool
 	tmuxWarning     string
-	showTmuxWarning bool // BUG-010: true only until first keypress after startup
+	showTmuxWarning bool   // BUG-010: true only until first keypress after startup
 	version         string // current app version for update checking
 
 	// DebugLog, when non-nil, receives a timestamped line for every key message.

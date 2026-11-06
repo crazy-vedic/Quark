@@ -78,18 +78,41 @@ EOF
 
       - name: Import GPG key (optional)
         if: secrets.APT_GPG_KEY != ''
+        env:
+          GNUPGHOME: /tmp/gnupg
         run: |
+          mkdir -p "$GNUPGHOME"
+          chmod 700 "$GNUPGHOME"
           echo "${{ secrets.APT_GPG_KEY }}" | base64 -d | gpg --import --batch --no-tty
           echo "GPG key imported"
+          # Configure gpg for CI environment (non-interactive passphrase handling)
+          if [ -n "${{ secrets.APT_GPG_KEY_PASSPHRASE }}" ]; then
+            cat > "$GNUPGHOME/gpg.conf" <<EOF
+pinentry-mode loopback
+batch
+no-tty
+EOF
+            chmod 600 "$GNUPGHOME/gpg.conf"
+          fi
 
       - name: Add packages to apt repository
         env:
           GNUPGHOME: /tmp/gnupg
+          PASS: ${{ secrets.APT_GPG_KEY_PASSPHRASE }}
         run: |
           cd ${{ github.workspace }}
           RELEASE_TAG="${{ github.event.release.tag_name }}"
           mkdir -p "$GNUPGHOME"
           chmod 700 "$GNUPGHOME"
+
+          # Start gpg-agent with passphrase caching
+          eval $(gpg-agent --daemon --quiet)
+
+          # Preload passphrase if provided (for loopback mode)
+          if [ -n "$PASS" ]; then
+            echo "$PASS" | gpg --batch --yes --quiet --no-tty --pinentry-mode loopback \
+              --command-fd 0 --sign --local-user 0x0 </dev/null >/dev/null 2>&1 || true
+          fi
 
           # Add each .deb file to the repository
           for deb in /tmp/debs/*.deb; do
