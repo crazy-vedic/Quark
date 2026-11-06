@@ -96,7 +96,7 @@ ut: ## Run unit tests (excludes e2e / integration tests)
 
 .PHONY: e2e-tui
 e2e-tui: ## Run TUI e2e tests (requires e2e build tag)
-	QUARK_TIMING=$(TIMING) $(call go-test,./tests/e2e/tui/...,-v -tags e2e -coverpkg=./...,!./internal/updates/... $(ARGS)) | tee $(TEST_LOG)
+	QUARK_TIMING=$(TIMING) $(call go-test,./tests/e2e/tui/...,-v -tags e2e -coverpkg=./... $(ARGS)) | tee $(TEST_LOG)
 
 # e2e-cli: build + run (local dev — always rebuilds the coverage binary)
 .PHONY: e2e-cli
@@ -111,7 +111,6 @@ e2e-cli-prep: ## Copy bin/quark-cover to bin/quark for e2e tests
 # e2e-cli-run: run tests using the existing coverage binary (CI — assumes bin/quark
 # is already a coverage-instrumented build, e.g. from a downloaded artifact).
 # Depends on e2e-cli-prep so CI can download quark-cover and run a single target.
-# Note: uses covdata to filter out internal/updates from final report.
 .PHONY: e2e-cli-run
 e2e-cli-run: e2e-cli-prep ## Run CLI e2e tests using existing coverage binary
 	@if [ -d "./tests/e2e/cli" ]; then \
