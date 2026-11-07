@@ -1,0 +1,104 @@
+version: 1
+
+project_name: quark
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: quark
+    main: ./cmd/quark
+    ldflags:
+      - -X main.Version={{ .Version }}
+      - -X main.Commit={{ .Commit }}
+      - -X main.BuildTime={{ .Date }}
+    targets:
+      - darwin_amd64
+      - darwin_arm64
+      - linux_amd64
+      - linux_arm64
+      - windows_amd64
+    env:
+      - CGO_ENABLED=0
+    binary: quark
+
+archives:
+  - id: unix
+    builds:
+      - quark
+    format: tar.gz
+    format_overrides:
+      - goos: windows
+        format: zip
+    name_template: >-
+      {{- .ProjectName }}-{{ .Os }}-{{ .Arch -}}
+      {{- if eq .Os "darwin" -}}
+        {{- else -}}
+        {{- end -}}
+    wrap_in_directory: false
+    files:
+      - completions/**
+
+checksum:
+  name_template: SHA256SUMS
+  algorithm: sha256
+
+source:
+  enabled: false
+
+snapshot:
+  name_template: "{{ incpatch .Version }}-dev"
+
+release:
+  github:
+    owner: crazy-vedic
+    name: Quark
+
+nfpms:
+  - id: quark-deb
+    package_name: quark
+    homepage: https://github.com/crazy-vedic/Quark
+    description: "A local-first, keyboard-driven HTTP client"
+    maintainer: "Quark Contributors <noreply@github.com>"
+    license: MIT
+    formats:
+      - deb
+    contents:
+      - src: LICENSE
+        dst: /usr/share/licenses/quark/LICENSE
+        type: file
+    file_name_template: "{{ .PackageName }}_{{ .Version }}_{{ .Arch }}"
+
+artifactories: []
+
+announce:
+  skip: true
+
+brews:
+  - repository:
+      owner: crazy-vedic
+      name: homebrew-quark
+      branch: main
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    directory: Formula
+    homepage: https://github.com/crazy-vedic/Quark
+    description: "A local-first, keyboard-driven HTTP client"
+    license: MIT
+    test: |
+      system "#{bin}/quark", "version"
+    install: |
+      bin.install "quark"
+      bash_completion.install Dir["completions/quark.bash"].first => "quark"
+      zsh_completion.install Dir["completions/quark.zsh"].first => "_quark"
+      fish_completion.install Dir["completions/quark.fish"].first => "quark.fish"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^ci:"
+      - "^chore:"
+      - "^Merge pull request"

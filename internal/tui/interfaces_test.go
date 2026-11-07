@@ -146,9 +146,9 @@ func TestModel_Ctx_StoredFromDeps(t *testing.T) {
 }
 
 // TestInit_UsesModelCtx verifies Init() is callable without panic when lister is nil.
-// (Existing behavior — regression guard.)
-func TestInit_NilLister_ReturnsNil(t *testing.T) {
+// Init now returns a Cmd for background update checking (non-nil).
+func TestInit_NilLister_ReturnsUpdateCheckCmd(t *testing.T) {
 	m := tui.New(tui.Deps{Config: config.Default(t.TempDir())})
 	cmd := m.Init()
-	require.Nil(t, cmd, "Init with nil lister must return nil Cmd")
+	require.NotNil(t, cmd, "Init must return a Cmd for background update check")
 }

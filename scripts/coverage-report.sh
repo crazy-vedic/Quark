@@ -161,10 +161,11 @@ check_threshold() {
 
 # E2E TUI exercises bubbletea directly; CLI e2e runs the binary. Each suite's
 # profile uses -coverpkg=./..., so cross-surface files appear as uncovered noise.
+# Updates package is tested independently, not via CLI/TUI e2e.
 file_in_tui_suite_scope() {
     local file="$1"
     case "$file" in
-        internal/cli/*|cmd/*) return 1 ;;
+        internal/cli/*|cmd/*|internal/updates/*) return 1 ;;
         *) return 0 ;;
     esac
 }
@@ -174,7 +175,8 @@ file_in_cli_suite_scope() {
     case "$file" in
         # These shared packages contain TUI-only paths; the CLI binary suite
         # cannot exercise them, so their coverage belongs to UT/TUI metrics.
-        internal/tui/*|internal/tuitest/*|internal/curl/exporter.go|internal/keybindings/resolver.go) return 1 ;;
+        # Updates package is tested independently, not via CLI/TUI e2e.
+        internal/tui/*|internal/tuitest/*|internal/curl/exporter.go|internal/keybindings/resolver.go|internal/updates/*) return 1 ;;
         *) return 0 ;;
     esac
 }
@@ -216,11 +218,12 @@ sum_summary_column_for_scope() {
             return 1
         }
         if (scope == "tui") {
-            return path !~ /^internal\/cli\// && path !~ /^cmd\//
+            return path !~ /^internal\/cli\// && path !~ /^cmd\// && path !~ /^internal\/updates\//
         }
         if (scope == "cli") {
             return path !~ /^internal\/tui\// && path !~ /^internal\/tuitest\// &&
-                path != "internal/curl/exporter.go" && path != "internal/keybindings/resolver.go"
+                path != "internal/curl/exporter.go" && path != "internal/keybindings/resolver.go" &&
+                path !~ /^internal\/updates\//
         }
         return 1
     }
