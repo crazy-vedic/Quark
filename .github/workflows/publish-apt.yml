@@ -109,9 +109,9 @@ EOF
           eval $(gpg-agent --daemon --quiet)
 
           # Preload passphrase if provided (for loopback mode)
-          if [ -n "$PASS" ]; then
-            echo "$PASS" | gpg --batch --yes --quiet --no-tty --pinentry-mode loopback \
-              --command-fd 0 --sign --local-user 0x0 </dev/null >/dev/null 2>&1 || true
+          if [ -n "$PASS" ] && [ -n "${{ vars.APT_GPG_KEY_ID }}" ]; then
+            echo "$PASS" | gpg --batch --yes --no-tty --pinentry-mode loopback \
+              --command-fd 0 --sign --local-user "${{ vars.APT_GPG_KEY_ID }}" </dev/null >/dev/null 2>&1
           fi
 
           # Add each .deb file to the repository

@@ -78,7 +78,7 @@ type Updates struct {
 	CheckInterval     duration `toml:"check_interval"`
 	RetryAfterFailure duration `toml:"retry_after_failure"`
 	Timeout           duration `toml:"timeout"`
-	AutoApply         bool     `toml:"auto_apply"`
+	AutoApply         bool     `toml:"auto_apply"` // Deferred: only applies to brew/winget channels
 }
 
 // duration is a TOML-decodable wrapper for time.Duration.

@@ -196,9 +196,10 @@ type scheduledRunFailure struct {
 }
 
 type updateCheckMsg struct {
-	available bool
-	latest    string
-	err       error
+	available      bool
+	latest         string
+	upgradeCommand string
+	err            error
 }
 
 // --- Model ---
@@ -664,14 +665,14 @@ func (m Model) checkUpdatesCmd(ctx context.Context, timeout time.Duration) tea.C
 		available, latest, err := source.IsUpdateAvailable(checkCtx, m.version)
 		if err != nil {
 			// Silently ignore check failures
-			return updateCheckMsg{available: false, latest: "", err: nil}
+			return updateCheckMsg{available: false, latest: "", upgradeCommand: "", err: nil}
 		}
 
 		if available && latest != "" {
-			return updateCheckMsg{available: true, latest: latest, err: nil}
+			return updateCheckMsg{available: true, latest: latest, upgradeCommand: source.UpgradeCommand(), err: nil}
 		}
 
-		return updateCheckMsg{available: false, latest: latest, err: nil}
+		return updateCheckMsg{available: false, latest: latest, upgradeCommand: "", err: nil}
 	}
 }
 

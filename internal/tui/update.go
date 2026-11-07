@@ -94,7 +94,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case updateCheckMsg:
 		if msg.available && msg.latest != "" {
-			m.updateStatus = "update: " + msg.latest
+			if msg.upgradeCommand != "" {
+				m.updateStatus = "↑ " + msg.latest + " · " + msg.upgradeCommand
+			} else {
+				m.updateStatus = "↑ " + msg.latest
+			}
 		}
 		return m, nil
 
