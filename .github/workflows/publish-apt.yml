@@ -77,13 +77,17 @@ EOF
           ls -lah *.deb 2>/dev/null || echo "No .deb packages downloaded"
 
       - name: Import GPG key (optional)
-        if: secrets.APT_GPG_KEY != ''
         env:
           GNUPGHOME: /tmp/gnupg
+          GPG_KEY: ${{ secrets.APT_GPG_KEY }}
         run: |
+          if [ -z "$GPG_KEY" ]; then
+            echo "No GPG key configured, packages will be unsigned"
+            exit 0
+          fi
           mkdir -p "$GNUPGHOME"
           chmod 700 "$GNUPGHOME"
-          echo "${{ secrets.APT_GPG_KEY }}" | base64 -d | gpg --import --batch --no-tty
+          echo "$GPG_KEY" | base64 -d | gpg --import --batch --no-tty
           echo "GPG key imported"
 
       - name: Add packages to apt repository
