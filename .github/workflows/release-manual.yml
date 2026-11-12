@@ -141,6 +141,19 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.tag }}
+
+      - name: Validate npm packages exist
+        run: |
+          set -euo pipefail
+          for p in npm/platforms/*/ npm/quark/; do
+            test -f "${p}package.json" || { echo "::error::missing ${p}package.json"; exit 1; }
+          done
+          for f in npm/quark/package.json npm/platforms/*/package.json; do
+            node -e "const p=require('./$f'); if (p.name.indexOf('@quark-client/')!==0) { console.error('bad name', p.name, '$f'); process.exit(1) }"
+          done
+          echo "✓ All npm packages valid"
 
       - name: Set up Node
         uses: actions/setup-node@v4
@@ -166,13 +179,24 @@ jobs:
 
       - name: Publish platform packages
         run: |
+          set -euo pipefail
           cd npm
-          npm publish platforms/linux-x64 --access public --provenance 2>&1 | grep -v "npm WARN"
-          npm publish platforms/linux-arm64 --access public --provenance 2>&1 | grep -v "npm WARN"
-          npm publish platforms/darwin-x64 --access public --provenance 2>&1 | grep -v "npm WARN"
-          npm publish platforms/darwin-arm64 --access public --provenance 2>&1 | grep -v "npm WARN"
-          npm publish platforms/win32-x64 --access public --provenance 2>&1 | grep -v "npm WARN"
-          echo "✓ Platform packages published"
+          VERSION="${{ inputs.tag }}"
+          VERSION="${VERSION#v}"
+
+          for platform in linux-x64 linux-arm64 darwin-x64 darwin-arm64 win32-x64; do
+            PKG="@quark-client/quark-${platform}"
+            # Check if version already exists
+            if npm view "${PKG}@${VERSION}" version &>/dev/null; then
+              echo "✓ ${PKG}@${VERSION} already published, skipping"
+            else
+              # Dry run first
+              npm publish "./platforms/${platform}" --access public --provenance --dry-run
+              # Then publish for real
+              npm publish "./platforms/${platform}" --access public --provenance
+              echo "✓ Published ${PKG}@${VERSION}"
+            fi
+          done
 
       - name: Add optionalDependencies to main package
         run: |
@@ -181,9 +205,22 @@ jobs:
 
       - name: Publish main package
         run: |
+          set -euo pipefail
           cd npm
-          npm publish quark --access public --provenance 2>&1 | grep -v "npm WARN"
-          echo "✓ Main package published successfully"
+          VERSION="${{ inputs.tag }}"
+          VERSION="${VERSION#v}"
+          PKG="@quark-client/quark"
+
+          # Check if version already exists
+          if npm view "${PKG}@${VERSION}" version &>/dev/null; then
+            echo "✓ ${PKG}@${VERSION} already published"
+          else
+            # Dry run first
+            npm publish "./quark" --access public --provenance --dry-run
+            # Then publish for real
+            npm publish "./quark" --access public --provenance
+            echo "✓ Published ${PKG}@${VERSION}"
+          fi
 
   submit-winget:
     needs: release
