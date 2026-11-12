@@ -17,7 +17,6 @@ jobs:
     runs-on: ubuntu-latest
     environment: apt-signing
     env:
-      GNUPGHOME: ${{ runner.temp }}/gnupg
       APT_KEY_ID: ${{ vars.APT_GPG_KEY_ID }}
       APT_PRIVATE_KEY_B64: ${{ secrets.APT_GPG_PRIVATE_KEY }}
     steps:
@@ -82,6 +81,8 @@ jobs:
           ls -lah *.deb 2>/dev/null || echo "No .deb packages downloaded"
 
       - name: Import signing key
+        env:
+          GNUPGHOME: ${{ runner.temp }}/gnupg
         run: |
           set -euo pipefail
           if [ -z "$APT_PRIVATE_KEY_B64" ] || [ -z "$APT_KEY_ID" ]; then
@@ -117,6 +118,8 @@ jobs:
           ls -lah dists/stable/Release* 2>/dev/null || echo "Release file will be created"
 
       - name: Publish public key
+        env:
+          GNUPGHOME: ${{ runner.temp }}/gnupg
         run: |
           set -euo pipefail
           gpg --batch --export "$APT_KEY_ID" > apt/quark-archive-key.gpg
