@@ -21,9 +21,21 @@ const platforms = [
   { name: 'win32-x64', binary: 'quark-windows-amd64.exe', os: 'win32', cpu: 'x64' },
 ];
 
-function updatePackageJson(filePath, version) {
+function updatePackageJson(filePath, version, directory = null) {
   const content = JSON.parse(fs.readFileSync(filePath, 'utf8'));
   content.version = version;
+
+  if (!content.repository) {
+    content.repository = {
+      type: 'git',
+      url: 'https://github.com/crazy-vedic/Quark',
+    };
+  }
+
+  if (directory && !content.repository.directory) {
+    content.repository.directory = directory;
+  }
+
   fs.writeFileSync(filePath, JSON.stringify(content, null, 2) + '\n');
 }
 
@@ -35,7 +47,7 @@ function ensureDir(dir) {
 
 // Update main package version
 const mainPkgPath = path.join('npm/quark/package.json');
-updatePackageJson(mainPkgPath, normalizedVersion);
+updatePackageJson(mainPkgPath, normalizedVersion, 'npm/quark');
 
 const optionalDeps = {};
 
@@ -60,7 +72,7 @@ for (const platform of platforms) {
   }
 
   // Update platform package.json
-  updatePackageJson(path.join(platformDir, 'package.json'), normalizedVersion);
+  updatePackageJson(path.join(platformDir, 'package.json'), normalizedVersion, path.join('npm/platforms', platform.name));
 
   // Add to optionalDependencies
   optionalDeps[`@quark-client/quark-${platform.name}`] = normalizedVersion;
