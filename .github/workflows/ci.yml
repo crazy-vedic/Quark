@@ -124,6 +124,71 @@ jobs:
           name: lint-pr
           path: /tmp/baseline/lint-output.txt
           retention-days: 1
+
+  # ---------------------------------------------------------------------------
+  # Stage 0c: Restore baseline from GitHub Releases — cross-event fallback
+  # On cache-miss, attempt to download baseline from releases if available.
+  # This enables reuse across event boundaries (PR→push, push→PR).
+  # Only runs if GH Actions cache was not hit.
+  # ---------------------------------------------------------------------------
+  restore-baseline-from-releases:
+    runs-on: ubuntu-latest
+    needs: check-tree-cache
+    if: needs.check-tree-cache.outputs.use-cache != 'true'
+    steps:
+      - name: Checkout (scripts only)
+        uses: actions/checkout@v5
+        with:
+          sparse-checkout: scripts
+          sparse-checkout-cone: false
+
+      - name: Download baseline from GitHub Releases
+        id: download
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p /tmp/baseline
+          ./scripts/gh-release-baseline.sh download \
+            "${{ needs.check-tree-cache.outputs.tree-sha }}" \
+            /tmp/baseline
+          if [ $? -eq 0 ]; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+            echo "✓ Baseline downloaded from GitHub Releases"
+          fi
+
+      - name: Re-upload coverage artifacts (UT)
+        if: steps.download.outputs.found == 'true'
+        uses: actions/upload-artifact@v6
+        with:
+          name: coverage-ut-pr
+          path: /tmp/baseline/ut.out
+          retention-days: 1
+
+      - name: Re-upload coverage artifacts (TUI)
+        if: steps.download.outputs.found == 'true'
+        uses: actions/upload-artifact@v6
+        with:
+          name: coverage-tui-pr
+          path: /tmp/baseline/tui.out
+          retention-days: 1
+
+      - name: Re-upload coverage artifacts (CLI)
+        if: steps.download.outputs.found == 'true' && hashFiles('/tmp/baseline/bin/cover-cli.out') != ''
+        uses: actions/upload-artifact@v6
+        with:
+          name: coverage-cli-pr
+          path: /tmp/baseline/bin/cover-cli.out
+          retention-days: 1
+
+      - name: Re-upload lint output
+        if: steps.download.outputs.found == 'true'
+        uses: actions/upload-artifact@v6
+        with:
+          name: lint-pr
+          path: /tmp/baseline/lint-output.txt
+          retention-days: 1
+
   # ---------------------------------------------------------------------------
   # Stage 1: Build — compile once, share binary with all downstream jobs
   # Skip if tree SHA was already tested (push to master only)
@@ -570,7 +635,7 @@ jobs:
   # ---------------------------------------------------------------------------
   persist-baseline:
     runs-on: ubuntu-latest
-    needs: [check-tree-cache, test-unit, test-e2e-linux, lint, package-validation, restore-cached-artifacts]
+    needs: [check-tree-cache, test-unit, test-e2e-linux, lint, package-validation, restore-cached-artifacts, restore-baseline-from-releases]
     if: github.event_name == 'push' && !failure()
     steps:
       - name: Download coverage artifacts
@@ -629,6 +694,21 @@ jobs:
         with:
           path: /tmp/baseline
           key: tree-results-${{ needs.check-tree-cache.outputs.tree-sha }}
+
+      - name: Upload baseline to GitHub Releases (cross-event fallback)
+        if: always() && !cancelled()
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ./scripts/gh-release-baseline.sh upload \
+            "${{ needs.check-tree-cache.outputs.tree-sha }}" \
+            /tmp/baseline
+          if [ $? -eq 0 ]; then
+            echo "✓ Baseline uploaded to GitHub Releases as tree-cache-${{ needs.check-tree-cache.outputs.tree-sha }}"
+          else
+            echo "✗ Failed to upload baseline to GitHub Releases (non-blocking)"
+          fi
 
   # ---------------------------------------------------------------------------
   # Stage 3b: Baseline — on PRs, fetch cached master data.
