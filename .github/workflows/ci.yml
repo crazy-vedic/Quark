@@ -16,6 +16,9 @@ permissions:
   contents: read
   pull-requests: write
 
+# Job-level permissions override global for specific jobs
+# persist-baseline needs contents: write to create/upload releases
+
 env:
   GOTESTSUM_VERSION: v1.13.0
   # Bump when cache path layout changes. v3: store under runner.temp instead of ~/go.
@@ -23,10 +26,196 @@ env:
 
 jobs:
   # ---------------------------------------------------------------------------
+  # Stage 0: Check tree cache — avoid redundant tests when code is identical
+  # On push to master, compute tree SHA and check if we have cached results.
+  # This supports fast-forwards, squashes, rebases within master.
+  #
+  # IMPORTANT: Cache scope isolation
+  # GitHub Actions cache is scoped by event type. A cache written by a
+  # `pull_request` event cannot be restored by a `push` event. Therefore,
+  # this feature only reuses results from previous master pushes, not from
+  # PR runs. The tree SHA mechanism does work across squashes/rebases of the
+  # same code tree within a push context.
+  #
+  # For the intended feature of "skip tests when identical code was recently
+  # tested (including in PRs)", use an explicit trusted artifact store
+  # (e.g., a database or dedicated storage bucket scoped across both events).
+  # ---------------------------------------------------------------------------
+  check-tree-cache:
+    runs-on: ubuntu-latest
+    outputs:
+      tree-sha: ${{ steps.tree.outputs.sha }}
+      use-cache: ${{ steps.cache-check.outputs.cache-hit }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Compute tree SHA
+        id: tree
+        run: |
+          TREE_SHA=$(git rev-parse HEAD^{tree})
+          echo "sha=$TREE_SHA" >> "$GITHUB_OUTPUT"
+          echo "Tree SHA: $TREE_SHA"
+
+      - name: Check if tree results are cached (push to master only)
+        id: cache-check
+        if: github.event_name == 'push'
+        continue-on-error: true
+        uses: actions/cache/restore@v5
+        with:
+          path: /tmp/tree-cache
+          key: tree-results-${{ steps.tree.outputs.sha }}
+          lookup-only: true
+
+      - name: Report cache status
+        run: |
+          EVENT=${{ github.event_name }}
+          if [ "$EVENT" == "push" ]; then
+            if [ "${{ steps.cache-check.outputs.cache-hit }}" == "true" ]; then
+              echo "✓ Tree SHA cached — will reuse results"
+            else
+              echo "✗ Tree SHA not cached — will run tests"
+            fi
+          elif [ "$EVENT" == "pull_request" ]; then
+            echo "→ Pull request: tree cache lookup skipped (scope isolation), will run tests"
+          elif [ "$EVENT" == "workflow_dispatch" ]; then
+            echo "→ Manual trigger: tree cache lookup skipped, will run tests"
+          fi
+
+  # ---------------------------------------------------------------------------
+  # Stage 0b: Restore cached artifacts — when tree SHA matches, re-upload
+  # artifacts from cache so persist-baseline can use them.
+  # Only runs on push when cache is hit.
+  # ---------------------------------------------------------------------------
+  restore-cached-artifacts:
+    runs-on: ubuntu-latest
+    needs: check-tree-cache
+    if: github.event_name == 'push' && needs.check-tree-cache.outputs.use-cache == 'true'
+    steps:
+      - name: Restore cached baseline
+        uses: actions/cache/restore@v5
+        with:
+          path: /tmp/baseline
+          key: tree-results-${{ needs.check-tree-cache.outputs.tree-sha }}
+
+      - name: Re-upload coverage artifacts for persist-baseline
+        uses: actions/upload-artifact@v6
+        with:
+          name: coverage-ut-pr
+          path: /tmp/baseline/ut.out
+          retention-days: 1
+
+      - name: Re-upload TUI coverage
+        uses: actions/upload-artifact@v6
+        with:
+          name: coverage-tui-pr
+          path: /tmp/baseline/tui.out
+          retention-days: 1
+
+      - name: Re-upload CLI coverage (if exists)
+        if: hashFiles('/tmp/baseline/bin/cover-cli.out') != ''
+        uses: actions/upload-artifact@v6
+        with:
+          name: coverage-cli-pr
+          path: /tmp/baseline/bin/cover-cli.out
+          retention-days: 1
+
+      - name: Re-upload lint output
+        uses: actions/upload-artifact@v6
+        with:
+          name: lint-pr
+          path: /tmp/baseline/lint-output.txt
+          retention-days: 1
+
+  # ---------------------------------------------------------------------------
+  # Stage 0c: Restore baseline from GitHub Releases — cross-event fallback
+  # On cache-miss, attempt to download baseline from releases if available.
+  # This enables reuse across event boundaries (PR→push, push→PR).
+  # Only runs if GH Actions cache was not hit.
+  # ---------------------------------------------------------------------------
+  restore-baseline-from-releases:
+    runs-on: ubuntu-latest
+    needs: check-tree-cache
+    # Only restore from releases on master pushes (not PRs)
+    # Release baselines are created during master push via persist-baseline
+    # PR runs create their own baselines; cross-event reuse is master-to-master only
+    if: github.event_name == 'push' && needs.check-tree-cache.outputs.use-cache != 'true'
+    outputs:
+      found: ${{ steps.download.outputs.found }}
+    steps:
+      - name: Checkout (scripts only)
+        uses: actions/checkout@v5
+        with:
+          sparse-checkout: scripts
+          sparse-checkout-cone-mode: false
+
+      - name: Download baseline from GitHub Releases
+        id: download
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p /tmp/baseline
+          ./scripts/gh-release-baseline.sh download \
+            "${{ needs.check-tree-cache.outputs.tree-sha }}" \
+            /tmp/baseline
+          if [ $? -eq 0 ]; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+            echo "✓ Baseline downloaded from GitHub Releases"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Re-upload coverage artifacts (UT)
+        if: steps.download.outputs.found == 'true'
+        uses: actions/upload-artifact@v6
+        with:
+          name: coverage-ut-pr
+          path: /tmp/baseline/ut.out
+          retention-days: 1
+
+      - name: Re-upload coverage artifacts (TUI)
+        if: steps.download.outputs.found == 'true'
+        uses: actions/upload-artifact@v6
+        with:
+          name: coverage-tui-pr
+          path: /tmp/baseline/tui.out
+          retention-days: 1
+
+      - name: Re-upload coverage artifacts (CLI)
+        if: steps.download.outputs.found == 'true' && hashFiles('/tmp/baseline/bin/cover-cli.out') != ''
+        uses: actions/upload-artifact@v6
+        with:
+          name: coverage-cli-pr
+          path: /tmp/baseline/bin/cover-cli.out
+          retention-days: 1
+
+      - name: Re-upload lint output
+        if: steps.download.outputs.found == 'true'
+        uses: actions/upload-artifact@v6
+        with:
+          name: lint-pr
+          path: /tmp/baseline/lint-output.txt
+          retention-days: 1
+
+  # ---------------------------------------------------------------------------
   # Stage 1: Build — compile once, share binary with all downstream jobs
+  # Skip if tree SHA was already tested (push to master only)
   # ---------------------------------------------------------------------------
   build:
     runs-on: ubuntu-latest
+    needs: [check-tree-cache, restore-baseline-from-releases]
+    if: >-
+      !cancelled() &&
+      (
+        github.event_name == 'pull_request' ||
+        (
+          github.event_name == 'push' &&
+          needs.check-tree-cache.outputs.use-cache != 'true' &&
+          needs.restore-baseline-from-releases.outputs.found != 'true'
+        )
+      )
     steps:
       - uses: actions/checkout@v5
         with:
@@ -61,9 +250,21 @@ jobs:
 
   # ---------------------------------------------------------------------------
   # Stage 1: Package validation — check GoReleaser config and snapshot build
+  # Skip if tree SHA was already tested (push to master only)
   # ---------------------------------------------------------------------------
   package-validation:
     runs-on: ubuntu-latest
+    needs: [check-tree-cache, restore-baseline-from-releases]
+    if: >-
+      !cancelled() &&
+      (
+        github.event_name == 'pull_request' ||
+        (
+          github.event_name == 'push' &&
+          needs.check-tree-cache.outputs.use-cache != 'true' &&
+          needs.restore-baseline-from-releases.outputs.found != 'true'
+        )
+      )
     steps:
       - uses: actions/checkout@v5
         with:
@@ -90,9 +291,21 @@ jobs:
 
   # ---------------------------------------------------------------------------
   # Stage 1: Lint — parallel with build, no artifacts needed
+  # Skip if tree SHA was already tested (push to master only)
   # ---------------------------------------------------------------------------
   lint:
     runs-on: ubuntu-latest
+    needs: [check-tree-cache, restore-baseline-from-releases]
+    if: >-
+      !cancelled() &&
+      (
+        github.event_name == 'pull_request' ||
+        (
+          github.event_name == 'push' &&
+          needs.check-tree-cache.outputs.use-cache != 'true' &&
+          needs.restore-baseline-from-releases.outputs.found != 'true'
+        )
+      )
     steps:
       - uses: actions/checkout@v5
         with:
@@ -129,9 +342,21 @@ jobs:
 
   # ---------------------------------------------------------------------------
   # Stage 2: Test — all suites run in parallel, each downloads the binary
+  # Skip if tree SHA was already tested (push to master only)
   # ---------------------------------------------------------------------------
   test-unit:
     runs-on: ubuntu-latest
+    needs: [check-tree-cache, restore-baseline-from-releases]
+    if: >-
+      !cancelled() &&
+      (
+        github.event_name == 'pull_request' ||
+        (
+          github.event_name == 'push' &&
+          needs.check-tree-cache.outputs.use-cache != 'true' &&
+          needs.restore-baseline-from-releases.outputs.found != 'true'
+        )
+      )
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-go@v6
@@ -206,7 +431,17 @@ jobs:
 
   test-e2e-linux:
     runs-on: ubuntu-latest
-    needs: build
+    needs: [build, check-tree-cache, restore-baseline-from-releases]
+    if: >-
+      !cancelled() &&
+      (
+        github.event_name == 'pull_request' ||
+        (
+          github.event_name == 'push' &&
+          needs.check-tree-cache.outputs.use-cache != 'true' &&
+          needs.restore-baseline-from-releases.outputs.found != 'true'
+        )
+      )
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-go@v6
@@ -295,6 +530,10 @@ jobs:
 
   # ---------------------------------------------------------------------------
   # Stage 2: Native e2e tests — Windows, macOS
+  # NOTE: These jobs are NOT gated by cache/release optimization.
+  # They run on every push/PR to ensure cross-platform validation.
+  # This is intentional: platform-specific issues may not be caught by
+  # Linux tests alone, so we prioritize correctness over CI speed for Windows/macOS.
   # ---------------------------------------------------------------------------
   test-e2e-windows:
     runs-on: windows-latest
@@ -450,13 +689,22 @@ jobs:
 
   # ---------------------------------------------------------------------------
   # Stage 3a: Persist baseline — on push to master, cache coverage + lint
-  # so PRs can fetch instead of re-running all master tests.
+  # Both by commit SHA (for immediate PR baseline) and by tree SHA
+  # (for reuse across squashes, rebases, fast-forwards).
   # ---------------------------------------------------------------------------
   persist-baseline:
-    needs: [test-unit, test-e2e-linux, lint, package-validation]
     runs-on: ubuntu-latest
-    if: github.event_name == 'push'
+    needs: [check-tree-cache, test-unit, test-e2e-linux, lint, package-validation, restore-cached-artifacts, restore-baseline-from-releases]
+    permissions:
+      contents: write
+    if: >-
+      !cancelled() &&
+      github.event_name == 'push' &&
+      !failure()
     steps:
+      - name: Checkout (for release script)
+        uses: actions/checkout@v5
+
       - name: Download coverage artifacts
         uses: actions/download-artifact@v7
         with:
@@ -469,23 +717,65 @@ jobs:
           name: lint-pr
           path: /tmp/baseline-raw/lint-pr
 
-      - name: Restructure baseline
+      - name: Validate and restructure baseline
         run: |
+          set -e
           mkdir -p /tmp/baseline/bin
-          cp /tmp/baseline-raw/coverage-ut-pr/ut.out     /tmp/baseline/ut.out
-          cp /tmp/baseline-raw/coverage-tui-pr/tui.out   /tmp/baseline/tui.out
-          if [ -f /tmp/baseline-raw/coverage-cli-pr/cover-cli.out ]; then \
-            cp /tmp/baseline-raw/coverage-cli-pr/cover-cli.out \
-               /tmp/baseline/bin/cover-cli.out; \
+
+          # Require all expected artifacts to be present
+          if [ ! -f /tmp/baseline-raw/coverage-ut-pr/ut.out ]; then
+            echo "ERROR: Missing coverage-ut-pr artifact"
+            exit 1
+          fi
+          if [ ! -f /tmp/baseline-raw/coverage-tui-pr/tui.out ]; then
+            echo "ERROR: Missing coverage-tui-pr artifact"
+            exit 1
+          fi
+          if [ ! -f /tmp/baseline-raw/lint-pr/lint-output.txt ]; then
+            echo "ERROR: Missing lint-pr artifact"
+            exit 1
+          fi
+
+          # CLI coverage is optional but if present, must be valid
+          cp /tmp/baseline-raw/coverage-ut-pr/ut.out /tmp/baseline/ut.out
+          cp /tmp/baseline-raw/coverage-tui-pr/tui.out /tmp/baseline/tui.out
+          if [ -f /tmp/baseline-raw/coverage-cli-pr/cover-cli.out ]; then
+            cp /tmp/baseline-raw/coverage-cli-pr/cover-cli.out /tmp/baseline/bin/cover-cli.out
+          else
+            touch /tmp/baseline/bin/cover-cli.out
           fi
           cp /tmp/baseline-raw/lint-pr/lint-output.txt /tmp/baseline/lint-output.txt
 
-      - name: Save baseline cache
+          echo "✓ Baseline validation complete: all required artifacts present"
+
+      - name: Save baseline cache by commit SHA
         continue-on-error: true
         uses: actions/cache/save@v5
         with:
           path: /tmp/baseline
           key: coverage-master-${{ github.sha }}
+
+      - name: Save baseline cache by tree SHA (for squash/rebase reuse)
+        continue-on-error: true
+        uses: actions/cache/save@v5
+        with:
+          path: /tmp/baseline
+          key: tree-results-${{ needs.check-tree-cache.outputs.tree-sha }}
+
+      - name: Upload baseline to GitHub Releases (cross-event fallback)
+        if: always() && !cancelled()
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ./scripts/gh-release-baseline.sh upload \
+            "${{ needs.check-tree-cache.outputs.tree-sha }}" \
+            /tmp/baseline
+          if [ $? -eq 0 ]; then
+            echo "✓ Baseline uploaded to GitHub Releases as tree-cache-${{ needs.check-tree-cache.outputs.tree-sha }}"
+          else
+            echo "✗ Failed to upload baseline to GitHub Releases (non-blocking)"
+          fi
 
   # ---------------------------------------------------------------------------
   # Stage 3b: Baseline — on PRs, fetch cached master data.
