@@ -1,0 +1,105 @@
+name: Publish to npm
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to publish (e.g. v1.3.37)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.tag }}
+
+      - name: Validate npm packages exist
+        run: |
+          set -euo pipefail
+          for p in npm/platforms/*/ npm/quark/; do
+            test -f "${p}package.json" || { echo "::error::missing ${p}package.json"; exit 1; }
+          done
+          for f in npm/quark/package.json npm/platforms/*/package.json; do
+            node -e "const p=require('./$f'); if (p.name.indexOf('@quark-client/')!==0) { console.error('bad name', p.name, '$f'); process.exit(1) }"
+          done
+          echo "✓ All npm packages valid"
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Upgrade npm for trusted publishing
+        run: |
+          npm install -g npm@^11.5.1
+          npm --version
+
+      - name: Download release artifacts
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ inputs.tag }}"
+          mkdir -p dist/binaries
+          gh release download "$TAG" \
+            --pattern "quark-*" \
+            --dir dist/binaries \
+            --repo crazy-vedic/Quark
+
+      - name: Pack npm packages (binaries only)
+        run: |
+          TAG="${{ inputs.tag }}"
+          node scripts/npm-pack.mjs "${TAG#v}"
+
+      - name: Publish platform packages
+        run: |
+          set -euo pipefail
+          cd npm
+          VERSION="${{ inputs.tag }}"
+          VERSION="${VERSION#v}"
+
+          for platform in linux-x64 linux-arm64 darwin-x64 darwin-arm64 win32-x64; do
+            PKG="@quark-client/quark-${platform}"
+            # Check if version already exists
+            if npm view "${PKG}@${VERSION}" version &>/dev/null; then
+              echo "✓ ${PKG}@${VERSION} already published, skipping"
+            else
+              # Dry run first
+              npm publish "./platforms/${platform}" --access public --provenance --dry-run
+              # Then publish for real
+              npm publish "./platforms/${platform}" --access public --provenance
+              echo "✓ Published ${PKG}@${VERSION}"
+            fi
+          done
+
+      - name: Add optionalDependencies to main package
+        run: |
+          TAG="${{ inputs.tag }}"
+          node scripts/npm-pack.mjs "${TAG#v}" --with-deps
+
+      - name: Publish main package
+        run: |
+          set -euo pipefail
+          cd npm
+          VERSION="${{ inputs.tag }}"
+          VERSION="${VERSION#v}"
+          PKG="@quark-client/quark"
+
+          # Check if version already exists
+          if npm view "${PKG}@${VERSION}" version &>/dev/null; then
+            echo "✓ ${PKG}@${VERSION} already published"
+          else
+            # Dry run first
+            npm publish "./quark" --access public --provenance --dry-run
+            # Then publish for real
+            npm publish "./quark" --access public --provenance
+            echo "✓ Published ${PKG}@${VERSION}"
+          fi
