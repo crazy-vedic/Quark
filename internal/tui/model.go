@@ -669,7 +669,9 @@ func (m Model) checkUpdatesCmd(ctx context.Context, timeout time.Duration) tea.C
 		}
 
 		if available && latest != "" {
-			return updateCheckMsg{available: true, latest: latest, upgradeCommand: source.UpgradeCommand(), err: nil}
+			return updateCheckMsg{
+				available: true, latest: latest, upgradeCommand: source.UpgradeCommand(), err: nil,
+			}
 		}
 
 		return updateCheckMsg{available: false, latest: latest, upgradeCommand: "", err: nil}
