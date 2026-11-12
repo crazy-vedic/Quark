@@ -2,6 +2,11 @@
   "name": "@quark-client/quark-darwin-arm64",
   "version": "0.0.0-placeholder",
   "description": "Quark binary for macOS arm64",
+  "homepage": "https://github.com/crazy-vedic/Quark",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/crazy-vedic/Quark.git"
+  },
   "license": "MIT",
   "os": ["darwin"],
   "cpu": ["arm64"],
