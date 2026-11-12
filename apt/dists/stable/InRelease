@@ -5,34 +5,34 @@ Origin: Quark
 Label: Quark
 Suite: stable
 Codename: stable
-Date: Thu, 12 Nov 2026 15:50:21 UTC
+Date: Thu, 12 Nov 2026 15:59:44 UTC
 Architectures: amd64 arm64
 Components: main
 MD5Sum:
- 0bf058cd44154d1886486fa1198867ea 485 main/binary-amd64/Packages
- 96d0364c2d1ae33cc742f2f11b853ee7 374 main/binary-amd64/Packages.gz
+ e40e686e3e34e28fa176bc5d9f7f4d2c 485 main/binary-amd64/Packages
+ 6dde2620c3ec73de468ab76c3161f947 373 main/binary-amd64/Packages.gz
  2388d3a915cf718efd4158f79ac6a3cb 79 main/binary-amd64/Release
- f227f3282bea12419c29f8636b6688d5 485 main/binary-arm64/Packages
- 44bf4db1fc8559728fb2a71777930b88 373 main/binary-arm64/Packages.gz
+ 869cc353ec6007c612a3d9f15a5190b9 485 main/binary-arm64/Packages
+ c2364cdd3056aeeaee2279dea4aa5a61 374 main/binary-arm64/Packages.gz
  755d341c260c1c8ccff965cc52c05f90 79 main/binary-arm64/Release
 SHA1:
- 29b138db856ef902df9abfeed1ff62bcfa11634c 485 main/binary-amd64/Packages
- cf3f415b39a83ad6ed9f983ea81de92137f53bf9 374 main/binary-amd64/Packages.gz
+ ca89a40770086393195aa5453c22a60e97a9d487 485 main/binary-amd64/Packages
+ ac55347ad6bd589027fa87ac440abad81df57f1d 373 main/binary-amd64/Packages.gz
  126d18fd388688d6f1938ab9c49de9921a1f6d7c 79 main/binary-amd64/Release
- fa4204cc7592af7b11155946bbac5018cfe770d3 485 main/binary-arm64/Packages
- f6e617a11ad9269aa50f88b32d8454e10cbbfdd3 373 main/binary-arm64/Packages.gz
+ 3920626379d293a21e650d39d3d86f5ebbec1b58 485 main/binary-arm64/Packages
+ e6ca5bde22c46fb3b33e8282eb396c131dfce988 374 main/binary-arm64/Packages.gz
  649327b0f820a5c4ea3a97f84d2b935f72e92ace 79 main/binary-arm64/Release
 SHA256:
- 93d9306a9d5aa09bd282a3e2a6cc0ab74720b7290c2bafca28a97c125577e264 485 main/binary-amd64/Packages
- 611b02084a8a5df7efef72076c9a194b123ef9b1715dd1196f37c843073e01e4 374 main/binary-amd64/Packages.gz
+ 5444a1516cb351075f075ed52b1217c53e7f7927d280a0a0922fcdcb47dd31f0 485 main/binary-amd64/Packages
+ bbb33c3bc33b858423d29ef8c01720048a9e9c778671f8a4969313f4a6db0edc 373 main/binary-amd64/Packages.gz
  eef527d45ad492138f9e09ee16fd6c08eb4b134daf095a9c5441db7d45faa0a3 79 main/binary-amd64/Release
- 1856f1bbc7f9fa96da06e07bfa71fe94b37503579a3bb04b920c4f4d95c99b2a 485 main/binary-arm64/Packages
- d4183fddc4dcbcdaf5206ea1528a612d0263e4525225a4c223f025740106538f 373 main/binary-arm64/Packages.gz
+ cb022939ceb1b6cd6015df3e5e517ade407edd391c3e501da8d4946ed10e99a6 485 main/binary-arm64/Packages
+ cde2fc0b4c22069cbfef2fe382955c14620019c86c9d244e6127a69411afbc08 374 main/binary-arm64/Packages.gz
  00a195c1e5c6f936ed41bf739132ba9088916762d1e6be84fd33008e769d38eb 79 main/binary-arm64/Release
 -----BEGIN PGP SIGNATURE-----
 
-iHUEARYKAB0WIQRxDko4/WoeNwLmlVdLwhzSYsk5PwUCavXgPQAKCRBLwhzSYsk5
-P2DoAPwNoGonxiZYcoxjs1lV5r1g1KHQDOAWFJtFpGfrYScB3wD+JCHiTuXHqlXQ
-+a39gN5Zz5ALSWEuQsLfEkiV6+v3jQ4=
-=jnbr
+iHUEARYKAB0WIQRxDko4/WoeNwLmlVdLwhzSYsk5PwUCavXicAAKCRBLwhzSYsk5
+PxeVAP9WDW3QECAk+xnN56WMya/xj3U7m7bM8ISItV80I4UhHwEAsM7aQOnQ8WZ0
+pQUoi+ivlS7DPiyGRmLqpg49c46pkwA=
+=+5aG
 -----END PGP SIGNATURE-----
