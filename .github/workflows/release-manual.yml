@@ -252,28 +252,10 @@ jobs:
           git checkout "${{ inputs.tag }}"
           goreleaser release --skip=validate --skip=publish
 
-      - name: Check if WINGET_PAT is available
-        id: check_token
-        run: |
-          if [ -z "${{ secrets.WINGET_PAT }}" ]; then
-            echo "has_token=false" >> "$GITHUB_OUTPUT"
-            echo "⚠ WINGET_PAT not configured. Manual submission required."
-          else
-            echo "has_token=true" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Submit to winget-pkgs (automatic)
-        if: steps.check_token.outputs.has_token == 'true'
-        uses: microsoft/winget-cli-submit@master
-        with:
-          product_id: Quark.Quark
-          github_token: ${{ secrets.WINGET_PAT }}
-
       - name: Manual submission instructions
-        if: steps.check_token.outputs.has_token == 'false'
         run: |
           TAG="${{ inputs.tag }}"
-          echo "::notice::Winget submission requires manual steps:"
+          echo "::notice::Winget submission requires manual steps (see DISTRIBUTION.md):"
           echo ""
           echo "1. Fork https://github.com/microsoft/winget-pkgs if you haven't already"
           echo "2. Clone your fork: git clone https://github.com/<your-username>/winget-pkgs.git"
@@ -281,5 +263,7 @@ jobs:
           echo "4. Copy manifests from dist/winget/manifests/q/Quark/Quark/$TAG/"
           echo "5. Validate: winget validate manifests/q/Quark/Quark/$TAG"
           echo "6. Push and open a PR against microsoft/winget-pkgs"
+          echo ""
+          echo "Or use WINGET-AGENT-PLAN.md for automated submission steps."
           echo ""
           echo "Manifests are in: dist/winget/"
