@@ -268,12 +268,19 @@ Build → lint → unit tests (gotestsum, race) → e2e → security scan.
 
 ### Releases
 
-**Automated on PR merge.**
+**Automated on PR merge** (after one-time setup).
 
+**First-time setup:**
+See [USER-REQUIREMENTS.md](USER-REQUIREMENTS.md) for required secrets, variables, and GitHub Pages configuration. Takes ~5 minutes.
+
+**Release workflow:**
 1. Open a PR
 2. Add `Release: v1.0.0` to the PR body
-3. Merge to `main`
-4. GitHub Actions creates the tag and builds the release
+3. Merge to `master`
+4. GitHub Actions creates the tag and publishes:
+   - GitHub Releases (tar.gz, .deb, .exe, .pkg archives)
+   - apt repository (to `gh-pages`)
+   - Homebrew formula (to `homebrew-quark` tap)
 
 To skip: omit the `Release:` line.
 
