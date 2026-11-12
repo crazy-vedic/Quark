@@ -64,7 +64,7 @@ jobs:
         continue-on-error: true
         uses: actions/cache/restore@v5
         with:
-          path: /tmp/tree-cache
+          path: /tmp/baseline
           key: tree-results-${{ steps.tree.outputs.sha }}
           lookup-only: true
 
