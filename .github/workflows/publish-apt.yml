@@ -43,9 +43,8 @@ jobs:
         run: |
           mkdir -p apt/conf apt/pool/main/q/quark
 
-          # Create distributions file with proper SignWith
-          if [ ! -f apt/conf/distributions ]; then
-            cat > apt/conf/distributions <<EOF
+          # Create distributions file with proper SignWith (always overwrite)
+          cat > apt/conf/distributions <<EOF
           Origin: Quark
           Label: Quark
           Suite: stable
@@ -54,7 +53,6 @@ jobs:
           Architectures: amd64 arm64
           SignWith: ${APT_KEY_ID}
           EOF
-          fi
 
       - name: Install reprepro and dependencies
         run: |
