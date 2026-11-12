@@ -11,7 +11,6 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
@@ -24,13 +23,8 @@ import (
 	"github.com/crazy-vedic/quark/internal/domain"
 	"github.com/crazy-vedic/quark/internal/exec"
 	"github.com/crazy-vedic/quark/internal/tui"
+	"github.com/crazy-vedic/quark/tests/e2e"
 )
-
-// escapePathForJSON ensures a file path is properly escaped for use in JSON strings.
-// On Windows, this converts backslashes to forward slashes; on other systems it's a no-op.
-func escapePathForJSON(path string) string {
-	return strings.ReplaceAll(path, "\\", "/")
-}
 
 func TestE2E_StartupRestoresRequestAndHistory(t *testing.T) {
 	col := &domain.Collection{ID: uuid.NewString(), Name: "Startup"}
@@ -97,8 +91,8 @@ func TestE2E_TUIFileBodyHeaderAndJSONReachHTTPServer(t *testing.T) {
 		Name:    "File request",
 		Method:  "POST",
 		URL:     srv.URL,
-		Body:    "@" + escapePathForJSON(payloadPath),
-		Headers: `{"Content-Type":"application/json; charset=utf-8","X-Token":"@` + escapePathForJSON(headerPath) + `","Host":"e2e.example"}`,
+		Body:    "@" + e2e.EscapePathForJSON(payloadPath),
+		Headers: `{"Content-Type":"application/json; charset=utf-8","X-Token":"@` + e2e.EscapePathForJSON(headerPath) + `","Host":"e2e.example"}`,
 	}
 	seedRequests(t, st, col.ID, req)
 

@@ -19,14 +19,8 @@ import (
 
 	"github.com/crazy-vedic/quark/internal/domain"
 	"github.com/crazy-vedic/quark/internal/store"
+	"github.com/crazy-vedic/quark/tests/e2e"
 )
-
-// escapePathForJSON ensures a file path is properly escaped for use in JSON strings.
-// On Windows, this converts backslashes to forward slashes; on other systems it's a no-op.
-func escapePathForJSON(path string) string {
-	// Convert backslashes to forward slashes for cross-platform JSON compatibility
-	return strings.ReplaceAll(path, "\\", "/")
-}
 
 // seedRequest saves a request directly so tests can cover executor paths that
 // the curl importer would otherwise normalize away.
@@ -79,8 +73,8 @@ func TestCLI_RunSendsFileBackedHeaderAndBodyWithTransportHeaders(t *testing.T) {
 		Name:    "Transport",
 		Method:  http.MethodPost,
 		URL:     srv.URL + "/echo",
-		Headers: `{"Host":["api.internal.test"],"X-Trace":["@` + escapePathForJSON(traceFile) + `"],"Transfer-Encoding":["chunked"],"Connection":["close"],"Content-Type":["application/json"]}`,
-		Body:    "@" + escapePathForJSON(bodyFile),
+		Headers: `{"Host":["api.internal.test"],"X-Trace":["@` + e2e.EscapePathForJSON(traceFile) + `"],"Transfer-Encoding":["chunked"],"Connection":["close"],"Content-Type":["application/json"]}`,
+		Body:    "@" + e2e.EscapePathForJSON(bodyFile),
 	})
 
 	out, errOut, code := runQuarkWithHome(t, home, "run", "API/Transport")
@@ -185,7 +179,7 @@ func TestCLI_ImportCurlReadsDataFileBody(t *testing.T) {
 	require.NoError(t, os.WriteFile(bodyFile, []byte("name=quark"), 0o600))
 
 	out, errOut, code := runQuarkWithHome(t, home, "import", "curl",
-		"curl -X POST 'https://example.test/form' --data-binary @"+escapePathForJSON(bodyFile),
+		"curl -X POST 'https://example.test/form' --data-binary @"+e2e.EscapePathForJSON(bodyFile),
 		"--collection", colID, "--name", "FileBody")
 	require.Equal(t, 0, code, "import failed: %s %s", out, errOut)
 
@@ -223,7 +217,7 @@ func TestCLI_ImportCurlRejectsUnsafeBodyFiles(t *testing.T) {
 		},
 		{
 			name:    "oversized file",
-			command: "curl -X POST 'https://example.test' --data-binary @" + escapePathForJSON(big),
+			command: "curl -X POST 'https://example.test' --data-binary @" + e2e.EscapePathForJSON(big),
 			want:    "exceeds",
 		},
 	}

@@ -346,9 +346,12 @@ jobs:
           cache: false
 
       - name: Log platform info
+        id: platform
         run: |
           echo "uname -m: $(uname -m)"
-          echo "go env GOARCH: $(go env GOARCH)"
+          GOARCH=$(go env GOARCH)
+          echo "go env GOARCH: $GOARCH"
+          echo "arch=$GOARCH" >> "$GITHUB_OUTPUT"
 
       - name: Configure Go module/build cache dirs
         run: |
@@ -383,7 +386,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v6
         with:
-          name: macos-arm64-quark
+          name: macos-${{ steps.platform.outputs.arch }}-quark
           path: bin/quark
           retention-days: 1
 
