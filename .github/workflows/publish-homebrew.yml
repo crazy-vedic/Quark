@@ -14,21 +14,28 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Download macOS binaries from release
+      - name: Download release assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           RELEASE_TAG="${{ github.event.release.tag_name }}"
-          echo "Downloading binaries for release: $RELEASE_TAG"
+          echo "Downloading assets for release: $RELEASE_TAG"
 
-          mkdir -p /tmp/binaries
-          cd /tmp/binaries
+          mkdir -p /tmp/assets
+          cd /tmp/assets
 
-          # Download macOS binaries (arm64 and amd64)
+          # Download SHA256SUMS to get correct checksums
           gh release download "$RELEASE_TAG" \
             --repo "${{ github.repository }}" \
-            --pattern "*darwin*" \
-            || echo "No darwin binaries found"
+            --pattern "SHA256SUMS" \
+            || echo "No SHA256SUMS found"
+
+          # Download macOS and Linux archives
+          gh release download "$RELEASE_TAG" \
+            --repo "${{ github.repository }}" \
+            --pattern "quark-darwin*tar.gz" \
+            --pattern "quark-linux*tar.gz" \
+            || echo "No archives found"
 
           ls -lah
 
@@ -37,19 +44,25 @@ jobs:
           RELEASE_TAG="${{ github.event.release.tag_name }}"
           VERSION="${RELEASE_TAG#v}"
 
-          # Calculate checksums for macOS binaries
-          cd /tmp/binaries
+          # Get checksums from SHA256SUMS
+          cd /tmp/assets
 
-          # ARM64 checksum
-          ARM64_CHECKSUM=$(sha256sum quark_${VERSION}_darwin_arm64.tar.gz 2>/dev/null | awk '{print $1}')
+          ARM64_CHECKSUM=$(grep quark-darwin-arm64.tar.gz SHA256SUMS | awk '{print $1}')
           echo "ARM64_CHECKSUM=$ARM64_CHECKSUM" >> $GITHUB_ENV
 
-          # AMD64 checksum
-          AMD64_CHECKSUM=$(sha256sum quark_${VERSION}_darwin_amd64.tar.gz 2>/dev/null | awk '{print $1}')
+          AMD64_CHECKSUM=$(grep quark-darwin-amd64.tar.gz SHA256SUMS | awk '{print $1}')
           echo "AMD64_CHECKSUM=$AMD64_CHECKSUM" >> $GITHUB_ENV
 
-          echo "ARM64: $ARM64_CHECKSUM"
-          echo "AMD64: $AMD64_CHECKSUM"
+          LINUX_AMD64_CHECKSUM=$(grep quark-linux-amd64.tar.gz SHA256SUMS | awk '{print $1}')
+          echo "LINUX_AMD64_CHECKSUM=$LINUX_AMD64_CHECKSUM" >> $GITHUB_ENV
+
+          LINUX_ARM64_CHECKSUM=$(grep quark-linux-arm64.tar.gz SHA256SUMS | awk '{print $1}')
+          echo "LINUX_ARM64_CHECKSUM=$LINUX_ARM64_CHECKSUM" >> $GITHUB_ENV
+
+          echo "macOS ARM64: $ARM64_CHECKSUM"
+          echo "macOS AMD64: $AMD64_CHECKSUM"
+          echo "Linux AMD64: $LINUX_AMD64_CHECKSUM"
+          echo "Linux ARM64: $LINUX_ARM64_CHECKSUM"
 
           echo "VERSION=$VERSION" >> $GITHUB_ENV
 
@@ -73,16 +86,29 @@ jobs:
             echo ''
             echo '  on_macos do'
             echo '    if Hardware::CPU.arm?'
-            echo "      url \"https://github.com/crazy-vedic/Quark/releases/download/v$VERSION/quark_${VERSION}_darwin_arm64.tar.gz\""
+            echo "      url \"https://github.com/crazy-vedic/Quark/releases/download/v$VERSION/quark-darwin-arm64.tar.gz\""
             echo "      sha256 \"$ARM64_CHECKSUM\""
             echo '    else'
-            echo "      url \"https://github.com/crazy-vedic/Quark/releases/download/v$VERSION/quark_${VERSION}_darwin_amd64.tar.gz\""
+            echo "      url \"https://github.com/crazy-vedic/Quark/releases/download/v$VERSION/quark-darwin-amd64.tar.gz\""
             echo "      sha256 \"$AMD64_CHECKSUM\""
+            echo '    end'
+            echo '  end'
+            echo ''
+            echo '  on_linux do'
+            echo '    if Hardware::CPU.arm? && Hardware::CPU.is_64_bit?'
+            echo "      url \"https://github.com/crazy-vedic/Quark/releases/download/v$VERSION/quark-linux-arm64.tar.gz\""
+            echo "      sha256 \"$LINUX_ARM64_CHECKSUM\""
+            echo '    else'
+            echo "      url \"https://github.com/crazy-vedic/Quark/releases/download/v$VERSION/quark-linux-amd64.tar.gz\""
+            echo "      sha256 \"$LINUX_AMD64_CHECKSUM\""
             echo '    end'
             echo '  end'
             echo ''
             echo '  def install'
             echo '    bin.install "quark"'
+            echo '    bash_completion.install "completions/quark.bash" => "quark"'
+            echo '    zsh_completion.install "completions/_quark"'
+            echo '    fish_completion.install "completions/quark.fish"'
             echo '  end'
             echo ''
             echo '  test do'
