@@ -103,19 +103,19 @@ jobs:
             echo "No changes to commit"
           else
             git commit -m "chore: update quark formula to v${{ env.VERSION }}"
-            git push origin master
+            git push origin HEAD
             echo "Published to homebrew tap"
           fi
 
-      - name: Comment on release (macOS)
+      - name: Update release notes (macOS)
         if: github.event.action == 'published'
         uses: actions/github-script@v7
         with:
           script: |
-            const body = `✅ Published to Homebrew:\n\n\`\`\`bash\nbrew tap crazy-vedic/quark\nbrew install quark\n\`\`\``;
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
+            const releaseBody = `${{ github.event.release.body }}\n\n✅ **Published to Homebrew:**\n\`\`\`bash\nbrew tap crazy-vedic/quark\nbrew install quark\n\`\`\``;
+            await github.rest.repos.updateRelease({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: body
+              release_id: context.payload.release.id,
+              body: releaseBody
             });

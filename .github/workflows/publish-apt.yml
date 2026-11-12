@@ -175,14 +175,15 @@ jobs:
           echo "Packages in repository:"
           reprepro -b ${{ github.workspace }}/apt list stable || echo "Repository may be empty"
 
-      - name: Comment on release
+      - name: Update release notes (apt)
         if: github.event.action == 'published'
         uses: actions/github-script@v7
         with:
           script: |
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
+            const releaseBody = `${{ github.event.release.body }}\n\n✅ **APT packages published:** https://crazy-vedic.github.io/Quark/apt`;
+            await github.rest.repos.updateRelease({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: '✅ apt packages published to https://crazy-vedic.github.io/Quark/apt'
+              release_id: context.payload.release.id,
+              body: releaseBody
             })
