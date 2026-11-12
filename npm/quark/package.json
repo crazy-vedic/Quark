@@ -5,7 +5,7 @@
   "homepage": "https://github.com/crazy-vedic/Quark",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/crazy-vedic/Quark.git",
+    "url": "https://github.com/crazy-vedic/Quark",
     "directory": "npm/quark"
   },
   "license": "MIT",
