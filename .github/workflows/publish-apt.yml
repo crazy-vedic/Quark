@@ -40,17 +40,17 @@ jobs:
             if [ -z "$SIGN_WITH" ]; then
               SIGN_WITH="no"
             fi
-            cat > apt/conf/distributions <<'EOF'
-Origin: Quark
-Label: Quark
-Suite: stable
-Codename: stable
-Version: 1.0
-Components: main
-Architectures: amd64 arm64
-SignWith: SIGN_WITH_PLACEHOLDER
-EOF
-            sed -i "s/SIGN_WITH_PLACEHOLDER/$SIGN_WITH/" apt/conf/distributions
+
+            cat > apt/conf/distributions << DISTEOF
+          Origin: Quark
+          Label: Quark
+          Suite: stable
+          Codename: stable
+          Version: 1.0
+          Components: main
+          Architectures: amd64 arm64
+          SignWith: $SIGN_WITH
+          DISTEOF
           fi
 
       - name: Install reprepro and dependencies
@@ -151,33 +151,25 @@ EOF
             gpg --export "${{ vars.APT_GPG_KEY_ID }}" > ${{ github.workspace }}/apt/KEY.pub
           fi
 
-          # Always create a README for apt repository
-          cat > ${{ github.workspace }}/apt/README.md <<'EOF'
-# Quark apt Repository
+      - name: Create README for apt repository
+        run: |
+          mkdir -p ${{ github.workspace }}/apt
+          cat > ${{ github.workspace }}/apt/README.md << 'DOCEOF'
+          # Quark apt Repository
 
-Install Quark from this repository:
+          Install Quark from this repository:
 
-```bash
-echo "deb [trusted=yes] https://crazy-vedic.github.io/Quark/apt stable main" | \
-  sudo tee /etc/apt/sources.list.d/quark.list
+              echo "deb [trusted=yes] https://crazy-vedic.github.io/Quark/apt stable main" | sudo tee /etc/apt/sources.list.d/quark.list
+              sudo apt update
+              sudo apt install quark
 
-sudo apt update
-sudo apt install quark
-```
+          For signed packages (requires GPG key):
 
-For signed packages (requires GPG key):
-
-```bash
-curl -fsSL https://crazy-vedic.github.io/Quark/apt/KEY.pub | \
-  sudo apt-key add -
-
-echo "deb https://crazy-vedic.github.io/Quark/apt stable main" | \
-  sudo tee /etc/apt/sources.list.d/quark.list
-
-sudo apt update
-sudo apt install quark
-```
-EOF
+              curl -fsSL https://crazy-vedic.github.io/Quark/apt/KEY.pub | sudo apt-key add -
+              echo "deb https://crazy-vedic.github.io/Quark/apt stable main" | sudo tee /etc/apt/sources.list.d/quark.list
+              sudo apt update
+              sudo apt install quark
+          DOCEOF
 
       - name: Commit and push to gh-pages
         run: |
