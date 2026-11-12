@@ -24,6 +24,7 @@ import (
 	"github.com/crazy-vedic/quark/internal/store"
 	"github.com/crazy-vedic/quark/internal/theme"
 	"github.com/crazy-vedic/quark/internal/timing"
+	"github.com/crazy-vedic/quark/internal/updates"
 )
 
 // --- Layout enums ---
@@ -194,6 +195,13 @@ type scheduledRunFailure struct {
 	err  error
 }
 
+type updateCheckMsg struct {
+	available      bool
+	latest         string
+	upgradeCommand string
+	err            error
+}
+
 // --- Model ---
 
 // Model is the root bubbletea model for Quark's TUI.
@@ -285,6 +293,7 @@ type Model struct {
 	requestValidationErrs map[string]string // request ID → Tier 1 validation error (invalid URL etc.)
 	statusErr             string            // Tier 2 — timeout, retryable
 	statusSuccess         string            // Tier 3 — body/headers saved, etc.
+	updateStatus          string            // update available notification (e.g., "update: v1.2.3")
 
 	// --- Search modal ---
 	searchInput      textinput.Model
@@ -343,7 +352,8 @@ type Model struct {
 	// --- Misc ---
 	tmuxDetected    bool
 	tmuxWarning     string
-	showTmuxWarning bool // BUG-010: true only until first keypress after startup
+	showTmuxWarning bool   // BUG-010: true only until first keypress after startup
+	version         string // current app version for update checking
 
 	// DebugLog, when non-nil, receives a timestamped line for every key message.
 	debugLog *os.File
@@ -428,6 +438,9 @@ type Deps struct {
 	// ForceDim permanently forces a density tier (wide|narrow|tiny|absurd).
 	// DimAuto (zero) selects the tier from the terminal size.
 	ForceDim DimMode
+	// Version is the current application version (e.g., "1.0.0").
+	// Used for update checking. If empty, update checks are skipped.
+	Version string
 }
 
 // New constructs the root TUI model and detects multiplexer conflicts.
@@ -555,6 +568,7 @@ func New(deps Deps) Model {
 		clientCertCAFile:        clientCertCAFile,
 		clientCertPassword:      clientCertPassword,
 		scheduleTimerSeq:        1,
+		version:                 deps.Version,
 	}
 
 	// Detect tmux/screen keybinding conflicts.
@@ -598,6 +612,8 @@ func (m Model) Init() tea.Cmd {
 	if m.configDir != "" && !theme.IsBuiltin(m.theme.Name) {
 		cmds = append(cmds, themeWatchTick())
 	}
+	// Check for updates in background (non-blocking)
+	cmds = append(cmds, m.checkUpdatesCmd(m.ctx, m.cfg.Updates.Timeout.Duration))
 	if m.lister != nil {
 		cmds = append(cmds, loadCollectionsCmd(m.ctx, m.lister))
 	}
@@ -614,6 +630,51 @@ func (m Model) Init() tea.Cmd {
 }
 
 // --- Commands ---
+
+func (m Model) checkUpdatesCmd(ctx context.Context, timeout time.Duration) tea.Cmd {
+	return func() tea.Msg {
+		// Skip if version not provided
+		if m.version == "" {
+			return updateCheckMsg{available: false, latest: "", err: nil}
+		}
+
+		// Create a short timeout for update check (don't block startup)
+		checkCtx, cancel := context.WithTimeout(ctx, timeout)
+		defer cancel()
+
+		// Detect installation channel
+		channel := updates.DetectChannel()
+
+		// Create appropriate source based on channel
+		var source updates.Source
+		switch channel {
+		case updates.ChannelBrew:
+			source = updates.NewBrewSource("crazy-vedic/quark", "quark")
+		case updates.ChannelApt:
+			source = updates.NewAptSource("quark")
+		case updates.ChannelWinget:
+			source = updates.NewWingetSource("Quark.Quark")
+		case updates.ChannelBinary:
+			// For binary channel installs, check against the GitHub releases source
+			source = updates.NewGitHubSource("crazy-vedic/quark")
+		default:
+			return updateCheckMsg{available: false, latest: "", err: nil}
+		}
+
+		// Check for updates
+		available, latest, err := source.IsUpdateAvailable(checkCtx, m.version)
+		if err != nil {
+			// Silently ignore check failures
+			return updateCheckMsg{available: false, latest: "", upgradeCommand: "", err: nil}
+		}
+
+		if available && latest != "" {
+			return updateCheckMsg{available: true, latest: latest, upgradeCommand: source.UpgradeCommand(), err: nil}
+		}
+
+		return updateCheckMsg{available: false, latest: latest, upgradeCommand: "", err: nil}
+	}
+}
 
 func loadCollectionsCmd(ctx context.Context, lister store.CollectionLister) tea.Cmd {
 	return func() tea.Msg {

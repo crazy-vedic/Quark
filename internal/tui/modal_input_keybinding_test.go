@@ -7,10 +7,11 @@ import (
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/stretchr/testify/require"
+
 	"github.com/crazy-vedic/quark/internal/config"
 	"github.com/crazy-vedic/quark/internal/curl"
 	"github.com/crazy-vedic/quark/internal/keybindings"
-	"github.com/stretchr/testify/require"
 )
 
 type modalTextInputCase struct {
@@ -211,8 +212,16 @@ func textControls(m *Model) []textControl {
 			focused: m.clientCertPassword.Focused,
 			value:   m.clientCertPassword.Value,
 		},
-		{name: "header key", focused: m.headerKeyInput.Focused, value: m.headerKeyInput.Value},
-		{name: "header value", focused: m.headerValueInput.Focused, value: m.headerValueInput.Value},
+		{
+			name:    "header key",
+			focused: m.headerKeyInput.Focused,
+			value:   m.headerKeyInput.Value,
+		},
+		{
+			name:    "header value",
+			focused: m.headerValueInput.Focused,
+			value:   m.headerValueInput.Value,
+		},
 		{
 			name:    "auth token",
 			focused: m.authEditor.tokenInput.Focused,

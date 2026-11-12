@@ -23,6 +23,7 @@ import (
 	"github.com/crazy-vedic/quark/internal/domain"
 	"github.com/crazy-vedic/quark/internal/exec"
 	"github.com/crazy-vedic/quark/internal/tui"
+	"github.com/crazy-vedic/quark/tests/e2e"
 )
 
 func TestE2E_StartupRestoresRequestAndHistory(t *testing.T) {
@@ -90,8 +91,8 @@ func TestE2E_TUIFileBodyHeaderAndJSONReachHTTPServer(t *testing.T) {
 		Name:    "File request",
 		Method:  "POST",
 		URL:     srv.URL,
-		Body:    "@" + payloadPath,
-		Headers: `{"Content-Type":"application/json; charset=utf-8","X-Token":"@` + headerPath + `","Host":"e2e.example"}`,
+		Body:    "@" + e2e.EscapePathForJSON(payloadPath),
+		Headers: `{"Content-Type":"application/json; charset=utf-8","X-Token":"@` + e2e.EscapePathForJSON(headerPath) + `","Host":"e2e.example"}`,
 	}
 	seedRequests(t, st, col.ID, req)
 
