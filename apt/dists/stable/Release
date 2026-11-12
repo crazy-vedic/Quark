@@ -1,0 +1,28 @@
+Origin: Quark
+Label: Quark
+Suite: stable
+Codename: stable
+Date: Thu, 12 Nov 2026 11:49:13 UTC
+Architectures: amd64 arm64
+Components: main
+MD5Sum:
+ 7faafe9ca16c734c67f1ff9ff0f7b963 485 main/binary-amd64/Packages
+ 97d5e99ce242b7dbcb8273fdc76ae037 375 main/binary-amd64/Packages.gz
+ 2388d3a915cf718efd4158f79ac6a3cb 79 main/binary-amd64/Release
+ 26216c03d5df811ac77668c15a9a86e4 485 main/binary-arm64/Packages
+ e6b46a8fc3e950f2d3bc5dd2d74fd01f 372 main/binary-arm64/Packages.gz
+ 755d341c260c1c8ccff965cc52c05f90 79 main/binary-arm64/Release
+SHA1:
+ 176c1344f329112808c714a9b51c505a7a88deea 485 main/binary-amd64/Packages
+ 6e0a1272c44d2813fca68494fbe10bbc0e00766e 375 main/binary-amd64/Packages.gz
+ 126d18fd388688d6f1938ab9c49de9921a1f6d7c 79 main/binary-amd64/Release
+ 8cb569c52a5f70b027585efc8a4ee9b946003eff 485 main/binary-arm64/Packages
+ 08a68e8f532f3372222b560175b7b6632b060bfc 372 main/binary-arm64/Packages.gz
+ 649327b0f820a5c4ea3a97f84d2b935f72e92ace 79 main/binary-arm64/Release
+SHA256:
+ b8c0ab18702e26c10075e6c596f793e2217cc8fdc977700610032bb57aac1311 485 main/binary-amd64/Packages
+ 7b3fb56aa7dc0c1c5eec7d2e5779e9e257a70ecb0c44e8cdc0d4b81df8385bf9 375 main/binary-amd64/Packages.gz
+ eef527d45ad492138f9e09ee16fd6c08eb4b134daf095a9c5441db7d45faa0a3 79 main/binary-amd64/Release
+ 820204099c65aceebf6879817f47889ea7bda75f530a384736795111d32bfba1 485 main/binary-arm64/Packages
+ fc136d10b43e06c33067ada4870c92a2f1ed051b53e226ae32aefc83e295cdcc 372 main/binary-arm64/Packages.gz
+ 00a195c1e5c6f936ed41bf739132ba9088916762d1e6be84fd33008e769d38eb 79 main/binary-arm64/Release

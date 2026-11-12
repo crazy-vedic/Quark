@@ -1,0 +1,7 @@
+Origin: Quark
+Label: Quark
+Suite: stable
+Codename: stable
+Components: main
+Architectures: amd64 arm64
+SignWith: 710E4A38FD6A1E3702E695574BC21CD262C9393F
