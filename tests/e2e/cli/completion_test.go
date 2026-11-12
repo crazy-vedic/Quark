@@ -8,6 +8,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/google/uuid"
@@ -148,20 +149,33 @@ func TestCLI_CompletionScriptsAreGenerated(t *testing.T) {
 func TestCLI_CompletionSetupInstallsWithoutPrintingScript(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 
-	out, stderr, code := runQuarkWithHome(t, home, "completion", "bash", "--setup")
-	require.Equal(t, 0, code, "bash --setup must succeed: %s", stderr)
+	var shell, shellMsg string
+	var completionFile string
+
+	if runtime.GOOS == "windows" {
+		shell = "powershell"
+		shellMsg = "powershell"
+		completionFile = filepath.Join(home, "Documents", "PowerShell", "Completions", "quark.ps1")
+	} else {
+		shell = "bash"
+		shellMsg = "bash"
+		completionFile = filepath.Join(
+			home,
+			".local",
+			"share",
+			"bash-completion",
+			"completions",
+			"quark",
+		)
+	}
+
+	out, stderr, code := runQuarkWithHome(t, home, "completion", shell, "--setup")
+	require.Equal(t, 0, code, "%s --setup must succeed: %s", shell, stderr)
 	assert.Empty(t, out)
-	assert.Contains(t, stderr, "Enabled bash completions")
+	assert.Contains(t, stderr, "Enabled "+shellMsg+" completions")
 
-	completionFile := filepath.Join(
-		home,
-		".local",
-		"share",
-		"bash-completion",
-		"completions",
-		"quark",
-	)
 	content, err := os.ReadFile(completionFile)
 	require.NoError(t, err)
 	assert.Contains(t, string(content), "quark")
@@ -170,13 +184,22 @@ func TestCLI_CompletionSetupInstallsWithoutPrintingScript(t *testing.T) {
 func TestCLI_CompletionSetupSubcommandDetectsShell(t *testing.T) {
 	home := t.TempDir()
 
+	var shellEnv, expectedMsg string
+	if runtime.GOOS == "windows" {
+		shellEnv = "SHELL=pwsh"
+		expectedMsg = "powershell"
+	} else {
+		shellEnv = "SHELL=/bin/bash"
+		expectedMsg = "bash"
+	}
+
 	out, stderr, code := runQuarkWithHomeEnv(
 		t,
 		home,
-		[]string{"SHELL=/bin/bash"},
+		[]string{shellEnv},
 		"completion", "setup",
 	)
 	require.Equal(t, 0, code, "completion setup must succeed: %s", stderr)
 	assert.Empty(t, out)
-	assert.Contains(t, stderr, "Enabled bash completions")
+	assert.Contains(t, stderr, "Enabled "+expectedMsg+" completions")
 }

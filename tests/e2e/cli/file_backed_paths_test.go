@@ -19,6 +19,7 @@ import (
 
 	"github.com/crazy-vedic/quark/internal/domain"
 	"github.com/crazy-vedic/quark/internal/store"
+	"github.com/crazy-vedic/quark/tests/e2e"
 )
 
 // seedRequest saves a request directly so tests can cover executor paths that
@@ -72,8 +73,8 @@ func TestCLI_RunSendsFileBackedHeaderAndBodyWithTransportHeaders(t *testing.T) {
 		Name:    "Transport",
 		Method:  http.MethodPost,
 		URL:     srv.URL + "/echo",
-		Headers: `{"Host":["api.internal.test"],"X-Trace":["@` + traceFile + `"],"Transfer-Encoding":["chunked"],"Connection":["close"],"Content-Type":["application/json"]}`,
-		Body:    "@" + bodyFile,
+		Headers: `{"Host":["api.internal.test"],"X-Trace":["@` + e2e.EscapePathForJSON(traceFile) + `"],"Transfer-Encoding":["chunked"],"Connection":["close"],"Content-Type":["application/json"]}`,
+		Body:    "@" + e2e.EscapePathForJSON(bodyFile),
 	})
 
 	out, errOut, code := runQuarkWithHome(t, home, "run", "API/Transport")
@@ -178,7 +179,7 @@ func TestCLI_ImportCurlReadsDataFileBody(t *testing.T) {
 	require.NoError(t, os.WriteFile(bodyFile, []byte("name=quark"), 0o600))
 
 	out, errOut, code := runQuarkWithHome(t, home, "import", "curl",
-		"curl -X POST 'https://example.test/form' --data-binary @"+bodyFile,
+		"curl -X POST 'https://example.test/form' --data-binary @"+e2e.EscapePathForJSON(bodyFile),
 		"--collection", colID, "--name", "FileBody")
 	require.Equal(t, 0, code, "import failed: %s %s", out, errOut)
 
@@ -216,7 +217,7 @@ func TestCLI_ImportCurlRejectsUnsafeBodyFiles(t *testing.T) {
 		},
 		{
 			name:    "oversized file",
-			command: "curl -X POST 'https://example.test' --data-binary @" + big,
+			command: "curl -X POST 'https://example.test' --data-binary @" + e2e.EscapePathForJSON(big),
 			want:    "exceeds",
 		},
 	}
