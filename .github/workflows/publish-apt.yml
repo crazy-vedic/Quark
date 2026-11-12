@@ -85,25 +85,32 @@ jobs:
           mkdir -p "$GNUPGHOME"
           chmod 700 "$GNUPGHOME"
 
+          # Configure GPG to use loopback pinentry mode
+          echo "allow-loopback-pinentry" >> "$GNUPGHOME/gpg-agent.conf"
+
           # Import GPG key if provided
           if [ -z "$GPG_KEY" ]; then
             echo "No GPG key configured, packages will be unsigned"
           else
             echo "$GPG_KEY" | base64 -d | gpg --import --batch --no-tty
             echo "GPG key imported"
-          fi
 
-          # Create a GPG wrapper script that provides passphrase for signing
-          printf '%s\n' '#!/bin/bash' 'exec gpg --batch --no-tty --pinentry-mode loopback --passphrase "$GPG_PASSPHRASE" "$@"' > /tmp/gpg-wrapper.sh
-          chmod +x /tmp/gpg-wrapper.sh
-          export GPG=/tmp/gpg-wrapper.sh
-          eval $(gpg-agent --daemon --quiet)
+            # Get the key ID and cache the passphrase with gpg-agent
+            KEY_ID=$(gpg --list-secret-keys --with-colons | grep "^sec" | cut -d: -f5 | head -1)
+            if [ -n "$KEY_ID" ]; then
+              echo "Using key: $KEY_ID"
+              # Start gpg-agent
+              gpg-agent --daemon > /dev/null
+              # Preset the passphrase in gpg-agent
+              echo "$GPG_PASSPHRASE" | gpg-preset-passphrase --preset "$KEY_ID" > /dev/null 2>&1 || true
+            fi
+          fi
 
           # Add each .deb file to the repository
           for deb in /tmp/debs/*.deb; do
             if [ -f "$deb" ]; then
               echo "Adding: $deb"
-              reprepro -b apt -S main includedeb stable "$deb"
+              reprepro -b apt includedeb stable "$deb"
             fi
           done
 
