@@ -331,6 +331,206 @@ jobs:
           key: ${{ steps.go-deps-cache.outputs.cache-primary-key }}
 
   # ---------------------------------------------------------------------------
+  # Stage 2: Native Windows e2e tests
+  # ---------------------------------------------------------------------------
+  e2e-windows:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.26'
+          check-latest: true
+          cache: false
+
+      - name: Configure Go module/build cache dirs
+        shell: pwsh
+        run: |
+          echo "GOMODCACHE=${{ runner.temp }}/go-mod-cache" >> $env:GITHUB_ENV
+          echo "GOCACHE=${{ runner.temp }}/go-build-cache" >> $env:GITHUB_ENV
+          New-Item -ItemType Directory -Path "${{ runner.temp }}/go-mod-cache", "${{ runner.temp }}/go-build-cache" -Force | Out-Null
+
+      - name: Restore Go dependency caches
+        id: go-deps-cache
+        uses: actions/cache/restore@v5
+        with:
+          path: |
+            ${{ runner.temp }}/go-mod-cache
+            ${{ runner.temp }}/go-build-cache
+          key: ${{ runner.os }}-go-deps-${{ env.GO_DEPS_CACHE_VERSION }}-windows-e2e-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-deps-${{ env.GO_DEPS_CACHE_VERSION }}-windows-e2e-
+            ${{ runner.os }}-go-deps-${{ env.GO_DEPS_CACHE_VERSION }}-
+
+      - name: Build quark binary
+        run: go build -o bin/quark.exe ./cmd/quark
+
+      - name: Run CLI e2e tests
+        run: go test -tags e2e -v ./tests/e2e/cli/...
+        env:
+          QUARK_BINARY: ${{ github.workspace }}\bin\quark.exe
+
+      - name: Run TUI e2e tests
+        run: go test -tags e2e -v ./tests/e2e/tui/...
+
+      - name: Upload binary on failure
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: windows-quark-exe
+          path: bin/quark.exe
+          retention-days: 1
+
+      - name: Save Go dependency caches
+        if: always() && !cancelled() && steps.go-deps-cache.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@v5
+        with:
+          path: |
+            ${{ runner.temp }}/go-mod-cache
+            ${{ runner.temp }}/go-build-cache
+          key: ${{ steps.go-deps-cache.outputs.cache-primary-key }}
+
+  # ---------------------------------------------------------------------------
+  # Stage 2: Native macOS e2e tests (Apple Silicon)
+  # ---------------------------------------------------------------------------
+  e2e-macos-arm64:
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.26'
+          check-latest: true
+          cache: false
+
+      - name: Log platform info
+        run: |
+          echo "uname -m: $(uname -m)"
+          echo "go env GOARCH: $(go env GOARCH)"
+
+      - name: Configure Go module/build cache dirs
+        run: |
+          echo "GOMODCACHE=${{ runner.temp }}/go-mod-cache" >> "$GITHUB_ENV"
+          echo "GOCACHE=${{ runner.temp }}/go-build-cache" >> "$GITHUB_ENV"
+          mkdir -p "${{ runner.temp }}/go-mod-cache" "${{ runner.temp }}/go-build-cache"
+
+      - name: Restore Go dependency caches
+        id: go-deps-cache
+        uses: actions/cache/restore@v5
+        with:
+          path: |
+            ${{ runner.temp }}/go-mod-cache
+            ${{ runner.temp }}/go-build-cache
+          key: ${{ runner.os }}-go-deps-${{ env.GO_DEPS_CACHE_VERSION }}-macos-e2e-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-deps-${{ env.GO_DEPS_CACHE_VERSION }}-macos-e2e-
+            ${{ runner.os }}-go-deps-${{ env.GO_DEPS_CACHE_VERSION }}-
+
+      - name: Build quark binary
+        run: go build -o bin/quark ./cmd/quark
+
+      - name: Run CLI e2e tests
+        run: go test -tags e2e -v ./tests/e2e/cli/...
+        env:
+          QUARK_BINARY: ${{ github.workspace }}/bin/quark
+
+      - name: Run TUI e2e tests
+        run: go test -tags e2e -v ./tests/e2e/tui/...
+
+      - name: Upload binary on failure
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: macos-arm64-quark
+          path: bin/quark
+          retention-days: 1
+
+      - name: Save Go dependency caches
+        if: always() && !cancelled() && steps.go-deps-cache.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@v5
+        with:
+          path: |
+            ${{ runner.temp }}/go-mod-cache
+            ${{ runner.temp }}/go-build-cache
+          key: ${{ steps.go-deps-cache.outputs.cache-primary-key }}
+
+  # ---------------------------------------------------------------------------
+  # Stage 2: Native macOS e2e tests (Intel)
+  # ---------------------------------------------------------------------------
+  e2e-macos-x86:
+    runs-on: macos-13
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.26'
+          check-latest: true
+          cache: false
+
+      - name: Log platform info
+        run: |
+          echo "uname -m: $(uname -m)"
+          echo "go env GOARCH: $(go env GOARCH)"
+
+      - name: Configure Go module/build cache dirs
+        run: |
+          echo "GOMODCACHE=${{ runner.temp }}/go-mod-cache" >> "$GITHUB_ENV"
+          echo "GOCACHE=${{ runner.temp }}/go-build-cache" >> "$GITHUB_ENV"
+          mkdir -p "${{ runner.temp }}/go-mod-cache" "${{ runner.temp }}/go-build-cache"
+
+      - name: Restore Go dependency caches
+        id: go-deps-cache
+        uses: actions/cache/restore@v5
+        with:
+          path: |
+            ${{ runner.temp }}/go-mod-cache
+            ${{ runner.temp }}/go-build-cache
+          key: ${{ runner.os }}-go-deps-${{ env.GO_DEPS_CACHE_VERSION }}-macos-x86-e2e-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-deps-${{ env.GO_DEPS_CACHE_VERSION }}-macos-x86-e2e-
+            ${{ runner.os }}-go-deps-${{ env.GO_DEPS_CACHE_VERSION }}-
+
+      - name: Build quark binary
+        run: go build -o bin/quark ./cmd/quark
+
+      - name: Run CLI e2e tests
+        run: go test -tags e2e -v ./tests/e2e/cli/...
+        env:
+          QUARK_BINARY: ${{ github.workspace }}/bin/quark
+
+      - name: Run TUI e2e tests
+        run: go test -tags e2e -v ./tests/e2e/tui/...
+
+      - name: Upload binary on failure
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: macos-x86-quark
+          path: bin/quark
+          retention-days: 1
+
+      - name: Save Go dependency caches
+        if: always() && !cancelled() && steps.go-deps-cache.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@v5
+        with:
+          path: |
+            ${{ runner.temp }}/go-mod-cache
+            ${{ runner.temp }}/go-build-cache
+          key: ${{ steps.go-deps-cache.outputs.cache-primary-key }}
+
+  # ---------------------------------------------------------------------------
   # Stage 3a: Persist baseline — on push to master, cache coverage + lint
   # so PRs can fetch instead of re-running all master tests.
   # ---------------------------------------------------------------------------
