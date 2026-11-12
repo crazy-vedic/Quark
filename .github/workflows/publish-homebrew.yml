@@ -65,31 +65,31 @@ jobs:
           FORMULA_DIR="homebrew-tap/Formula"
           mkdir -p "$FORMULA_DIR"
 
-          cat > "$FORMULA_DIR/quark.rb" << 'EOF'
-class Quark < Formula
-  desc "Quark - A fast and lightweight utility"
-  homepage "https://github.com/crazy-vedic/Quark"
-  version "${{ env.VERSION }}"
-
-  on_macos do
-    if Hardware::CPU.arm?
-      url "https://github.com/crazy-vedic/Quark/releases/download/v${{ env.VERSION }}/quark_${{ env.VERSION }}_darwin_arm64.tar.gz"
-      sha256 "${{ env.ARM64_CHECKSUM }}"
-    else
-      url "https://github.com/crazy-vedic/Quark/releases/download/v${{ env.VERSION }}/quark_${{ env.VERSION }}_darwin_amd64.tar.gz"
-      sha256 "${{ env.AMD64_CHECKSUM }}"
-    end
-  end
-
-  def install
-    bin.install "quark"
-  end
-
-  test do
-    system "#{bin}/quark", "--version"
-  end
-end
-EOF
+          {
+            echo 'class Quark < Formula'
+            echo '  desc "Quark - A fast and lightweight utility"'
+            echo '  homepage "https://github.com/crazy-vedic/Quark"'
+            echo "  version \"$VERSION\""
+            echo ''
+            echo '  on_macos do'
+            echo '    if Hardware::CPU.arm?'
+            echo "      url \"https://github.com/crazy-vedic/Quark/releases/download/v$VERSION/quark_${VERSION}_darwin_arm64.tar.gz\""
+            echo "      sha256 \"$ARM64_CHECKSUM\""
+            echo '    else'
+            echo "      url \"https://github.com/crazy-vedic/Quark/releases/download/v$VERSION/quark_${VERSION}_darwin_amd64.tar.gz\""
+            echo "      sha256 \"$AMD64_CHECKSUM\""
+            echo '    end'
+            echo '  end'
+            echo ''
+            echo '  def install'
+            echo '    bin.install "quark"'
+            echo '  end'
+            echo ''
+            echo '  test do'
+            echo '    system "#{bin}/quark", "--version"'
+            echo '  end'
+            echo 'end'
+          } > "$FORMULA_DIR/quark.rb"
 
       - name: Commit and push formula
         working-directory: homebrew-tap
