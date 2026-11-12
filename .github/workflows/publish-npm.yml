@@ -61,10 +61,11 @@ jobs:
 
       - name: Publish platform packages
         run: |
-          set -euo pipefail
+          set -u
           cd npm
           VERSION="${{ inputs.tag }}"
           VERSION="${VERSION#v}"
+          FAILED=0
 
           for platform in linux-x64 linux-arm64 darwin-x64 darwin-arm64 win32-x64; do
             PKG="@quark-client/quark-${platform}"
@@ -73,12 +74,31 @@ jobs:
               echo "✓ ${PKG}@${VERSION} already published, skipping"
             else
               # Dry run first
-              npm publish "./platforms/${platform}" --access public --provenance --dry-run
+              npm publish "./platforms/${platform}" --access public --provenance --dry-run || {
+                echo "❌ Dry run failed for ${PKG}@${VERSION}"
+                FAILED=$((FAILED + 1))
+                continue
+              }
               # Then publish for real
-              npm publish "./platforms/${platform}" --access public --provenance
+              npm publish "./platforms/${platform}" --access public --provenance || {
+                EXIT_CODE=$?
+                # 422 means already exists (retry race condition), treat as success
+                if [ $EXIT_CODE -eq 22 ]; then
+                  echo "⚠ ${PKG}@${VERSION} already published (422), skipping"
+                else
+                  echo "❌ Failed to publish ${PKG}@${VERSION} (exit code: $EXIT_CODE)"
+                  FAILED=$((FAILED + 1))
+                fi
+                continue
+              }
               echo "✓ Published ${PKG}@${VERSION}"
             fi
           done
+
+          if [ $FAILED -gt 0 ]; then
+            echo "❌ Failed to publish $FAILED platform package(s)"
+            exit 1
+          fi
 
       - name: Add optionalDependencies to main package
         run: |
@@ -87,7 +107,7 @@ jobs:
 
       - name: Publish main package
         run: |
-          set -euo pipefail
+          set -u
           cd npm
           VERSION="${{ inputs.tag }}"
           VERSION="${VERSION#v}"
@@ -98,8 +118,20 @@ jobs:
             echo "✓ ${PKG}@${VERSION} already published"
           else
             # Dry run first
-            npm publish "./quark" --access public --provenance --dry-run
+            npm publish "./quark" --access public --provenance --dry-run || {
+              echo "❌ Dry run failed for ${PKG}@${VERSION}"
+              exit 1
+            }
             # Then publish for real
-            npm publish "./quark" --access public --provenance
+            npm publish "./quark" --access public --provenance || {
+              EXIT_CODE=$?
+              # 422 means already exists (retry race condition), treat as success
+              if [ $EXIT_CODE -eq 22 ]; then
+                echo "⚠ ${PKG}@${VERSION} already published (422), skipping"
+              else
+                echo "❌ Failed to publish ${PKG}@${VERSION} (exit code: $EXIT_CODE)"
+                exit 1
+              fi
+            }
             echo "✓ Published ${PKG}@${VERSION}"
           fi
