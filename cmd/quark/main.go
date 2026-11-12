@@ -182,6 +182,8 @@ func runWithArgs(args []string) error {
 	root.AddCommand(lazyClientCertCmd())
 	root.AddCommand(lazyKeybindingsCmd())
 	root.AddCommand(newThemeCmd())
+	root.AddCommand(newVersionCmd())
+	root.AddCommand(newUpdateCmd())
 	root.AddCommand(cli.NewCompletionCmd(root))
 
 	root.AddCommand(&cobra.Command{
@@ -385,6 +387,7 @@ func launchTUI(
 		CertificateManager: httpTransport,
 		ConfigDir:          configDir,
 		ForceDim:           forceDim,
+		Version:            Version,
 	})
 
 	// Coalesce WindowSizeMsg bursts: Bubble Tea's renderer force-repaints the
@@ -398,6 +401,7 @@ func launchTUI(
 	)
 	resize.Bind(p.Send)
 	_, err = p.Run()
+
 	if timingEnabled {
 		// Print the opt-in timing summary after the alternate screen is closed.
 		switch timingFormat {

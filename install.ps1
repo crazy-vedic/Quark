@@ -116,6 +116,56 @@ $installDir = if ($env:QUARK_INSTALL_DIR) {
 
 $installPath = Join-Path $installDir "$binary.exe"
 
+function Verify-Checksum {
+    param(
+        [Parameter(Mandatory = $true)][string]$FilePath,
+        [Parameter(Mandatory = $true)][string]$ChecksumsUrl
+    )
+
+    try {
+        Write-Host "==> Verifying checksum..." -ForegroundColor Cyan
+
+        $tempChecksumFile = [System.IO.Path]::GetTempFileName()
+        try {
+            Invoke-WebRequest -Uri $ChecksumsUrl -OutFile $tempChecksumFile -UseBasicParsing -ErrorAction Stop | Out-Null
+        } catch {
+            Write-Host "❌ Failed to download checksum file" -ForegroundColor Red
+            return $false
+        }
+
+        if ((Get-Item $tempChecksumFile).Length -eq 0) {
+            Write-Host "❌ Checksum file is empty" -ForegroundColor Red
+            Remove-Item $tempChecksumFile -Force -ErrorAction SilentlyContinue
+            return $false
+        }
+
+        $checksumContent = Get-Content $tempChecksumFile -Raw
+        Remove-Item $tempChecksumFile -Force -ErrorAction SilentlyContinue
+
+        $fileHashEntry = $checksumContent -split "`n" | Where-Object { $_ -match [regex]::Escape($asset) } | Select-Object -First 1
+        if (-not $fileHashEntry) {
+            Write-Host "❌ Checksum for $asset not found in SHA256SUMS" -ForegroundColor Red
+            return $false
+        }
+
+        $expectedHash = ($fileHashEntry -split '\s+')[0].ToUpper()
+        $fileHash = (Get-FileHash -Path $FilePath -Algorithm SHA256).Hash.ToUpper()
+
+        if ($fileHash -ne $expectedHash) {
+            Write-Host "❌ Checksum verification failed for $FilePath" -ForegroundColor Red
+            Write-Host "   Expected: $expectedHash" -ForegroundColor Red
+            Write-Host "   Got:      $fileHash" -ForegroundColor Red
+            return $false
+        }
+
+        Write-Host "✅ Checksum verified" -ForegroundColor Green
+        return $true
+    } catch {
+        Write-Host "❌ Error during checksum verification: $_" -ForegroundColor Red
+        return $false
+    }
+}
+
 Write-Host "==> Installing Quark $version for $platform" -ForegroundColor Cyan
 Write-Host "==> Downloading $asset" -ForegroundColor Cyan
 
@@ -125,10 +175,23 @@ $headers = @{}
 if ($auth) { $headers["Authorization"] = "token $auth" }
 
 try {
-    Invoke-WebRequest -Uri $url -OutFile $installPath -UseBasicParsing -Headers $headers
+    Invoke-WebRequest -Uri $url -OutFile $installPath -UseBasicParsing -Headers $headers -ErrorAction Stop
 } catch {
     Write-Host "Failed to download from $url" -ForegroundColor Red
     Write-Host "Error: $_" -ForegroundColor Red
+    exit 1
+}
+
+# Verify checksum
+if ($version -eq "latest") {
+    $sumsUrl = "https://github.com/$repo/releases/latest/download/SHA256SUMS"
+} else {
+    $sumsUrl = "https://github.com/$repo/releases/download/$version/SHA256SUMS"
+}
+
+if (-not (Verify-Checksum -FilePath $installPath -ChecksumsUrl $sumsUrl)) {
+    Remove-Item -Path $installPath -Force -ErrorAction SilentlyContinue
+    Write-Host "❌ Installation failed due to checksum verification error" -ForegroundColor Red
     exit 1
 }
 
