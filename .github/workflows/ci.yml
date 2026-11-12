@@ -175,81 +175,7 @@ jobs:
             ${{ runner.temp }}/go-build-cache
           key: ${{ steps.go-deps-cache.outputs.cache-primary-key }}
 
-  test-e2e-tui:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-go@v6
-        with:
-          go-version: '1.26'
-          check-latest: true
-          cache: false
-
-      - name: Configure Go module/build cache dirs
-        run: |
-          echo "GOMODCACHE=${{ runner.temp }}/go-mod-cache" >> "$GITHUB_ENV"
-          echo "GOCACHE=${{ runner.temp }}/go-build-cache" >> "$GITHUB_ENV"
-          mkdir -p "${{ runner.temp }}/go-mod-cache" "${{ runner.temp }}/go-build-cache"
-
-      - name: Restore Go dependency caches
-        id: go-deps-cache
-        uses: actions/cache/restore@v5
-        with:
-          path: |
-            ${{ runner.temp }}/go-mod-cache
-            ${{ runner.temp }}/go-build-cache
-          key: ${{ runner.os }}-go-deps-${{ env.GO_DEPS_CACHE_VERSION }}-tui-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-go-deps-${{ env.GO_DEPS_CACHE_VERSION }}-tui-
-            ${{ runner.os }}-go-deps-${{ env.GO_DEPS_CACHE_VERSION }}-
-
-      - name: Log Go cache paths
-        run: |
-          echo "GOMODCACHE=$(go env GOMODCACHE)"
-          echo "GOCACHE=$(go env GOCACHE)"
-
-      - name: Cache gotestsum binary
-        id: gotestsum-cache
-        uses: actions/cache@v5
-        with:
-          path: ~/go/bin/gotestsum
-          key: ${{ runner.os }}-gotestsum-${{ env.GOTESTSUM_VERSION }}
-
-      - name: Install gotestsum
-        if: steps.gotestsum-cache.outputs.cache-hit != 'true'
-        run: go install gotest.tools/gotestsum@${{ env.GOTESTSUM_VERSION }}
-
-      - name: Run TUI e2e tests with coverage
-        run: QUARK_TIMING=1 make e2e-tui ARGS="-coverprofile=tui.out"
-
-      - name: Per-package timing
-        if: always() && !cancelled()
-        run: make show-slow
-
-      - name: Ensure coverage file exists
-        if: always() && !cancelled()
-        run: touch tui.out
-
-      - name: Upload coverage
-        if: always() && !cancelled()
-        uses: actions/upload-artifact@v6
-        with:
-          name: coverage-tui-pr
-          path: tui.out
-          retention-days: 1
-
-      # continue-on-error: another concurrent job may have already saved this key.
-      - name: Save Go dependency caches
-        if: always() && !cancelled() && steps.go-deps-cache.outputs.cache-hit != 'true'
-        continue-on-error: true
-        uses: actions/cache/save@v5
-        with:
-          path: |
-            ${{ runner.temp }}/go-mod-cache
-            ${{ runner.temp }}/go-build-cache
-          key: ${{ steps.go-deps-cache.outputs.cache-primary-key }}
-
-  test-e2e-cli:
+  test-e2e-linux:
     runs-on: ubuntu-latest
     needs: build
     steps:
@@ -273,9 +199,9 @@ jobs:
           path: |
             ${{ runner.temp }}/go-mod-cache
             ${{ runner.temp }}/go-build-cache
-          key: ${{ runner.os }}-go-deps-${{ env.GO_DEPS_CACHE_VERSION }}-cli-${{ hashFiles('**/go.sum') }}
+          key: ${{ runner.os }}-go-deps-${{ env.GO_DEPS_CACHE_VERSION }}-e2e-${{ hashFiles('**/go.sum') }}
           restore-keys: |
-            ${{ runner.os }}-go-deps-${{ env.GO_DEPS_CACHE_VERSION }}-cli-
+            ${{ runner.os }}-go-deps-${{ env.GO_DEPS_CACHE_VERSION }}-e2e-
             ${{ runner.os }}-go-deps-${{ env.GO_DEPS_CACHE_VERSION }}-
 
       - name: Log Go cache paths
@@ -300,18 +226,26 @@ jobs:
           name: bin-quark-cover
           path: bin
 
+      - name: Run TUI e2e tests with coverage
+        run: QUARK_TIMING=1 make e2e-tui ARGS="-coverprofile=tui.out"
+
       - name: Run CLI e2e tests with coverage
         run: make e2e-cli-run
 
-      - name: Per-package timing
+      - name: Ensure coverage files exist
         if: always() && !cancelled()
-        run: make show-slow
+        run: |
+          touch tui.out bin/cover-cli.out
 
-      - name: Ensure coverage file exists
+      - name: Upload TUI coverage
         if: always() && !cancelled()
-        run: touch bin/cover-cli.out
+        uses: actions/upload-artifact@v6
+        with:
+          name: coverage-tui-pr
+          path: tui.out
+          retention-days: 1
 
-      - name: Upload coverage
+      - name: Upload CLI coverage
         if: always() && !cancelled()
         uses: actions/upload-artifact@v6
         with:
@@ -331,11 +265,166 @@ jobs:
           key: ${{ steps.go-deps-cache.outputs.cache-primary-key }}
 
   # ---------------------------------------------------------------------------
+  # Stage 2: Native e2e tests — Windows, macOS
+  # ---------------------------------------------------------------------------
+  test-e2e-windows:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.26'
+          check-latest: true
+          cache: false
+
+      - name: Configure Go module/build cache dirs
+        shell: pwsh
+        run: |
+          echo "GOMODCACHE=${{ runner.temp }}/go-mod-cache" >> $env:GITHUB_ENV
+          echo "GOCACHE=${{ runner.temp }}/go-build-cache" >> $env:GITHUB_ENV
+          New-Item -ItemType Directory -Path "${{ runner.temp }}/go-mod-cache", "${{ runner.temp }}/go-build-cache" -Force | Out-Null
+
+      - name: Restore Go dependency caches
+        id: go-deps-cache
+        uses: actions/cache/restore@v5
+        with:
+          path: |
+            ${{ runner.temp }}/go-mod-cache
+            ${{ runner.temp }}/go-build-cache
+          key: ${{ runner.os }}-go-deps-${{ env.GO_DEPS_CACHE_VERSION }}-windows-e2e-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-deps-${{ env.GO_DEPS_CACHE_VERSION }}-windows-e2e-
+            ${{ runner.os }}-go-deps-${{ env.GO_DEPS_CACHE_VERSION }}-
+
+      - name: Cache gotestsum binary
+        id: gotestsum-cache
+        uses: actions/cache@v5
+        with:
+          path: ~/go/bin/gotestsum
+          key: ${{ runner.os }}-gotestsum-${{ env.GOTESTSUM_VERSION }}
+
+      - name: Install gotestsum
+        if: steps.gotestsum-cache.outputs.cache-hit != 'true'
+        run: go install gotest.tools/gotestsum@${{ env.GOTESTSUM_VERSION }}
+
+      - name: Build quark binary
+        run: go build -o bin/quark.exe ./cmd/quark
+
+      - name: Run CLI e2e tests
+        run: gotestsum --format pkgname -- -tags e2e -v ./tests/e2e/cli/...
+        env:
+          QUARK_BINARY: ${{ github.workspace }}/bin/quark.exe
+
+      - name: Run TUI e2e tests
+        run: gotestsum --format pkgname -- -tags e2e -v ./tests/e2e/tui/...
+
+      - name: Upload binary on failure
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: windows-quark-exe
+          path: bin/quark.exe
+          retention-days: 1
+
+      - name: Save Go dependency caches
+        if: always() && !cancelled() && steps.go-deps-cache.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@v5
+        with:
+          path: |
+            ${{ runner.temp }}/go-mod-cache
+            ${{ runner.temp }}/go-build-cache
+          key: ${{ steps.go-deps-cache.outputs.cache-primary-key }}
+
+  test-e2e-macos:
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.26'
+          check-latest: true
+          cache: false
+
+      - name: Log platform info
+        id: platform
+        run: |
+          echo "uname -m: $(uname -m)"
+          GOARCH=$(go env GOARCH)
+          echo "go env GOARCH: $GOARCH"
+          echo "arch=$GOARCH" >> "$GITHUB_OUTPUT"
+
+      - name: Configure Go module/build cache dirs
+        run: |
+          echo "GOMODCACHE=${{ runner.temp }}/go-mod-cache" >> "$GITHUB_ENV"
+          echo "GOCACHE=${{ runner.temp }}/go-build-cache" >> "$GITHUB_ENV"
+          mkdir -p "${{ runner.temp }}/go-mod-cache" "${{ runner.temp }}/go-build-cache"
+
+      - name: Restore Go dependency caches
+        id: go-deps-cache
+        uses: actions/cache/restore@v5
+        with:
+          path: |
+            ${{ runner.temp }}/go-mod-cache
+            ${{ runner.temp }}/go-build-cache
+          key: ${{ runner.os }}-go-deps-${{ env.GO_DEPS_CACHE_VERSION }}-macos-e2e-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-deps-${{ env.GO_DEPS_CACHE_VERSION }}-macos-e2e-
+            ${{ runner.os }}-go-deps-${{ env.GO_DEPS_CACHE_VERSION }}-
+
+      - name: Cache gotestsum binary
+        id: gotestsum-cache
+        uses: actions/cache@v5
+        with:
+          path: ~/go/bin/gotestsum
+          key: ${{ runner.os }}-gotestsum-${{ env.GOTESTSUM_VERSION }}
+
+      - name: Install gotestsum
+        if: steps.gotestsum-cache.outputs.cache-hit != 'true'
+        run: go install gotest.tools/gotestsum@${{ env.GOTESTSUM_VERSION }}
+
+      - name: Build quark binary
+        run: go build -o bin/quark ./cmd/quark
+
+      - name: Run CLI e2e tests
+        run: gotestsum --format pkgname -- -tags e2e -v ./tests/e2e/cli/...
+        env:
+          QUARK_BINARY: ${{ github.workspace }}/bin/quark
+
+      - name: Run TUI e2e tests
+        run: gotestsum --format pkgname -- -tags e2e -v ./tests/e2e/tui/...
+
+      - name: Upload binary on failure
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: macos-${{ steps.platform.outputs.arch }}-quark
+          path: bin/quark
+          retention-days: 1
+
+      - name: Save Go dependency caches
+        if: always() && !cancelled() && steps.go-deps-cache.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@v5
+        with:
+          path: |
+            ${{ runner.temp }}/go-mod-cache
+            ${{ runner.temp }}/go-build-cache
+          key: ${{ steps.go-deps-cache.outputs.cache-primary-key }}
+
+
+  # ---------------------------------------------------------------------------
   # Stage 3a: Persist baseline — on push to master, cache coverage + lint
   # so PRs can fetch instead of re-running all master tests.
   # ---------------------------------------------------------------------------
   persist-baseline:
-    needs: [test-unit, test-e2e-tui, test-e2e-cli, lint]
+    needs: [test-unit, test-e2e-linux, lint]
     runs-on: ubuntu-latest
     if: github.event_name == 'push'
     steps:
@@ -519,7 +608,7 @@ jobs:
   # ---------------------------------------------------------------------------
   coverage-report:
     runs-on: ubuntu-latest
-    needs: [test-unit, test-e2e-tui, test-e2e-cli, coverage-master, lint]
+    needs: [test-unit, test-e2e-linux, coverage-master, lint]
     if: github.event_name == 'pull_request' && always() && !cancelled()
     env:
       PR_UT: /tmp/coverage-pr/coverage-ut-pr/ut.out
