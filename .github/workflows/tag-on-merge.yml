@@ -272,7 +272,7 @@ jobs:
             --repo crazy-vedic/Quark --clobber
 
   publish-npm:
-    needs: release
+    needs: [tag, release]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -317,7 +317,7 @@ jobs:
           echo "✓ npm packages published successfully"
 
   submit-winget:
-    needs: release
+    needs: [tag, release]
     runs-on: ubuntu-latest
     if: github.event_name == 'push'
     permissions:
