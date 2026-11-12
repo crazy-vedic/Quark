@@ -72,40 +72,38 @@ jobs:
 
           ls -lah *.deb 2>/dev/null || echo "No .deb packages downloaded"
 
-      - name: Import GPG key (optional)
+      - name: Import GPG key and add packages
         env:
           GNUPGHOME: /tmp/gnupg
           GPG_KEY: ${{ secrets.APT_GPG_KEY }}
-        run: |
-          if [ -z "$GPG_KEY" ]; then
-            echo "No GPG key configured, packages will be unsigned"
-            exit 0
-          fi
-          mkdir -p "$GNUPGHOME"
-          chmod 700 "$GNUPGHOME"
-          echo "$GPG_KEY" | base64 -d | gpg --import --batch --no-tty
-          echo "GPG key imported"
-
-      - name: Add packages to apt repository
-        env:
-          GNUPGHOME: /tmp/gnupg
+          GPG_PASSPHRASE: ${{ secrets.APT_GPG_KEY_PASSPHRASE }}
         run: |
           cd ${{ github.workspace }}
           RELEASE_TAG="${{ github.event.release.tag_name }}"
+
+          # Set up GPG home directory
           mkdir -p "$GNUPGHOME"
           chmod 700 "$GNUPGHOME"
+
+          # Import GPG key if provided
+          if [ -z "$GPG_KEY" ]; then
+            echo "No GPG key configured, packages will be unsigned"
+          else
+            echo "$GPG_KEY" | base64 -d | gpg --import --batch --no-tty
+            echo "GPG key imported"
+          fi
 
           # Start gpg-agent and preload passphrase if provided
           eval $(gpg-agent --daemon --quiet --allow-preset-passphrase)
 
-          if [ -n "${{ env.APT_GPG_KEY_PASSPHRASE }}" ] && [ -n "${{ vars.APT_GPG_KEY }}" ]; then
+          if [ -n "$GPG_PASSPHRASE" ] && [ -n "${{ vars.APT_GPG_KEY }}" ]; then
             # Get keygrip for the key
             KEYGRIP=$(gpg --with-keygrip --list-secret-keys "${{ vars.APT_GPG_KEY }}" 2>/dev/null | \
               grep Keygrip | head -1 | awk '{print $NF}')
 
             if [ -n "$KEYGRIP" ]; then
               # Preload passphrase into gpg-agent
-              echo "${{ env.APT_GPG_KEY_PASSPHRASE }}" | gpg-preset-passphrase --preset "$KEYGRIP"
+              echo "$GPG_PASSPHRASE" | gpg-preset-passphrase --preset "$KEYGRIP"
               if [ $? -ne 0 ]; then
                 echo "ERROR: Failed to preload passphrase into gpg-agent"
                 exit 1
