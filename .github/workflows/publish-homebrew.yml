@@ -80,9 +80,8 @@ jobs:
 
           {
             echo 'class Quark < Formula'
-            echo '  desc "Quark - A fast and lightweight utility"'
+            echo '  desc "Fast and lightweight utility"'
             echo '  homepage "https://github.com/crazy-vedic/Quark"'
-            echo "  version \"$VERSION\""
             echo ''
             echo '  on_macos do'
             echo '    if Hardware::CPU.arm?'
@@ -112,7 +111,7 @@ jobs:
             echo '  end'
             echo ''
             echo '  test do'
-            echo '    system "#{bin}/quark", "--version"'
+            echo '    system bin/"quark", "--version"'
             echo '  end'
             echo 'end'
           } > "$FORMULA_DIR/quark.rb"
