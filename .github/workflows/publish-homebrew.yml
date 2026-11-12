@@ -1,0 +1,121 @@
+name: Publish to Homebrew
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  publish-homebrew:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download macOS binaries from release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          RELEASE_TAG="${{ github.event.release.tag_name }}"
+          echo "Downloading binaries for release: $RELEASE_TAG"
+
+          mkdir -p /tmp/binaries
+          cd /tmp/binaries
+
+          # Download macOS binaries (arm64 and amd64)
+          gh release download "$RELEASE_TAG" \
+            --repo "${{ github.repository }}" \
+            --pattern "*darwin*" \
+            || echo "No darwin binaries found"
+
+          ls -lah
+
+      - name: Calculate checksums and prepare formula
+        run: |
+          RELEASE_TAG="${{ github.event.release.tag_name }}"
+          VERSION="${RELEASE_TAG#v}"
+
+          # Calculate checksums for macOS binaries
+          cd /tmp/binaries
+
+          # ARM64 checksum
+          ARM64_CHECKSUM=$(sha256sum quark_${VERSION}_darwin_arm64.tar.gz 2>/dev/null | awk '{print $1}')
+          echo "ARM64_CHECKSUM=$ARM64_CHECKSUM" >> $GITHUB_ENV
+
+          # AMD64 checksum
+          AMD64_CHECKSUM=$(sha256sum quark_${VERSION}_darwin_amd64.tar.gz 2>/dev/null | awk '{print $1}')
+          echo "AMD64_CHECKSUM=$AMD64_CHECKSUM" >> $GITHUB_ENV
+
+          echo "ARM64: $ARM64_CHECKSUM"
+          echo "AMD64: $AMD64_CHECKSUM"
+
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+
+      - name: Checkout homebrew tap repository
+        uses: actions/checkout@v4
+        with:
+          repository: crazy-vedic/homebrew-quark
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: homebrew-tap
+
+      - name: Update Homebrew formula
+        run: |
+          FORMULA_DIR="homebrew-tap/Formula"
+          mkdir -p "$FORMULA_DIR"
+
+          cat > "$FORMULA_DIR/quark.rb" << 'EOF'
+class Quark < Formula
+  desc "Quark - A fast and lightweight utility"
+  homepage "https://github.com/crazy-vedic/Quark"
+  version "${{ env.VERSION }}"
+
+  on_macos do
+    if Hardware::CPU.arm?
+      url "https://github.com/crazy-vedic/Quark/releases/download/v${{ env.VERSION }}/quark_${{ env.VERSION }}_darwin_arm64.tar.gz"
+      sha256 "${{ env.ARM64_CHECKSUM }}"
+    else
+      url "https://github.com/crazy-vedic/Quark/releases/download/v${{ env.VERSION }}/quark_${{ env.VERSION }}_darwin_amd64.tar.gz"
+      sha256 "${{ env.AMD64_CHECKSUM }}"
+    end
+  end
+
+  def install
+    bin.install "quark"
+  end
+
+  test do
+    system "#{bin}/quark", "--version"
+  end
+end
+EOF
+
+      - name: Commit and push formula
+        working-directory: homebrew-tap
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add Formula/quark.rb
+
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "chore: update quark formula to v${{ env.VERSION }}"
+            git push origin master
+            echo "Published to homebrew tap"
+          fi
+
+      - name: Comment on release (macOS)
+        if: github.event.action == 'published'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const body = `✅ Published to Homebrew:\n\n\`\`\`bash\nbrew tap crazy-vedic/quark\nbrew install quark\n\`\`\``;
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });
