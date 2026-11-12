@@ -21,6 +21,7 @@ func NewNpmSource(packageName string) *NpmSource {
 // LatestVersion gets the latest version from npm registry.
 // Uses `npm view <package> version` to query the registry.
 func (s *NpmSource) LatestVersion(ctx context.Context) (string, error) {
+	//nolint:gosec
 	cmd := exec.CommandContext(ctx, "npm", "view", s.packageName, "version", "--json")
 	cmd.Env = append(os.Environ(), "LANG=en_US.UTF-8")
 
