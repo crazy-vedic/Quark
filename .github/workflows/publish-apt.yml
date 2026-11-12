@@ -93,33 +93,20 @@ jobs:
             echo "GPG key imported"
           fi
 
-          # Start gpg-agent and preload passphrase if provided
-          eval $(gpg-agent --daemon --quiet --allow-preset-passphrase)
-
-          if [ -n "$GPG_PASSPHRASE" ] && [ -n "${{ vars.APT_GPG_KEY }}" ]; then
-            # Get keygrip for the key
-            KEYGRIP=$(gpg --with-keygrip --list-secret-keys "${{ vars.APT_GPG_KEY }}" 2>/dev/null | \
-              grep Keygrip | head -1 | awk '{print $NF}')
-
-            if [ -n "$KEYGRIP" ]; then
-              # Preload passphrase into gpg-agent
-              echo "$GPG_PASSPHRASE" | gpg-preset-passphrase --preset "$KEYGRIP"
-              if [ $? -ne 0 ]; then
-                echo "ERROR: Failed to preload passphrase into gpg-agent"
-                exit 1
-              fi
-            else
-              echo "ERROR: Could not find keygrip for key ${{ vars.APT_GPG_KEY }}"
-              exit 1
-            fi
-          fi
+          # Configure gpg-agent for loopback pinentry (allows passphrase via stdin/env)
+          # Create a GPG wrapper script that provides passphrase for signing
+          cat > /tmp/gpg-wrapper.sh << 'EOFWRAP'
+#!/bin/bash
+exec gpg --batch --no-tty --pinentry-mode loopback --passphrase "$GPG_PASSPHRASE" "$@"
+EOFWRAP
+          chmod +x /tmp/gpg-wrapper.sh
+          export GPG=/tmp/gpg-wrapper.sh
+          eval $(gpg-agent --daemon --quiet)
 
           # Add each .deb file to the repository
           for deb in /tmp/debs/*.deb; do
             if [ -f "$deb" ]; then
               echo "Adding: $deb"
-              # reprepro uses SignWith from distributions config
-              # GPG key was already imported above; reprepro will use it via gpg-agent
               reprepro -b apt -S main includedeb stable "$deb"
             fi
           done
