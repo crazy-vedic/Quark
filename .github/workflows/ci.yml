@@ -328,6 +328,7 @@ jobs:
 
       - name: Show CLI timing
         if: always() && !cancelled()
+        continue-on-error: true
         run: make show-slow
 
       - name: Run TUI e2e tests
@@ -335,6 +336,7 @@ jobs:
 
       - name: Show TUI timing
         if: always() && !cancelled()
+        continue-on-error: true
         run: make show-slow
 
       - name: Upload binary on failure
@@ -415,6 +417,7 @@ jobs:
 
       - name: Show CLI timing
         if: always() && !cancelled()
+        continue-on-error: true
         run: make show-slow
 
       - name: Run TUI e2e tests
@@ -422,6 +425,7 @@ jobs:
 
       - name: Show TUI timing
         if: always() && !cancelled()
+        continue-on-error: true
         run: make show-slow
 
       - name: Upload binary on failure
