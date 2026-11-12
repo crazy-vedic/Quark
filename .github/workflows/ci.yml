@@ -229,10 +229,14 @@ jobs:
       - name: Run TUI e2e tests with coverage
         run: QUARK_TIMING=1 make e2e-tui ARGS="-coverprofile=tui.out"
 
+      - name: Show TUI timing
+        if: always() && !cancelled()
+        run: make show-slow
+
       - name: Run CLI e2e tests with coverage
         run: make e2e-cli-run
 
-      - name: Per-package timing
+      - name: Show CLI timing
         if: always() && !cancelled()
         run: make show-slow
 
@@ -303,16 +307,35 @@ jobs:
             ${{ runner.os }}-go-deps-${{ env.GO_DEPS_CACHE_VERSION }}-windows-e2e-
             ${{ runner.os }}-go-deps-${{ env.GO_DEPS_CACHE_VERSION }}-
 
+      - name: Cache gotestsum binary
+        id: gotestsum-cache
+        uses: actions/cache@v5
+        with:
+          path: ~/go/bin/gotestsum
+          key: ${{ runner.os }}-gotestsum-${{ env.GOTESTSUM_VERSION }}
+
+      - name: Install gotestsum
+        if: steps.gotestsum-cache.outputs.cache-hit != 'true'
+        run: go install gotest.tools/gotestsum@${{ env.GOTESTSUM_VERSION }}
+
       - name: Build quark binary
         run: go build -o bin/quark.exe ./cmd/quark
 
       - name: Run CLI e2e tests
-        run: go test -tags e2e -v ./tests/e2e/cli/...
+        run: gotestsum --format pkgname -- -tags e2e -v ./tests/e2e/cli/...
         env:
           QUARK_BINARY: ${{ github.workspace }}/bin/quark.exe
 
+      - name: Show CLI timing
+        if: always() && !cancelled()
+        run: make show-slow
+
       - name: Run TUI e2e tests
-        run: go test -tags e2e -v ./tests/e2e/tui/...
+        run: gotestsum --format pkgname -- -tags e2e -v ./tests/e2e/tui/...
+
+      - name: Show TUI timing
+        if: always() && !cancelled()
+        run: make show-slow
 
       - name: Upload binary on failure
         if: failure()
@@ -371,16 +394,35 @@ jobs:
             ${{ runner.os }}-go-deps-${{ env.GO_DEPS_CACHE_VERSION }}-macos-e2e-
             ${{ runner.os }}-go-deps-${{ env.GO_DEPS_CACHE_VERSION }}-
 
+      - name: Cache gotestsum binary
+        id: gotestsum-cache
+        uses: actions/cache@v5
+        with:
+          path: ~/go/bin/gotestsum
+          key: ${{ runner.os }}-gotestsum-${{ env.GOTESTSUM_VERSION }}
+
+      - name: Install gotestsum
+        if: steps.gotestsum-cache.outputs.cache-hit != 'true'
+        run: go install gotest.tools/gotestsum@${{ env.GOTESTSUM_VERSION }}
+
       - name: Build quark binary
         run: go build -o bin/quark ./cmd/quark
 
       - name: Run CLI e2e tests
-        run: go test -tags e2e -v ./tests/e2e/cli/...
+        run: gotestsum --format pkgname -- -tags e2e -v ./tests/e2e/cli/...
         env:
           QUARK_BINARY: ${{ github.workspace }}/bin/quark
 
+      - name: Show CLI timing
+        if: always() && !cancelled()
+        run: make show-slow
+
       - name: Run TUI e2e tests
-        run: go test -tags e2e -v ./tests/e2e/tui/...
+        run: gotestsum --format pkgname -- -tags e2e -v ./tests/e2e/tui/...
+
+      - name: Show TUI timing
+        if: always() && !cancelled()
+        run: make show-slow
 
       - name: Upload binary on failure
         if: failure()
