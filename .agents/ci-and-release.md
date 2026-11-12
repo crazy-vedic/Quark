@@ -14,31 +14,35 @@ All jobs run on GitHub-hosted **`ubuntu-latest`** runners.
 flowchart LR
   build[build]
   lint[lint]
+  packageVal[package-validation]
   testUnit[test-unit]
-  testE2eTui[test-e2e-tui]
-  testE2eCli[test-e2e-cli]
+  testE2eLinux[test-e2e-linux]
+  testE2eWindows[test-e2e-windows]
+  testE2eMacOS[test-e2e-macos]
   persistBaseline[persist-baseline]
   coverageMaster[coverage-master]
   coverageReport[coverage-report]
   build --> persistBaseline
   lint --> persistBaseline
   testUnit --> persistBaseline
-  testE2eTui --> persistBaseline
-  testE2eCli --> persistBaseline
+  packageVal --> persistBaseline
+  testE2eLinux --> persistBaseline
   persistBaseline --> coverageReport
   coverageMaster --> coverageReport
 ```
 
-| Job | Purpose |
-|---|---|
-| `build` | Compile the binary |
-| `lint` | golangci-lint (`make lint-ci`) |
-| `test-unit` | Unit tests with gotestsum, `-race` |
-| `test-e2e-tui` | TUI e2e tests (`-tags e2e`) |
-| `test-e2e-cli` | CLI e2e with coverage binary |
-| `persist-baseline` | Gate after all test+lint jobs pass |
-| `coverage-master` | Coverage baseline on main |
-| `coverage-report` | Coverage diff reporting via `scripts/coverage-report.sh` |
+| Job | Platform | Purpose |
+|---|---|---|
+| `build` | Linux | Compile the binary |
+| `lint` | Linux | golangci-lint (`make lint-ci`) |
+| `package-validation` | Linux | Validate GoReleaser config and snapshot build |
+| `test-unit` | Linux | Unit tests with gotestsum, `-race` |
+| `test-e2e-linux` | Linux | TUI + CLI e2e tests with coverage (`-tags e2e`) |
+| `test-e2e-windows` | Windows | Native Windows TUI + CLI e2e tests |
+| `test-e2e-macos` | macOS | Native macOS TUI + CLI e2e tests |
+| `persist-baseline` | Linux | Gate after all test+lint jobs pass; caches coverage for PR comparison |
+| `coverage-master` | Linux | Coverage baseline on master |
+| `coverage-report` | Linux | Coverage diff reporting via `scripts/coverage-report.sh` |
 
 ## Release Validation (PR body)
 
@@ -79,19 +83,56 @@ Workflow: [`.github/workflows/tag-on-merge.yml`](.github/workflows/tag-on-merge.
 
 Trigger: push to `main`/`master`.
 
-Steps:
-
+**Steps:**
 1. Find merged PR for the commit
 2. Extract version from PR body line: `Release: vX.Y.Z` (or `X.Y.Z`)
 3. **Validate strict +1 semver increment** against latest GitHub release (not just tag)
 4. Create annotated tag + push (skip if tag exists)
-5. `release` job cross-compiles 5 targets with `-ldflags="-s -w"`:
+5. **GoReleaser build:** Cross-compiles 5 targets:
    - darwin amd64/arm64
    - linux amd64/arm64
    - windows amd64
-6. Copies install scripts; publishes GitHub Release via `softprops/action-gh-release@v2`
+6. Generates packages:
+   - Archives (tar.gz): Linux, macOS
+   - Binaries (.exe): Windows
+   - .deb packages: Unsigned (with signing support via environment variable)
+   - .pkg: macOS universal
+   - SHA256SUMS file
+7. Copies install scripts; publishes GitHub Release via `softprops/action-gh-release@v2`
+8. **Triggers distribution workflows:**
+   - `publish-apt.yml` — publishes .deb packages to apt repository (gh-pages)
+   - `publish-homebrew.yml` — updates Homebrew tap formula
+
+See: [`.goreleaser.yaml`](.goreleaser.yaml) for build targets and archive formats.
 
 **To skip release:** omit the `Release:` line from PR body.
+
+### Distribution Workflows
+
+**APT Repository**
+
+Workflow: [`.github/workflows/publish-apt.yml`](.github/workflows/publish-apt.yml)
+
+Triggers on GitHub `release` event (after `tag-on-merge.yml` publishes release).
+
+Requirements (see [USER-REQUIREMENTS.md](USER-REQUIREMENTS.md)):
+- `APT_GPG_KEY_ID` repository variable (optional, for signing)
+- `APT_GPG_KEY` secret (optional, base64-encoded GPG secret key)
+- `APT_GPG_KEY_PASSPHRASE` (optional, can be secret or environment variable)
+- GitHub Pages enabled on `gh-pages` branch
+
+Publishes `.deb` packages to `https://<user>.github.io/<repo>/apt/` for easy Linux installation.
+
+**Homebrew Tap**
+
+Workflow: [`.github/workflows/publish-homebrew.yml`](.github/workflows/publish-homebrew.yml)
+
+Triggers on GitHub `release` event.
+
+Requirements (see [USER-REQUIREMENTS.md](USER-REQUIREMENTS.md)):
+- `HOMEBREW_TAP_TOKEN` secret (GitHub PAT with write access to homebrew tap repo)
+
+Auto-publishes formula to `homebrew-<user>/homebrew-quark` tap for macOS installation.
 
 ### Manual Release
 

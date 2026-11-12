@@ -331,6 +331,59 @@ download_with_gh() {
     fi
 }
 
+verify_checksum() {
+    local file="$1"
+    local sums_url="$2"
+
+    if [[ -z "$sums_url" ]]; then
+        return 0
+    fi
+
+    local sums_file
+    sums_file=$(mktemp)
+    trap "rm -f '$sums_file'" RETURN
+
+    if ! "${CURL[@]}" "$sums_url" -o "$sums_file"; then
+        echo "❌ Failed to download checksum file"
+        return 1
+    fi
+
+    if [[ ! -s "$sums_file" ]]; then
+        echo "❌ Checksum file is empty"
+        return 1
+    fi
+
+    local expected_sha
+    expected_sha=$(awk -v name="$ASSET" '$2 == name {print $1}' "$sums_file" || true)
+
+    if [[ -z "$expected_sha" ]]; then
+        echo "❌ Checksum for $ASSET not found in SHA256SUMS"
+        return 1
+    fi
+
+    echo "==> Verifying checksum..."
+
+    if command -v sha256sum &>/dev/null; then
+        if ! echo "$expected_sha  $file" | sha256sum -c - >/dev/null 2>&1; then
+            echo "❌ Checksum verification failed for $file"
+            echo "   Expected: $expected_sha"
+            return 1
+        fi
+    elif command -v shasum &>/dev/null; then
+        if ! echo "$expected_sha  $file" | shasum -a 256 -c - >/dev/null 2>&1; then
+            echo "❌ Checksum verification failed for $file"
+            echo "   Expected: $expected_sha"
+            return 1
+        fi
+    else
+        echo "❌ sha256sum/shasum not found, cannot verify checksum"
+        return 1
+    fi
+
+    echo "✅ Checksum verified"
+    return 0
+}
+
 echo "==> Installing Quark ${VERSION} for ${PLATFORM}"
 echo "==> Downloading ${ASSET}"
 
@@ -338,6 +391,19 @@ if ! download_with_gh; then
     "${CURL[@]}" "$URL" -o "$INSTALL_PATH"
 fi
 chmod +x "$INSTALL_PATH"
+
+# Verify checksum
+if [ "$VERSION" = "latest" ]; then
+    SUMS_URL="https://github.com/${REPO}/releases/latest/download/SHA256SUMS"
+else
+    SUMS_URL="https://github.com/${REPO}/releases/download/${VERSION}/SHA256SUMS"
+fi
+
+if ! verify_checksum "$INSTALL_PATH" "$SUMS_URL"; then
+    rm -f "$INSTALL_PATH"
+    echo "❌ Installation failed due to checksum verification error"
+    exit 1
+fi
 
 echo "==> Installed to ${INSTALL_PATH}"
 

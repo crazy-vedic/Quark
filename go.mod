@@ -19,6 +19,8 @@ require (
 	software.sslmate.com/src/go-pkcs12 v0.7.3
 )
 
+require github.com/Masterminds/semver/v3 v3.5.0 // indirect
+
 require (
 	github.com/atotto/clipboard v0.1.4
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect

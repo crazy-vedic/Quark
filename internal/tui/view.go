@@ -1557,6 +1557,9 @@ func (m Model) viewStatusBar(statusOverride string) string {
 			false,
 		) + " for panes"
 		rightStyle = m.styles.warnStyle
+	case m.updateStatus != "":
+		rightPlain = "  " + m.updateStatus
+		rightStyle = m.styles.mutedStyle
 	}
 
 	if rightPlain == "" {
