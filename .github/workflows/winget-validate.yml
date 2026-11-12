@@ -21,6 +21,12 @@ jobs:
           go-version: '1.26'
           cache: true
 
+      - name: Install GoReleaser
+        uses: goreleaser/goreleaser-action@v5
+        with:
+          version: v1.26.2
+          install-only: true
+
       - name: Build binaries
         run: |
           mkdir -p dist/binaries
