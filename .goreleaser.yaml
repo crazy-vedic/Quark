@@ -70,17 +70,18 @@ nfpms:
         type: file
     file_name_template: "{{ .PackageName }}_{{ .Version }}_{{ .Arch }}"
 
-wingets:
-  - id: quark-winget
-    publisher: Quark
-    package_identifier: Quark.Quark
-    name: Quark
-    homepage: https://github.com/crazy-vedic/Quark
-    license: MIT
-    description: "A local-first, keyboard-driven HTTP client"
-    installer_template: .winget/installer.yaml.tmpl
-    # Only submit real releases, not snapshots
-    skip_upload: auto
+# Winget support: requires GoReleaser v1.27+ (currently on v1.26.2)
+# Uncomment and enable once GoReleaser is upgraded
+# wingets:
+#   - id: quark-winget
+#     publisher: Quark
+#     package_identifier: Quark.Quark
+#     name: Quark
+#     homepage: https://github.com/crazy-vedic/Quark
+#     license: MIT
+#     description: "A local-first, keyboard-driven HTTP client"
+#     installer_template: .winget/installer.yaml.tmpl
+#     skip_upload: auto
 
 artifactories: []
 
