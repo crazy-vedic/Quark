@@ -206,7 +206,16 @@ jobs:
   build:
     runs-on: ubuntu-latest
     needs: [check-tree-cache, restore-baseline-from-releases]
-    if: github.event_name == 'pull_request' || (github.event_name == 'push' && needs.check-tree-cache.outputs.use-cache != 'true' && needs.restore-baseline-from-releases.outputs.found != 'true')
+    if: >-
+      !cancelled() &&
+      (
+        github.event_name == 'pull_request' ||
+        (
+          github.event_name == 'push' &&
+          needs.check-tree-cache.outputs.use-cache != 'true' &&
+          needs.restore-baseline-from-releases.outputs.found != 'true'
+        )
+      )
     steps:
       - uses: actions/checkout@v5
         with:
@@ -246,7 +255,16 @@ jobs:
   package-validation:
     runs-on: ubuntu-latest
     needs: [check-tree-cache, restore-baseline-from-releases]
-    if: github.event_name == 'pull_request' || (github.event_name == 'push' && needs.check-tree-cache.outputs.use-cache != 'true' && needs.restore-baseline-from-releases.outputs.found != 'true')
+    if: >-
+      !cancelled() &&
+      (
+        github.event_name == 'pull_request' ||
+        (
+          github.event_name == 'push' &&
+          needs.check-tree-cache.outputs.use-cache != 'true' &&
+          needs.restore-baseline-from-releases.outputs.found != 'true'
+        )
+      )
     steps:
       - uses: actions/checkout@v5
         with:
@@ -278,7 +296,16 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     needs: [check-tree-cache, restore-baseline-from-releases]
-    if: github.event_name == 'pull_request' || (github.event_name == 'push' && needs.check-tree-cache.outputs.use-cache != 'true' && needs.restore-baseline-from-releases.outputs.found != 'true')
+    if: >-
+      !cancelled() &&
+      (
+        github.event_name == 'pull_request' ||
+        (
+          github.event_name == 'push' &&
+          needs.check-tree-cache.outputs.use-cache != 'true' &&
+          needs.restore-baseline-from-releases.outputs.found != 'true'
+        )
+      )
     steps:
       - uses: actions/checkout@v5
         with:
@@ -320,7 +347,16 @@ jobs:
   test-unit:
     runs-on: ubuntu-latest
     needs: [check-tree-cache, restore-baseline-from-releases]
-    if: github.event_name == 'pull_request' || (github.event_name == 'push' && needs.check-tree-cache.outputs.use-cache != 'true' && needs.restore-baseline-from-releases.outputs.found != 'true')
+    if: >-
+      !cancelled() &&
+      (
+        github.event_name == 'pull_request' ||
+        (
+          github.event_name == 'push' &&
+          needs.check-tree-cache.outputs.use-cache != 'true' &&
+          needs.restore-baseline-from-releases.outputs.found != 'true'
+        )
+      )
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-go@v6
@@ -396,7 +432,16 @@ jobs:
   test-e2e-linux:
     runs-on: ubuntu-latest
     needs: [build, check-tree-cache, restore-baseline-from-releases]
-    if: github.event_name == 'pull_request' || (github.event_name == 'push' && needs.check-tree-cache.outputs.use-cache != 'true' && needs.restore-baseline-from-releases.outputs.found != 'true')
+    if: >-
+      !cancelled() &&
+      (
+        github.event_name == 'pull_request' ||
+        (
+          github.event_name == 'push' &&
+          needs.check-tree-cache.outputs.use-cache != 'true' &&
+          needs.restore-baseline-from-releases.outputs.found != 'true'
+        )
+      )
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-go@v6
@@ -652,7 +697,10 @@ jobs:
     needs: [check-tree-cache, test-unit, test-e2e-linux, lint, package-validation, restore-cached-artifacts, restore-baseline-from-releases]
     permissions:
       contents: write
-    if: github.event_name == 'push' && !failure()
+    if: >-
+      !cancelled() &&
+      github.event_name == 'push' &&
+      !failure()
     steps:
       - name: Checkout (for release script)
         uses: actions/checkout@v5
