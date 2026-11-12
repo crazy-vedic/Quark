@@ -39,6 +39,23 @@ jobs:
           mkdir -p dist/binaries
           goreleaser build --snapshot --clean
 
+      - name: Extract binaries from archives
+        shell: bash
+        run: |
+          cd dist
+          # Extract from tar.gz (all have "quark" inside)
+          for arch in amd64 arm64; do
+            tar -xzf quark-linux-${arch}.tar.gz -C binaries/
+            mv binaries/quark binaries/quark-linux-${arch}
+            tar -xzf quark-darwin-${arch}.tar.gz -C binaries/
+            mv binaries/quark binaries/quark-darwin-${arch}
+          done
+          # Extract from zip (has quark.exe inside)
+          unzip -o quark-windows-amd64.zip -d binaries/
+          mv binaries/quark.exe binaries/quark-windows-amd64.exe
+          echo "✓ Binaries extracted"
+          ls -lh binaries/quark-*
+
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
