@@ -74,23 +74,22 @@ jobs:
               echo "✓ ${PKG}@${VERSION} already published, skipping"
             else
               # Dry run first
-              npm publish "./platforms/${platform}" --access public --provenance --dry-run || {
+              if ! npm publish "./platforms/${platform}" --access public --provenance --dry-run 2>&1 | tee /tmp/npm-output.log; then
                 echo "❌ Dry run failed for ${PKG}@${VERSION}"
                 FAILED=$((FAILED + 1))
                 continue
-              }
+              fi
               # Then publish for real
-              npm publish "./platforms/${platform}" --access public --provenance || {
-                EXIT_CODE=$?
-                # 422 means already exists (retry race condition), treat as success
-                if [ $EXIT_CODE -eq 22 ]; then
+              if ! npm publish "./platforms/${platform}" --access public --provenance 2>&1 | tee /tmp/npm-output.log; then
+                # Check if it's a 422 (already exists) error
+                if grep -q "E422\|already_exists" /tmp/npm-output.log; then
                   echo "⚠ ${PKG}@${VERSION} already published (422), skipping"
                 else
-                  echo "❌ Failed to publish ${PKG}@${VERSION} (exit code: $EXIT_CODE)"
+                  echo "❌ Failed to publish ${PKG}@${VERSION}"
                   FAILED=$((FAILED + 1))
                 fi
                 continue
-              }
+              fi
               echo "✓ Published ${PKG}@${VERSION}"
             fi
           done
@@ -118,20 +117,20 @@ jobs:
             echo "✓ ${PKG}@${VERSION} already published"
           else
             # Dry run first
-            npm publish "./quark" --access public --provenance --dry-run || {
+            if ! npm publish "./quark" --access public --provenance --dry-run 2>&1 | tee /tmp/npm-output.log; then
               echo "❌ Dry run failed for ${PKG}@${VERSION}"
               exit 1
-            }
+            fi
             # Then publish for real
-            npm publish "./quark" --access public --provenance || {
-              EXIT_CODE=$?
-              # 422 means already exists (retry race condition), treat as success
-              if [ $EXIT_CODE -eq 22 ]; then
+            if ! npm publish "./quark" --access public --provenance 2>&1 | tee /tmp/npm-output.log; then
+              # Check if it's a 422 (already exists) error
+              if grep -q "E422\|already_exists" /tmp/npm-output.log; then
                 echo "⚠ ${PKG}@${VERSION} already published (422), skipping"
               else
-                echo "❌ Failed to publish ${PKG}@${VERSION} (exit code: $EXIT_CODE)"
+                echo "❌ Failed to publish ${PKG}@${VERSION}"
                 exit 1
               fi
-            }
-            echo "✓ Published ${PKG}@${VERSION}"
+            else
+              echo "✓ Published ${PKG}@${VERSION}"
+            fi
           fi
