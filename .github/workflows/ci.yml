@@ -24,14 +24,25 @@ env:
 jobs:
   # ---------------------------------------------------------------------------
   # Stage 0: Check tree cache — avoid redundant tests when code is identical
-  # On push to master, compute tree SHA and check if we have cached results
-  # from a recently tested PR. This supports fast-forwards, squashes, rebases.
+  # On push to master, compute tree SHA and check if we have cached results.
+  # This supports fast-forwards, squashes, rebases within master.
+  #
+  # IMPORTANT: Cache scope isolation
+  # GitHub Actions cache is scoped by event type. A cache written by a
+  # `pull_request` event cannot be restored by a `push` event. Therefore,
+  # this feature only reuses results from previous master pushes, not from
+  # PR runs. The tree SHA mechanism does work across squashes/rebases of the
+  # same code tree within a push context.
+  #
+  # For the intended feature of "skip tests when identical code was recently
+  # tested (including in PRs)", use an explicit trusted artifact store
+  # (e.g., a database or dedicated storage bucket scoped across both events).
   # ---------------------------------------------------------------------------
   check-tree-cache:
     runs-on: ubuntu-latest
     outputs:
       tree-sha: ${{ steps.tree.outputs.sha }}
-      use-cache: ${{ steps.cache-check.outputs.found }}
+      use-cache: ${{ steps.cache-check.outputs.cache-hit }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -56,10 +67,17 @@ jobs:
 
       - name: Report cache status
         run: |
-          if [ "${{ steps.cache-check.outputs.cache-hit }}" == "true" ]; then
-            echo "✓ Tree SHA cached — will reuse results"
-          else
-            echo "✗ Tree SHA not cached — will run tests"
+          EVENT=${{ github.event_name }}
+          if [ "$EVENT" == "push" ]; then
+            if [ "${{ steps.cache-check.outputs.cache-hit }}" == "true" ]; then
+              echo "✓ Tree SHA cached — will reuse results"
+            else
+              echo "✗ Tree SHA not cached — will run tests"
+            fi
+          elif [ "$EVENT" == "pull_request" ]; then
+            echo "→ Pull request: tree cache lookup skipped (scope isolation), will run tests"
+          elif [ "$EVENT" == "workflow_dispatch" ]; then
+            echo "→ Manual trigger: tree cache lookup skipped, will run tests"
           fi
 
   # ---------------------------------------------------------------------------
@@ -552,47 +570,51 @@ jobs:
   # ---------------------------------------------------------------------------
   persist-baseline:
     runs-on: ubuntu-latest
-    needs: check-tree-cache
-    if: github.event_name == 'push'
+    needs: [check-tree-cache, test-unit, test-e2e-linux, lint, package-validation, restore-cached-artifacts]
+    if: github.event_name == 'push' && !failure()
     steps:
       - name: Download coverage artifacts
         uses: actions/download-artifact@v7
-        continue-on-error: true
         with:
           path: /tmp/baseline-raw
           pattern: coverage-*-pr
 
       - name: Download lint artifact
         uses: actions/download-artifact@v7
-        continue-on-error: true
         with:
           name: lint-pr
           path: /tmp/baseline-raw/lint-pr
 
-      - name: Restructure baseline
+      - name: Validate and restructure baseline
         run: |
+          set -e
           mkdir -p /tmp/baseline/bin
-          if [ -f /tmp/baseline-raw/coverage-ut-pr/ut.out ]; then
-            cp /tmp/baseline-raw/coverage-ut-pr/ut.out     /tmp/baseline/ut.out
-          else
-            touch /tmp/baseline/ut.out
+
+          # Require all expected artifacts to be present
+          if [ ! -f /tmp/baseline-raw/coverage-ut-pr/ut.out ]; then
+            echo "ERROR: Missing coverage-ut-pr artifact"
+            exit 1
           fi
-          if [ -f /tmp/baseline-raw/coverage-tui-pr/tui.out ]; then
-            cp /tmp/baseline-raw/coverage-tui-pr/tui.out   /tmp/baseline/tui.out
-          else
-            touch /tmp/baseline/tui.out
+          if [ ! -f /tmp/baseline-raw/coverage-tui-pr/tui.out ]; then
+            echo "ERROR: Missing coverage-tui-pr artifact"
+            exit 1
           fi
+          if [ ! -f /tmp/baseline-raw/lint-pr/lint-output.txt ]; then
+            echo "ERROR: Missing lint-pr artifact"
+            exit 1
+          fi
+
+          # CLI coverage is optional but if present, must be valid
+          cp /tmp/baseline-raw/coverage-ut-pr/ut.out /tmp/baseline/ut.out
+          cp /tmp/baseline-raw/coverage-tui-pr/tui.out /tmp/baseline/tui.out
           if [ -f /tmp/baseline-raw/coverage-cli-pr/cover-cli.out ]; then
-            cp /tmp/baseline-raw/coverage-cli-pr/cover-cli.out \
-               /tmp/baseline/bin/cover-cli.out
+            cp /tmp/baseline-raw/coverage-cli-pr/cover-cli.out /tmp/baseline/bin/cover-cli.out
           else
             touch /tmp/baseline/bin/cover-cli.out
           fi
-          if [ -f /tmp/baseline-raw/lint-pr/lint-output.txt ]; then
-            cp /tmp/baseline-raw/lint-pr/lint-output.txt /tmp/baseline/lint-output.txt
-          else
-            touch /tmp/baseline/lint-output.txt
-          fi
+          cp /tmp/baseline-raw/lint-pr/lint-output.txt /tmp/baseline/lint-output.txt
+
+          echo "✓ Baseline validation complete: all required artifacts present"
 
       - name: Save baseline cache by commit SHA
         continue-on-error: true
