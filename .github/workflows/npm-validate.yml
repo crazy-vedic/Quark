@@ -1,0 +1,98 @@
+name: npm Package Validation
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to validate (e.g., 1.2.3)'
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.26'
+          cache: true
+
+      - name: Build binaries
+        run: |
+          mkdir -p dist/binaries
+          goreleaser build --snapshot --clean
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Determine version
+        id: version
+        shell: bash
+        run: |
+          VERSION="${{ github.ref_name }}"
+          if [[ -z "$VERSION" || "$VERSION" == "main" || "$VERSION" == "master" ]]; then
+            VERSION="${{ inputs.version }}"
+          fi
+          VERSION="${VERSION#v}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Pack npm packages
+        run: node scripts/npm-pack.mjs ${{ steps.version.outputs.version }}
+
+      - name: Validate npm package structure
+        shell: bash
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          cd npm
+          for pkg in quark platforms/*/; do
+            pkgdir="$pkg"
+            pkgjson="$pkgdir/package.json"
+            if [ ! -f "$pkgjson" ]; then
+              echo "✗ Missing package.json in $pkgdir"
+              exit 1
+            fi
+            echo "✓ Found $pkgjson"
+            version=$(grep -o '"version": "[^"]*"' "$pkgjson" | head -1 | cut -d'"' -f4)
+            if [ "$version" != "$VERSION" ]; then
+              echo "✗ Version mismatch in $pkgdir: expected $VERSION, got $version"
+              exit 1
+            fi
+          done
+
+      - name: Pack npm tarballs
+        shell: bash
+        run: |
+          cd npm
+          mkdir -p packed
+          for pkg in quark platforms/*/; do
+            if [ -f "$pkg/package.json" ]; then
+              npm pack "$pkg" --pack-destination packed/ 2>&1 | grep -v "npm WARN"
+            fi
+          done
+          ls -lh packed/
+          echo "Packed tarballs:"
+          find packed -name "*.tgz" -exec basename {} \;
+
+      - name: Test installation
+        shell: bash
+        run: |
+          cd npm/packed
+          mkdir -p test-install
+          cd test-install
+          npm init -y
+          npm install ../quark-*.tgz --no-save --prefer-offline
+          npx quark version
+          echo "✓ npm package installed and runs successfully"

@@ -14,6 +14,7 @@ const (
 	ChannelBrew   Channel = "brew"
 	ChannelApt    Channel = "apt"
 	ChannelWinget Channel = "winget"
+	ChannelNpm    Channel = "npm"
 	ChannelBinary Channel = "binary"
 )
 
@@ -60,6 +61,20 @@ func DetectChannel() Channel {
 		if strings.HasPrefix(resolved, wingetPath) && strings.Contains(resolved, "Quark.Quark") {
 			if commandExists("winget") {
 				return ChannelWinget
+			}
+		}
+	}
+
+	// Check npm: node_modules/@quark-client/quark/*/bin or global npm prefix
+	// Also skip npx cache paths (_npx) — npx always runs a fresh copy.
+	if strings.Contains(resolved, "node_modules") || strings.Contains(resolved, "_npx") {
+		if strings.Contains(resolved, "@quark-client") && strings.Contains(resolved, "quark") {
+			if commandExists("npm") {
+				if strings.Contains(resolved, "_npx") {
+					// npx cache — still npm, but don't show upgrade notices
+					return ChannelNpm
+				}
+				return ChannelNpm
 			}
 		}
 	}
