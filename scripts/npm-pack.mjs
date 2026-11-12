@@ -66,11 +66,15 @@ for (const platform of platforms) {
   optionalDeps[`@quark-client/quark-${platform.name}`] = normalizedVersion;
 }
 
-// Update main package optionalDependencies
-const mainContent = JSON.parse(fs.readFileSync(mainPkgPath, 'utf8'));
-mainContent.optionalDependencies = optionalDeps;
-fs.writeFileSync(mainPkgPath, JSON.stringify(mainContent, null, 2) + '\n');
-
-console.log(`✓ npm packages prepared for version ${normalizedVersion}`);
-console.log(`  Platforms: ${platforms.map(p => p.name).join(', ')}`);
-console.log(`  Ready to publish from: npm/`);
+// Update main package optionalDependencies only if --with-deps flag is passed
+if (process.argv[3] === '--with-deps') {
+  const mainContent = JSON.parse(fs.readFileSync(mainPkgPath, 'utf8'));
+  mainContent.optionalDependencies = optionalDeps;
+  fs.writeFileSync(mainPkgPath, JSON.stringify(mainContent, null, 2) + '\n');
+  console.log(`✓ npm packages prepared for version ${normalizedVersion}`);
+  console.log(`  OptionalDependencies: ${Object.keys(optionalDeps).join(', ')}`);
+} else {
+  console.log(`✓ npm packages prepared for version ${normalizedVersion}`);
+  console.log(`  Platforms: ${platforms.map(p => p.name).join(', ')}`);
+  console.log(`  Run with --with-deps flag to add optionalDependencies`);
+}

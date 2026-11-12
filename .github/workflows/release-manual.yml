@@ -159,23 +159,31 @@ jobs:
             --dir dist/binaries \
             --repo crazy-vedic/Quark
 
-      - name: Pack npm packages
+      - name: Pack npm packages (binaries only)
         run: |
           TAG="${{ inputs.tag }}"
           node scripts/npm-pack.mjs "${TAG#v}"
 
-      - name: Publish npm packages
+      - name: Publish platform packages
         run: |
           cd npm
-          # Publish platform packages first (no NODE_AUTH_TOKEN needed for OIDC)
           npm publish platforms/linux-x64 --access public --provenance 2>&1 | grep -v "npm WARN"
           npm publish platforms/linux-arm64 --access public --provenance 2>&1 | grep -v "npm WARN"
           npm publish platforms/darwin-x64 --access public --provenance 2>&1 | grep -v "npm WARN"
           npm publish platforms/darwin-arm64 --access public --provenance 2>&1 | grep -v "npm WARN"
           npm publish platforms/win32-x64 --access public --provenance 2>&1 | grep -v "npm WARN"
-          # Publish main package last
+          echo "✓ Platform packages published"
+
+      - name: Add optionalDependencies to main package
+        run: |
+          TAG="${{ inputs.tag }}"
+          node scripts/npm-pack.mjs "${TAG#v}" --with-deps
+
+      - name: Publish main package
+        run: |
+          cd npm
           npm publish quark --access public --provenance 2>&1 | grep -v "npm WARN"
-          echo "✓ npm packages published successfully"
+          echo "✓ Main package published successfully"
 
   submit-winget:
     needs: release
