@@ -34,7 +34,7 @@ jobs:
         run: |
           mkdir -p apt/conf apt/pool/main/q/quark
 
-          # Create distributions file (unsigned)
+          # Create distributions file if it doesn't exist
           if [ ! -f apt/conf/distributions ]; then
             {
               echo "Origin: Quark"
@@ -44,13 +44,14 @@ jobs:
               echo "Version: 1.0"
               echo "Components: main"
               echo "Architectures: amd64 arm64"
+              echo "SignWith: ${{ vars.APT_GPG_KEY }}"
             } > apt/conf/distributions
           fi
 
-      - name: Install reprepro
+      - name: Install reprepro and dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y reprepro
+          sudo apt-get install -y reprepro gnupg2
 
       - name: Download .deb packages from release
         env:
@@ -59,20 +60,49 @@ jobs:
           RELEASE_TAG="${{ github.event.release.tag_name }}"
           echo "Downloading packages for release: $RELEASE_TAG"
 
+          # Create temp directory for downloads
           mkdir -p /tmp/debs
           cd /tmp/debs
 
+          # Download all .deb files from the release
           gh release download "$RELEASE_TAG" \
             --repo "${{ github.repository }}" \
             --pattern "*.deb" \
-            || echo "No .deb files found in release"
+            || echo "No .deb files found in release (expected if using GoReleaser nfpms)"
 
           ls -lah *.deb 2>/dev/null || echo "No .deb packages downloaded"
 
-      - name: Add packages to repository
+      - name: Import GPG key and add packages
+        env:
+          GNUPGHOME: /tmp/gnupg
+          GPG_KEY: ${{ secrets.APT_GPG_KEY }}
+          GPG_PASSPHRASE: ${{ secrets.APT_GPG_KEY_PASSPHRASE }}
         run: |
           cd ${{ github.workspace }}
+          RELEASE_TAG="${{ github.event.release.tag_name }}"
 
+          # Set up GPG home directory
+          mkdir -p "$GNUPGHOME"
+          chmod 700 "$GNUPGHOME"
+
+          # Configure GPG to use loopback pinentry mode
+          {
+            echo "batch"
+            echo "no-tty"
+            echo "pinentry-mode loopback"
+          } > "$GNUPGHOME/gpg.conf"
+
+          echo "allow-loopback-pinentry" > "$GNUPGHOME/gpg-agent.conf"
+
+          # Import GPG key if provided
+          if [ -z "$GPG_KEY" ]; then
+            echo "No GPG key configured, packages will be unsigned"
+          else
+            echo "$GPG_KEY" | base64 -d | gpg --import --batch --no-tty
+            echo "GPG key imported"
+          fi
+
+          # Add each .deb file to the repository using GPG_PASSPHRASE env var
           for deb in /tmp/debs/*.deb; do
             if [ -f "$deb" ]; then
               echo "Adding: $deb"
@@ -80,13 +110,27 @@ jobs:
             fi
           done
 
-          reprepro -b apt list stable || echo "Repository may be empty"
+          # Verify packages were added
+          reprepro -b apt list stable || echo "Repository may be empty (first release)"
 
       - name: Generate repository index
         run: |
           cd ${{ github.workspace }}/apt
+
+          # Create symlinks for direct package access
           reprepro -b . createsymlinks || true
-          ls -lah dists/stable/Release* 2>/dev/null || echo "Release file created"
+
+          # Ensure Release file exists and is readable
+          ls -lah dists/stable/Release* 2>/dev/null || echo "Release file will be created"
+
+      - name: Create public key file
+        env:
+          GNUPGHOME: /tmp/gnupg
+        run: |
+          mkdir -p ${{ github.workspace }}/apt
+          if [ -n "${{ vars.APT_GPG_KEY }}" ]; then
+            gpg --export "${{ vars.APT_GPG_KEY }}" > ${{ github.workspace }}/apt/KEY.pub
+          fi
 
       - name: Create README for apt repository
         run: |
@@ -97,6 +141,13 @@ jobs:
             echo "Install Quark from this repository:"
             echo ""
             echo "    echo \"deb [trusted=yes] https://crazy-vedic.github.io/Quark/apt stable main\" | sudo tee /etc/apt/sources.list.d/quark.list"
+            echo "    sudo apt update"
+            echo "    sudo apt install quark"
+            echo ""
+            echo "For signed packages (requires GPG key):"
+            echo ""
+            echo "    curl -fsSL https://crazy-vedic.github.io/Quark/apt/KEY.pub | sudo apt-key add -"
+            echo "    echo \"deb https://crazy-vedic.github.io/Quark/apt stable main\" | sudo tee /etc/apt/sources.list.d/quark.list"
             echo "    sudo apt update"
             echo "    sudo apt install quark"
           } > ${{ github.workspace }}/apt/README.md
@@ -110,6 +161,7 @@ jobs:
 
           git add apt/
 
+          # Check if there are changes to commit
           if git diff --cached --quiet; then
             echo "No changes to commit"
           else
