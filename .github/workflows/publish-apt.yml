@@ -93,12 +93,8 @@ jobs:
             echo "GPG key imported"
           fi
 
-          # Configure gpg-agent for loopback pinentry (allows passphrase via stdin/env)
           # Create a GPG wrapper script that provides passphrase for signing
-          cat > /tmp/gpg-wrapper.sh << 'EOFWRAP'
-#!/bin/bash
-exec gpg --batch --no-tty --pinentry-mode loopback --passphrase "$GPG_PASSPHRASE" "$@"
-EOFWRAP
+          printf '%s\n' '#!/bin/bash' 'exec gpg --batch --no-tty --pinentry-mode loopback --passphrase "$GPG_PASSPHRASE" "$@"' > /tmp/gpg-wrapper.sh
           chmod +x /tmp/gpg-wrapper.sh
           export GPG=/tmp/gpg-wrapper.sh
           eval $(gpg-agent --daemon --quiet)
