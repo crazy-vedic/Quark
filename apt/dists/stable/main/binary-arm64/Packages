@@ -1,15 +1,15 @@
 Package: quark
-Version: 1.3.33
+Version: 1.3.34
 Architecture: arm64
 Maintainer: Quark Contributors <noreply@github.com>
 Installed-Size: 32930
 Homepage: https://github.com/crazy-vedic/Quark
 Priority: optional
 Section: 
-Filename: pool/main/q/quark/quark_1.3.33_arm64.deb
-Size: 13552196
-SHA256: 82fb136689c399f68aa55dcec0d49a9019f80e71962c1a90291d620dd4884935
-SHA1: 620355b182bc836c0659af28ecc1ac461e1393fa
-MD5sum: 7056f825b6ac870d01c1d556d1395200
+Filename: pool/main/q/quark/quark_1.3.34_arm64.deb
+Size: 13552186
+SHA256: 24a8e157657f5748a556d40fc31739725007806e4f7faa30cdf8ea8df8706615
+SHA1: e1107002ee03ceb973b22fe214b9fc8fd3b7a943
+MD5sum: 49102da16e4243ec08b7962ee80d0331
 Description: A local-first, keyboard-driven HTTP client
 
