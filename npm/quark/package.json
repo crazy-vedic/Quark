@@ -1,0 +1,23 @@
+{
+  "name": "@quark-client/quark",
+  "version": "0.0.0-placeholder",
+  "description": "A local-first, keyboard-driven HTTP client",
+  "homepage": "https://github.com/crazy-vedic/Quark",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/crazy-vedic/Quark.git"
+  },
+  "license": "MIT",
+  "author": "Quark Contributors",
+  "bin": {
+    "quark": "bin/quark.js"
+  },
+  "files": [
+    "bin",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "optionalDependencies": {}
+}

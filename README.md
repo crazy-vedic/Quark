@@ -31,6 +31,33 @@ curl -sL https://raw.githubusercontent.com/crazy-vedic/Quark/master/install.sh |
 
 Private repos: set `GITHUB_TOKEN` or `GITHUB_ACCESS_TOKEN` — auth headers forwarded automatically.
 
+### Windows Package Manager (winget)
+
+```bash
+winget install Quark.Quark
+```
+
+Update with:
+```bash
+winget upgrade Quark.Quark
+```
+
+### npm
+
+```bash
+npm install -g @quark-client/quark
+```
+
+Or run without installing:
+```bash
+npx @quark-client/quark
+```
+
+Update with:
+```bash
+npm install -g @quark-client/quark@latest
+```
+
 ### From source
 
 ```bash
@@ -278,11 +305,15 @@ See [USER-REQUIREMENTS.md](USER-REQUIREMENTS.md) for required secrets, variables
 2. Add `Release: v1.0.0` to the PR body
 3. Merge to `master`
 4. GitHub Actions creates the tag and publishes:
-   - GitHub Releases (tar.gz, .deb, .exe, .pkg archives)
+   - GitHub Releases (tar.gz, .zip, .deb, .pkg archives)
    - apt repository (to `gh-pages`)
    - Homebrew formula (to `homebrew-quark` tap)
+   - npm packages (`@quark-client/quark` and per-platform variants)
+   - Winget manifest (to `microsoft/winget-pkgs` if `WINGET_PAT` is configured; otherwise manual submission required)
 
 To skip: omit the `Release:` line.
+
+**Winget first-time setup:** Requires manual submission of the first version to `microsoft/winget-pkgs`. See [DISTRIBUTION.md](DISTRIBUTION.md) for detailed steps.
 
 ---
 

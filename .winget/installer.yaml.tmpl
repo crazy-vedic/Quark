@@ -1,0 +1,16 @@
+PackageIdentifier: Quark.Quark
+PackageVersion: {{ .Version }}
+Platform:
+  - Windows.Desktop
+MinimumOSVersion: 10.0.0.0
+NestedInstallerType: portable
+Installers:
+  - Architecture: x64
+    InstallerUrl: {{ .ArtifactUploadURL }}/quark-windows-amd64.zip
+    InstallerSha256: {{ .ArtifactChecksumURL }}
+    InstallerType: zip
+    NestedInstallerFiles:
+      - RelativeFilePath: quark.exe
+        PortableCommandAlias: quark
+ManifestType: installer
+ManifestVersion: 1.4.0

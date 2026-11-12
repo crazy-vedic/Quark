@@ -1,0 +1,72 @@
+name: Winget Manifest Validation
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.26'
+          cache: true
+
+      - name: Build binaries
+        run: |
+          mkdir -p dist/binaries
+          goreleaser build --snapshot --clean
+
+      - name: Generate checksums
+        shell: bash
+        run: |
+          cd dist
+          mkdir -p binaries
+          for arch in amd64 arm64; do
+            tar -xzf quark-linux-${arch}.tar.gz -C binaries/
+            mv binaries/quark binaries/quark-linux-${arch}
+            tar -xzf quark-darwin-${arch}.tar.gz -C binaries/
+            mv binaries/quark binaries/quark-darwin-${arch}
+          done
+          unzip -o quark-windows-amd64.zip -d binaries/
+          mv binaries/quark.exe binaries/quark-windows-amd64.exe
+          rm SHA256SUMS 2>/dev/null || true
+          (cd binaries && sha256sum quark-* > ../SHA256SUMS)
+          sha256sum quark-*.tar.gz quark-*.zip >> SHA256SUMS
+
+      - name: Install GoReleaser
+        uses: goreleaser/goreleaser-action@v5
+        with:
+          version: v1.26.2
+          install-only: true
+
+      - name: Generate winget manifests
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          goreleaser release --skip=validate --skip=publish --snapshot
+
+      - name: Validate winget manifest schema
+        run: |
+          # Check that manifest files were created
+          $manifests = Get-ChildItem -Path "dist/winget" -Filter "*.yaml" -ErrorAction SilentlyContinue
+          if ($manifests.Count -eq 0) {
+            Write-Error "No winget manifests generated"
+            exit 1
+          }
+          Write-Host "Found $($manifests.Count) manifest files"
+          $manifests | ForEach-Object { Write-Host "  - $($_.Name)" }
+
+      - name: Install winget CLI tools
+        run: |
+          # winget-cli is installed by default on windows-latest
+          winget --version

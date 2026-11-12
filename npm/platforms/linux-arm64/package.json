@@ -1,0 +1,9 @@
+{
+  "name": "@quark-client/quark-linux-arm64",
+  "version": "0.0.0-placeholder",
+  "description": "Quark binary for Linux arm64",
+  "license": "MIT",
+  "os": ["linux"],
+  "cpu": ["arm64"],
+  "files": ["bin"]
+}
