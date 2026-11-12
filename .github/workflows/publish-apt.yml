@@ -94,6 +94,8 @@ jobs:
           echo "Signing key present: $APT_KEY_ID"
 
       - name: Add packages
+        env:
+          GNUPGHOME: ${{ runner.temp }}/gnupg
         run: |
           set -euo pipefail
           for deb in /tmp/debs/*.deb; do
@@ -110,6 +112,8 @@ jobs:
           reprepro -b apt check stable
 
       - name: Generate repository index
+        env:
+          GNUPGHOME: ${{ runner.temp }}/gnupg
         run: |
           cd ${{ github.workspace }}/apt
           reprepro -b . createsymlinks || true
