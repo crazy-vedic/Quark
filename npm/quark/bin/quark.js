@@ -2,6 +2,7 @@
 
 const os = require('os');
 const path = require('path');
+const fs = require('fs');
 const { execSync } = require('child_process');
 
 const platform = os.platform();
@@ -30,8 +31,23 @@ if (!pkgName) {
 
 let binPath;
 try {
-  const pkgPath = require.resolve(pkgName);
-  binPath = path.join(path.dirname(pkgPath), '..', 'bin', platform === 'win32' ? 'quark.exe' : 'quark');
+  // Try require.resolve first (for local node_modules)
+  let found = false;
+  try {
+    const pkgPath = require.resolve(pkgName);
+    binPath = path.join(path.dirname(pkgPath), '..', 'bin', platform === 'win32' ? 'quark.exe' : 'quark');
+    found = true;
+  } catch {
+    // Fall back to looking in npm's global node_modules
+    const globalNodeModulesParent = path.resolve(__dirname, '../..', '..');
+    const pkgDir = path.join(globalNodeModulesParent, pkgName);
+    const pkgJsonPath = path.join(pkgDir, 'package.json');
+    if (fs.existsSync(pkgJsonPath)) {
+      binPath = path.join(pkgDir, 'bin', platform === 'win32' ? 'quark.exe' : 'quark');
+      found = true;
+    }
+  }
+  if (!found) throw new Error('package not found');
 } catch (err) {
   console.error(`quark: platform package not found (${pkgName})`);
   console.error('This may happen if npm installed the main package without the matching platform package.');

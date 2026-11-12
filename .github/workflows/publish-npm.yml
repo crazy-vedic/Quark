@@ -54,10 +54,10 @@ jobs:
             --dir dist/binaries \
             --repo crazy-vedic/Quark
 
-      - name: Pack npm packages (binaries only)
+      - name: Pack npm packages and add optionalDependencies
         run: |
           TAG="${{ inputs.tag }}"
-          node scripts/npm-pack.mjs "${TAG#v}"
+          node scripts/npm-pack.mjs "${TAG#v}" --with-deps
 
       - name: Publish platform packages
         run: |
@@ -98,11 +98,6 @@ jobs:
             echo "❌ Failed to publish $FAILED platform package(s)"
             exit 1
           fi
-
-      - name: Add optionalDependencies to main package
-        run: |
-          TAG="${{ inputs.tag }}"
-          node scripts/npm-pack.mjs "${TAG#v}" --with-deps
 
       - name: Publish main package
         run: |
