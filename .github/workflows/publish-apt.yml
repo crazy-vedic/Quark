@@ -2,7 +2,7 @@ name: Publish to apt Repository
 
 on:
   release:
-    types: [published, created]
+    types: [published]
 
 permissions:
   contents: write
@@ -115,12 +115,14 @@ jobs:
           cd ${{ github.workspace }}/apt
 
           # Create symlinks for direct package access
-          reprepro -b . -S main createsymlinks || true
+          reprepro -b . createsymlinks || true
 
           # Ensure Release file exists and is readable
           ls -lah dists/stable/Release* 2>/dev/null || echo "Release file will be created"
 
       - name: Create public key file
+        env:
+          GNUPGHOME: /tmp/gnupg
         run: |
           mkdir -p ${{ github.workspace }}/apt
           if [ -n "${{ vars.APT_GPG_KEY }}" ]; then
