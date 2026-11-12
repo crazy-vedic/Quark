@@ -3,6 +3,11 @@ name: Publish to apt Repository
 on:
   release:
     types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to publish (empty for triggering release tag)'
+        required: false
 
 permissions:
   contents: write
@@ -10,6 +15,11 @@ permissions:
 jobs:
   publish-apt:
     runs-on: ubuntu-latest
+    environment: apt-signing
+    env:
+      GNUPGHOME: ${{ runner.temp }}/gnupg
+      APT_KEY_ID: ${{ vars.APT_GPG_KEY_ID }}
+      APT_PRIVATE_KEY_B64: ${{ secrets.APT_GPG_PRIVATE_KEY }}
     steps:
       - name: Checkout master branch
         uses: actions/checkout@v4
@@ -34,18 +44,17 @@ jobs:
         run: |
           mkdir -p apt/conf apt/pool/main/q/quark
 
-          # Create distributions file if it doesn't exist
+          # Create distributions file with proper SignWith
           if [ ! -f apt/conf/distributions ]; then
-            {
-              echo "Origin: Quark"
-              echo "Label: Quark"
-              echo "Suite: stable"
-              echo "Codename: stable"
-              echo "Version: 1.0"
-              echo "Components: main"
-              echo "Architectures: amd64 arm64"
-              echo "SignWith: ${{ vars.APT_GPG_KEY }}"
-            } > apt/conf/distributions
+            cat > apt/conf/distributions <<EOF
+          Origin: Quark
+          Label: Quark
+          Suite: stable
+          Codename: stable
+          Components: main
+          Architectures: amd64 arm64
+          SignWith: ${APT_KEY_ID}
+          EOF
           fi
 
       - name: Install reprepro and dependencies
@@ -57,7 +66,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          RELEASE_TAG="${{ github.event.release.tag_name }}"
+          RELEASE_TAG="${{ inputs.tag || github.event.release.tag_name }}"
           echo "Downloading packages for release: $RELEASE_TAG"
 
           # Create temp directory for downloads
@@ -72,85 +81,74 @@ jobs:
 
           ls -lah *.deb 2>/dev/null || echo "No .deb packages downloaded"
 
-      - name: Import GPG key and add packages
-        env:
-          GNUPGHOME: /tmp/gnupg
-          GPG_KEY: ${{ secrets.APT_GPG_KEY }}
-          GPG_PASSPHRASE: ${{ secrets.APT_GPG_KEY_PASSPHRASE }}
+      - name: Import signing key
         run: |
-          cd ${{ github.workspace }}
-          RELEASE_TAG="${{ github.event.release.tag_name }}"
-
-          # Set up GPG home directory
-          mkdir -p "$GNUPGHOME"
-          chmod 700 "$GNUPGHOME"
-
-          # Configure GPG to use loopback pinentry mode
-          {
-            echo "batch"
-            echo "no-tty"
-            echo "pinentry-mode loopback"
-          } > "$GNUPGHOME/gpg.conf"
-
-          echo "allow-loopback-pinentry" > "$GNUPGHOME/gpg-agent.conf"
-
-          # Import GPG key if provided
-          if [ -z "$GPG_KEY" ]; then
-            echo "No GPG key configured, packages will be unsigned"
-          else
-            echo "$GPG_KEY" | base64 -d | gpg --import --batch --no-tty
-            echo "GPG key imported"
+          set -euo pipefail
+          if [ -z "$APT_PRIVATE_KEY_B64" ] || [ -z "$APT_KEY_ID" ]; then
+            echo "::error::apt signing key or key ID is not configured in the apt-signing environment"
+            exit 1
           fi
+          mkdir -p "$GNUPGHOME" && chmod 700 "$GNUPGHOME"
+          printf '%s' "$APT_PRIVATE_KEY_B64" | base64 -d | gpg --batch --import
+          # Fail fast if the key ID does not match an imported secret key
+          gpg --batch --list-secret-keys "$APT_KEY_ID" >/dev/null
+          echo "Signing key present: $APT_KEY_ID"
 
-          # Add each .deb file to the repository using GPG_PASSPHRASE env var
+      - name: Add packages
+        run: |
+          set -euo pipefail
           for deb in /tmp/debs/*.deb; do
-            if [ -f "$deb" ]; then
-              echo "Adding: $deb"
+            [ -f "$deb" ] || continue
+            pkg=$(dpkg-deb -f "$deb" Package)
+            ver=$(dpkg-deb -f "$deb" Version)
+            arch=$(dpkg-deb -f "$deb" Architecture)
+            if reprepro -b apt list stable "$pkg" | grep -q " $arch: $ver"; then
+              echo "Already present: $pkg $ver $arch"
+            else
               reprepro -b apt includedeb stable "$deb"
             fi
           done
-
-          # Verify packages were added
-          reprepro -b apt list stable || echo "Repository may be empty (first release)"
+          reprepro -b apt check stable
 
       - name: Generate repository index
         run: |
           cd ${{ github.workspace }}/apt
-
-          # Create symlinks for direct package access
           reprepro -b . createsymlinks || true
-
-          # Ensure Release file exists and is readable
           ls -lah dists/stable/Release* 2>/dev/null || echo "Release file will be created"
 
-      - name: Create public key file
-        env:
-          GNUPGHOME: /tmp/gnupg
+      - name: Publish public key
         run: |
-          mkdir -p ${{ github.workspace }}/apt
-          if [ -n "${{ vars.APT_GPG_KEY }}" ]; then
-            gpg --export "${{ vars.APT_GPG_KEY }}" > ${{ github.workspace }}/apt/KEY.pub
-          fi
+          set -euo pipefail
+          gpg --batch --export "$APT_KEY_ID" > apt/quark-archive-key.gpg
 
       - name: Create README for apt repository
         run: |
           mkdir -p ${{ github.workspace }}/apt
-          {
-            echo "# Quark apt Repository"
-            echo ""
-            echo "Install Quark from this repository:"
-            echo ""
-            echo "    echo \"deb [trusted=yes] https://crazy-vedic.github.io/Quark/apt stable main\" | sudo tee /etc/apt/sources.list.d/quark.list"
-            echo "    sudo apt update"
-            echo "    sudo apt install quark"
-            echo ""
-            echo "For signed packages (requires GPG key):"
-            echo ""
-            echo "    curl -fsSL https://crazy-vedic.github.io/Quark/apt/KEY.pub | sudo apt-key add -"
-            echo "    echo \"deb https://crazy-vedic.github.io/Quark/apt stable main\" | sudo tee /etc/apt/sources.list.d/quark.list"
-            echo "    sudo apt update"
-            echo "    sudo apt install quark"
-          } > ${{ github.workspace }}/apt/README.md
+          cat > ${{ github.workspace }}/apt/README.md <<'README'
+          # Quark apt Repository
+
+          ## Installation
+
+          Add the repository and install Quark:
+
+          ```bash
+          curl -fsSL https://crazy-vedic.github.io/Quark/apt/quark-archive-key.gpg \
+            | sudo gpg --dearmor -o /usr/share/keyrings/quark-archive-keyring.gpg
+          echo "deb [signed-by=/usr/share/keyrings/quark-archive-keyring.gpg] https://crazy-vedic.github.io/Quark/apt stable main" \
+            | sudo tee /etc/apt/sources.list.d/quark.list
+          sudo apt update && sudo apt install quark
+          ```
+
+          ## Verification
+
+          The repository is signed with a GPG key. Your system will automatically verify the signature using the key installed above.
+
+          To manually verify the Release file:
+
+          ```bash
+          gpg --verify apt/dists/stable/Release.gpg apt/dists/stable/Release
+          ```
+          README
 
       - name: Commit and push to gh-pages
         run: |
