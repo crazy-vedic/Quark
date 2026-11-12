@@ -137,7 +137,10 @@ jobs:
   restore-baseline-from-releases:
     runs-on: ubuntu-latest
     needs: check-tree-cache
-    if: needs.check-tree-cache.outputs.use-cache != 'true'
+    # Only restore from releases on master pushes (not PRs)
+    # Release baselines are created during master push via persist-baseline
+    # PR runs create their own baselines; cross-event reuse is master-to-master only
+    if: github.event_name == 'push' && needs.check-tree-cache.outputs.use-cache != 'true'
     outputs:
       found: ${{ steps.download.outputs.found }}
     steps:
@@ -203,7 +206,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     needs: [check-tree-cache, restore-baseline-from-releases]
-    if: github.event_name == 'pull_request' || (needs.check-tree-cache.outputs.use-cache != 'true' && needs.restore-baseline-from-releases.outputs.found != 'true')
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && needs.check-tree-cache.outputs.use-cache != 'true' && needs.restore-baseline-from-releases.outputs.found != 'true')
     steps:
       - uses: actions/checkout@v5
         with:
@@ -243,7 +246,7 @@ jobs:
   package-validation:
     runs-on: ubuntu-latest
     needs: [check-tree-cache, restore-baseline-from-releases]
-    if: github.event_name == 'pull_request' || (needs.check-tree-cache.outputs.use-cache != 'true' && needs.restore-baseline-from-releases.outputs.found != 'true')
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && needs.check-tree-cache.outputs.use-cache != 'true' && needs.restore-baseline-from-releases.outputs.found != 'true')
     steps:
       - uses: actions/checkout@v5
         with:
@@ -275,7 +278,7 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     needs: [check-tree-cache, restore-baseline-from-releases]
-    if: github.event_name == 'pull_request' || (needs.check-tree-cache.outputs.use-cache != 'true' && needs.restore-baseline-from-releases.outputs.found != 'true')
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && needs.check-tree-cache.outputs.use-cache != 'true' && needs.restore-baseline-from-releases.outputs.found != 'true')
     steps:
       - uses: actions/checkout@v5
         with:
@@ -317,7 +320,7 @@ jobs:
   test-unit:
     runs-on: ubuntu-latest
     needs: [check-tree-cache, restore-baseline-from-releases]
-    if: github.event_name == 'pull_request' || (needs.check-tree-cache.outputs.use-cache != 'true' && needs.restore-baseline-from-releases.outputs.found != 'true')
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && needs.check-tree-cache.outputs.use-cache != 'true' && needs.restore-baseline-from-releases.outputs.found != 'true')
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-go@v6
@@ -393,7 +396,7 @@ jobs:
   test-e2e-linux:
     runs-on: ubuntu-latest
     needs: [build, check-tree-cache, restore-baseline-from-releases]
-    if: github.event_name == 'pull_request' || (needs.check-tree-cache.outputs.use-cache != 'true' && needs.restore-baseline-from-releases.outputs.found != 'true')
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && needs.check-tree-cache.outputs.use-cache != 'true' && needs.restore-baseline-from-releases.outputs.found != 'true')
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-go@v6
@@ -482,6 +485,10 @@ jobs:
 
   # ---------------------------------------------------------------------------
   # Stage 2: Native e2e tests — Windows, macOS
+  # NOTE: These jobs are NOT gated by cache/release optimization.
+  # They run on every push/PR to ensure cross-platform validation.
+  # This is intentional: platform-specific issues may not be caught by
+  # Linux tests alone, so we prioritize correctness over CI speed for Windows/macOS.
   # ---------------------------------------------------------------------------
   test-e2e-windows:
     runs-on: windows-latest
@@ -647,6 +654,9 @@ jobs:
       contents: write
     if: github.event_name == 'push' && !failure()
     steps:
+      - name: Checkout (for release script)
+        uses: actions/checkout@v5
+
       - name: Download coverage artifacts
         uses: actions/download-artifact@v7
         with:
