@@ -44,19 +44,33 @@ jobs:
           RELEASE_TAG="${{ github.event.release.tag_name }}"
           VERSION="${RELEASE_TAG#v}"
 
-          # Get checksums from SHA256SUMS
           cd /tmp/assets
 
-          ARM64_CHECKSUM=$(grep quark-darwin-arm64.tar.gz SHA256SUMS | awk '{print $1}')
+          # Try to get checksums from SHA256SUMS first
+          if [ -f SHA256SUMS ]; then
+            ARM64_CHECKSUM=$(grep quark-darwin-arm64.tar.gz SHA256SUMS | awk '{print $1}')
+            AMD64_CHECKSUM=$(grep quark-darwin-amd64.tar.gz SHA256SUMS | awk '{print $1}')
+            LINUX_AMD64_CHECKSUM=$(grep quark-linux-amd64.tar.gz SHA256SUMS | awk '{print $1}')
+            LINUX_ARM64_CHECKSUM=$(grep quark-linux-arm64.tar.gz SHA256SUMS | awk '{print $1}')
+          fi
+
+          # If checksums are empty, calculate directly from archives
+          if [ -z "$ARM64_CHECKSUM" ]; then
+            ARM64_CHECKSUM=$(sha256sum quark-darwin-arm64.tar.gz | awk '{print $1}')
+          fi
+          if [ -z "$AMD64_CHECKSUM" ]; then
+            AMD64_CHECKSUM=$(sha256sum quark-darwin-amd64.tar.gz | awk '{print $1}')
+          fi
+          if [ -z "$LINUX_AMD64_CHECKSUM" ]; then
+            LINUX_AMD64_CHECKSUM=$(sha256sum quark-linux-amd64.tar.gz | awk '{print $1}')
+          fi
+          if [ -z "$LINUX_ARM64_CHECKSUM" ]; then
+            LINUX_ARM64_CHECKSUM=$(sha256sum quark-linux-arm64.tar.gz | awk '{print $1}')
+          fi
+
           echo "ARM64_CHECKSUM=$ARM64_CHECKSUM" >> $GITHUB_ENV
-
-          AMD64_CHECKSUM=$(grep quark-darwin-amd64.tar.gz SHA256SUMS | awk '{print $1}')
           echo "AMD64_CHECKSUM=$AMD64_CHECKSUM" >> $GITHUB_ENV
-
-          LINUX_AMD64_CHECKSUM=$(grep quark-linux-amd64.tar.gz SHA256SUMS | awk '{print $1}')
           echo "LINUX_AMD64_CHECKSUM=$LINUX_AMD64_CHECKSUM" >> $GITHUB_ENV
-
-          LINUX_ARM64_CHECKSUM=$(grep quark-linux-arm64.tar.gz SHA256SUMS | awk '{print $1}')
           echo "LINUX_ARM64_CHECKSUM=$LINUX_ARM64_CHECKSUM" >> $GITHUB_ENV
 
           echo "macOS ARM64: $ARM64_CHECKSUM"
