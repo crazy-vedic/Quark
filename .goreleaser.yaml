@@ -75,23 +75,8 @@ artifactories: []
 announce:
   skip: true
 
-brews:
-  - repository:
-      owner: crazy-vedic
-      name: homebrew-quark
-      branch: main
-      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
-    directory: Formula
-    homepage: https://github.com/crazy-vedic/Quark
-    description: "A local-first, keyboard-driven HTTP client"
-    license: MIT
-    test: |
-      system "#{bin}/quark", "version"
-    install: |
-      bin.install "quark"
-      bash_completion.install Dir["completions/quark.bash"].first => "quark"
-      zsh_completion.install Dir["completions/quark.zsh"].first => "_quark"
-      fish_completion.install Dir["completions/quark.fish"].first => "quark.fish"
+# Homebrew formula is managed by publish-homebrew.yml workflow
+# brews: []
 
 changelog:
   sort: asc
