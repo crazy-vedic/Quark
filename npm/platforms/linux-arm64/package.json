@@ -2,6 +2,11 @@
   "name": "@quark-client/quark-linux-arm64",
   "version": "0.0.0-placeholder",
   "description": "Quark binary for Linux arm64",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/crazy-vedic/Quark",
+    "directory": "npm/platforms/linux-arm64"
+  },
   "license": "MIT",
   "os": ["linux"],
   "cpu": ["arm64"],
