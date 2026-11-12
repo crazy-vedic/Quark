@@ -37,17 +37,31 @@ jobs:
         run: |
           cd dist
           mkdir -p binaries
+          # Extract tar.gz files using tar (Git Bash on Windows)
           for arch in amd64 arm64; do
-            tar -xzf quark-linux-${arch}.tar.gz -C binaries/
-            mv binaries/quark binaries/quark-linux-${arch}
-            tar -xzf quark-darwin-${arch}.tar.gz -C binaries/
-            mv binaries/quark binaries/quark-darwin-${arch}
+            if [ -f "quark-linux-${arch}.tar.gz" ]; then
+              tar --no-same-owner -xzf "quark-linux-${arch}.tar.gz" -C binaries/
+              [ -f "binaries/quark" ] && mv "binaries/quark" "binaries/quark-linux-${arch}"
+            fi
+            if [ -f "quark-darwin-${arch}.tar.gz" ]; then
+              tar --no-same-owner -xzf "quark-darwin-${arch}.tar.gz" -C binaries/
+              [ -f "binaries/quark" ] && mv "binaries/quark" "binaries/quark-darwin-${arch}"
+            fi
           done
-          unzip -o quark-windows-amd64.zip -d binaries/
-          mv binaries/quark.exe binaries/quark-windows-amd64.exe
-          rm SHA256SUMS 2>/dev/null || true
-          (cd binaries && sha256sum quark-* > ../SHA256SUMS)
-          sha256sum quark-*.tar.gz quark-*.zip >> SHA256SUMS
+          # Extract zip file
+          if [ -f "quark-windows-amd64.zip" ]; then
+            unzip -o "quark-windows-amd64.zip" -d binaries/
+            [ -f "binaries/quark.exe" ] && chmod +x "binaries/quark.exe"
+          fi
+          # Generate checksums
+          if [ -d "binaries" ] && [ "$(ls -A binaries/)" ]; then
+            rm -f SHA256SUMS
+            (cd binaries && sha256sum quark-* > ../SHA256SUMS 2>/dev/null || true)
+            [ -f "*.tar.gz" ] && sha256sum quark-*.tar.gz >> SHA256SUMS 2>/dev/null || true
+            [ -f "*.zip" ] && sha256sum quark-*.zip >> SHA256SUMS 2>/dev/null || true
+          fi
+          echo "✓ Extraction complete"
+          ls -lh binaries/ || echo "No binaries directory"
 
       - name: Verify Windows binary and zip
         shell: bash
