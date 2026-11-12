@@ -36,11 +36,16 @@ jobs:
 
           # Create distributions file if it doesn't exist
           if [ ! -f apt/conf/distributions ]; then
-            SIGN_WITH="${{ vars.APT_GPG_KEY_ID }}"
-            if [ -z "$SIGN_WITH" ]; then
-              SIGN_WITH="no"
-            fi
-            printf '%s\n' "Origin: Quark" "Label: Quark" "Suite: stable" "Codename: stable" "Version: 1.0" "Components: main" "Architectures: amd64 arm64" "SignWith: $SIGN_WITH" > apt/conf/distributions
+            {
+              echo "Origin: Quark"
+              echo "Label: Quark"
+              echo "Suite: stable"
+              echo "Codename: stable"
+              echo "Version: 1.0"
+              echo "Components: main"
+              echo "Architectures: amd64 arm64"
+              echo "SignWith: ${{ vars.APT_GPG_KEY }}"
+            } > apt/conf/distributions
           fi
 
       - name: Install reprepro and dependencies
@@ -93,9 +98,9 @@ jobs:
           # Start gpg-agent and preload passphrase if provided
           eval $(gpg-agent --daemon --quiet --allow-preset-passphrase)
 
-          if [ -n "${{ env.APT_GPG_KEY_PASSPHRASE }}" ] && [ -n "${{ vars.APT_GPG_KEY_ID }}" ]; then
+          if [ -n "${{ env.APT_GPG_KEY_PASSPHRASE }}" ] && [ -n "${{ vars.APT_GPG_KEY }}" ]; then
             # Get keygrip for the key
-            KEYGRIP=$(gpg --with-keygrip --list-secret-keys "${{ vars.APT_GPG_KEY_ID }}" 2>/dev/null | \
+            KEYGRIP=$(gpg --with-keygrip --list-secret-keys "${{ vars.APT_GPG_KEY }}" 2>/dev/null | \
               grep Keygrip | head -1 | awk '{print $NF}')
 
             if [ -n "$KEYGRIP" ]; then
@@ -106,7 +111,7 @@ jobs:
                 exit 1
               fi
             else
-              echo "ERROR: Could not find keygrip for key ${{ vars.APT_GPG_KEY_ID }}"
+              echo "ERROR: Could not find keygrip for key ${{ vars.APT_GPG_KEY }}"
               exit 1
             fi
           fi
@@ -137,8 +142,8 @@ jobs:
       - name: Create public key file
         run: |
           mkdir -p ${{ github.workspace }}/apt
-          if [ -n "${{ vars.APT_GPG_KEY_ID }}" ]; then
-            gpg --export "${{ vars.APT_GPG_KEY_ID }}" > ${{ github.workspace }}/apt/KEY.pub
+          if [ -n "${{ vars.APT_GPG_KEY }}" ]; then
+            gpg --export "${{ vars.APT_GPG_KEY }}" > ${{ github.workspace }}/apt/KEY.pub
           fi
 
       - name: Create README for apt repository
