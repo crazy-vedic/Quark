@@ -24,6 +24,7 @@ func TestDefault_HasSensibleValues(t *testing.T) {
 	assert.Equal(t, 10, cfg.Backup.KeepLast)
 	assert.True(t, cfg.Backup.AutoBackup)
 	assert.Equal(t, filepath.Join(dir, "quark.log"), cfg.Logging.File)
+	assert.True(t, cfg.Format.JSONOnSave, "json_on_save defaults to true")
 }
 
 func TestLoad_MissingFile_ReturnsDefaults(t *testing.T) {
@@ -100,6 +101,25 @@ theme = "transparent"
 	assert.Equal(t, "transparent", cfg.UI.Theme)
 	assert.Equal(t, 30*time.Second, cfg.Timeout(), "timeout must default when omitted")
 	assert.Equal(t, 10, cfg.Backup.KeepLast, "keep_last must default when omitted")
+	assert.True(t, cfg.Format.JSONOnSave, "json_on_save must default to true when omitted")
+}
+
+func TestLoad_FormatConfig_JSONOnSaveCanBeDisabled(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(dir, 0o700))
+
+	content := `
+[format]
+json_on_save = false
+`
+	require.NoError(t, os.WriteFile(
+		filepath.Join(dir, "config.toml"),
+		[]byte(content), 0o600,
+	))
+
+	cfg, err := config.Load(dir)
+	require.NoError(t, err)
+	assert.False(t, cfg.Format.JSONOnSave)
 }
 
 func TestLoad_MigratesLegacyCurlImportBinding(t *testing.T) {
