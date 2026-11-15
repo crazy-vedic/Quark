@@ -149,7 +149,8 @@ func TestFormatJSONIfValid(t *testing.T) {
 				aIdx := findStringIndex(output, "\"a\"")
 				innerZIdx := findStringIndex(output, "\"inner_z\"")
 				innerAIdx := findStringIndex(output, "\"inner_a\"")
-				return zIdx > 0 && aIdx > 0 && zIdx < aIdx && innerZIdx > 0 && innerAIdx > 0 && innerZIdx < innerAIdx
+				return zIdx > 0 && aIdx > 0 && zIdx < aIdx &&
+					innerZIdx > 0 && innerAIdx > 0 && innerZIdx < innerAIdx
 			},
 		},
 		{

@@ -2272,7 +2272,9 @@ func (m Model) handleHeaderFieldEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 		} else {
 			text := copySelectionText(m.headerValueInput.Value(), m.headerValueSelection)
-			newValue, newCursorPos := cutSelection(m.headerValueInput.Value(), m.headerValueSelection)
+			newValue, newCursorPos := cutSelection(
+				m.headerValueInput.Value(), m.headerValueSelection,
+			)
 			m.headerValueInput.SetValue(newValue)
 			m.headerValueInput.SetCursor(newCursorPos)
 			m.headerValueSelection.Clear(newCursorPos)

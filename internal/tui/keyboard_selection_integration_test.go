@@ -297,7 +297,10 @@ func TestCtrlXWithoutSelection(t *testing.T) {
 	assert.Nil(t, cmd, "Ctrl+X without selection should return nil command")
 
 	// URL should be unchanged
-	assert.Equal(t, "https://example.com", m.URLValue(), "URL should be unchanged without selection")
+	assert.Equal(
+		t, "https://example.com", m.URLValue(),
+		"URL should be unchanged without selection",
+	)
 }
 
 // TestBackspaceWithSelection verifies backspace removes selected text (W3 candidate)
