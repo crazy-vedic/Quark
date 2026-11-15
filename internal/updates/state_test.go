@@ -155,7 +155,7 @@ func TestReleaseState_WithSuccessfulCheck(t *testing.T) {
 		LastError:     "old error",
 	}
 
-	newState := oldState.WithSuccessfulCheck("2.0.0")
+	newState := oldState.WithSuccessfulCheck("2.0.0", 12*time.Hour)
 	after := time.Now()
 
 	assert.Equal(t, "2.0.0", newState.LatestVersion)
@@ -175,7 +175,7 @@ func TestReleaseState_WithFailedCheck(t *testing.T) {
 	}
 
 	testErr := "network error: connection refused"
-	newState := oldState.WithFailedCheck(ErrTest(testErr))
+	newState := oldState.WithFailedCheck(ErrTest(testErr), 1*time.Hour)
 
 	assert.Equal(t, "2.0.0", newState.LatestVersion)
 	assert.Equal(t, testErr, newState.LastError)

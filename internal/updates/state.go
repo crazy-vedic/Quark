@@ -78,20 +78,20 @@ func (s ReleaseState) ShouldCheck() bool {
 }
 
 // WithSuccessfulCheck returns a new state with updated check times.
-func (s ReleaseState) WithSuccessfulCheck(latest string) ReleaseState {
+func (s ReleaseState) WithSuccessfulCheck(latest string, checkInterval time.Duration) ReleaseState {
 	return ReleaseState{
 		LastCheckedAt: time.Now(),
-		NextAttemptAt: time.Now().Add(12 * time.Hour),
+		NextAttemptAt: time.Now().Add(checkInterval),
 		LatestVersion: latest,
 		LastError:     "",
 	}
 }
 
 // WithFailedCheck returns a new state with updated failure info and retry time.
-func (s ReleaseState) WithFailedCheck(err error) ReleaseState {
+func (s ReleaseState) WithFailedCheck(err error, retryAfterFailure time.Duration) ReleaseState {
 	return ReleaseState{
 		LastCheckedAt: s.LastCheckedAt,
-		NextAttemptAt: time.Now().Add(1 * time.Hour),
+		NextAttemptAt: time.Now().Add(retryAfterFailure),
 		LatestVersion: s.LatestVersion,
 		LastError:     err.Error(),
 	}

@@ -31,6 +31,32 @@ curl -sL https://raw.githubusercontent.com/crazy-vedic/Quark/master/install.sh |
 
 Private repos: set `GITHUB_TOKEN` or `GITHUB_ACCESS_TOKEN` — auth headers forwarded automatically.
 
+### Homebrew (macOS / Linux)
+
+```bash
+brew install crazy-vedic/quark/quark
+```
+
+Update with:
+```bash
+brew upgrade quark
+```
+
+### apt (Debian / Ubuntu)
+
+Add the Quark repository and install:
+```bash
+curl -fsSL https://crazy-vedic.github.io/Quark/apt/KEY.pub | sudo tee /usr/share/keyrings/quark-archive-keyring.gpg > /dev/null
+echo "deb [signed-by=/usr/share/keyrings/quark-archive-keyring.gpg] https://crazy-vedic.github.io/Quark/apt stable main" | sudo tee /etc/apt/sources.list.d/quark.list
+sudo apt update
+sudo apt install quark
+```
+
+Update with:
+```bash
+sudo apt upgrade quark
+```
+
 ### Windows Package Manager (winget)
 
 ```bash
@@ -86,6 +112,38 @@ quark collection create "API" # Create collection
 quark import curl "curl -X POST https://api.example.com/orders" --collection <id> --name "Create Order"
 quark run "API/Create Order"  # Execute saved request
 quark collection list         # List all collections
+```
+
+---
+
+## Updates
+
+Quark checks for updates automatically and displays a notification in the TUI status bar when a new version is available.
+
+### Manual Update Checks
+
+```bash
+quark version                 # Show current version
+quark update check            # Check for updates explicitly
+```
+
+Update installation depends on your installation method:
+- **Homebrew:** `brew upgrade quark`
+- **apt:** `sudo apt upgrade quark`
+- **winget:** `winget upgrade Quark.Quark`
+- **npm:** `npm install -g @quark-client/quark@latest`
+- **Direct/Binary:** Re-run the install script or download from GitHub Releases
+
+### Configuration
+
+Auto-checks are enabled by default. To disable or customize:
+
+```bash
+# Edit ~/.quark/config.toml
+[updates]
+check = false                      # Disable update checks
+check_interval = "24h"             # How often to check (default 12h)
+retry_after_failure = "1h"         # Retry interval on failure (default 1h)
 ```
 
 ---
@@ -308,12 +366,12 @@ See [USER-REQUIREMENTS.md](USER-REQUIREMENTS.md) for required secrets, variables
    - GitHub Releases (tar.gz, .zip, .deb, .pkg archives)
    - apt repository (to `gh-pages`)
    - Homebrew formula (to `homebrew-quark` tap)
-   - npm packages (`@quark-client/quark` and per-platform variants)
-   - Winget manifest (to `microsoft/winget-pkgs` if `WINGET_PAT` is configured; otherwise manual submission required)
+   - npm packages (automatically via OIDC)
+   - Winget manifest — **manual** (see submission steps in [DISTRIBUTION.md](DISTRIBUTION.md))
 
 To skip: omit the `Release:` line.
 
-**Winget first-time setup:** Requires manual submission of the first version to `microsoft/winget-pkgs`. See [DISTRIBUTION.md](DISTRIBUTION.md) for detailed steps.
+**Winget:** All submissions are manual. First submission requires approval from microsoft/winget-pkgs. See [DISTRIBUTION.md](DISTRIBUTION.md) for detailed steps and [WINGET-AGENT-PLAN.md](WINGET-AGENT-PLAN.md) for a guided workflow.
 
 ---
 

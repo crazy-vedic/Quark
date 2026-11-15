@@ -613,7 +613,9 @@ func (m Model) Init() tea.Cmd {
 		cmds = append(cmds, themeWatchTick())
 	}
 	// Check for updates in background (non-blocking)
-	cmds = append(cmds, m.checkUpdatesCmd(m.ctx, m.cfg.Updates.Timeout.Duration))
+	if m.cfg.Updates.Check {
+		cmds = append(cmds, m.checkUpdatesCmd(m.ctx, m.cfg))
+	}
 	if m.lister != nil {
 		cmds = append(cmds, loadCollectionsCmd(m.ctx, m.lister))
 	}
@@ -631,15 +633,25 @@ func (m Model) Init() tea.Cmd {
 
 // --- Commands ---
 
-func (m Model) checkUpdatesCmd(ctx context.Context, timeout time.Duration) tea.Cmd {
+func (m Model) checkUpdatesCmd(ctx context.Context, cfg config.Config) tea.Cmd {
 	return func() tea.Msg {
 		// Skip if version not provided
 		if m.version == "" {
 			return updateCheckMsg{available: false, latest: "", err: nil}
 		}
 
+		// Load saved state to check if we should skip this check
+		state, err := updates.LoadReleaseState(m.configDir)
+		if err == nil && !state.ShouldCheck() {
+			// Use cached latest version if available
+			if state.LatestVersion != "" {
+				return updateCheckMsg{available: false, latest: state.LatestVersion, err: nil}
+			}
+			return updateCheckMsg{available: false, latest: "", err: nil}
+		}
+
 		// Create a short timeout for update check (don't block startup)
-		checkCtx, cancel := context.WithTimeout(ctx, timeout)
+		checkCtx, cancel := context.WithTimeout(ctx, cfg.Updates.Timeout.Duration)
 		defer cancel()
 
 		// Detect installation channel
@@ -657,6 +669,8 @@ func (m Model) checkUpdatesCmd(ctx context.Context, timeout time.Duration) tea.C
 		case updates.ChannelBinary:
 			// For binary channel installs, check against the GitHub releases source
 			source = updates.NewGitHubSource("crazy-vedic/quark")
+		case updates.ChannelNpm:
+			source = updates.NewNpmSource("@quark-client/quark")
 		default:
 			return updateCheckMsg{available: false, latest: "", err: nil}
 		}
@@ -664,9 +678,18 @@ func (m Model) checkUpdatesCmd(ctx context.Context, timeout time.Duration) tea.C
 		// Check for updates
 		available, latest, err := source.IsUpdateAvailable(checkCtx, m.version)
 		if err != nil {
+			// Save failed check state
+			failedState := state.WithFailedCheck(
+				err, cfg.Updates.RetryAfterFailure.Duration,
+			)
+			_ = updates.SaveReleaseState(m.configDir, failedState)
 			// Silently ignore check failures
 			return updateCheckMsg{available: false, latest: "", upgradeCommand: "", err: nil}
 		}
+
+		// Save successful check state
+		successState := state.WithSuccessfulCheck(latest, cfg.Updates.CheckInterval.Duration)
+		_ = updates.SaveReleaseState(m.configDir, successState)
 
 		if available && latest != "" {
 			return updateCheckMsg{
