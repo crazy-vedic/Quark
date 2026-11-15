@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/atotto/clipboard"
 	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -957,7 +958,27 @@ func (m Model) handleRequestKey(_ string, msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// Inline field routing — when active, all keys go to the field.
 	switch m.activeField {
 	case urlField:
-		// Handle selection keys first (Shift+arrows, Ctrl+A, etc.)
+		// Handle copy/cut before selection keys so they take precedence
+		if msg.Type == tea.KeyCtrlC {
+			text := copySelectionText(m.urlInput.Value(), m.urlSelection)
+			if text != "" {
+				return m, copyToClipboardCmd(text)
+			}
+			return m, nil
+		}
+		if msg.Type == tea.KeyCtrlX {
+			newValue, newCursorPos := cutSelection(m.urlInput.Value(), m.urlSelection)
+			m.urlInput.SetValue(newValue)
+			m.urlInput.SetCursor(newCursorPos)
+			m.urlSelection.Clear(newCursorPos)
+			text := copySelectionText(m.urlInput.Value(), m.urlSelection) // Won't have selection after cut
+			if text != "" {
+				return m, copyToClipboardCmd(text)
+			}
+			return m, nil
+		}
+
+		// Handle selection keys (Shift+arrows, Ctrl+A, etc.)
 		handled, shouldUpdateComponent := handleSelectionKeyForInput(msg, &m.urlSelection, &m.urlInput, m.urlInput.Position())
 		if handled && !shouldUpdateComponent {
 			// Selection key was handled; update input cursor to match selection cursor
@@ -2559,4 +2580,21 @@ func deleteRequestCmd(
 		}
 		return requestsLoadedMsg{collectionID: collectionID, requests: requests}
 	}
+}
+
+// copyToClipboardCmd copies text to clipboard and returns a command.
+// If clipboard write fails, returns an error message for notification.
+func copyToClipboardCmd(text string) tea.Cmd {
+	return func() tea.Msg {
+		err := clipboard.WriteAll(text)
+		if err != nil {
+			return clipboardErrorMsg{err: err}
+		}
+		return clipboardMsg{text: text}
+	}
+}
+
+// clipboardErrorMsg signals clipboard operation failure
+type clipboardErrorMsg struct {
+	err error
 }

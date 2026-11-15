@@ -5,6 +5,12 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 )
 
+// clipboardMsg signals a clipboard operation result
+type clipboardMsg struct {
+	text string
+	err  error
+}
+
 // handleSelectionKeyForInput processes a keyboard message for a text input field
 // with selection support. It updates the selection and input state based on the key,
 // and returns whether the key was handled (true if selection-related, false to pass
@@ -15,6 +21,8 @@ import (
 // - Ctrl+Shift+Left/Right: extend/shrink selection by word
 // - Shift+Home/End: extend selection to line boundaries
 // - Ctrl+A: select all
+// - Ctrl+C: copy selection to clipboard
+// - Ctrl+X: cut selection (copy and remove)
 // - Arrow keys without Shift: clear selection and move cursor
 // - Regular characters: replace selection
 // - Backspace/Delete with selection: remove selection
@@ -136,4 +144,29 @@ func insertStringAtRunePosition(s string, text string, runePos int) (string, int
 	result = append(result, textRunes...)
 	result = append(result, runes[runePos:]...)
 	return runesToString(result), runePos + len(textRunes)
+}
+
+// copySelectionText extracts the selected text.
+// Returns empty string if no selection is active.
+func copySelectionText(value string, sel textSelection) string {
+	if !sel.Active() {
+		return ""
+	}
+	start, end := sel.Range()
+	runes := stringToRunes(value)
+	if start < 0 || end > len(runes) || start > end {
+		return ""
+	}
+	return runesToString(runes[start:end])
+}
+
+// cutSelection removes selected text and returns the new value and cursor position.
+// Returns original value and cursor if no selection is active.
+func cutSelection(value string, sel textSelection) (string, int) {
+	if !sel.Active() {
+		return value, 0
+	}
+	start, end := sel.Range()
+	newValue, newCursorPos := removeSelectedRange(value, start, end)
+	return newValue, newCursorPos
 }
