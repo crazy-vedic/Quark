@@ -79,9 +79,27 @@ func handleSelectionKeyForInput(
 		sel.Extend(len(input.Value()))
 		return true, false
 
-	// Note: Ctrl+Shift+Left and Ctrl+Shift+Right are typically sent as distinct
-	// key types (KeyCtrlShiftLeft, KeyCtrlShiftRight) in terminals that support them.
-	// We'll handle those separately if they're available, or fall back to standard behavior.
+	// Ctrl+Shift+Left: extend selection backward by word boundary
+	case msg.Type == tea.KeyCtrlShiftLeft:
+		if !sel.Active() {
+			sel.anchor = cursorPos
+			sel.cursor = cursorPos
+		}
+		runes := stringToRunes(input.Value())
+		prevBound := prevWordBoundary(runes, sel.cursor)
+		sel.Extend(prevBound)
+		return true, false
+
+	// Ctrl+Shift+Right: extend selection forward by word boundary
+	case msg.Type == tea.KeyCtrlShiftRight:
+		if !sel.Active() {
+			sel.anchor = cursorPos
+			sel.cursor = cursorPos
+		}
+		runes := stringToRunes(input.Value())
+		nextBound := nextWordBoundary(runes, sel.cursor)
+		sel.Extend(nextBound)
+		return true, false
 
 	// Ctrl+A: select all
 	case msg.Type == tea.KeyCtrlA:
