@@ -20,7 +20,8 @@ func TestIsWordChar(t *testing.T) {
 		{'/', false},
 		{'"', false},
 		{'€', false},
-		{'あ', true}, // Japanese hiragana — unicode.IsLetter returns true, and that's okay for our use case
+		// Japanese hiragana: unicode.IsLetter returns true, acceptable for word chars
+		{'あ', true},
 	}
 	for _, tt := range tests {
 		t.Run(string(tt.r), func(t *testing.T) {

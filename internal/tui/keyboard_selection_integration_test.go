@@ -148,12 +148,14 @@ func TestSelectAllClearOnFieldChange(t *testing.T) {
 
 // TestBodyFieldKeyboardSelection placeholder for body textarea
 func TestBodyFieldKeyboardSelection(t *testing.T) {
-	t.Skip("Body textarea selection ready; requires key handler wiring to handleBodyFieldKey for full e2e")
+	t.Skip("Body textarea selection ready; " +
+		"requires key handler wiring to handleBodyFieldKey for full e2e")
 }
 
 // TestHeaderFieldKeyboardSelection placeholder for header fields
 func TestHeaderFieldKeyboardSelection(t *testing.T) {
-	t.Skip("Header field selection ready; requires key handler wiring to handleHeadersFieldKey for full e2e")
+	t.Skip("Header field selection ready; " +
+		"requires key handler wiring to handleHeadersFieldKey for full e2e")
 }
 
 // TestEndToEndSelectionFlow comprehensive e2e scenario (All Phases)

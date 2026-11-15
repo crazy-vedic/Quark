@@ -3,8 +3,8 @@ package tui
 import (
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/bubbles/textinput"
+	tea "github.com/charmbracelet/bubbletea"
 )
 
 func makeKeyMsg(keyStr string) tea.KeyMsg {
@@ -30,15 +30,15 @@ func makeKeyMsg(keyStr string) tea.KeyMsg {
 
 func TestHandleSelectionKeyShiftArrows(t *testing.T) {
 	tests := []struct {
-		name              string
-		keyStr            string
-		initialValue      string
-		cursorPos         int
-		initialSelection  textSelection
-		wantSelStart      int
-		wantSelEnd        int
-		shouldHandle      bool
-		shouldComponent   bool
+		name             string
+		keyStr           string
+		initialValue     string
+		cursorPos        int
+		initialSelection textSelection
+		wantSelStart     int
+		wantSelEnd       int
+		shouldHandle     bool
+		shouldComponent  bool
 	}{
 		{
 			name:             "shift+left from middle",
@@ -169,11 +169,11 @@ func TestHandleSelectionKeyRegularCharacterWithSelection(t *testing.T) {
 
 func TestInsertStringAtRunePosition(t *testing.T) {
 	tests := []struct {
-		name      string
-		s         string
-		text      string
-		runePos   int
-		wantStr   string
+		name       string
+		s          string
+		text       string
+		runePos    int
+		wantStr    string
 		wantCursor int
 	}{
 		{

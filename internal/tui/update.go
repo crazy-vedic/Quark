@@ -974,7 +974,8 @@ func (m Model) handleRequestKey(_ string, msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.urlInput.SetValue(newValue)
 			m.urlInput.SetCursor(newCursorPos)
 			m.urlSelection.Clear(newCursorPos)
-			text := copySelectionText(m.urlInput.Value(), m.urlSelection) // Won't have selection after cut
+			// Won't have selection after cut, but check anyway
+			text := copySelectionText(m.urlInput.Value(), m.urlSelection)
 			if text != "" {
 				return m, copyToClipboardCmd(text)
 			}
@@ -982,7 +983,8 @@ func (m Model) handleRequestKey(_ string, msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 
 		// Handle selection keys (Shift+arrows, Ctrl+A, etc.)
-		handled, shouldUpdateComponent := handleSelectionKeyForInput(msg, &m.urlSelection, &m.urlInput, m.urlInput.Position())
+		handled, shouldUpdateComponent := handleSelectionKeyForInput(
+			msg, &m.urlSelection, &m.urlInput, m.urlInput.Position())
 		if handled && !shouldUpdateComponent {
 			// Selection key was handled; update input cursor to match selection cursor
 			_, selEnd := m.urlSelection.Range()

@@ -111,7 +111,8 @@ func handleSelectionKeyForInput(
 			value := input.Value()
 			newValue, _ := removeSelectedRange(value, start, end)
 			// Now insert the typed character at the start position
-			finalValue, newCursorPos := insertStringAtRunePosition(newValue, string(msg.Runes[0]), start)
+			char := string(msg.Runes[0])
+			finalValue, newCursorPos := insertStringAtRunePosition(newValue, char, start)
 			input.SetValue(finalValue)
 			input.SetCursor(newCursorPos)
 			sel.Clear(newCursorPos)

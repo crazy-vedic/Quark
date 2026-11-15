@@ -4,28 +4,28 @@ import "testing"
 
 func TestTextSelectionActive(t *testing.T) {
 	tests := []struct {
-		name      string
-		sel       textSelection
+		name       string
+		sel        textSelection
 		wantActive bool
 	}{
 		{
-			name:      "empty selection",
-			sel:       textSelection{anchor: 0, cursor: 0},
+			name:       "empty selection",
+			sel:        textSelection{anchor: 0, cursor: 0},
 			wantActive: false,
 		},
 		{
-			name:      "forward selection",
-			sel:       textSelection{anchor: 0, cursor: 5},
+			name:       "forward selection",
+			sel:        textSelection{anchor: 0, cursor: 5},
 			wantActive: true,
 		},
 		{
-			name:      "backward selection",
-			sel:       textSelection{anchor: 5, cursor: 0},
+			name:       "backward selection",
+			sel:        textSelection{anchor: 5, cursor: 0},
 			wantActive: true,
 		},
 		{
-			name:      "same position",
-			sel:       textSelection{anchor: 3, cursor: 3},
+			name:       "same position",
+			sel:        textSelection{anchor: 3, cursor: 3},
 			wantActive: false,
 		},
 	}
@@ -173,9 +173,9 @@ func TestTextSelectionSelectWord(t *testing.T) {
 
 func TestTextSelectionMoveToSelectionEnd(t *testing.T) {
 	tests := []struct {
-		name      string
-		initial   textSelection
-		moveTo    int
+		name       string
+		initial    textSelection
+		moveTo     int
 		wantAnchor int
 		wantCursor int
 	}{
