@@ -85,7 +85,25 @@ func (s *Store) ListRequests(ctx context.Context, collectionID string) ([]*domai
 }
 
 // SaveRequest inserts or updates a request.
+// Returns ErrCollectionRequired if CollectionID is empty.
+// Returns ErrCollectionNotFound if the collection does not exist.
 func (s *Store) SaveRequest(ctx context.Context, req *domain.Request) error {
+	if req.CollectionID == "" {
+		return fmt.Errorf("store: save request: %w", ErrCollectionRequired)
+	}
+
+	// Verify collection exists
+	var exists int
+	row := s.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM collections WHERE id = ?`, req.CollectionID)
+	if err := row.Scan(&exists); err != nil {
+		return fmt.Errorf("store: save request %q: check collection: %w", req.ID, err)
+	}
+	if exists == 0 {
+		err := fmt.Errorf("collection %q: %w", req.CollectionID, ErrCollectionNotFound)
+		return fmt.Errorf("store: save request %q: %w", req.ID, err)
+	}
+
 	if req.ID == "" {
 		req.ID = uuid.New().String()
 	}
