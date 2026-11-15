@@ -29,7 +29,7 @@ import (
 	"github.com/crazy-vedic/quark/internal/timing"
 )
 
-func (m Model) debugCurl(format string, args ...interface{}) {
+func (m Model) debugCurl(format string, args ...any) {
 	if m.debugLog == nil {
 		return
 	}
@@ -1600,10 +1600,7 @@ const (
 )
 
 func (m Model) helpMaxLines() int {
-	boxHeight := m.height - helpModalMarginLines
-	if boxHeight < helpMinimumBoxHeight {
-		boxHeight = helpMinimumBoxHeight
-	}
+	boxHeight := max(m.height-helpModalMarginLines, helpMinimumBoxHeight)
 	// Reserve vertical budget for the title, instructions, footer, and modal chrome.
 	overhead := helpHeaderLines + helpInstructionLines + helpFooterLines + helpBorderAndPaddingLines
 	if m.helpEditState == helpRecording {
@@ -1612,10 +1609,7 @@ func (m Model) helpMaxLines() int {
 	if m.helpEditState == helpError {
 		overhead += helpErrorHintLines
 	}
-	maxLines := boxHeight - overhead
-	if maxLines < helpMinimumVisibleRows {
-		maxLines = helpMinimumVisibleRows
-	}
+	maxLines := max(boxHeight-overhead, helpMinimumVisibleRows)
 	return maxLines
 }
 

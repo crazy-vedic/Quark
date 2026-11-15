@@ -307,11 +307,13 @@ func (m Model) viewSidebar(w, h int) string {
 	}
 
 	var sb strings.Builder
-	sb.WriteString(m.styles.titleStyle.Render("Collections") + "\n")
+	sb.WriteString(m.styles.titleStyle.Render("Collections"))
+	sb.WriteString("\n")
 
 	rows, start, end := m.sidebarListWindow()
 	if start > 0 {
-		sb.WriteString(m.styles.mutedStyle.Render("  ↑ more above") + "\n")
+		sb.WriteString(m.styles.mutedStyle.Render("  ↑ more above"))
+		sb.WriteString("\n")
 	}
 	for i := start; i < end; i++ {
 		row := rows[i]
@@ -340,7 +342,8 @@ func (m Model) viewSidebar(w, h int) string {
 			} else {
 				line = lipgloss.NewStyle().Foreground(m.styles.foreground).Render(line)
 			}
-			sb.WriteString(line + "\n")
+			sb.WriteString(line)
+			sb.WriteString("\n")
 		case sidebarRequestRow:
 			col := m.collections[row.colIndex]
 			req := m.collectionRequests[col.ID][row.reqIndex]
@@ -358,20 +361,21 @@ func (m Model) viewSidebar(w, h int) string {
 			} else {
 				line = m.styles.mutedStyle.Render(line)
 			}
-			sb.WriteString(line + "\n")
+			sb.WriteString(line)
+			sb.WriteString("\n")
 		}
 	}
 	if end < len(rows) {
-		sb.WriteString(m.styles.mutedStyle.Render("  ↓ more below") + "\n")
+		sb.WriteString(m.styles.mutedStyle.Render("  ↓ more below"))
+		sb.WriteString("\n")
 	}
 
 	if len(m.collections) == 0 {
 		addCollection := m.renderHintKeys([]string{"sidebar_add"}, false)
-		sb.WriteString(
-			"\n" + m.styles.mutedStyle.Render(
-				"  No collections.\n  Press "+addCollection+" to add.",
-			),
-		)
+		sb.WriteString("\n")
+		sb.WriteString(m.styles.mutedStyle.Render(
+			"  No collections.\n  Press " + addCollection + " to add.",
+		))
 	}
 
 	inner := sb.String()
@@ -434,10 +438,12 @@ func (m Model) viewHeadersPreview(w int) string {
 		preview.WriteString("\n")
 		if m.headerKeyInput.Focused() {
 			if warning := m.singleLineInputWarning(m.headerKeyInput.Value()); warning != "" {
-				preview.WriteString(warning + "\n")
+				preview.WriteString(warning)
+				preview.WriteString("\n")
 			}
 		} else if warning := m.singleLineInputWarning(m.headerValueInput.Value()); warning != "" {
-			preview.WriteString(warning + "\n")
+			preview.WriteString(warning)
+			preview.WriteString("\n")
 		}
 	} else {
 		if len(m.headerPairs) == 0 {
@@ -768,7 +774,8 @@ func (m Model) viewAuthEditor(maxRows, contentWidth int) string {
 	var sb strings.Builder
 	sb.WriteString(header)
 	if start > 0 {
-		sb.WriteString(m.styles.mutedStyle.Render("  ↑ more above") + "\n")
+		sb.WriteString(m.styles.mutedStyle.Render("  ↑ more above"))
+		sb.WriteString("\n")
 	}
 	for idx := start; idx < end; idx++ {
 		if idx > start {
@@ -777,7 +784,8 @@ func (m Model) viewAuthEditor(maxRows, contentWidth int) string {
 		sb.WriteString(rowViews[idx])
 	}
 	if end < len(rows) {
-		sb.WriteString("\n" + m.styles.mutedStyle.Render("  ↓ more below"))
+		sb.WriteString("\n")
+		sb.WriteString(m.styles.mutedStyle.Render("  ↓ more below"))
 	}
 	sb.WriteString(footer)
 	return clipToRows(sb.String(), contentWidth, maxRows)
@@ -820,14 +828,15 @@ func (m Model) viewResponsePane(w, h int) string {
 	}
 
 	var sb strings.Builder
-	sb.WriteString(m.styles.titleStyle.Render("Response") + "\n")
+	sb.WriteString(m.styles.titleStyle.Render("Response"))
+	sb.WriteString("\n")
 
 	currentExec := m.selectedExecution()
 	if currentExec == nil && m.response == nil {
 		sendHint := m.renderHintKeys([]string{keybindings.ActionSendRequest}, true)
-		sb.WriteString(
-			"\n" + m.styles.mutedStyle.Render("  No response yet — press "+sendHint+" to send."),
-		)
+		sb.WriteString("\n")
+		msg := "  No response yet — press " + sendHint + " to send."
+		sb.WriteString(m.styles.mutedStyle.Render(msg))
 		return border.Width(w).Height(h).MaxHeight(h + 2).Render(sb.String())
 	}
 
@@ -840,11 +849,14 @@ func (m Model) viewResponsePane(w, h int) string {
 					len(m.executions),
 					currentExec.CompletedAt.In(time.Local).Format("2006-01-02 15:04:05"),
 				),
-			) + "\n",
+			),
 		)
-		sb.WriteString(m.viewExecutionStatus(currentExec) + "\n")
+		sb.WriteString("\n")
+		sb.WriteString(m.viewExecutionStatus(currentExec))
+		sb.WriteString("\n")
 	} else {
-		sb.WriteString(m.viewLiveResponseStatus() + "\n")
+		sb.WriteString(m.viewLiveResponseStatus())
+		sb.WriteString("\n")
 	}
 
 	// Body gets whatever inner height remains after chrome. Measure the actual
@@ -857,7 +869,8 @@ func (m Model) viewResponsePane(w, h int) string {
 
 	// Tab bar — clamp helper hints so the bar stays a single row.
 	tabs := m.viewTabBar(innerWidth)
-	sb.WriteString(tabs + "\n\n")
+	sb.WriteString(tabs)
+	sb.WriteString("\n\n")
 	chromeRows := visualRows(strings.TrimSuffix(sb.String(), "\n"), innerWidth)
 	// Body may shrink to zero: on very small panes the chrome (status + a
 	// wrapped tab bar) can consume the entire budget, and forcing a minimum of
@@ -926,7 +939,8 @@ func (m Model) viewResponsePane(w, h int) string {
 	if popup != "" {
 		popupRows := lipgloss.Height(popup)
 		if popupRows < bodyLines {
-			sb.WriteString(popup + "\n")
+			sb.WriteString(popup)
+			sb.WriteString("\n")
 			bodyLines -= popupRows + 1
 			if bodyLines < 1 {
 				bodyLines = 1
@@ -1273,10 +1287,11 @@ func (m Model) renderHTTPHeaders(headers http.Header) string {
 	for _, k := range sortedHeaderKeys(headers) {
 		vals := headers[k]
 		for _, v := range vals {
-			sb.WriteString("  " + lipgloss.NewStyle().Foreground(m.styles.info).Render(k))
-			sb.WriteString(
-				": " + lipgloss.NewStyle().Foreground(m.styles.foreground).Render(v) + "\n",
-			)
+			sb.WriteString("  ")
+			sb.WriteString(lipgloss.NewStyle().Foreground(m.styles.info).Render(k))
+			sb.WriteString(": ")
+			sb.WriteString(lipgloss.NewStyle().Foreground(m.styles.foreground).Render(v))
+			sb.WriteString("\n")
 		}
 	}
 	return sb.String()
@@ -1319,20 +1334,21 @@ func (m Model) viewExecutionHistoryPopup(maxWidth, maxRows int) string {
 	innerWidth := max(1, popupWidth-4)
 
 	var sb strings.Builder
-	sb.WriteString(m.styles.titleStyle.Render("Execution History") + "\n")
+	sb.WriteString(m.styles.titleStyle.Render("Execution History"))
+	sb.WriteString("\n")
 	if hasAbove {
-		sb.WriteString(m.styles.mutedStyle.Render("  ↑ more above") + "\n")
+		sb.WriteString(m.styles.mutedStyle.Render("  ↑ more above"))
+		sb.WriteString("\n")
 	} else {
 		sb.WriteString("\n")
 	}
 	for _, idx := range indices {
 		ex := m.executions[idx]
-		sb.WriteString(m.viewExecutionHistoryLine(idx, ex, innerWidth) + "\n")
+		sb.WriteString(m.viewExecutionHistoryLine(idx, ex, innerWidth))
+		sb.WriteString("\n")
 	}
 	if hasBelow {
 		sb.WriteString(m.styles.mutedStyle.Render("  ↓ more below"))
-	} else {
-		sb.WriteString("")
 	}
 
 	return lipgloss.NewStyle().
@@ -1656,11 +1672,14 @@ func (m Model) twoThirdsModalWidth() int {
 func (m Model) viewSearchModal() string {
 	var sb strings.Builder
 	if m.isCommandPalette() {
-		sb.WriteString(m.styles.titleStyle.Render("Command palette") + "\n\n")
+		sb.WriteString(m.styles.titleStyle.Render("Command palette"))
+		sb.WriteString("\n\n")
 	} else {
-		sb.WriteString(m.styles.titleStyle.Render("Search all requests") + "\n\n")
+		sb.WriteString(m.styles.titleStyle.Render("Search all requests"))
+		sb.WriteString("\n\n")
 	}
-	sb.WriteString(m.searchInput.View() + "\n\n")
+	sb.WriteString(m.searchInput.View())
+	sb.WriteString("\n\n")
 	query := strings.TrimSpace(m.searchInput.Value())
 
 	switch {
@@ -1672,7 +1691,8 @@ func (m Model) viewSearchModal() string {
 			start := min(m.searchScroll, max(0, len(m.commands)-visible))
 			end := min(len(m.commands), start+visible)
 			if start > 0 {
-				sb.WriteString(m.styles.mutedStyle.Render("  ↑ more above") + "\n")
+				sb.WriteString(m.styles.mutedStyle.Render("  ↑ more above"))
+				sb.WriteString("\n")
 			}
 			for i := start; i < end; i++ {
 				item := m.commands[i]
@@ -1682,10 +1702,14 @@ func (m Model) viewSearchModal() string {
 					cursor = "▸ "
 					line = lipgloss.NewStyle().Foreground(m.styles.accent).Bold(true).Render(line)
 				}
-				sb.WriteString(cursor + line + m.styles.mutedStyle.Render("  "+item.Action) + "\n")
+				sb.WriteString(cursor)
+				sb.WriteString(line)
+				sb.WriteString(m.styles.mutedStyle.Render("  " + item.Action))
+				sb.WriteString("\n")
 			}
 			if end < len(m.commands) {
-				sb.WriteString(m.styles.mutedStyle.Render("  ↓ more below") + "\n")
+				sb.WriteString(m.styles.mutedStyle.Render("  ↓ more below"))
+				sb.WriteString("\n")
 			}
 		}
 	case len(m.searchResults) == 0:
@@ -1702,7 +1726,8 @@ func (m Model) viewSearchModal() string {
 		end := min(len(rows), start+visible)
 		contentWidth := max(1, m.searchModalWidth()-6)
 		if start > 0 {
-			sb.WriteString(m.styles.mutedStyle.Render("  ↑ more above") + "\n")
+			sb.WriteString(m.styles.mutedStyle.Render("  ↑ more above"))
+			sb.WriteString("\n")
 		}
 		for i := start; i < end; i++ {
 			row := rows[i]
@@ -1714,9 +1739,9 @@ func (m Model) viewSearchModal() string {
 					lipgloss.NewStyle().
 						Bold(true).
 						Foreground(m.styles.warning).
-						Render(row.group) +
-						"\n",
+						Render(row.group),
 				)
+				sb.WriteString("\n")
 			case searchRequestRow:
 				hit := row.hit
 				cursor := "  "
@@ -1732,15 +1757,18 @@ func (m Model) viewSearchModal() string {
 				if i == selectedRow {
 					line = lipgloss.NewStyle().Foreground(m.styles.accent).Bold(true).Render(line)
 				}
-				sb.WriteString(line + "\n")
+				sb.WriteString(line)
+				sb.WriteString("\n")
 			}
 		}
 		if end < len(rows) {
-			sb.WriteString(m.styles.mutedStyle.Render("  ↓ more below") + "\n")
+			sb.WriteString(m.styles.mutedStyle.Render("  ↓ more below"))
+			sb.WriteString("\n")
 		}
 	}
 
-	sb.WriteString("\n" + m.styles.mutedStyle.Render(m.renderHints([]hintItem{
+	sb.WriteString("\n")
+	sb.WriteString(m.styles.mutedStyle.Render(m.renderHints([]hintItem{
 		{Label: "select", Actions: []string{"search_select"}},
 		{Label: helpLabelClose, Actions: []string{"search_cancel"}},
 		{Label: "navigate", Actions: []string{"search_up", "search_down"}},
@@ -1759,12 +1787,16 @@ func (m Model) viewSearchModal() string {
 
 func (m Model) viewScheduleModal() string {
 	var sb strings.Builder
-	sb.WriteString(m.styles.titleStyle.Render("Schedule request") + "\n\n")
+	sb.WriteString(m.styles.titleStyle.Render("Schedule request"))
+	sb.WriteString("\n\n")
 	if m.activeRequest != nil {
-		sb.WriteString(m.styles.mutedStyle.Render(m.activeRequest.Name) + "\n\n")
+		sb.WriteString(m.styles.mutedStyle.Render(m.activeRequest.Name))
+		sb.WriteString("\n\n")
 	}
-	sb.WriteString(m.scheduleInput.View() + "\n\n")
-	sb.WriteString(m.styles.mutedStyle.Render("Examples: 10m, in 1h, 2026-06-25 18:30") + "\n\n")
+	sb.WriteString(m.scheduleInput.View())
+	sb.WriteString("\n\n")
+	sb.WriteString(m.styles.mutedStyle.Render("Examples: 10m, in 1h, 2026-06-25 18:30"))
+	sb.WriteString("\n\n")
 	sb.WriteString(m.styles.mutedStyle.Render(m.renderHints([]hintItem{
 		{Label: "save", Actions: []string{"import_confirm"}},
 		{Label: helpLabelClose, Actions: []string{keybindings.ActionImportCancel}},
@@ -1783,21 +1815,27 @@ func (m Model) viewScheduleModal() string {
 
 func (m Model) viewPostmanImportModal() string {
 	var sb strings.Builder
-	sb.WriteString(m.styles.titleStyle.Render("Import Postman collection") + "\n\n")
+	sb.WriteString(m.styles.titleStyle.Render("Import Postman collection"))
+	sb.WriteString("\n\n")
 	sb.WriteString("Collection file or export directory:\n")
-	sb.WriteString(m.postmanPath.View() + "\n\n")
+	sb.WriteString(m.postmanPath.View())
+	sb.WriteString("\n\n")
 	sb.WriteString(
 		m.styles.mutedStyle.Render(
 			"Existing collection names are kept by creating a numbered copy.",
-		) + "\n",
+		),
 	)
+	sb.WriteString("\n")
 	if m.postmanOutput != "" {
 		width := max(20, m.twoThirdsModalWidth()-8)
 		output := clipToRows(stripANSI(m.postmanOutput), width, 5)
-		sb.WriteString("\n" + output + "\n")
+		sb.WriteString("\n")
+		sb.WriteString(output)
+		sb.WriteString("\n")
 	}
 	if m.postmanBusy {
-		sb.WriteString("\n" + m.styles.mutedStyle.Render("Importing…"))
+		sb.WriteString("\n")
+		sb.WriteString(m.styles.mutedStyle.Render("Importing…"))
 	} else {
 		sb.WriteString("\n" + m.styles.mutedStyle.Render("[Enter] import  [Esc] cancel"))
 	}
