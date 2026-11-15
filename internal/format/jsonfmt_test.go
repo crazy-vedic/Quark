@@ -127,6 +127,37 @@ func TestFormatJSONIfValid(t *testing.T) {
 			wantChanged: true,
 			validate:    isValidJSON,
 		},
+		{
+			name:        "preserves key order in objects",
+			input:       `{"z":1,"a":2,"m":3}`,
+			wantChanged: true,
+			validate: func(output string) bool {
+				// Keys should appear in original order: z, a, m
+				zIdx := findStringIndex(output, "\"z\"")
+				aIdx := findStringIndex(output, "\"a\"")
+				mIdx := findStringIndex(output, "\"m\"")
+				return zIdx > 0 && aIdx > 0 && mIdx > 0 && zIdx < aIdx && aIdx < mIdx
+			},
+		},
+		{
+			name:        "preserves key order in nested objects",
+			input:       `{"z":{"inner_z":1,"inner_a":2},"a":{}}`,
+			wantChanged: true,
+			validate: func(output string) bool {
+				// Top-level keys: z before a
+				zIdx := findStringIndex(output, "\"z\"")
+				aIdx := findStringIndex(output, "\"a\"")
+				innerZIdx := findStringIndex(output, "\"inner_z\"")
+				innerAIdx := findStringIndex(output, "\"inner_a\"")
+				return zIdx > 0 && aIdx > 0 && zIdx < aIdx && innerZIdx > 0 && innerAIdx > 0 && innerZIdx < innerAIdx
+			},
+		},
+		{
+			name:        "preserves escaped characters",
+			input:       `{"path":"C:\\Users\\test","unicode":"café"}`,
+			wantChanged: true,
+			validate:    isValidJSON,
+		},
 	}
 
 	for _, tt := range tests {
@@ -193,6 +224,16 @@ func isMinified(s string) bool {
 // containsPattern returns true if the string contains the substring.
 func containsPattern(s, pattern string) bool {
 	return len(s) > 0 && len(pattern) > 0 && (s == pattern || len(s) > len(pattern))
+}
+
+// findStringIndex returns the index of the first occurrence of substring, or -1 if not found.
+func findStringIndex(s, substring string) int {
+	for i := 0; i <= len(s)-len(substring); i++ {
+		if s[i:i+len(substring)] == substring {
+			return i
+		}
+	}
+	return -1
 }
 
 // isValidJSON returns true if the string is valid JSON.
