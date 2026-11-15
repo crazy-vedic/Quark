@@ -123,5 +123,16 @@ func DefaultKeybindings() Keybindings {
 		ImportParse:   "ctrl+s",
 		ImportCancel:  "esc",
 		ImportEdit:    "ctrl+e",
+
+		// Text selection
+		SelectCharLeft:  "shift+left",
+		SelectCharRight: "shift+right",
+		SelectWordLeft:  "alt+shift+left",  // Terminal compat: some terminals send this instead of ctrl+shift+left
+		SelectWordRight: "alt+shift+right", // Fallback for wide terminal support
+		SelectLineStart: "shift+home",
+		SelectLineEnd:   "shift+end",
+		SelectAll:       "ctrl+a",
+		Copy:            "ctrl+c",
+		Cut:             "ctrl+x",
 	}
 }

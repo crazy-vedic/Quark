@@ -25,6 +25,17 @@ const (
 	ActionImportCancel  = "import_cancel"
 	ActionImportEdit    = "import_edit"
 
+	// Text selection actions
+	ActionSelectCharLeft   = "select_char_left"
+	ActionSelectCharRight  = "select_char_right"
+	ActionSelectWordLeft   = "select_word_left"
+	ActionSelectWordRight  = "select_word_right"
+	ActionSelectLineStart  = "select_line_start"
+	ActionSelectLineEnd    = "select_line_end"
+	ActionSelectAll        = "select_all"
+	ActionCopy             = "copy"
+	ActionCut              = "cut"
+
 	ActionNavigateDown = "navigate_down"
 	ActionNavigateUp   = "navigate_up"
 	ActionCancel       = "cancel"

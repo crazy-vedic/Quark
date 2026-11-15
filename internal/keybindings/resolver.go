@@ -120,6 +120,17 @@ type Keybindings struct {
 	ImportParse   string `toml:"import_parse"`
 	ImportCancel  string `toml:"import_cancel"`
 	ImportEdit    string `toml:"import_edit"`
+
+	// Text selection (available in text input fields)
+	SelectCharLeft  string `toml:"select_char_left"`
+	SelectCharRight string `toml:"select_char_right"`
+	SelectWordLeft  string `toml:"select_word_left"`
+	SelectWordRight string `toml:"select_word_right"`
+	SelectLineStart string `toml:"select_line_start"`
+	SelectLineEnd   string `toml:"select_line_end"`
+	SelectAll       string `toml:"select_all"`
+	Copy            string `toml:"copy"`
+	Cut             string `toml:"cut"`
 }
 
 // Resolver maps Bubble Tea key strings to action names per mode.
