@@ -212,6 +212,7 @@ func newFakeScheduleStore() *fakeScheduleStore {
 		runs: make(map[string]*domain.ScheduledRun),
 	}
 }
+
 // These tests reproduce known run-due defects. They are expected to FAIL on
 // master until the corresponding fixes land.
 

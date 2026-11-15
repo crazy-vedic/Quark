@@ -1,20 +1,18 @@
 package format
 
-import (
-	"testing"
-)
+import "testing"
 
 func TestFormatJSONIfValid(t *testing.T) {
 	tests := []struct {
-		name      string
-		input     string
+		name        string
+		input       string
 		wantChanged bool
-		validate  func(output string) bool // validates the output when changed
+		validate    func(output string) bool // validates the output when changed
 	}{
 		{
-			name:         "minified object becomes formatted",
-			input:        `{"name":"alice","age":30}`,
-			wantChanged:  true,
+			name:        "minified object becomes formatted",
+			input:       `{"name":"alice","age":30}`,
+			wantChanged: true,
 			validate: func(output string) bool {
 				// Should be formatted with newlines and indent
 				return len(output) > len(`{"name":"alice","age":30}`) &&
@@ -28,28 +26,28 @@ func TestFormatJSONIfValid(t *testing.T) {
 			validate:    func(output string) bool { return output == "{\n  \"age\": 30,\n  \"name\": \"alice\"\n}" },
 		},
 		{
-			name:         "invalid JSON with trailing comma returns unchanged",
-			input:        `{"name":"alice",}`,
-			wantChanged:  false,
-			validate:     func(output string) bool { return output == `{"name":"alice",}` },
+			name:        "invalid JSON with trailing comma returns unchanged",
+			input:       `{"name":"alice",}`,
+			wantChanged: false,
+			validate:    func(output string) bool { return output == `{"name":"alice",}` },
 		},
 		{
-			name:         "plain text returns unchanged",
-			input:        "hello world",
-			wantChanged:  false,
-			validate:     func(output string) bool { return output == "hello world" },
+			name:        "plain text returns unchanged",
+			input:       "hello world",
+			wantChanged: false,
+			validate:    func(output string) bool { return output == "hello world" },
 		},
 		{
-			name:         "empty string returns unchanged",
-			input:        "",
-			wantChanged:  false,
-			validate:     func(output string) bool { return output == "" },
+			name:        "empty string returns unchanged",
+			input:       "",
+			wantChanged: false,
+			validate:    func(output string) bool { return output == "" },
 		},
 		{
-			name:         "whitespace-only returns unchanged",
-			input:        "   \n  \t  ",
-			wantChanged:  false,
-			validate:     func(output string) bool { return output == "   \n  \t  " },
+			name:        "whitespace-only returns unchanged",
+			input:       "   \n  \t  ",
+			wantChanged: false,
+			validate:    func(output string) bool { return output == "   \n  \t  " },
 		},
 		{
 			name:        "detects 4-space indent",
@@ -70,48 +68,44 @@ func TestFormatJSONIfValid(t *testing.T) {
 			},
 		},
 		{
-			name:         "top-level array",
-			input:        `[1,2,3]`,
-			wantChanged:  true,
-			validate: func(output string) bool {
-				return isValidJSON(output)
-			},
+			name:        "top-level array",
+			input:       `[1,2,3]`,
+			wantChanged: true,
+			validate:    isValidJSON,
 		},
 		{
-			name:         "top-level string",
-			input:        `"hello"`,
-			wantChanged:  false,
-			validate: func(output string) bool { return output == `"hello"` },
+			name:        "top-level string",
+			input:       `"hello"`,
+			wantChanged: false,
+			validate:    func(output string) bool { return output == `"hello"` },
 		},
 		{
-			name:         "top-level number",
-			input:        `42`,
-			wantChanged:  false,
-			validate: func(output string) bool { return output == `42` },
+			name:        "top-level number",
+			input:       `42`,
+			wantChanged: false,
+			validate:    func(output string) bool { return output == `42` },
 		},
 		{
 			name:        "preserves large numbers",
 			input:       `{"big":12345678901234567890}`,
 			wantChanged: true,
-			validate: func(output string) bool {
-				return isValidJSON(output) && containsPattern(output, "12345678901234567890")
+			validate: func(s string) bool {
+				return isValidJSON(s) && containsPattern(s, "12345678901234567890")
 			},
 		},
 		{
 			name:        "preserves float precision",
 			input:       `{"pi":3.14159265359}`,
 			wantChanged: true,
-			validate: func(output string) bool {
-				return isValidJSON(output) && containsPattern(output, "3.14159265359")
+			validate: func(s string) bool {
+				return isValidJSON(s) && containsPattern(s, "3.14159265359")
 			},
 		},
 		{
 			name:        "preserves unicode escapes",
 			input:       `{"name":"café"}`,
 			wantChanged: true,
-			validate: func(output string) bool {
-				return isValidJSON(output)
-			},
+			validate:    isValidJSON,
 		},
 		{
 			name:        "nested objects",
@@ -122,16 +116,16 @@ func TestFormatJSONIfValid(t *testing.T) {
 			},
 		},
 		{
-			name:         "null value",
-			input:        `{"value":null}`,
-			wantChanged:  true,
-			validate: func(output string) bool { return isValidJSON(output) },
+			name:        "null value",
+			input:       `{"value":null}`,
+			wantChanged: true,
+			validate:    isValidJSON,
 		},
 		{
-			name:         "boolean values",
-			input:        `{"active":true,"deleted":false}`,
-			wantChanged:  true,
-			validate: func(output string) bool { return isValidJSON(output) },
+			name:        "boolean values",
+			input:       `{"active":true,"deleted":false}`,
+			wantChanged: true,
+			validate:    isValidJSON,
 		},
 	}
 
@@ -150,9 +144,9 @@ func TestFormatJSONIfValid(t *testing.T) {
 
 func TestDetectIndent(t *testing.T) {
 	tests := []struct {
-		name string
+		name  string
 		input string
-		want string
+		want  string
 	}{
 		{
 			name:  "2-space indent",
