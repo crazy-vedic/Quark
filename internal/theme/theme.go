@@ -27,6 +27,7 @@ type Palette struct {
 	Error        string `toml:"error"`
 	ActiveBorder string `toml:"active_border"`
 	Match        string `toml:"match"`
+	Selection    string `toml:"selection"`
 	GET          string `toml:"get"`
 	POST         string `toml:"post"`
 	PUT          string `toml:"put"`
@@ -49,7 +50,7 @@ const lightName = "light"
 var dark = Palette{
 	Foreground: "#c0caf5", Background: "#1a1b26", Muted: "#737aa2", Accent: "#7aa2f7",
 	Info: "#7dcfff", Success: "#9ece6a", Warning: "#e0af68",
-	Error: "#f7768e", ActiveBorder: "#ffffff", Match: "#e0af68",
+	Error: "#f7768e", ActiveBorder: "#ffffff", Match: "#e0af68", Selection: "#3d4b9f",
 	GET: "#9ece6a", POST: "#7aa2f7", PUT: "#e0af68", DELETE: "#f7768e",
 	Syntax: "monokai",
 }
@@ -57,7 +58,7 @@ var dark = Palette{
 var light = Palette{
 	Foreground: "#24292f", Background: "#f6f8fa", Muted: "#57606a", Accent: "#0550ae",
 	Info: "#0969da", Success: "#116329", Warning: "#9a6700",
-	Error: "#cf222e", ActiveBorder: "#24292f", Match: "#9a6700",
+	Error: "#cf222e", ActiveBorder: "#24292f", Match: "#9a6700", Selection: "#cce5ff",
 	GET: "#116329", POST: "#0550ae", PUT: "#9a6700", DELETE: "#cf222e",
 	Syntax: "github",
 }

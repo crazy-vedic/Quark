@@ -14,11 +14,12 @@ import (
 // never to the package, so two models and a live preview cannot affect each
 // other's rendering.
 type styleSet struct {
-	accent, error, success, warning, info, mutedColor, foreground, match lipgloss.Color
+	accent, error, success, warning, info, mutedColor, foreground, match, selection lipgloss.Color
 	get, post, put, delete                                               lipgloss.Color
 	activeBorder, inactiveBorder                                         lipgloss.Style
 	titleStyle, methodStyle, sendButtonStyle, mutedStyle                 lipgloss.Style
 	errorStyle, goodStyle, warnStyle, statusStyle                        lipgloss.Style
+	selectionStyle                                                       lipgloss.Style
 }
 
 func stylesFor(t theme.Theme) styleSet {
@@ -28,6 +29,7 @@ func stylesFor(t theme.Theme) styleSet {
 		success: lipgloss.Color(p.Success), warning: lipgloss.Color(p.Warning),
 		info: lipgloss.Color(p.Info), mutedColor: lipgloss.Color(p.Muted),
 		foreground: lipgloss.Color(p.Foreground), match: lipgloss.Color(p.Match),
+		selection: lipgloss.Color(p.Selection),
 		get: lipgloss.Color(p.GET), post: lipgloss.Color(p.POST),
 		put: lipgloss.Color(p.PUT), delete: lipgloss.Color(p.DELETE),
 	}
@@ -45,6 +47,7 @@ func stylesFor(t theme.Theme) styleSet {
 	s.goodStyle = lipgloss.NewStyle().Foreground(s.success)
 	s.warnStyle = lipgloss.NewStyle().Foreground(s.warning)
 	s.statusStyle = s.mutedStyle
+	s.selectionStyle = lipgloss.NewStyle().Background(s.selection)
 	return s
 }
 

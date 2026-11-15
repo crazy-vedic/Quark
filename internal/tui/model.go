@@ -349,6 +349,22 @@ type Model struct {
 	headerValueInput textinput.Model
 	authEditor       authEditor
 
+	// --- Text selection state (keyboard and mouse) ---
+	urlSelection        textSelection       // selection in URL input
+	bodySelection       textSelection       // selection in body textarea
+	headerKeySelection  textSelection       // selection in header key input
+	headerValueSelection textSelection      // selection in header value input
+	searchSelection     textSelection       // selection in search input
+	viewerFindSelection textSelection       // selection in viewer find input
+	importInputSelection textSelection      // selection in import textarea
+	authTokenSelection  textSelection       // selection in auth token field
+	authUsernameSelection textSelection     // selection in auth username field
+	authPasswordSelection textSelection     // selection in auth password field
+	authAPIKeyNameSelection textSelection   // selection in auth API key name field
+	authAPIKeyValueSelection textSelection  // selection in auth API key value field
+	envEditKeySelection textSelection       // selection in env editor key field
+	envEditValSelection textSelection       // selection in env editor value field
+
 	// --- Misc ---
 	tmuxDetected    bool
 	tmuxWarning     string
