@@ -166,6 +166,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.collections = orderCollectionsTree(msg.collections)
 		m.colCursor = 0
 		m.reqCursor = -1
+		// If we're in import mode with no collection set, use the first collection.
+		if m.mode == importMode && m.importColID == "" && len(m.collections) > 0 {
+			m.importColID = m.collections[0].ID
+		}
 		if m.cfg.UI.LastRequestID != "" && m.reader != nil {
 			return m, loadLastRequestCmd(m.ctx, m.reader, m.cfg.UI.LastRequestID)
 		}
@@ -658,6 +662,14 @@ func (m Model) dispatchNormalAction(action string) (tea.Model, tea.Cmd) {
 	case keybindings.ActionClientCerts:
 		return m.openClientCertModal(), nil
 	case keybindings.ActionImportCurl:
+		// If no collections exist, create a default one before opening curl import.
+		if len(m.collections) == 0 {
+			if m.colWriter != nil {
+				c := &domain.Collection{Name: "Imported"}
+				m = m.openCurlImport()
+				return m, saveCollectionCmd(m.ctx, m.colWriter, c)
+			}
+		}
 		return m.openCurlImport(), textarea.Blink
 	case keybindings.ActionImportPostman:
 		return m.openPostmanImportModal(), textinput.Blink
@@ -1832,6 +1844,11 @@ func (m Model) handleImportKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				}
 			}
 			if m.writer != nil {
+				if m.importColID == "" {
+					m.importError = "No collection available for import. Please create a collection first."
+					m.debugCurl("confirm failed: no collection available")
+					return m, nil
+				}
 				name := strings.TrimSpace(m.importName.Value())
 				if name == "" {
 					name = m.importPreview.URL
