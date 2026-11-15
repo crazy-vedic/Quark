@@ -40,9 +40,12 @@ func handleSelectionKeyForInput(
 	case msg.Type == tea.KeyShiftLeft:
 		if !sel.Active() {
 			sel.anchor = cursorPos
+			// Start extending from current cursor position
+			sel.cursor = cursorPos
 		}
-		if cursorPos > 0 {
-			sel.Extend(cursorPos - 1)
+		// Use the selection's cursor position as source of truth
+		if sel.cursor > 0 {
+			sel.Extend(sel.cursor - 1)
 		}
 		return true, false
 
@@ -50,10 +53,13 @@ func handleSelectionKeyForInput(
 	case msg.Type == tea.KeyShiftRight:
 		if !sel.Active() {
 			sel.anchor = cursorPos
+			// Start extending from current cursor position
+			sel.cursor = cursorPos
 		}
 		inputLen := len(input.Value())
-		if cursorPos < inputLen {
-			sel.Extend(cursorPos + 1)
+		// Use the selection's cursor position as source of truth
+		if sel.cursor < inputLen {
+			sel.Extend(sel.cursor + 1)
 		}
 		return true, false
 

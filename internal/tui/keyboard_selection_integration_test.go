@@ -376,3 +376,44 @@ func TestSelectionIsolationBetweenFields(t *testing.T) {
 	bodySel = m.BodySelection()
 	assert.False(t, bodySel.Active(), "Body selection should still be empty")
 }
+
+// TestShiftLeftExtendByOneCharacter verifies Shift+Left extends selection one char at a time (W4)
+func TestShiftLeftExtendByOneCharacter(t *testing.T) {
+	m := newModel(defaultConfig()).
+		WithFocus(tui.RequestPane).
+		WithActiveField(tui.URLField).
+		WithURLValue("12345")
+
+	// Select all first to understand the baseline
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyCtrlA})
+	sel := m.URLSelection()
+	start, end := sel.Range()
+	t.Logf("After Ctrl+A: start=%d, end=%d", start, end)
+
+	// Now test: press Right to move cursor past selection
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRight})
+	sel = m.URLSelection()
+	start, end = sel.Range()
+	t.Logf("After Right: active=%v, start=%d, end=%d", sel.Active(), start, end)
+	assert.False(t, sel.Active(), "Selection should be cleared after Right arrow")
+
+	// Now press Shift+Left to extend selection from cursor backward
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyShiftLeft})
+	sel = m.URLSelection()
+	start, end = sel.Range()
+	t.Logf("After Shift+Left once: start=%d, end=%d", start, end)
+
+	// The exact values depend on where cursor ends up, but selection should be active
+	assert.True(t, sel.Active(), "Selection should be active after Shift+Left")
+
+	// Press Shift+Left again to extend further
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyShiftLeft})
+	sel = m.URLSelection()
+	start2, end2 := sel.Range()
+	t.Logf("After Shift+Left twice: start=%d, end=%d", start2, end2)
+
+	// Selection range should expand (more characters selected)
+	currentSize := end - start
+	newSize := end2 - start2
+	assert.Greater(t, newSize, currentSize, "Selection should expand with each Shift+Left")
+}
