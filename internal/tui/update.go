@@ -2093,6 +2093,8 @@ func (m Model) handleBodyFieldKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 	var cmd tea.Cmd
 	m.bodyTextarea, cmd = m.bodyTextarea.Update(msg)
+	// TODO: W9-W11 - Wire selection for textarea (body field)
+	// Textarea requires custom selection handling due to different API
 	return m, cmd
 }
 
@@ -2243,11 +2245,68 @@ func (m Model) handleHeadersFieldKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleHeaderFieldEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Handle copy/cut for focused input
+	if msg.Type == tea.KeyCtrlC {
+		if m.headerKeyInput.Focused() {
+			text := copySelectionText(m.headerKeyInput.Value(), m.headerKeySelection)
+			if text != "" {
+				return m, copyToClipboardCmd(text)
+			}
+		} else {
+			text := copySelectionText(m.headerValueInput.Value(), m.headerValueSelection)
+			if text != "" {
+				return m, copyToClipboardCmd(text)
+			}
+		}
+		return m, nil
+	}
+	if msg.Type == tea.KeyCtrlX {
+		if m.headerKeyInput.Focused() {
+			text := copySelectionText(m.headerKeyInput.Value(), m.headerKeySelection)
+			newValue, newCursorPos := cutSelection(m.headerKeyInput.Value(), m.headerKeySelection)
+			m.headerKeyInput.SetValue(newValue)
+			m.headerKeyInput.SetCursor(newCursorPos)
+			m.headerKeySelection.Clear(newCursorPos)
+			if text != "" {
+				return m, copyToClipboardCmd(text)
+			}
+		} else {
+			text := copySelectionText(m.headerValueInput.Value(), m.headerValueSelection)
+			newValue, newCursorPos := cutSelection(m.headerValueInput.Value(), m.headerValueSelection)
+			m.headerValueInput.SetValue(newValue)
+			m.headerValueInput.SetCursor(newCursorPos)
+			m.headerValueSelection.Clear(newCursorPos)
+			if text != "" {
+				return m, copyToClipboardCmd(text)
+			}
+		}
+		return m, nil
+	}
+
+	// Handle selection keys for whichever input is focused
+	var sel *textSelection
+	var input *textinput.Model
+	if m.headerKeyInput.Focused() {
+		sel = &m.headerKeySelection
+		input = &m.headerKeyInput
+	} else {
+		sel = &m.headerValueSelection
+		input = &m.headerValueInput
+	}
+
+	handled, shouldUpdateComponent := handleSelectionKeyForInput(msg, sel, input, input.Position())
+	if handled && !shouldUpdateComponent {
+		_, selEnd := sel.Range()
+		input.SetCursor(selEnd)
+		return m, nil
+	}
+
 	if msg.Type == tea.KeyTab {
 		if m.headerKeyInput.Focused() {
 			if suggestion := headerNameSuggestion(m.headerKeyInput.Value()); suggestion != "" {
 				m.headerKeyInput.SetValue(suggestion)
 				m.headerKeyInput.SetCursor(len([]rune(suggestion)))
+				m.headerKeySelection.Clear(len([]rune(suggestion)))
 				return m, nil
 			}
 			m.headerKeyInput.Blur()
@@ -2255,6 +2314,7 @@ func (m Model) handleHeaderFieldEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		} else if suggestion := headerValueSuggestion(m.headerKeyInput.Value(), m.headerValueInput.Value()); suggestion != "" {
 			m.headerValueInput.SetValue(suggestion)
 			m.headerValueInput.SetCursor(len([]rune(suggestion)))
+			m.headerValueSelection.Clear(len([]rune(suggestion)))
 			return m, nil
 		} else {
 			m.headerValueInput.Blur()
@@ -2268,8 +2328,14 @@ func (m Model) handleHeaderFieldEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	if m.headerKeyInput.Focused() {
 		m.headerKeyInput, cmd = m.headerKeyInput.Update(msg)
+		if !handled || shouldUpdateComponent {
+			m.headerKeySelection.Clear(m.headerKeyInput.Position())
+		}
 	} else {
 		m.headerValueInput, cmd = m.headerValueInput.Update(msg)
+		if !handled || shouldUpdateComponent {
+			m.headerValueSelection.Clear(m.headerValueInput.Position())
+		}
 	}
 	return m, cmd
 }
