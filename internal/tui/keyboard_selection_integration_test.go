@@ -216,3 +216,41 @@ func TestKeyboardNavigationAndSelection(t *testing.T) {
 	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyHome})
 	assert.False(t, m.URLSelection().Active())
 }
+
+// TestCtrlXCutWritesToClipboard verifies cut copies text to clipboard and removes it (W2)
+func TestCtrlXCutWritesToClipboard(t *testing.T) {
+	m := newModel(defaultConfig()).
+		WithFocus(tui.RequestPane).
+		WithActiveField(tui.URLField).
+		WithURLValue("https://example.com")
+
+	// Select all text
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyCtrlA})
+	sel := m.URLSelection()
+	assert.True(t, sel.Active())
+
+	// Press Ctrl+X to cut
+	// We need to capture the command to check clipboard write
+	m, cmd := callUpdateWithCmd(t, m, tea.KeyMsg{Type: tea.KeyCtrlX})
+
+	// Verify the command is not nil (clipboard write command)
+	assert.NotNil(t, cmd, "Ctrl+X should return a clipboard write command")
+
+	// Run the command to get the clipboard message
+	msg := cmd()
+
+	// The message should be a clipboardMsg with the text that was cut
+	// (Not clipboardErrorMsg which would indicate failure)
+	// We can't directly check the type due to package boundaries, so we check
+	// that something was returned and the field behavior is correct
+
+	// Verify the URL field is now empty
+	newURL := m.URLValue()
+	assert.Equal(t, "", newURL, "URL should be empty after cut")
+
+	// Verify selection is cleared
+	assert.False(t, m.URLSelection().Active(), "Selection should be cleared after cut")
+
+	// Verify the command returns a message (not nil)
+	assert.NotNil(t, msg, "Command should return a clipboard message")
+}

@@ -970,12 +970,14 @@ func (m Model) handleRequestKey(_ string, msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		if msg.Type == tea.KeyCtrlX {
+			// Capture selected text BEFORE removing it
+			text := copySelectionText(m.urlInput.Value(), m.urlSelection)
+			// Remove the selected text
 			newValue, newCursorPos := cutSelection(m.urlInput.Value(), m.urlSelection)
 			m.urlInput.SetValue(newValue)
 			m.urlInput.SetCursor(newCursorPos)
 			m.urlSelection.Clear(newCursorPos)
-			// Won't have selection after cut, but check anyway
-			text := copySelectionText(m.urlInput.Value(), m.urlSelection)
+			// Write the captured text to clipboard
 			if text != "" {
 				return m, copyToClipboardCmd(text)
 			}
