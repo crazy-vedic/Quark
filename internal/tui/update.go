@@ -326,6 +326,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Global shortcuts that work in all modes.
 		switch msg.Type {
 		case tea.KeyCtrlC:
+			if text, ok := m.activeTextSelection(); ok {
+				return m, copyToClipboardCmd(text)
+			}
 			return m, tea.Quit
 		case tea.KeyEsc:
 			if m.mode == normalMode {
@@ -2592,6 +2595,33 @@ func copyToClipboardCmd(text string) tea.Cmd {
 		}
 		return clipboardMsg{text: text}
 	}
+}
+
+// activeTextSelection checks if any focused text field has an active selection.
+// Returns the selected text if found, or empty string and false if not.
+func (m Model) activeTextSelection() (text string, ok bool) {
+	switch m.activeField {
+	case urlField:
+		if m.urlSelection.Active() {
+			text := copySelectionText(m.urlInput.Value(), m.urlSelection)
+			return text, text != ""
+		}
+	case bodyField:
+		if m.bodySelection.Active() {
+			text := copySelectionText(m.bodyTextarea.Value(), m.bodySelection)
+			return text, text != ""
+		}
+	case headersField:
+		if m.headerKeySelection.Active() {
+			text := copySelectionText(m.headerKeyInput.Value(), m.headerKeySelection)
+			return text, text != ""
+		}
+		if m.headerValueSelection.Active() {
+			text := copySelectionText(m.headerValueInput.Value(), m.headerValueSelection)
+			return text, text != ""
+		}
+	}
+	return "", false
 }
 
 // clipboardErrorMsg signals clipboard operation failure

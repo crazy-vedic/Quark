@@ -131,7 +131,46 @@ func TestUpdate_EscKey_NoOp_WhenNotLoading(t *testing.T) {
 func TestUpdate_QuitKey(t *testing.T) {
 	m := newTestModel()
 	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
-	require.NotNil(t, cmd, "ctrl+c must return a Quit command")
+	require.NotNil(t, cmd, "ctrl+c must return a command")
+	// When no text field has focus, should return tea.Quit function
+	cmdFunc := fmt.Sprintf("%p", tea.Quit)
+	actualFunc := fmt.Sprintf("%p", cmd)
+	require.Equal(t, cmdFunc, actualFunc, "ctrl+c without selection must return tea.Quit")
+}
+
+func TestUpdate_CtrlC_CopiesWhenSelectionActive(t *testing.T) {
+	// Test that Ctrl+C copies a selection instead of quitting
+	m := newTestModel().
+		WithFocus(tui.RequestPane).
+		WithActiveField(tui.URLField).
+		WithURLValue("https://example.com/test").
+		WithURLSelection(0, 5) // Select "https"
+
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
+
+	// Verify that we get a clipboard command, not tea.Quit
+	require.NotNil(t, cmd, "ctrl+c with active selection must return a command")
+	cmdFunc := fmt.Sprintf("%p", tea.Quit)
+	actualFunc := fmt.Sprintf("%p", cmd)
+	require.NotEqual(t, cmdFunc, actualFunc,
+		"ctrl+c with active selection must not return tea.Quit")
+}
+
+func TestUpdate_CtrlC_QuitsWhenNoSelection(t *testing.T) {
+	// Test that Ctrl+C quits when there's no active selection
+	m := newTestModel().
+		WithFocus(tui.RequestPane).
+		WithActiveField(tui.URLField).
+		WithURLValue("https://example.com/test")
+
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
+
+	// Verify that we get tea.Quit command
+	require.NotNil(t, cmd, "ctrl+c without selection must return a command")
+	cmdFunc := fmt.Sprintf("%p", tea.Quit)
+	actualFunc := fmt.Sprintf("%p", cmd)
+	require.Equal(t, cmdFunc, actualFunc,
+		"ctrl+c without selection must return tea.Quit")
 }
 
 func TestUpdate_UnexpectedError_SetsFatalErr(t *testing.T) {

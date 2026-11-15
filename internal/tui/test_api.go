@@ -152,6 +152,12 @@ func (m Model) WithActiveRequest(r *domain.Request) Model {
 	return m
 }
 
+func (m Model) WithURLSelection(start, end int) Model {
+	m.urlSelection.anchor = start
+	m.urlSelection.cursor = end
+	return m
+}
+
 func (m Model) WithValidationErr(s string) Model {
 	if m.activeRequest != nil && m.activeRequest.ID != "" {
 		m = m.setRequestValidationErr(m.activeRequest.ID, s)
@@ -456,24 +462,24 @@ func (m Model) RequestPaneContentClickPos() (x, y int, ok bool) {
 	return x, y, true
 }
 
-func (m Model) Method() string                   { return m.method }
-func (m Model) URLValue() string                  { return m.urlInput.Value() }
-func (m Model) URLSelection() textSelection           { return m.urlSelection }
-func (m Model) BodySelection() textSelection          { return m.bodySelection }
-func (m Model) HeaderKeySelection() textSelection     { return m.headerKeySelection }
-func (m Model) HeaderValueSelection() textSelection   { return m.headerValueSelection }
-func (m Model) SearchSelection() textSelection        { return m.searchSelection }
-func (m Model) ViewerFindSelection() textSelection    { return m.viewerFindSelection }
-func (m Model) ImportInputSelection() textSelection   { return m.importInputSelection }
-func (m Model) AuthTokenSelection() textSelection     { return m.authTokenSelection }
-func (m Model) AuthUsernameSelection() textSelection  { return m.authUsernameSelection }
-func (m Model) AuthPasswordSelection() textSelection  { return m.authPasswordSelection }
-func (m Model) AuthAPIKeyNameSelection() textSelection { return m.authAPIKeyNameSelection }
+func (m Model) Method() string                          { return m.method }
+func (m Model) URLValue() string                        { return m.urlInput.Value() }
+func (m Model) URLSelection() textSelection             { return m.urlSelection }
+func (m Model) BodySelection() textSelection            { return m.bodySelection }
+func (m Model) HeaderKeySelection() textSelection       { return m.headerKeySelection }
+func (m Model) HeaderValueSelection() textSelection     { return m.headerValueSelection }
+func (m Model) SearchSelection() textSelection          { return m.searchSelection }
+func (m Model) ViewerFindSelection() textSelection      { return m.viewerFindSelection }
+func (m Model) ImportInputSelection() textSelection     { return m.importInputSelection }
+func (m Model) AuthTokenSelection() textSelection       { return m.authTokenSelection }
+func (m Model) AuthUsernameSelection() textSelection    { return m.authUsernameSelection }
+func (m Model) AuthPasswordSelection() textSelection    { return m.authPasswordSelection }
+func (m Model) AuthAPIKeyNameSelection() textSelection  { return m.authAPIKeyNameSelection }
 func (m Model) AuthAPIKeyValueSelection() textSelection { return m.authAPIKeyValueSelection }
-func (m Model) EnvEditKeySelection() textSelection    { return m.envEditKeySelection }
-func (m Model) EnvEditValSelection() textSelection    { return m.envEditValSelection }
-func (m Model) ResponseTab() responseTabID         { return m.responseTab }
-func (m Model) SearchResults() []*search.SearchHit { return m.searchResults }
+func (m Model) EnvEditKeySelection() textSelection      { return m.envEditKeySelection }
+func (m Model) EnvEditValSelection() textSelection      { return m.envEditValSelection }
+func (m Model) ResponseTab() responseTabID              { return m.responseTab }
+func (m Model) SearchResults() []*search.SearchHit      { return m.searchResults }
 
 // ResponseTabClickPos returns coordinates for clicking a response tab label.
 // tab must be BodyTab, HeadersTab, or RawTab.
