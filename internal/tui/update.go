@@ -1081,6 +1081,35 @@ func (m Model) triggerCurlImport(raw string) (Model, tea.Cmd) {
 // --- Search modal ---
 
 func (m Model) handleSearchKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Handle copy/cut for search
+	if msg.Type == tea.KeyCtrlC {
+		text := copySelectionText(m.searchInput.Value(), m.searchSelection)
+		if text != "" {
+			return m, copyToClipboardCmd(text)
+		}
+		return m, nil
+	}
+	if msg.Type == tea.KeyCtrlX {
+		text := copySelectionText(m.searchInput.Value(), m.searchSelection)
+		newValue, newCursorPos := cutSelection(m.searchInput.Value(), m.searchSelection)
+		m.searchInput.SetValue(newValue)
+		m.searchInput.SetCursor(newCursorPos)
+		m.searchSelection.Clear(newCursorPos)
+		if text != "" {
+			return m, copyToClipboardCmd(text)
+		}
+		return m, nil
+	}
+
+	// Handle selection keys
+	handled, shouldUpdateComponent := handleSelectionKeyForInput(
+		msg, &m.searchSelection, &m.searchInput, m.searchInput.Position())
+	if handled && !shouldUpdateComponent {
+		_, selEnd := m.searchSelection.Range()
+		m.searchInput.SetCursor(selEnd)
+		return m, nil
+	}
+
 	// Resolver lookup for overlay mode.
 	if action, ok := m.resolver.Resolve(1, 0, msg); ok {
 		switch action {
@@ -1132,6 +1161,10 @@ func (m Model) handleSearchKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	beforeCursor := m.searchInput.Position()
 	var inputCmd tea.Cmd
 	m.searchInput, inputCmd = m.searchInput.Update(msg)
+	// Clear selection after regular key handling
+	if !handled || shouldUpdateComponent {
+		m.searchSelection.Clear(m.searchInput.Position())
+	}
 	if m.debugLog != nil {
 		fmt.Fprintf(
 			m.debugLog,
