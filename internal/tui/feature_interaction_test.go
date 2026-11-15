@@ -100,3 +100,154 @@ func TestSaveBodyPreservesFileReference(t *testing.T) {
 	require.NotNil(t, cmd)
 	require.Equal(t, "@payload.json", m.bodyTextarea.Value())
 }
+
+// E2E tests for JSON formatting on body save (Issue #49)
+
+func TestFinishBodyEdit_FormatsJSONWhenEnabled(t *testing.T) {
+	cfg := config.Default(t.TempDir())
+	cfg.Format.JSONOnSave = true
+
+	m := New(Deps{Config: cfg})
+	m.activeRequest = &domain.Request{ID: "req-1"}
+	m.bodyTextarea = textarea.New()
+	m.bodyTextarea.SetValue(`{"name":"alice","age":30}`)
+	m.activeField = bodyField
+
+	updated := m.finishBodyEdit()
+	m = updated
+
+	// Should be formatted with newlines
+	require.Contains(t, m.activeRequest.Body, "\n")
+	require.Contains(t, m.statusSuccess, "JSON formatted")
+}
+
+func TestFinishBodyEdit_LeavesMalformedJSONUnchanged(t *testing.T) {
+	cfg := config.Default(t.TempDir())
+	cfg.Format.JSONOnSave = true
+
+	m := New(Deps{Config: cfg})
+	m.activeRequest = &domain.Request{ID: "req-1"}
+	m.bodyTextarea = textarea.New()
+	malformed := `{"invalid":,}`
+	m.bodyTextarea.SetValue(malformed)
+	m.activeField = bodyField
+
+	updated := m.finishBodyEdit()
+	m = updated
+
+	require.Equal(t, malformed, m.activeRequest.Body)
+	require.Equal(t, "Body updated", m.statusSuccess)
+}
+
+func TestFinishBodyEdit_DisablesFormattingWhenConfigFalse(t *testing.T) {
+	cfg := config.Default(t.TempDir())
+	cfg.Format.JSONOnSave = false
+
+	m := New(Deps{Config: cfg})
+	m.activeRequest = &domain.Request{ID: "req-1"}
+	m.bodyTextarea = textarea.New()
+	minified := `{"name":"alice","age":30}`
+	m.bodyTextarea.SetValue(minified)
+	m.activeField = bodyField
+
+	updated := m.finishBodyEdit()
+	m = updated
+
+	require.Equal(t, minified, m.activeRequest.Body)
+	require.Equal(t, "Body updated", m.statusSuccess)
+	require.NotContains(t, m.statusSuccess, "formatted")
+}
+
+func TestFinishBodyEdit_PresservesIndentStyle(t *testing.T) {
+	cfg := config.Default(t.TempDir())
+	cfg.Format.JSONOnSave = true
+
+	m := New(Deps{Config: cfg})
+	m.activeRequest = &domain.Request{ID: "req-1"}
+	m.bodyTextarea = textarea.New()
+	// Input with 4-space indent
+	m.bodyTextarea.SetValue("{\n    \"a\": 1\n}")
+	m.activeField = bodyField
+
+	updated := m.finishBodyEdit()
+	m = updated
+
+	// Formatted with 4-space indent
+	require.Contains(t, m.activeRequest.Body, "    \"a\"",
+		"4-space indent style should be preserved")
+}
+
+func TestFinishBodyEdit_HandlesLargeNestedJSON(t *testing.T) {
+	cfg := config.Default(t.TempDir())
+	cfg.Format.JSONOnSave = true
+
+	m := New(Deps{Config: cfg})
+	m.activeRequest = &domain.Request{ID: "req-1"}
+	m.bodyTextarea = textarea.New()
+	// Deeply nested structure
+	deepJSON := `{"level1":{"level2":{"level3":{"level4":{"level5":{"value":42}}}}}}`
+	m.bodyTextarea.SetValue(deepJSON)
+	m.activeField = bodyField
+
+	updated := m.finishBodyEdit()
+	m = updated
+
+	// Should format and maintain structure
+	require.Contains(t, m.activeRequest.Body, "\n")
+	require.Contains(t, m.activeRequest.Body, "\"value\"")
+	require.Contains(t, m.statusSuccess, "JSON formatted")
+}
+
+func TestFinishBodyEdit_PreservesNonJSONBody(t *testing.T) {
+	cfg := config.Default(t.TempDir())
+	cfg.Format.JSONOnSave = true
+
+	m := New(Deps{Config: cfg})
+	m.activeRequest = &domain.Request{ID: "req-1"}
+	m.bodyTextarea = textarea.New()
+	plainText := "This is plain text\nNot JSON"
+	m.bodyTextarea.SetValue(plainText)
+	m.activeField = bodyField
+
+	updated := m.finishBodyEdit()
+	m = updated
+
+	require.Equal(t, plainText, m.activeRequest.Body)
+	require.Equal(t, "Body updated", m.statusSuccess)
+}
+
+func TestFinishBodyEdit_PreservesNumericPrecision(t *testing.T) {
+	cfg := config.Default(t.TempDir())
+	cfg.Format.JSONOnSave = true
+
+	m := New(Deps{Config: cfg})
+	m.activeRequest = &domain.Request{ID: "req-1"}
+	m.bodyTextarea = textarea.New()
+	// Large number that could lose precision
+	preciseJSON := `{"big":12345678901234567890,"float":3.14159265359}`
+	m.bodyTextarea.SetValue(preciseJSON)
+	m.activeField = bodyField
+
+	updated := m.finishBodyEdit()
+	m = updated
+
+	require.Contains(t, m.activeRequest.Body, "12345678901234567890")
+	require.Contains(t, m.activeRequest.Body, "3.14159265359")
+}
+
+func TestFinishBodyEdit_EmptyBodyRemains(t *testing.T) {
+	cfg := config.Default(t.TempDir())
+	cfg.Format.JSONOnSave = true
+
+	m := New(Deps{Config: cfg})
+	m.activeRequest = &domain.Request{ID: "req-1"}
+	m.bodyTextarea = textarea.New()
+	m.bodyTextarea.SetValue("")
+	m.activeField = bodyField
+
+	updated := m.finishBodyEdit()
+	m = updated
+
+	require.Equal(t, "", m.activeRequest.Body)
+	require.Equal(t, "Body updated", m.statusSuccess)
+}
