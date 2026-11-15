@@ -220,6 +220,37 @@ func TestStore_SaveRequest_GeneratesIDWhenEmpty(t *testing.T) {
 	assert.Len(t, reqs, 2, "both requests should persist without overwriting")
 }
 
+func TestStore_SaveRequest_EmptyCollectionIDReturnsError(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	req := &domain.Request{
+		ID:     uuid.New().String(),
+		Name:   "Test",
+		Method: "GET",
+		URL:    "http://example.com",
+	}
+	err := s.SaveRequest(ctx, req)
+	assert.Error(t, err)
+	assert.ErrorIs(t, err, store.ErrCollectionRequired)
+}
+
+func TestStore_SaveRequest_NonExistentCollectionIDReturnsError(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	req := &domain.Request{
+		ID:           uuid.New().String(),
+		CollectionID: "non-existent-id",
+		Name:         "Test",
+		Method:       "GET",
+		URL:          "http://example.com",
+	}
+	err := s.SaveRequest(ctx, req)
+	assert.Error(t, err)
+	assert.ErrorIs(t, err, store.ErrCollectionNotFound)
+}
+
 func TestStore_MigrationRepairsLegacyEmptyRequestIDs(t *testing.T) {
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "test.db")

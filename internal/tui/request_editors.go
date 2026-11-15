@@ -7,6 +7,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/crazy-vedic/quark/internal/domain"
+	"github.com/crazy-vedic/quark/internal/format"
 )
 
 func requestContentType(req *domain.Request) string {
@@ -135,10 +136,21 @@ func (m Model) finishURLEdit() (Model, tea.Cmd) {
 }
 
 func (m Model) finishBodyEdit() Model {
-	m.activeRequest.Body = m.bodyTextarea.Value()
+	body := m.bodyTextarea.Value()
+	statusMsg := "Body updated"
+
+	// Format JSON if enabled and the body is valid JSON.
+	if m.cfg.Format.JSONOnSave {
+		if formatted, changed := format.FormatJSONIfValid(body); changed {
+			body = formatted
+			statusMsg = "Body updated (JSON formatted)"
+		}
+	}
+
+	m.activeRequest.Body = body
 	m.bodyTextarea.Blur()
 	m.activeField = noneField
-	return m.status("success", "Body updated")
+	return m.status("success", statusMsg)
 }
 
 func (m Model) finishAuthEdit() Model {

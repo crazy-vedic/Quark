@@ -23,6 +23,7 @@ type Config struct {
 	Logging     Logging     `toml:"logging"`
 	Backup      Backup      `toml:"backup"`
 	Updates     Updates     `toml:"updates"`
+	Format      Format      `toml:"format"`
 	Keybindings Keybindings `toml:"keybindings"`
 }
 
@@ -81,6 +82,11 @@ type Updates struct {
 	AutoApply         bool     `toml:"auto_apply"` // Deferred: only applies to brew/winget channels
 }
 
+// Format configures formatting behavior for request bodies.
+type Format struct {
+	JSONOnSave bool `toml:"json_on_save"`
+}
+
 // duration is a TOML-decodable wrapper for time.Duration.
 type duration struct{ time.Duration }
 
@@ -123,6 +129,9 @@ func Default(configDir string) Config {
 			RetryAfterFailure: duration{1 * time.Hour},
 			Timeout:           duration{10 * time.Second},
 			AutoApply:         false,
+		},
+		Format: Format{
+			JSONOnSave: true,
 		},
 		Keybindings: keybindings.DefaultKeybindings(),
 	}
@@ -198,6 +207,9 @@ func Load(configDir string) (Config, error) {
 	}
 	if md.IsDefined("updates", "auto_apply") {
 		cfg.Updates.AutoApply = override.Updates.AutoApply
+	}
+	if md.IsDefined("format", "json_on_save") {
+		cfg.Format.JSONOnSave = override.Format.JSONOnSave
 	}
 	if md.IsDefined("keybindings") {
 		cfg.Keybindings = mergeKeybindings(cfg.Keybindings, override.Keybindings)
