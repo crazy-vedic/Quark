@@ -1692,7 +1692,12 @@ func (m Model) viewSearchModal() string {
 		sb.WriteString(m.styles.titleStyle.Render("Search all requests"))
 		sb.WriteString("\n\n")
 	}
-	sb.WriteString(m.renderInputWithSelection(m.searchInput.Value(), m.searchSelection))
+	// Render search input with selection support, but fall back to View() for proper styling
+	if m.searchSelection.Active() {
+		sb.WriteString(m.renderInputWithSelection(m.searchInput.Value(), m.searchSelection))
+	} else {
+		sb.WriteString(m.searchInput.View())
+	}
 	sb.WriteString("\n\n")
 	query := strings.TrimSpace(m.searchInput.Value())
 
