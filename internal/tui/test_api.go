@@ -125,6 +125,11 @@ func (m Model) WithURLValue(v string) Model {
 	return m
 }
 
+func (m Model) WithBodyValue(v string) Model {
+	m.bodyTextarea.SetValue(v)
+	return m
+}
+
 func (m Model) WithCollections(c []*domain.Collection) Model {
 	m.collections = c
 	return m
@@ -453,6 +458,10 @@ func (m Model) RequestPaneContentClickPos() (x, y int, ok bool) {
 
 func (m Model) Method() string                     { return m.method }
 func (m Model) URLValue() string                   { return m.urlInput.Value() }
+func (m Model) URLSelection() textSelection        { return m.urlSelection }
+func (m Model) BodySelection() textSelection       { return m.bodySelection }
+func (m Model) HeaderKeySelection() textSelection  { return m.headerKeySelection }
+func (m Model) HeaderValueSelection() textSelection { return m.headerValueSelection }
 func (m Model) ResponseTab() responseTabID         { return m.responseTab }
 func (m Model) SearchResults() []*search.SearchHit { return m.searchResults }
 

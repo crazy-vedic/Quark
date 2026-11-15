@@ -674,9 +674,17 @@ func (m Model) dispatchNormalAction(action string) (tea.Model, tea.Cmd) {
 	case keybindings.ActionImportPostman:
 		return m.openPostmanImportModal(), textinput.Blink
 	case keybindings.ActionEnvNext:
-		return m.cycleEnv(1)
+		// Only switch environments when no text field is focused
+		if m.activeField == noneField {
+			return m.cycleEnv(1)
+		}
+		return m, nil
 	case keybindings.ActionEnvPrev:
-		return m.cycleEnv(-1)
+		// Only switch environments when no text field is focused
+		if m.activeField == noneField {
+			return m.cycleEnv(-1)
+		}
+		return m, nil
 	}
 
 	// Pane-specific actions.
@@ -949,15 +957,29 @@ func (m Model) handleRequestKey(_ string, msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// Inline field routing — when active, all keys go to the field.
 	switch m.activeField {
 	case urlField:
+		// Handle selection keys first (Shift+arrows, Ctrl+A, etc.)
+		handled, shouldUpdateComponent := handleSelectionKeyForInput(msg, &m.urlSelection, &m.urlInput, m.urlInput.Position())
+		if handled && !shouldUpdateComponent {
+			// Selection key was handled; update input cursor to match selection cursor
+			_, selEnd := m.urlSelection.Range()
+			m.urlInput.SetCursor(selEnd)
+			return m, nil
+		}
+
 		if msg.Type == tea.KeyTab {
 			if suggestion := m.urlSuggestion(m.urlInput.Value()); suggestion != "" {
 				m.urlInput.SetValue(suggestion)
 				m.urlInput.SetCursor(len([]rune(suggestion)))
+				m.urlSelection.Clear(len([]rune(suggestion)))
 				return m, nil
 			}
 		}
 		var cmd tea.Cmd
 		m.urlInput, cmd = m.urlInput.Update(msg)
+		// Regular character input or other keys clear selection
+		if !handled || shouldUpdateComponent {
+			m.urlSelection.Clear(m.urlInput.Position())
+		}
 		if msg.Type == tea.KeyEnter {
 			if strings.HasPrefix(strings.TrimSpace(m.urlInput.Value()), "curl") {
 				return m.status(

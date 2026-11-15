@@ -94,19 +94,28 @@ func (m Model) cancelActiveFieldEdit() Model {
 		m.activeField = noneField
 		m.urlInput.SetValue(m.preEditURL)
 		m.urlInput.Blur()
+		m.urlSelection.Clear(0)
 	case bodyField:
 		m.activeField = noneField
 		m.bodyTextarea.Blur()
 		m.bodyTextarea.SetValue(m.preEditBody)
+		m.bodySelection.Clear(0)
 	case authField:
 		m.activeField = noneField
 		m.authEditor = authEditor{}
+		m.authTokenSelection.Clear(0)
+		m.authUsernameSelection.Clear(0)
+		m.authPasswordSelection.Clear(0)
+		m.authAPIKeyNameSelection.Clear(0)
+		m.authAPIKeyValueSelection.Clear(0)
 	case headersField:
 		m.activeField = noneField
 		m.headerPairs = nil
 		m.headerEditing = false
 		m.headerKeyInput.Blur()
 		m.headerValueInput.Blur()
+		m.headerKeySelection.Clear(0)
+		m.headerValueSelection.Clear(0)
 	}
 	return m
 }
@@ -128,6 +137,7 @@ func (m Model) cycleMethod(cycle func(string) string) (Model, tea.Cmd) {
 func (m Model) finishURLEdit() (Model, tea.Cmd) {
 	m.activeField = noneField
 	m.urlInput.Blur()
+	m.urlSelection.Clear(0)
 	if m.activeRequest == nil {
 		return m, nil
 	}
