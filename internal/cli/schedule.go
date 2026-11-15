@@ -15,6 +15,8 @@ import (
 	"github.com/crazy-vedic/quark/internal/store"
 )
 
+const scheduleRunDueCmd = "run-due"
+
 type ScheduleStore interface {
 	SearchStore
 	ScheduleEnvironmentStore
@@ -111,7 +113,7 @@ func newScheduleListCmd(st ScheduleStore) *cobra.Command {
 
 func newScheduleRunDueCmd(st ScheduleStore, e *exec.Executor, now func() time.Time) *cobra.Command {
 	return &cobra.Command{
-		Use:   "run-due",
+		Use:   scheduleRunDueCmd,
 		Short: "Execute all pending scheduled runs due now",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			runs, err := st.ListDueScheduledRuns(cmd.Context(), now())
@@ -161,7 +163,8 @@ func newScheduleRunDueCmd(st ScheduleStore, e *exec.Executor, now func() time.Ti
 				run.Status = domain.ScheduledRunCompleted
 				run.LastError = ""
 				if err := st.SaveScheduledRun(cmd.Context(), run); err != nil {
-					fmt.Fprintf(cmd.OutOrStdout(), "failed to mark %s completed: %v\n", shortScheduleID(run.ID), err)
+					fmt.Fprintf(cmd.OutOrStdout(), "failed to mark %s completed: %v\n",
+						shortScheduleID(run.ID), err)
 					continue
 				}
 				fmt.Fprintf(

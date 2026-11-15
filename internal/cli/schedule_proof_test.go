@@ -121,7 +121,8 @@ func TestProof_RunDue_SaveFailureDoesNotAbortBatch(t *testing.T) {
 	st.saveErrByRunID = map[string]error{"run-1": assert.AnError}
 
 	transport := &reentrantTransport{}
-	cmd := NewScheduleCmd(orderedScheduleStore{st}, exec.New(transport), func() time.Time { return now })
+	cmd := NewScheduleCmd(orderedScheduleStore{st}, exec.New(transport),
+		func() time.Time { return now })
 	cmd.SetOut(new(bytes.Buffer))
 	cmd.SetArgs([]string{"run-due"})
 	cmd.SetContext(context.Background())
