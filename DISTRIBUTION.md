@@ -22,10 +22,8 @@ When you merge a PR with `Release: vX.Y.Z` in the body:
 
 1. **tag-on-merge.yml** validates version, creates tag, and pushes
 2. **release job** builds binaries, creates GitHub Release, uploads artifacts
-3. **publish-npm job** automatically publishes to npm registry (OIDC)
-4. **submit-winget job** either:
-   - Opens PR to microsoft/winget-pkgs (if `WINGET_PAT` configured)
-   - Prints manual submission instructions (if no token)
+3. **publish-npm job** automatically publishes to npm registry (OIDC) — no manual intervention needed
+4. **submit-winget job** prints manual submission instructions (manual submission required; see DISTRIBUTION.md and WINGET-AGENT-PLAN.md)
 
 ---
 
@@ -61,9 +59,15 @@ When you merge a PR with `Release: vX.Y.Z` in the body:
 ### Release Process
 
 Automatic on every release:
+- Triggered automatically by `tag-on-merge.yml` after GitHub Release is created
 - Platform packages published first (to avoid dangling optionalDependencies)
 - Main package published last
 - Provenance recorded by npm
+
+**Note:** npm packages are published with the `latest` tag by default. To publish a prerelease or alternate tag manually:
+```bash
+gh workflow run publish-npm.yml -f tag=v1.0.0
+```
 
 ### Users
 
@@ -262,16 +266,25 @@ Once approved, Microsoft merges the PR. The package goes live on winget within h
 
 ---
 
-### Automated Submission (with WINGET_PAT)
+## Workflow Decisions
 
-If you add a `WINGET_PAT` secret (GitHub PAT with `public_repo` scope), the `submit-winget` job automatically:
-1. Generates manifests from the release tag
-2. Forks `microsoft/winget-pkgs` (if needed)
-3. Creates a branch
-4. Commits manifests
-5. Opens PR
+### npm Publishing
 
-Still requires monitoring for validation results and addressing feedback.
+**Automatic** via `publish-npm` job in `tag-on-merge.yml`:
+- Triggered automatically after GitHub Release is created
+- No manual steps needed
+- OIDC trusted publishing handles credentials
+- Can still trigger manually to re-publish or use alternate tags:
+  ```bash
+  gh workflow run publish-npm.yml -f tag=v1.0.0
+  ```
+
+### submit-winget Job
+
+Currently **prints instructions** only (no automated submission):
+- winget approval is not yet complete (Microsoft review in progress)
+- Manual submission allows full control over timing and manifest tuning
+- See DISTRIBUTION.md (Manual Submission Steps) or WINGET-AGENT-PLAN.md for guided steps
 
 ---
 
@@ -322,6 +335,15 @@ Submit a new PR with the higher version number in the same folder structure. Mic
 2. Wait for analysis (usually 48-72 hours)
 3. If approved, resubmit to winget-pkgs (same PR, push new commit)
 4. If still flagged, consider code signing
+
+### Q: GoReleaser failed to upload. Can I rerun the workflow?
+
+If a release already has assets, `tag-on-merge.yml` skips GoReleaser. To retry:
+1. Manually delete the release on GitHub (keeps the tag)
+2. Rerun `tag-on-merge.yml` (or use `release-manual.yml`)
+3. GoReleaser will rebuild and re-upload
+
+Alternatively, use `release-manual.yml` to rebuild any tagged release without deleting GitHub assets.
 
 ---
 
