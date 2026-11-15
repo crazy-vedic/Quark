@@ -20,13 +20,11 @@ const (
 	ActionClientCerts   = "client_certificates"
 	ActionImportCurl    = "import_curl"
 	ActionExportCurl    = "export_curl"
-	ActionImportPostman = "sidebar_import_postman"
-	ActionImportParse   = "import_parse"
-	ActionImportCancel  = "import_cancel"
-	ActionImportEdit    = "import_edit"
-
-	// Text selection actions
-	ActionSelectCharLeft   = "select_char_left"
+	ActionImportPostman  = "sidebar_import_postman"
+	ActionImportParse    = "import_parse"
+	ActionImportCancel   = "import_cancel"
+	ActionImportEdit     = "import_edit"
+	ActionSelectCharLeft = "select_char_left"
 	ActionSelectCharRight  = "select_char_right"
 	ActionSelectWordLeft   = "select_word_left"
 	ActionSelectWordRight  = "select_word_right"

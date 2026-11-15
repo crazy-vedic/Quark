@@ -5,10 +5,9 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-// clipboardMsg signals a clipboard operation result
+// clipboardMsg signals a successful clipboard copy
 type clipboardMsg struct {
 	text string
-	err  error
 }
 
 // handleSelectionKeyForInput processes a keyboard message for a text input field

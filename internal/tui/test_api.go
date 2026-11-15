@@ -456,8 +456,8 @@ func (m Model) RequestPaneContentClickPos() (x, y int, ok bool) {
 	return x, y, true
 }
 
-func (m Model) Method() string                     { return m.method }
-func (m Model) URLValue() string                   { return m.urlInput.Value() }
+func (m Model) Method() string                   { return m.method }
+func (m Model) URLValue() string                  { return m.urlInput.Value() }
 func (m Model) URLSelection() textSelection           { return m.urlSelection }
 func (m Model) BodySelection() textSelection          { return m.bodySelection }
 func (m Model) HeaderKeySelection() textSelection     { return m.headerKeySelection }
