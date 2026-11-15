@@ -95,7 +95,17 @@ func (m Model) handleURLLineClick(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		m.urlInput.Focus()
 	}
 
-	m.urlInput.SetCursor(m.urlCursorPosFromClick(relX, layout))
+	cursorPos := m.urlCursorPosFromClick(relX, layout)
+	m.urlInput.SetCursor(cursorPos)
+
+	// Double-click selects word at cursor
+	if m.isDoubleTextClick(msg, "request-url") {
+		runes := stringToRunes(m.urlInput.Value())
+		start, end := wordBoundsAt(runes, cursorPos)
+		m.urlSelection.SelectWord(start, end)
+		m.urlInput.SetCursor(end)
+	}
+
 	if cmd == nil {
 		cmd = textinput.Blink
 	}
