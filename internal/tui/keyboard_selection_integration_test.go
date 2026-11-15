@@ -417,3 +417,38 @@ func TestShiftLeftExtendByOneCharacter(t *testing.T) {
 	newSize := end2 - start2
 	assert.Greater(t, newSize, currentSize, "Selection should expand with each Shift+Left")
 }
+
+// TestPasteMultipleCharactersOverSelection verifies paste replaces selection with full text (W5)
+func TestPasteMultipleCharactersOverSelection(t *testing.T) {
+	m := newModel(defaultConfig()).
+		WithFocus(tui.RequestPane).
+		WithActiveField(tui.URLField).
+		WithURLValue("hello world")
+
+	// Select "hello" (first 5 characters)
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyCtrlA})
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyShiftLeft})
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyShiftLeft})
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyShiftLeft})
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyShiftLeft})
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyShiftLeft})
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyShiftLeft})
+
+	sel := m.URLSelection()
+	start, end := sel.Range()
+	t.Logf("Selection: start=%d, end=%d", start, end)
+
+	// Simulate pasting "goodbye" (7 characters) over the selection
+	// This should replace the selected text with the full pasted text
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("goodbye"), Paste: true})
+
+	newURL := m.URLValue()
+	t.Logf("After paste: %q", newURL)
+
+	// The selection should be cleared
+	sel = m.URLSelection()
+	assert.False(t, sel.Active(), "Selection should be cleared after paste")
+
+	// The URL should contain the pasted text, not just the first character
+	assert.Contains(t, newURL, "goodbye", "Pasted text should be inserted completely")
+}

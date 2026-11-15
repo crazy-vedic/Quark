@@ -111,14 +111,15 @@ func handleSelectionKeyForInput(
 		return false, true // Let bubbles handle deletion
 
 	// Regular printable characters: replace selection with typed character
-	case len(msg.Runes) > 0 && msg.Runes[0] >= 32:
+	// Or paste operation: replace selection with full pasted content
+	case len(msg.Runes) > 0 && (msg.Paste || msg.Runes[0] >= 32):
 		if sel.Active() {
 			start, end := sel.Range()
 			value := input.Value()
 			newValue, _ := removeSelectedRange(value, start, end)
-			// Now insert the typed character at the start position
-			char := string(msg.Runes[0])
-			finalValue, newCursorPos := insertStringAtRunePosition(newValue, char, start)
+			// Use all runes (for paste) or just first character (for typed input)
+			textToInsert := string(msg.Runes)
+			finalValue, newCursorPos := insertStringAtRunePosition(newValue, textToInsert, start)
 			input.SetValue(finalValue)
 			input.SetCursor(newCursorPos)
 			sel.Clear(newCursorPos)
