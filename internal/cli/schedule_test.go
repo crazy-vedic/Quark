@@ -149,7 +149,7 @@ func TestNewScheduleCmd_RunDueExecutesAndMarksCompleted(t *testing.T) {
 	assert.Contains(t, out.String(), "ran run-1")
 }
 
-func TestNewScheduleCmd_RunDue_ReturnsStatusSaveErrorWhenMarkingFailed(t *testing.T) {
+func TestNewScheduleCmd_RunDue_ContinuesAfterSaveFailure(t *testing.T) {
 	now := time.Date(2026, 6, 25, 15, 0, 0, 0, time.UTC)
 	st := newFakeScheduleStore()
 	st.runs["run-1"] = &domain.ScheduledRun{
@@ -158,18 +158,34 @@ func TestNewScheduleCmd_RunDue_ReturnsStatusSaveErrorWhenMarkingFailed(t *testin
 		RunAt:     now.Add(-time.Minute),
 		Status:    domain.ScheduledRunPending,
 	}
+	st.runs["run-2"] = &domain.ScheduledRun{
+		ID:        "run-2",
+		RequestID: "req-1",
+		RunAt:     now.Add(-time.Minute),
+		Status:    domain.ScheduledRunPending,
+	}
 	st.saveErrByRunID = map[string]error{"run-1": assert.AnError}
 
-	cmd := NewScheduleCmd(st, nil, func() time.Time { return now })
-	cmd.SetOut(new(bytes.Buffer))
+	transport := &recordingRoundTripper{
+		response: &http.Response{
+			StatusCode: 200,
+			Status:     "200 OK",
+			Header:     http.Header{},
+			Body:       io.NopCloser(bytes.NewBufferString("ok")),
+		},
+	}
+
+	cmd := NewScheduleCmd(st, exec.New(transport), func() time.Time { return now })
+	out := new(bytes.Buffer)
+	cmd.SetOut(out)
 	cmd.SetArgs([]string{"run-due"})
 	cmd.SetContext(context.Background())
 
 	err := cmd.Execute()
-	require.Error(t, err)
-	assert.ErrorContains(t, err, "mark run-1 failed after request load error")
-	assert.ErrorContains(t, err, assert.AnError.Error())
-	assert.Equal(t, 1, st.saveCallCountByID["run-1"])
+	require.NoError(t, err)
+	assert.Contains(t, out.String(), "failed run-1")
+	assert.Equal(t, domain.ScheduledRunCompleted, st.runs["run-2"].Status)
+	assert.Contains(t, out.String(), "ran run-2")
 }
 
 func newFakeScheduleStore() *fakeScheduleStore {

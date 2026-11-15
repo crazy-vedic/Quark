@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -124,61 +123,46 @@ func newScheduleRunDueCmd(st ScheduleStore, e *exec.Executor, now func() time.Ti
 				return nil
 			}
 			for _, run := range runs {
+				run.Status = domain.ScheduledRunRunning
+				run.LastError = ""
+				_ = st.SaveScheduledRun(cmd.Context(), run)
+
 				req, err := st.GetRequest(cmd.Context(), run.RequestID)
 				if err != nil {
-					if saveErr := markScheduledRunFailed(
-						cmd.Context(),
-						st,
-						run,
-						err,
-					); saveErr != nil {
-						return fmt.Errorf(
-							"schedule run-due: mark %s failed after request load error: %w",
-							run.ID,
-							errors.Join(err, saveErr),
-						)
-					}
+					_ = markScheduledRunFailed(cmd.Context(), st, run, err)
 					fmt.Fprintf(cmd.OutOrStdout(), "failed %s: %v\n", shortScheduleID(run.ID), err)
 					continue
 				}
 				var prepared *domain.Request
-				if err == nil {
-					var colEnv, globalEnv map[string]string
-					colEnv, globalEnv, err = exec.ResolveEnvVars(
-						cmd.Context(), st, req.CollectionID,
-					)
-					if err != nil {
-						err = fmt.Errorf("resolve environments: %w", err)
-					}
-					if err == nil {
-						prepared, err = exec.InterpolateRequestWithOverrides(
-							req, nil, nil, colEnv, globalEnv,
-						)
-					}
-				}
-				if err == nil {
-					_, err = e.Execute(cmd.Context(), prepared)
-				}
+				var colEnv, globalEnv map[string]string
+				colEnv, globalEnv, err = exec.ResolveEnvVars(
+					cmd.Context(), st, req.CollectionID,
+				)
 				if err != nil {
-					if saveErr := markScheduledRunFailed(
-						cmd.Context(),
-						st,
-						run,
-						err,
-					); saveErr != nil {
-						return fmt.Errorf(
-							"schedule run-due: mark %s failed after execution error: %w",
-							run.ID,
-							errors.Join(err, saveErr),
-						)
+					err = fmt.Errorf("resolve environments: %w", err)
+				}
+				if err == nil {
+					prepared, err = exec.InterpolateRequestWithOverrides(
+						req, nil, nil, colEnv, globalEnv,
+					)
+				}
+				var result *exec.ExecuteResult
+				if err == nil {
+					result, err = e.Execute(cmd.Context(), prepared)
+				}
+				if err != nil || (result != nil && result.StatusCode >= 500) {
+					if err == nil {
+						err = fmt.Errorf("HTTP %d", result.StatusCode)
 					}
+					_ = markScheduledRunFailed(cmd.Context(), st, run, err)
 					fmt.Fprintf(cmd.OutOrStdout(), "failed %s: %v\n", shortScheduleID(run.ID), err)
 					continue
 				}
 				run.Status = domain.ScheduledRunCompleted
 				run.LastError = ""
 				if err := st.SaveScheduledRun(cmd.Context(), run); err != nil {
-					return fmt.Errorf("schedule run-due: update %s: %w", run.ID, err)
+					fmt.Fprintf(cmd.OutOrStdout(), "failed to mark %s completed: %v\n", shortScheduleID(run.ID), err)
+					continue
 				}
 				fmt.Fprintf(
 					cmd.OutOrStdout(),
