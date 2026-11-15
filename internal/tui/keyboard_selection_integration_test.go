@@ -299,3 +299,80 @@ func TestCtrlXWithoutSelection(t *testing.T) {
 	// URL should be unchanged
 	assert.Equal(t, "https://example.com", m.URLValue(), "URL should be unchanged without selection")
 }
+
+// TestBackspaceWithSelection verifies backspace removes selected text (W3 candidate)
+func TestBackspaceWithSelection(t *testing.T) {
+	m := newModel(defaultConfig()).
+		WithFocus(tui.RequestPane).
+		WithActiveField(tui.URLField).
+		WithURLValue("https://example.com")
+
+	// Select "example"
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyCtrlA})
+	sel := m.URLSelection()
+	assert.True(t, sel.Active())
+
+	// Press Backspace to delete selection
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyBackspace})
+
+	// After backspace with selection, selection should clear and text should be deleted
+	sel = m.URLSelection()
+	assert.False(t, sel.Active(), "Selection should be cleared after backspace")
+
+	// URL should be empty
+	newURL := m.URLValue()
+	assert.Equal(t, "", newURL, "URL should be empty after backspace with selection")
+}
+
+// TestDeleteWithSelection verifies delete removes selected text (W3 candidate)
+func TestDeleteWithSelection(t *testing.T) {
+	m := newModel(defaultConfig()).
+		WithFocus(tui.RequestPane).
+		WithActiveField(tui.URLField).
+		WithURLValue("https://example.com")
+
+	// Select all
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyCtrlA})
+	sel := m.URLSelection()
+	assert.True(t, sel.Active())
+
+	// Press Delete to remove selection
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyDelete})
+
+	// After delete with selection, selection should clear and text should be deleted
+	sel = m.URLSelection()
+	assert.False(t, sel.Active(), "Selection should be cleared after delete")
+
+	// URL should be empty
+	newURL := m.URLValue()
+	assert.Equal(t, "", newURL, "URL should be empty after delete with selection")
+}
+
+// TestSelectionIsolationBetweenFields verifies selection state doesn't leak (W3 candidate)
+func TestSelectionIsolationBetweenFields(t *testing.T) {
+	m := newModel(defaultConfig()).
+		WithFocus(tui.RequestPane).
+		WithActiveField(tui.URLField).
+		WithURLValue("https://example.com").
+		WithBodyValue("test body content")
+
+	// Select text in URL field
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyCtrlA})
+	urlSel := m.URLSelection()
+	assert.True(t, urlSel.Active(), "URL field should have selection")
+
+	// Verify body field has NO selection
+	bodySel := m.BodySelection()
+	assert.False(t, bodySel.Active(), "Body field should NOT have selection yet")
+
+	// Exit URL field (press Esc)
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyEsc})
+
+	// URL selection should be cleared after exiting field
+	urlSel = m.URLSelection()
+	assert.False(t, urlSel.Active(), "URL selection should be cleared after field exit")
+
+	// Body selection should still be empty
+	bodySel = m.BodySelection()
+	assert.False(t, bodySel.Active(), "Body selection should still be empty")
+}
