@@ -425,7 +425,10 @@ func (m Model) viewHeadersPreview(w int) string {
 	var preview strings.Builder
 	if m.headerEditing {
 		preview.WriteString("Key:\n")
-		preview.WriteString(m.headerKeyInput.View())
+		keyDisplay := m.renderInputWithSelection(
+			m.headerKeyInput.Value(), m.headerKeySelection,
+		)
+		preview.WriteString(keyDisplay)
 		preview.WriteString("\n\n")
 		if m.headerKeyInput.Focused() {
 			if suggestion := headerNameSuggestion(m.headerKeyInput.Value()); suggestion != "" {
@@ -434,7 +437,10 @@ func (m Model) viewHeadersPreview(w int) string {
 			}
 		}
 		preview.WriteString("Value:\n")
-		preview.WriteString(m.headerValueInput.View())
+		valueDisplay := m.renderInputWithSelection(
+			m.headerValueInput.Value(), m.headerValueSelection,
+		)
+		preview.WriteString(valueDisplay)
 		preview.WriteString("\n")
 		if m.headerKeyInput.Focused() {
 			if warning := m.singleLineInputWarning(m.headerKeyInput.Value()); warning != "" {
@@ -571,6 +577,8 @@ func (m Model) viewRequestPane(w, h int) string {
 	switch {
 	case m.activeField == bodyField && m.activeRequest != nil:
 		content = m.bodyTextarea.View()
+		// TODO: W9-W11 - Apply selection rendering to textarea
+		// Textarea requires custom rendering due to wrapped display
 	case m.activeField == authField && m.activeRequest != nil:
 		// Render after measuring the request pane so the auth editor can keep
 		// its selected row inside the available content viewport.
@@ -1678,7 +1686,7 @@ func (m Model) viewSearchModal() string {
 		sb.WriteString(m.styles.titleStyle.Render("Search all requests"))
 		sb.WriteString("\n\n")
 	}
-	sb.WriteString(m.searchInput.View())
+	sb.WriteString(m.renderInputWithSelection(m.searchInput.Value(), m.searchSelection))
 	sb.WriteString("\n\n")
 	query := strings.TrimSpace(m.searchInput.Value())
 
@@ -1999,9 +2007,11 @@ func (m Model) viewHelp() string {
 	}
 
 	var sb strings.Builder
-	sb.WriteString(m.styles.titleStyle.Render("Keyboard Reference") + "\n\n")
+	sb.WriteString(m.styles.titleStyle.Render("Keyboard Reference"))
+	sb.WriteString("\n\n")
 	if m.helpSearch {
-		sb.WriteString(m.searchInput.View() + "\n\n")
+		sb.WriteString(m.renderInputWithSelection(m.searchInput.Value(), m.searchSelection))
+		sb.WriteString("\n\n")
 	}
 
 	if m.helpEditState == helpConfirmResetAll {
@@ -2140,9 +2150,12 @@ func (m Model) viewImportModal() string {
 		sb.WriteString(
 			m.styles.mutedStyle.Render(
 				"Paste the complete command below. Enter inserts a newline.",
-			) + "\n\n",
-		)
-		sb.WriteString(m.importInput.View() + "\n")
+			))
+		sb.WriteString("\n\n")
+		sb.WriteString(m.importInput.View())
+		sb.WriteString("\n")
+		// TODO: W9-W11 - Apply selection rendering to import textarea
+		// Textarea requires custom rendering due to wrapped display
 		if m.importError != "" {
 			sb.WriteString("\n" + m.styles.errorStyle.Render("✗ "+stripANSI(m.importError)) + "\n")
 		}

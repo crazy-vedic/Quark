@@ -1886,6 +1886,26 @@ func helpResetAllDiffs(current keybindings.Keybindings) []string {
 // --- Import modal ---
 
 func (m Model) handleImportKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Handle copy/cut for import
+	if msg.Type == tea.KeyCtrlC {
+		text := copySelectionText(m.importInput.Value(), m.importInputSelection)
+		if text != "" {
+			return m, copyToClipboardCmd(text)
+		}
+		return m, nil
+	}
+	if msg.Type == tea.KeyCtrlX {
+		text := copySelectionText(m.importInput.Value(), m.importInputSelection)
+		newValue, newCursorPos := cutSelection(m.importInput.Value(), m.importInputSelection)
+		m.importInput.SetValue(newValue)
+		m.importInput.SetCursor(newCursorPos)
+		m.importInputSelection.Clear(newCursorPos)
+		if text != "" {
+			return m, copyToClipboardCmd(text)
+		}
+		return m, nil
+	}
+
 	if m.importPreview == nil && msg.Type == tea.KeyCtrlV {
 		m.debugCurl("clipboard read requested")
 		return m, readCurlClipboardCmd()
@@ -2108,6 +2128,26 @@ func (m Model) handleHTTPErr(msg httpErrMsg) (tea.Model, tea.Cmd) {
 // --- Inline body / header field handlers ---
 
 func (m Model) handleBodyFieldKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Handle copy/cut for body
+	if msg.Type == tea.KeyCtrlC {
+		text := copySelectionText(m.bodyTextarea.Value(), m.bodySelection)
+		if text != "" {
+			return m, copyToClipboardCmd(text)
+		}
+		return m, nil
+	}
+	if msg.Type == tea.KeyCtrlX {
+		text := copySelectionText(m.bodyTextarea.Value(), m.bodySelection)
+		newValue, newCursorPos := cutSelection(m.bodyTextarea.Value(), m.bodySelection)
+		m.bodyTextarea.SetValue(newValue)
+		m.bodyTextarea.SetCursor(newCursorPos)
+		m.bodySelection.Clear(newCursorPos)
+		if text != "" {
+			return m, copyToClipboardCmd(text)
+		}
+		return m, nil
+	}
+
 	// Resolver lookup for body editor mode.
 	if action, ok := m.resolver.Resolve(4, 0, msg); ok {
 		switch action {
@@ -2120,8 +2160,8 @@ func (m Model) handleBodyFieldKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 	var cmd tea.Cmd
 	m.bodyTextarea, cmd = m.bodyTextarea.Update(msg)
-	// TODO: W9-W11 - Wire selection for textarea (body field)
-	// Textarea requires custom selection handling due to different API
+	// TODO: W9-W11 - Wire keyboard selection for textarea (body field)
+	// Textarea requires custom selection handling due to different API (Cursor() vs Position())
 	return m, cmd
 }
 
