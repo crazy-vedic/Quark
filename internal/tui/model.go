@@ -1426,5 +1426,41 @@ func prevMethod(current string) string {
 // HelpCursor returns the current cursor position in the help overlay.
 func (m Model) HelpCursor() int { return m.helpCursor }
 
+// renderInputWithSelection renders a text input value with selection highlighting.
+// If selection is active, applies the selection style to the selected text.
+func (m Model) renderInputWithSelection(value string, sel textSelection) string {
+	if !sel.Active() {
+		// No selection, render normally through bubbles
+		return m.urlInput.View()
+	}
+
+	// Selection is active - render with background color on selected text
+	start, end := sel.Range()
+	runes := []rune(value)
+
+	// Clamp selection to valid range
+	if start < 0 {
+		start = 0
+	}
+	if end > len(runes) {
+		end = len(runes)
+	}
+	if start > end {
+		start = end
+	}
+
+	// Build the rendered output with selection styling
+	var result strings.Builder
+	result.WriteString(string(runes[:start]))
+	if start < end {
+		result.WriteString(m.styles.selectionStyle.Render(
+			string(runes[start:end]),
+		))
+	}
+	result.WriteString(string(runes[end:]))
+
+	return result.String()
+}
+
 // searchPlaceholder is the hint shown in the empty search input.
 const searchPlaceholder = "search requests (optional)..."

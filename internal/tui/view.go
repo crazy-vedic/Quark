@@ -504,7 +504,7 @@ func (m Model) viewRequestPane(w, h int) string {
 	}
 	var urlDisplay string
 	if m.activeField == urlField {
-		urlDisplay = m.urlInput.View()
+		urlDisplay = m.renderInputWithSelection(m.urlInput.Value(), m.urlSelection)
 		if suggestion := m.urlSuggestion(m.urlInput.Value()); suggestion != "" {
 			urlDisplay += m.styles.mutedStyle.Render(
 				completionSuffix(m.urlInput.Value(), suggestion),
