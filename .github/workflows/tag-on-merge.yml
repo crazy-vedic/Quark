@@ -340,3 +340,19 @@ jobs:
           echo "6. Push and open a PR against microsoft/winget-pkgs"
           echo ""
           echo "Or use WINGET-AGENT-PLAN.md for automated submission steps."
+
+  publish-npm:
+    needs: [tag, release]
+    runs-on: ubuntu-latest
+    if: needs.tag.outputs.tag_created == 'true'
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Publish to npm
+        run: |
+          gh workflow run publish-npm.yml \
+            -f tag="${{ needs.tag.outputs.version }}" \
+            --repo "${{ github.repository }}"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

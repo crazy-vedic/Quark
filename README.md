@@ -366,7 +366,7 @@ See [USER-REQUIREMENTS.md](USER-REQUIREMENTS.md) for required secrets, variables
    - GitHub Releases (tar.gz, .zip, .deb, .pkg archives)
    - apt repository (to `gh-pages`)
    - Homebrew formula (to `homebrew-quark` tap)
-   - npm packages — **manual** (trigger `publish-npm.yml` from GitHub Actions)
+   - npm packages (automatically via OIDC)
    - Winget manifest — **manual** (see submission steps in [DISTRIBUTION.md](DISTRIBUTION.md))
 
 To skip: omit the `Release:` line.

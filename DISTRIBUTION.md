@@ -22,7 +22,7 @@ When you merge a PR with `Release: vX.Y.Z` in the body:
 
 1. **tag-on-merge.yml** validates version, creates tag, and pushes
 2. **release job** builds binaries, creates GitHub Release, uploads artifacts
-3. **publish-npm.yml** (manual) publishes to npm registry (OIDC) — trigger from GitHub Actions UI or CLI
+3. **publish-npm job** automatically publishes to npm registry (OIDC) — no manual intervention needed
 4. **submit-winget job** prints manual submission instructions (manual submission required; see DISTRIBUTION.md and WINGET-AGENT-PLAN.md)
 
 ---
@@ -58,15 +58,16 @@ When you merge a PR with `Release: vX.Y.Z` in the body:
 
 ### Release Process
 
-Manual (triggered from GitHub Actions UI or CLI):
+Automatic on every release:
+- Triggered automatically by `tag-on-merge.yml` after GitHub Release is created
+- Platform packages published first (to avoid dangling optionalDependencies)
+- Main package published last
+- Provenance recorded by npm
+
+**Note:** npm packages are published with the `latest` tag by default. To publish a prerelease or alternate tag manually:
 ```bash
 gh workflow run publish-npm.yml -f tag=v1.0.0
 ```
-
-Publication order (important to avoid dangling optionalDependencies):
-1. Platform packages published first: `npm publish platforms/linux-x64 --tag next`, etc.
-2. Main package published last: `npm publish ./quark` (the local directory, not the unscoped name)
-3. Provenance recorded by npm
 
 ### Users
 
@@ -267,17 +268,16 @@ Once approved, Microsoft merges the PR. The package goes live on winget within h
 
 ## Workflow Decisions
 
-### publish-npm.yml
+### npm Publishing
 
-Kept **manual** (workflow_dispatch):
-- Allows testing npm publishing locally first
-- Prevents accidental or premature npm releases
-- User explicitly triggers from GitHub Actions UI or CLI
-
-To publish a release:
-```bash
-gh workflow run publish-npm.yml -f tag=v1.0.0
-```
+**Automatic** via `publish-npm` job in `tag-on-merge.yml`:
+- Triggered automatically after GitHub Release is created
+- No manual steps needed
+- OIDC trusted publishing handles credentials
+- Can still trigger manually to re-publish or use alternate tags:
+  ```bash
+  gh workflow run publish-npm.yml -f tag=v1.0.0
+  ```
 
 ### submit-winget Job
 

@@ -679,15 +679,17 @@ func (m Model) checkUpdatesCmd(ctx context.Context, cfg config.Config) tea.Cmd {
 		available, latest, err := source.IsUpdateAvailable(checkCtx, m.version)
 		if err != nil {
 			// Save failed check state
-			failedState := state.WithFailedCheck(err, cfg.Updates.RetryAfterFailure.Duration)
-			updates.SaveReleaseState(m.configDir, failedState)
+			failedState := state.WithFailedCheck(
+				err, cfg.Updates.RetryAfterFailure.Duration,
+			)
+			_ = updates.SaveReleaseState(m.configDir, failedState)
 			// Silently ignore check failures
 			return updateCheckMsg{available: false, latest: "", upgradeCommand: "", err: nil}
 		}
 
 		// Save successful check state
 		successState := state.WithSuccessfulCheck(latest, cfg.Updates.CheckInterval.Duration)
-		updates.SaveReleaseState(m.configDir, successState)
+		_ = updates.SaveReleaseState(m.configDir, successState)
 
 		if available && latest != "" {
 			return updateCheckMsg{
