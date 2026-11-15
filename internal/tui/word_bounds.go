@@ -176,3 +176,59 @@ func prevWordBoundary(runes []rune, pos int) int {
 
 	return pos
 }
+
+// getTextareaAbsoluteCursorPos converts a textarea's line-based cursor position
+// to an absolute rune offset into the full text. This is needed for selection
+// which works with rune offsets, not line/column pairs.
+// Note: Since textarea doesn't expose col publicly, this uses a simplified approach
+// that counts all runes up to and including the current line.
+func getTextareaAbsoluteCursorPos(text string, line int) int {
+	if line < 0 {
+		return 0
+	}
+
+	runes := stringToRunes(text)
+	lineIdx := 0
+	pos := 0
+
+	for i, r := range runes {
+		if lineIdx == line {
+			// Found target line, return the position at the start of this line
+			return pos
+		}
+		if r == '\n' {
+			lineIdx++
+			pos = i + 1
+		}
+	}
+
+	// Line not found or at end, return end of text
+	return len(runes)
+}
+
+// setTextareaCursorFromAbsolutePos converts an absolute rune offset back to
+// line/column pair for textarea SetCursor. For now, we just set the column
+// offset relative to the current line, which is a simplification.
+// A proper implementation would need to navigate to the correct line first.
+func setTextareaCursorFromAbsolutePos(text string, absPos int) (line int, col int) {
+	if absPos < 0 {
+		return 0, 0
+	}
+
+	runes := stringToRunes(text)
+	if absPos >= len(runes) {
+		absPos = len(runes)
+	}
+
+	currentLine := 0
+	lineStart := 0
+
+	for i := 0; i < absPos && i < len(runes); i++ {
+		if runes[i] == '\n' {
+			currentLine++
+			lineStart = i + 1
+		}
+	}
+
+	return currentLine, absPos - lineStart
+}

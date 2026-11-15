@@ -416,6 +416,12 @@ type authEditor struct {
 	passwordInput    textinput.Model
 	apiKeyNameInput  textinput.Model
 	apiKeyValueInput textinput.Model
+	// Selection state for each auth field
+	tokenSelection       textSelection
+	usernameSelection    textSelection
+	passwordSelection    textSelection
+	apiKeyNameSelection  textSelection
+	apiKeyValueSelection textSelection
 }
 
 // Deps holds all TUI dependencies.
@@ -1460,6 +1466,40 @@ func (m Model) renderInputWithSelection(value string, sel textSelection) string 
 	result.WriteString(string(runes[end:]))
 
 	return result.String()
+}
+
+// renderAuthFieldWithSelection renders an auth field with selection highlighting.
+// It applies selection styling to the appropriate auth field based on the row type.
+func (m Model) renderAuthFieldWithSelection(row authRowID, baseValue string) string {
+	var sel *textSelection
+	var fieldValue string
+
+	switch row {
+	case authRowToken:
+		sel = &m.authEditor.tokenSelection
+		fieldValue = m.authEditor.tokenInput.Value()
+	case authRowUsername:
+		sel = &m.authEditor.usernameSelection
+		fieldValue = m.authEditor.usernameInput.Value()
+	case authRowPassword:
+		sel = &m.authEditor.passwordSelection
+		fieldValue = m.authEditor.passwordInput.Value()
+	case authRowAPIKeyName:
+		sel = &m.authEditor.apiKeyNameSelection
+		fieldValue = m.authEditor.apiKeyNameInput.Value()
+	case authRowAPIKeyValue:
+		sel = &m.authEditor.apiKeyValueSelection
+		fieldValue = m.authEditor.apiKeyValueInput.Value()
+	default:
+		return baseValue
+	}
+
+	if sel == nil || !sel.Active() {
+		return baseValue
+	}
+
+	// Apply selection styling to the field value
+	return m.renderInputWithSelection(fieldValue, *sel)
 }
 
 // searchPlaceholder is the hint shown in the empty search input.

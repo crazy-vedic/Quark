@@ -1906,6 +1906,25 @@ func (m Model) handleImportKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	// Handle selection keys
+	cursorPos := getTextareaAbsoluteCursorPos(
+		m.importInput.Value(), m.importInput.Line())
+	handled, shouldUpdateComponent := handleSelectionKeyForTextarea(
+		msg, &m.importInputSelection, &m.importInput, cursorPos)
+	if handled && !shouldUpdateComponent {
+		_, selEnd := m.importInputSelection.Range()
+		line, col := setTextareaCursorFromAbsolutePos(m.importInput.Value(), selEnd)
+		// Navigate import textarea to the correct line
+		for i := 0; i < line; i++ {
+			m.importInput.CursorDown()
+		}
+		for i := 0; i > line; i-- {
+			m.importInput.CursorUp()
+		}
+		m.importInput.SetCursor(col)
+		return m, nil
+	}
+
 	if m.importPreview == nil && msg.Type == tea.KeyCtrlV {
 		m.debugCurl("clipboard read requested")
 		return m, readCurlClipboardCmd()
@@ -2148,6 +2167,19 @@ func (m Model) handleBodyFieldKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	// Handle selection keys
+	cursorPos := getTextareaAbsoluteCursorPos(
+		m.bodyTextarea.Value(), m.bodyTextarea.Line())
+	handled, shouldUpdateComponent := handleSelectionKeyForTextarea(
+		msg, &m.bodySelection, &m.bodyTextarea, cursorPos)
+	if handled && !shouldUpdateComponent {
+		_, selEnd := m.bodySelection.Range()
+		line, col := setTextareaCursorFromAbsolutePos(m.bodyTextarea.Value(), selEnd)
+		m.navigateBodyToLogicalLine(line)
+		m.bodyTextarea.SetCursor(col)
+		return m, nil
+	}
+
 	// Resolver lookup for body editor mode.
 	if action, ok := m.resolver.Resolve(4, 0, msg); ok {
 		switch action {
@@ -2160,8 +2192,8 @@ func (m Model) handleBodyFieldKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 	var cmd tea.Cmd
 	m.bodyTextarea, cmd = m.bodyTextarea.Update(msg)
-	// TODO: W9-W11 - Wire keyboard selection for textarea (body field)
-	// Textarea requires custom selection handling due to different API (Cursor() vs Position())
+	// TODO: W9-W11 - Apply selection rendering to textarea
+	// Textarea requires custom rendering due to wrapped display
 	return m, cmd
 }
 
@@ -2233,6 +2265,98 @@ func (m Model) handleAuthFieldKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleAuthFieldEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Handle copy/cut for auth fields
+	if msg.Type == tea.KeyCtrlC {
+		var text string
+		switch m.authEditor.currentRow() {
+		case authRowToken:
+			text = copySelectionText(
+				m.authEditor.tokenInput.Value(), m.authEditor.tokenSelection,
+			)
+		case authRowUsername:
+			text = copySelectionText(
+				m.authEditor.usernameInput.Value(), m.authEditor.usernameSelection,
+			)
+		case authRowPassword:
+			text = copySelectionText(
+				m.authEditor.passwordInput.Value(), m.authEditor.passwordSelection,
+			)
+		case authRowAPIKeyName:
+			text = copySelectionText(
+				m.authEditor.apiKeyNameInput.Value(), m.authEditor.apiKeyNameSelection,
+			)
+		case authRowAPIKeyValue:
+			text = copySelectionText(
+				m.authEditor.apiKeyValueInput.Value(), m.authEditor.apiKeyValueSelection,
+			)
+		}
+		if text != "" {
+			return m, copyToClipboardCmd(text)
+		}
+		return m, nil
+	}
+	if msg.Type == tea.KeyCtrlX {
+		var text string
+		var newValue string
+		var newCursorPos int
+		switch m.authEditor.currentRow() {
+		case authRowToken:
+			text = copySelectionText(
+				m.authEditor.tokenInput.Value(), m.authEditor.tokenSelection,
+			)
+			newValue, newCursorPos = cutSelection(
+				m.authEditor.tokenInput.Value(), m.authEditor.tokenSelection,
+			)
+			m.authEditor.tokenInput.SetValue(newValue)
+			m.authEditor.tokenInput.SetCursor(newCursorPos)
+			m.authEditor.tokenSelection.Clear(newCursorPos)
+		case authRowUsername:
+			text = copySelectionText(
+				m.authEditor.usernameInput.Value(), m.authEditor.usernameSelection,
+			)
+			newValue, newCursorPos = cutSelection(
+				m.authEditor.usernameInput.Value(), m.authEditor.usernameSelection,
+			)
+			m.authEditor.usernameInput.SetValue(newValue)
+			m.authEditor.usernameInput.SetCursor(newCursorPos)
+			m.authEditor.usernameSelection.Clear(newCursorPos)
+		case authRowPassword:
+			text = copySelectionText(
+				m.authEditor.passwordInput.Value(), m.authEditor.passwordSelection,
+			)
+			newValue, newCursorPos = cutSelection(
+				m.authEditor.passwordInput.Value(), m.authEditor.passwordSelection,
+			)
+			m.authEditor.passwordInput.SetValue(newValue)
+			m.authEditor.passwordInput.SetCursor(newCursorPos)
+			m.authEditor.passwordSelection.Clear(newCursorPos)
+		case authRowAPIKeyName:
+			text = copySelectionText(
+				m.authEditor.apiKeyNameInput.Value(), m.authEditor.apiKeyNameSelection,
+			)
+			newValue, newCursorPos = cutSelection(
+				m.authEditor.apiKeyNameInput.Value(), m.authEditor.apiKeyNameSelection,
+			)
+			m.authEditor.apiKeyNameInput.SetValue(newValue)
+			m.authEditor.apiKeyNameInput.SetCursor(newCursorPos)
+			m.authEditor.apiKeyNameSelection.Clear(newCursorPos)
+		case authRowAPIKeyValue:
+			text = copySelectionText(
+				m.authEditor.apiKeyValueInput.Value(), m.authEditor.apiKeyValueSelection,
+			)
+			newValue, newCursorPos = cutSelection(
+				m.authEditor.apiKeyValueInput.Value(), m.authEditor.apiKeyValueSelection,
+			)
+			m.authEditor.apiKeyValueInput.SetValue(newValue)
+			m.authEditor.apiKeyValueInput.SetCursor(newCursorPos)
+			m.authEditor.apiKeyValueSelection.Clear(newCursorPos)
+		}
+		if text != "" {
+			return m, copyToClipboardCmd(text)
+		}
+		return m, nil
+	}
+
 	if msg.Type == tea.KeyTab {
 		return m, nil
 	}
@@ -2240,6 +2364,38 @@ func (m Model) handleAuthFieldEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.authEditor.endEdit()
 		return m, nil
 	}
+
+	// Handle selection keys for each auth field
+	var sel *textSelection
+	var input *textinput.Model
+	switch m.authEditor.currentRow() {
+	case authRowToken:
+		sel = &m.authEditor.tokenSelection
+		input = &m.authEditor.tokenInput
+	case authRowUsername:
+		sel = &m.authEditor.usernameSelection
+		input = &m.authEditor.usernameInput
+	case authRowPassword:
+		sel = &m.authEditor.passwordSelection
+		input = &m.authEditor.passwordInput
+	case authRowAPIKeyName:
+		sel = &m.authEditor.apiKeyNameSelection
+		input = &m.authEditor.apiKeyNameInput
+	case authRowAPIKeyValue:
+		sel = &m.authEditor.apiKeyValueSelection
+		input = &m.authEditor.apiKeyValueInput
+	}
+
+	if sel != nil && input != nil {
+		handled, shouldUpdateComponent := handleSelectionKeyForInput(
+			msg, sel, input, input.Position())
+		if handled && !shouldUpdateComponent {
+			_, selEnd := sel.Range()
+			input.SetCursor(selEnd)
+			return m, nil
+		}
+	}
+
 	var cmd tea.Cmd
 	switch m.authEditor.currentRow() {
 	case authRowToken:

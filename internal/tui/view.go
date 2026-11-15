@@ -742,6 +742,12 @@ func (m Model) viewAuthEditor(maxRows, contentWidth int) string {
 		}
 		label := lipgloss.NewStyle().Foreground(m.styles.info).Render(authRowLabel(row))
 		value := m.authEditor.valueForRow(row, m.authEditor.editing, m.styles.mutedStyle)
+
+		// Apply selection rendering if editing
+		if m.authEditor.editing && idx == selected {
+			value = m.renderAuthFieldWithSelection(row, value)
+		}
+
 		line := cursor + label + ": " + value
 		if idx == selected {
 			line = lipgloss.NewStyle().Bold(true).Render(line)
