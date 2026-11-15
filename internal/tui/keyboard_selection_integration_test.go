@@ -254,3 +254,48 @@ func TestCtrlXCutWritesToClipboard(t *testing.T) {
 	// Verify the command returns a message (not nil)
 	assert.NotNil(t, msg, "Command should return a clipboard message")
 }
+
+// TestPasteReplacesSelection verifies paste replaces selected text (W3)
+func TestPasteReplacesSelection(t *testing.T) {
+	m := newModel(defaultConfig()).
+		WithFocus(tui.RequestPane).
+		WithActiveField(tui.URLField).
+		WithURLValue("https://example.com")
+
+	// Select "example"
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyCtrlA})
+	sel := m.URLSelection()
+	assert.True(t, sel.Active())
+
+	// Simulate paste by typing replacement text
+	// (In real app, Ctrl+V would come from clipboard)
+	// When bubbles textinput gets a character during selection,
+	// the selection_keys.go handler should handle it
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'r'}})
+
+	// After regular character input with selection, selection should clear
+	sel = m.URLSelection()
+	assert.False(t, sel.Active(), "Selection should be cleared after character input")
+
+	// URL should be replaced
+	newURL := m.URLValue()
+	assert.Equal(t, "r", newURL, "URL should be replaced with pasted character")
+}
+
+// TestCtrlXWithoutSelection verifies cut without selection is no-op (W3 variant)
+func TestCtrlXWithoutSelection(t *testing.T) {
+	m := newModel(defaultConfig()).
+		WithFocus(tui.RequestPane).
+		WithActiveField(tui.URLField).
+		WithURLValue("https://example.com")
+
+	// Don't select - just have cursor in the field
+	// Press Ctrl+X without selection
+	m, cmd := callUpdateWithCmd(t, m, tea.KeyMsg{Type: tea.KeyCtrlX})
+
+	// With no selection, Ctrl+X should be a no-op (no clipboard command)
+	assert.Nil(t, cmd, "Ctrl+X without selection should return nil command")
+
+	// URL should be unchanged
+	assert.Equal(t, "https://example.com", m.URLValue(), "URL should be unchanged without selection")
+}
