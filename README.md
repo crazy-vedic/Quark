@@ -144,7 +144,12 @@ Auto-checks are enabled by default. To disable or customize:
 check = false                      # Disable update checks
 check_interval = "24h"             # How often to check (default 12h)
 retry_after_failure = "1h"         # Retry interval on failure (default 1h)
+
+[format]
+json_on_save = false               # Disable JSON auto-formatting (default: enabled)
 ```
+
+JSON formatting preserves the existing indent style (2-space, 4-space, tabs) and is applied when you save a request body that parses as valid JSON. Invalid JSON or non-JSON text is left unchanged.
 
 ---
 

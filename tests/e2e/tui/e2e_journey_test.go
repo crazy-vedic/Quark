@@ -17,6 +17,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/crazy-vedic/quark/internal/config"
 	"github.com/crazy-vedic/quark/internal/domain"
 	"github.com/crazy-vedic/quark/internal/exec"
 	"github.com/crazy-vedic/quark/internal/search"
@@ -884,7 +885,10 @@ func TestE2E_BodyEditor_Save(t *testing.T) {
 	}
 	seedRequests(t, st, col.ID, req)
 
-	m := newE2EModel(t, st, &mockExecutor{})
+	// Disable JSON formatting for this test to verify body edit behavior independent of formatting.
+	cfg := config.Default(t.TempDir())
+	cfg.Format.JSONOnSave = false
+	m := newE2EModelWithConfig(t, st, &mockExecutor{}, cfg)
 	m = callUpdate(t, m, tea.WindowSizeMsg{Width: 100, Height: 30})
 	m = callUpdate(t, m, tui.CollectionsLoadedMsg([]*domain.Collection{col}))
 	m = callUpdate(t, m, tui.RequestsLoadedMsg(col.ID, []*domain.Request{req}))
