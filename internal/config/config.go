@@ -287,8 +287,8 @@ func SaveKeybindings(configDir string, binds keybindings.Keybindings) error {
 	var doc map[string]any
 	if len(raw) > 0 {
 		if _, err := toml.Decode(string(raw), &doc); err != nil {
-			// If the existing file is invalid, start fresh.
-			doc = make(map[string]any)
+			// Refuse to overwrite invalid config.
+			return fmt.Errorf("decode config.toml: %w", err)
 		}
 	} else {
 		doc = make(map[string]any)
