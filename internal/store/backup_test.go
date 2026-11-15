@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -89,4 +90,35 @@ func TestStore_BackupEvictionByFilename(t *testing.T) {
 			"backup files must be in ascending filename order",
 		)
 	}
+}
+
+// Regression: after eviction removes old files, the next backup name must not
+// reuse a name still on disk (previously the newest backup was overwritten).
+func TestStore_BackupNamesNeverCollide(t *testing.T) {
+	backupDir := t.TempDir()
+	s, err := store.New(
+		filepath.Join(t.TempDir(), "test.db"),
+		store.WithBackup(backupDir),
+	)
+	require.NoError(t, err)
+	defer s.Close()
+
+	ctx := context.Background()
+	for i := 0; i < 15; i++ {
+		c := &domain.Collection{ID: uuid.New().String(), Name: uuid.New().String()}
+		require.NoError(t, s.SaveCollection(ctx, c))
+	}
+
+	entries, err := os.ReadDir(backupDir)
+	require.NoError(t, err)
+	assert.Len(t, entries, 10, "must retain exactly 10 backup files")
+
+	seen := map[string]bool{}
+	for _, e := range entries {
+		assert.False(t, seen[e.Name()], "duplicate backup name %s", e.Name())
+		seen[e.Name()] = true
+	}
+	// The retained files should be the 10 newest sequence numbers (006..015).
+	assert.True(t, seen["quark.db."+time.Now().UTC().Format("2006-01-02")+"-015"],
+		"newest backup must be retained with its own sequence number")
 }

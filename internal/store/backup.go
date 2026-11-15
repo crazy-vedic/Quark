@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -37,6 +39,8 @@ func (s *Store) backup() error {
 }
 
 // nextBackupName returns the next backup filename in the form quark.db.YYYY-MM-DD-NNN.
+// The sequence is one past the highest existing sequence for today, not a count of
+// files: eviction removes old files, so a count would repeat a name still on disk.
 func (s *Store) nextBackupName() (string, error) {
 	today := time.Now().UTC().Format("2006-01-02")
 	prefix := backupPrefix + today + "-"
@@ -46,15 +50,18 @@ func (s *Store) nextBackupName() (string, error) {
 		return "", fmt.Errorf("backup: read dir: %w", err)
 	}
 
-	// Count how many backups already exist for today.
-	seq := 1
+	maxSeq := 0
 	for _, e := range entries {
-		if len(e.Name()) > len(prefix) && e.Name()[:len(prefix)] == prefix {
-			seq++
+		name := e.Name()
+		if !strings.HasPrefix(name, prefix) {
+			continue
+		}
+		if n, err := strconv.Atoi(name[len(prefix):]); err == nil && n > maxSeq {
+			maxSeq = n
 		}
 	}
 
-	return fmt.Sprintf("%s%s-%03d", backupPrefix, today, seq), nil
+	return fmt.Sprintf("%s%s-%03d", backupPrefix, today, maxSeq+1), nil
 }
 
 // evictOldBackups deletes the oldest backups (by filename) to honor the configured retention limit.
