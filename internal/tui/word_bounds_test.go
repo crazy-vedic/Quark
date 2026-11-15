@@ -12,7 +12,7 @@ func TestIsWordChar(t *testing.T) {
 		{'0', true},
 		{'9', true},
 		{'_', true},
-		{'-', true},
+		{'-', false}, // hyphen is NOT a word char; it's a separator
 		{' ', false},
 		{'.', false},
 		{',', false},
@@ -87,7 +87,14 @@ func TestWordBoundsAt(t *testing.T) {
 			runes:     []rune("Content-Type"),
 			pos:       0,
 			wantStart: 0,
-			wantEnd:   12, // hyphen is word char
+			wantEnd:   7, // hyphen is NOT word char; selects just "Content"
+		},
+		{
+			name:      "hyphenated after hyphen",
+			runes:     []rune("Content-Type"),
+			pos:       8,
+			wantStart: 8,
+			wantEnd:   12, // selects just "Type"
 		},
 		{
 			name:      "punctuation only",

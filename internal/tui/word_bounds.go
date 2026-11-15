@@ -3,11 +3,11 @@ package tui
 import "unicode"
 
 // isWordChar returns true if r is part of a word. Words consist of letters,
-// digits, underscores, and can include hyphens in certain contexts (like in
-// HTTP headers). This definition is intentionally liberal to handle both
-// programming identifiers (snake_case, camelCase) and natural language.
+// digits, and underscores. Hyphens are treated as word separators to allow
+// proper word selection in hyphenated identifiers (e.g., content-type -> select
+// "content" or "type" separately, not the whole hyphenated word).
 func isWordChar(r rune) bool {
-	return unicode.IsLetter(r) || unicode.IsNumber(r) || r == '_' || r == '-'
+	return unicode.IsLetter(r) || unicode.IsNumber(r) || r == '_'
 }
 
 // wordBoundsAt finds the start and end (in rune offsets) of the word at or

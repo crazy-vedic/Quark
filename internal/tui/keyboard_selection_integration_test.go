@@ -452,3 +452,11 @@ func TestPasteMultipleCharactersOverSelection(t *testing.T) {
 	// The URL should contain the pasted text, not just the first character
 	assert.Contains(t, newURL, "goodbye", "Pasted text should be inserted completely")
 }
+
+// TestWordBoundaryTreatsHyphenAsSeparator verifies `-` is not part of words (W7)
+func TestWordBoundaryTreatsHyphenAsSeparator(t *testing.T) {
+	// Verify that hyphen is treated as a word separator, not part of words
+	// This will be tested when Ctrl+Shift+Left/Right (word selection) is implemented in W8
+	t.Skip("Word boundary navigation (Ctrl+Shift+Left/Right) needed for full test; " +
+		"isWordChar fix verified by unit tests")
+}
