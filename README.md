@@ -196,6 +196,30 @@ summary. Valid JSON is pretty-printed and syntax-highlighted in a terminal.
 Add `--verbose` to print request details and response headers to stderr; this
 can include credentials from the saved request.
 
+### Text Selection & Editing
+
+Edit URLs, request headers, bodies, and auth fields with familiar keyboard shortcuts:
+
+**Selection:**
+- `Shift+Left/Right` — Select text character by character
+- `Shift+Home/End` — Select from cursor to line start/end
+- `Ctrl+A` — Select all text in the current field
+- Double-click — Select word at cursor
+
+**Clipboard:**
+- `Ctrl+C` — Copy selected text
+- `Ctrl+X` — Cut selected text
+- `Ctrl+V` — Paste (replaces selection if active)
+
+**Navigation:**
+- `Ctrl+Left/Right` — Jump to next/previous word
+- Arrow keys — Clear selection and move cursor
+- `Backspace/Delete` — Remove selected text or character
+
+All keyboard shortcuts match the behavior of standard text editors (VS Code, Postman, browsers). Selection styling provides visual feedback with the theme's selection color.
+
+**Terminal Compatibility:** Most modern terminals (macOS Terminal, iTerm2, GNOME Terminal, Windows Terminal) support these shortcuts. If a shortcut doesn't work, try the alternative or use mouse selection.
+
 ---
 
 ## Themes
