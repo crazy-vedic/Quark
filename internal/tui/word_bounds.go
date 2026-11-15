@@ -120,7 +120,9 @@ func removeSelectedRange(s string, start, end int) (string, int) {
 	if start >= end {
 		return s, start
 	}
-	result := append(runes[:start], runes[end:]...)
+	result := make([]rune, 0, len(runes)-len(runes[start:end]))
+	result = append(result, runes[:start]...)
+	result = append(result, runes[end:]...)
 	return runesToString(result), start
 }
 
