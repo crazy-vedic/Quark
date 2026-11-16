@@ -8,7 +8,8 @@ import (
 )
 
 // appClipboard connects the textedit editor to the system clipboard. Copy uses
-// copyToClipboardCmd so status-bar messages are unchanged.
+// copyToClipboardCmd, which reports success ("Copied N characters") or failure
+// through the status bar when its result is handled in update.
 type appClipboard struct{}
 
 var _ textedit.Clipboard = appClipboard{}

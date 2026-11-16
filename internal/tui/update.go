@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/atotto/clipboard"
 	"github.com/charmbracelet/bubbles/textarea"
@@ -75,6 +76,8 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case textedit.PasteResultMsg:
 		return m.handlePasteResult(msg)
+	case clipboardMsg:
+		return m.status("success", fmt.Sprintf("Copied %d characters", utf8.RuneCountInString(msg.text))), nil
 	case clipboardErrorMsg:
 		return m.status("error", "Clipboard: "+msg.err.Error()), nil
 	case themeWatchTickMsg:

@@ -42,3 +42,12 @@ func TestViewerAndHistoryKeysFollowConfig(t *testing.T) {
 	assert.True(t, m.textKeys().HistoryNext.Match("ctrl+n"))
 	assert.True(t, m.textKeys().HistoryPrev.Match("shift+up"))
 }
+
+// A successful copy or cut reports its character count in the status bar.
+func TestClipboardWriteSuccessShowsStatus(t *testing.T) {
+	m := Model{}
+	next, _ := m.Update(clipboardMsg{text: "héllo"})
+	got := next.(Model)
+	assert.Equal(t, "Copied 5 characters", got.statusSuccess)
+	assert.Empty(t, got.statusErr)
+}
