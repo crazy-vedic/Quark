@@ -26,14 +26,11 @@ type PasteResultMsg struct {
 }
 
 // PasteCmd runs read off the UI goroutine and delivers a PasteResultMsg. An
-// empty clipboard delivers nothing, so pressing paste on an empty clipboard
-// stays silent. A failed read is delivered as Err so it can be reported.
+// empty clipboard delivers an empty result, which the application treats as a
+// silent no-op; delivering it keeps request ordering gap-free. A failed read is delivered as Err so it can be reported.
 func PasteCmd(read func() (string, error)) tea.Cmd {
 	return func() tea.Msg {
 		text, err := read()
-		if err == nil && text == "" {
-			return nil
-		}
 		return PasteResultMsg{Text: text, Err: err}
 	}
 }

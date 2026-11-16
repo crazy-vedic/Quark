@@ -60,13 +60,17 @@ func debugHeaderKeys(headers http.Header) string {
 // Update implements tea.Model — routes every message to the correct handler.
 //
 // Update routes a message. A paste request (Ctrl+V) takes a new ticket so that
-// only its result is applied; see paste_routing.go.
+// results are applied in request order; see paste_routing.go.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if km, ok := msg.(tea.KeyMsg); ok && !km.Paste && m.textKeys().Paste.Match(km.String()) {
-		m.pasteTicket++
-		ticket, target := m.pasteTicket, m.pasteTargetOf()
+		target := m.pasteTargetOf()
 		next, cmd := m.update(msg)
-		return next, tagPasteCmd(cmd, ticket, target)
+		nm, ok := next.(Model)
+		if cmd == nil || !ok {
+			return next, cmd
+		}
+		nm.pasteTicket++
+		return nm, tagPasteCmd(cmd, nm.pasteTicket, target)
 	}
 	return m.update(msg)
 }

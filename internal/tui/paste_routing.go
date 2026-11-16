@@ -157,11 +157,41 @@ func tagPasteMsg(msg tea.Msg, ticket uint64, target pasteTarget) tea.Msg {
 	return msg
 }
 
-// handlePasteResult applies a clipboard read. Results from several Ctrl+V
-// presses in the same input are applied in the order they were requested. A
-// result is dropped only when the input that receives keys has changed. Read
-// errors are reported.
+// handlePasteResult applies clipboard reads in the order Ctrl+V was pressed.
+// Bubble Tea runs commands concurrently, so results can arrive out of order;
+// a result is held until every earlier ticket has been applied. A result is
+// dropped only when the input that receives keys has changed. Read errors are
+// reported.
 func (m Model) handlePasteResult(msg textedit.PasteResultMsg) (tea.Model, tea.Cmd) {
+	if msg.Ticket == 0 {
+		return m.applyPaste(msg)
+	}
+	if msg.Ticket <= m.pasteApplied {
+		return m, nil
+	}
+	held := make(map[uint64]textedit.PasteResultMsg, len(m.pasteHeld)+1)
+	for k, v := range m.pasteHeld {
+		held[k] = v
+	}
+	held[msg.Ticket] = msg
+	m.pasteHeld = held
+
+	var cmds []tea.Cmd
+	for {
+		next, ok := m.pasteHeld[m.pasteApplied+1]
+		if !ok {
+			break
+		}
+		delete(m.pasteHeld, m.pasteApplied+1)
+		m.pasteApplied++
+		model, cmd := m.applyPaste(next)
+		m = model.(Model) //nolint:forcetypeassert // applyPaste always returns Model
+		cmds = append(cmds, cmd)
+	}
+	return m, tea.Batch(cmds...)
+}
+
+func (m Model) applyPaste(msg textedit.PasteResultMsg) (tea.Model, tea.Cmd) {
 	if msg.Err != nil {
 		if m.mode == importMode {
 			m.importError = "Clipboard read failed: " + msg.Err.Error()
@@ -169,7 +199,7 @@ func (m Model) handlePasteResult(msg textedit.PasteResultMsg) (tea.Model, tea.Cm
 		}
 		return m.status("error", "Clipboard read failed: "+msg.Err.Error()), nil
 	}
-	if msg.Ticket == 0 {
+	if msg.Ticket == 0 || msg.Text == "" {
 		return m, nil
 	}
 	if target, ok := msg.Target.(pasteTarget); !ok || target != m.pasteTargetOf() {

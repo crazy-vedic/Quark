@@ -284,10 +284,15 @@ func TestPasteReadFailureIsDelivered(t *testing.T) {
 	assert.Error(t, res.Err)
 }
 
-func TestPasteEmptyClipboardDeliversNothing(t *testing.T) {
+// An empty clipboard still delivers a result, so the application can keep
+// paste requests in order; the result carries no text and is a silent no-op.
+func TestPasteEmptyClipboardDeliversEmptyResult(t *testing.T) {
 	h := newHarness("abc", 1)
 	cmd, _ := h.ed.HandleKey(&h.sel, h.b, keyFor("ctrl+v"))
-	assert.Nil(t, cmd())
+	res, ok := cmd().(PasteResultMsg)
+	require.True(t, ok)
+	assert.Empty(t, res.Text)
+	assert.NoError(t, res.Err)
 }
 
 func pasteKey(text string) tea.KeyMsg {

@@ -219,8 +219,10 @@ type Model struct {
 	activeEnvStore  store.ActiveEnvironmentStore
 	scheduler       store.ScheduledRunStore
 	cfg             config.Config
-	pasteTicket     uint64           // last Ctrl+V request; 0 means none, and results with ticket 0 are ignored
-	editKeys        *textedit.Keymap // built from cfg by cacheTextKeys; nil falls back to building it
+	pasteTicket     uint64                             // last Ctrl+V request issued; 0 means none, and results with ticket 0 are ignored
+	pasteApplied    uint64                             // last ticket whose result was applied; results apply in ticket order
+	pasteHeld       map[uint64]textedit.PasteResultMsg // out-of-order results waiting for earlier tickets
+	editKeys        *textedit.Keymap                   // built from cfg by cacheTextKeys; nil falls back to building it
 	theme           theme.Theme
 	styles          styleSet
 	terminalDark    bool

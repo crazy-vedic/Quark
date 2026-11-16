@@ -67,6 +67,32 @@ func TestDoublePasteInSameInputAppliesBothInOrder(t *testing.T) {
 	assert.Equal(t, "XX", m.URLValue(), "the newer paste must apply after the older one")
 }
 
+// Bubble Tea runs commands concurrently, so the second read can finish first.
+// The text must still land in the order the keys were pressed.
+func TestOutOfOrderPasteResultsApplyInRequestOrder(t *testing.T) {
+	reads := []string{"first", "second"}
+	i := 0
+	restore := tui.StubClipboardForTest(func() (string, error) {
+		s := reads[i]
+		i++
+		return s, nil
+	})
+	t.Cleanup(restore)
+
+	m := pasteFixture("")
+	m, c1 := callUpdateWithCmd(t, m, tea.KeyMsg{Type: tea.KeyCtrlV})
+	m, c2 := callUpdateWithCmd(t, m, tea.KeyMsg{Type: tea.KeyCtrlV})
+	r1, ok := c1().(textedit.PasteResultMsg)
+	require.True(t, ok)
+	r2, ok := c2().(textedit.PasteResultMsg)
+	require.True(t, ok)
+
+	m, _ = callUpdateWithCmd(t, m, r2)
+	assert.Equal(t, "", m.URLValue(), "the later paste must wait for the earlier one")
+	m, _ = callUpdateWithCmd(t, m, r1)
+	assert.Equal(t, "firstsecond", m.URLValue())
+}
+
 // A paste result delivered in normal mode must not reach the global shortcut
 // path. "q" would quit the app there, so the test checks that no quit follows.
 func TestPasteInNormalModeNeverFiresShortcut(t *testing.T) {
@@ -296,6 +322,30 @@ var routingCases = []routeCase{
 		value:   tui.Model.AuthTokenValue,
 	},
 	{
+		name:    "authEditor.usernameInput",
+		open:    func(*testing.T) tui.Model { return pasteFixture("").WithAuthFieldEdit("basic", 1, "") },
+		deliver: deliver,
+		value:   tui.Model.AuthUsernameValue,
+	},
+	{
+		name:    "authEditor.apiKeyNameInput",
+		open:    func(*testing.T) tui.Model { return pasteFixture("").WithAuthFieldEdit("api_key", 2, "") },
+		deliver: deliver,
+		value:   tui.Model.AuthAPIKeyNameValue,
+	},
+	{
+		name:    "authEditor.apiKeyValueInput",
+		open:    func(*testing.T) tui.Model { return pasteFixture("").WithAuthFieldEdit("api_key", 3, "") },
+		deliver: deliver,
+		value:   tui.Model.AuthAPIKeyValueValue,
+	},
+	{
+		name:    "envEditor.editVal",
+		open:    func(*testing.T) tui.Model { return pasteFixture("").WithEnvValEdit("") },
+		deliver: deliver,
+		value:   tui.Model.EnvValValue,
+	},
+	{
 		name:    "authEditor.passwordInput",
 		open:    func(*testing.T) tui.Model { return pasteFixture("").WithAuthFieldEdit("basic", 2, "") },
 		deliver: deliver,
@@ -315,21 +365,17 @@ var routingCases = []routeCase{
 //
 //nolint:gosec // G101 matches widget names such as clientCertPassword; these are not credentials.
 var untestedWidgets = map[string]string{
-	"viewerFind":                  "find bar in the response viewer; no test helper opens it",
-	"importName":                  "name field shown after a curl import preview; no helper opens a preview",
-	"postmanPath":                 "path field in the Postman import dialog; no helper opens it",
-	"promptInput":                 "prompt modal input; no helper opens a prompt",
-	"scheduleInput":               "schedule entry field; no helper opens the scheduler",
-	"clientCertHost":              "client certificate dialog, host field; no helper opens it",
-	"clientCertFile":              "client certificate dialog, file field; no helper opens it",
-	"clientCertType":              "client certificate dialog, type field; no helper opens it",
-	"clientCertKeyFile":           "client certificate dialog, key file field; no helper opens it",
-	"clientCertCAFile":            "client certificate dialog, CA file field; no helper opens it",
-	"clientCertPassword":          "client certificate dialog, password field; no helper opens it",
-	"authEditor.usernameInput":    "basic auth username row; the password row is routed, this one is not yet",
-	"authEditor.apiKeyNameInput":  "API key name row of the auth editor; no helper opens it",
-	"authEditor.apiKeyValueInput": "API key value row of the auth editor; no helper opens it",
-	"envEditor.editVal":           "env value input; the key input is routed, this one is not yet",
+	"viewerFind":         "find bar in the response viewer; no test helper opens it",
+	"importName":         "name field shown after a curl import preview; no helper opens a preview",
+	"postmanPath":        "path field in the Postman import dialog; no helper opens it",
+	"promptInput":        "prompt modal input; no helper opens a prompt",
+	"scheduleInput":      "schedule entry field; no helper opens the scheduler",
+	"clientCertHost":     "client certificate dialog, host field; no helper opens it",
+	"clientCertFile":     "client certificate dialog, file field; no helper opens it",
+	"clientCertType":     "client certificate dialog, type field; no helper opens it",
+	"clientCertKeyFile":  "client certificate dialog, key file field; no helper opens it",
+	"clientCertCAFile":   "client certificate dialog, CA file field; no helper opens it",
+	"clientCertPassword": "client certificate dialog, password field; no helper opens it",
 }
 
 // TestPasteRoutesToEachRoutedWidget checks that a tagged paste lands in the
@@ -362,6 +408,13 @@ func TestImportPasteInsertsAndKeepsExistingText(t *testing.T) {
 // Every text widget in Model is either routed or explained. A widget that is
 // in neither place fails here, so a new widget cannot slip past silently.
 func TestEveryTextWidgetIsRoutedOrExplained(t *testing.T) {
+	// Pin the count so adding a widget to the list, or dropping one, is a
+	// visible decision. Update this when a widget gains a routeCase.
+	assert.Len(t, untestedWidgets, 11, "untestedWidgets changed size; update this pin deliberately")
+	for name, reason := range untestedWidgets {
+		assert.Greater(t, len(strings.TrimSpace(reason)), 15, "%s: reason is a placeholder", name)
+	}
+
 	routed := map[string]bool{}
 	for _, c := range routingCases {
 		routed[c.name] = true

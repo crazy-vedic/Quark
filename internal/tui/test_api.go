@@ -720,6 +720,24 @@ func (m Model) WithImportInputEdit(text string) Model {
 // ImportInputValue returns the import textarea's text.
 func (m Model) ImportInputValue() string { return m.importInput.Value() }
 
+// AuthUsernameValue returns the basic auth username input's text.
+func (m Model) AuthUsernameValue() string { return m.authEditor.usernameInput.Value() }
+
+// AuthAPIKeyNameValue returns the API key name input's text.
+func (m Model) AuthAPIKeyNameValue() string { return m.authEditor.apiKeyNameInput.Value() }
+
+// WithEnvValEdit puts the env editor in edit mode on the value field with text.
+func (m Model) WithEnvValEdit(text string) Model {
+	m = m.WithEnvKeyEdit("")
+	m.envEditor.editKey.Blur()
+	m.envEditor.editVal.SetValue(text)
+	m.envEditor.editVal.Focus()
+	return m
+}
+
+// EnvValValue returns the env editor's value input text.
+func (m Model) EnvValValue() string { return m.envEditor.editVal.Value() }
+
 // WithEnvKeyEdit puts the env editor in edit mode on the key field with text.
 func (m Model) WithEnvKeyEdit(text string) Model {
 	m.mode = envMode
