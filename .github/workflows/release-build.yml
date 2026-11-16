@@ -1,0 +1,193 @@
+name: Build and Publish Release
+
+# Reusable workflow shared by tag-on-merge.yml and release-manual.yml.
+#
+# The release is created as a draft by GoReleaser, completed with the extra
+# assets (raw binaries, SHA256SUMS, install scripts), checked, and only then
+# published. Publishing (with RELEASE_PAT) fires `release: published`, which
+# triggers publish-apt.yml and publish-homebrew.yml.
+#
+# Every step is safe to re-run: an incomplete draft is rebuilt, and a release
+# whose GoReleaser assets already exist is completed from those assets.
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        description: 'Release tag (e.g. v1.2.3)'
+        required: true
+        type: string
+    secrets:
+      RELEASE_PAT:
+        required: true
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ inputs.tag }}
+      REPO: ${{ github.repository }}
+    steps:
+      - name: Validate tag
+        run: |
+          set -euo pipefail
+          if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Invalid release tag: $TAG"
+            exit 1
+          fi
+          echo "VERSION=${TAG#v}" >> "$GITHUB_ENV"
+
+      - name: Checkout tag
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          ref: refs/tags/${{ inputs.tag }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version: '1.26'
+          cache: true
+
+      - name: Inspect existing release
+        id: state
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
+        run: |
+          set -euo pipefail
+          REQUIRED=(
+            quark-linux-amd64.tar.gz quark-linux-arm64.tar.gz
+            quark-darwin-amd64.tar.gz quark-darwin-arm64.tar.gz
+            quark-windows-amd64.zip
+            "quark_${VERSION}_amd64.deb" "quark_${VERSION}_arm64.deb"
+          )
+
+          if ! JSON=$(gh release view "$TAG" --repo "$REPO" --json isDraft,assets 2>/dev/null); then
+            echo "Release $TAG does not exist yet. GoReleaser will create it as a draft."
+            echo "build=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          IS_DRAFT=$(jq -r '.isDraft' <<<"$JSON")
+          NAMES=$(jq -r '.assets[].name' <<<"$JSON")
+          MISSING=()
+          for a in "${REQUIRED[@]}"; do
+            grep -qxF "$a" <<<"$NAMES" || MISSING+=("$a")
+          done
+
+          if [ "${#MISSING[@]}" -eq 0 ]; then
+            echo "Release $TAG (draft=$IS_DRAFT) already has all GoReleaser assets. Completing it from those."
+            echo "build=false" >> "$GITHUB_OUTPUT"
+          elif [ "$IS_DRAFT" = "true" ]; then
+            echo "Draft release $TAG is incomplete (missing: ${MISSING[*]}). Deleting it and rebuilding."
+            gh release delete "$TAG" --repo "$REPO" --yes
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::Published release $TAG is missing GoReleaser assets: ${MISSING[*]}. Convert it to a draft (or delete it) and re-run."
+            exit 1
+          fi
+
+      - name: Install GoReleaser
+        if: steps.state.outputs.build == 'true'
+        uses: goreleaser/goreleaser-action@5742e2a039330cbb23ebf35f046f814d4c6ff811 # v5.1.0
+        with:
+          version: v1.26.2
+          install-only: true
+
+      - name: Run GoReleaser (creates draft release)
+        if: steps.state.outputs.build == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.RELEASE_PAT }}
+          GORELEASER_CURRENT_TAG: ${{ inputs.tag }}
+        run: goreleaser release --clean
+
+      - name: Download existing GoReleaser assets
+        if: steps.state.outputs.build != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
+        run: |
+          set -euo pipefail
+          rm -rf dist && mkdir -p dist
+          gh release download "$TAG" --repo "$REPO" --dir dist \
+            --pattern 'quark-*.tar.gz' --pattern 'quark-*.zip' --pattern '*.deb'
+
+      - name: Extract binaries and regenerate checksums
+        working-directory: dist
+        run: |
+          set -euo pipefail
+          rm -rf binaries && mkdir -p binaries
+          for os in linux darwin; do
+            for arch in amd64 arm64; do
+              tar -xzf "quark-${os}-${arch}.tar.gz" -C binaries/ quark
+              mv binaries/quark "binaries/quark-${os}-${arch}"
+            done
+          done
+          unzip -o quark-windows-amd64.zip quark.exe -d binaries/
+          mv binaries/quark.exe binaries/quark-windows-amd64.exe
+
+          # Flat names (no binaries/ prefix); covers every downloadable asset.
+          rm -f SHA256SUMS
+          (cd binaries && sha256sum quark-*) > SHA256SUMS
+          sha256sum quark-*.tar.gz quark-*.zip quark_*.deb >> SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3.0.0
+        with:
+          subject-path: |
+            dist/binaries/quark-*
+            dist/quark-*.tar.gz
+            dist/quark-*.zip
+            dist/quark_*.deb
+
+      - name: Upload binaries, checksums and install scripts
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
+        run: |
+          set -euo pipefail
+          gh release upload "$TAG" dist/binaries/quark-* dist/SHA256SUMS install.sh install.ps1 \
+            --repo "$REPO" --clobber
+
+      - name: Verify release is complete
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
+        run: |
+          set -euo pipefail
+          EXPECTED=(
+            SHA256SUMS install.sh install.ps1
+            quark-linux-amd64 quark-linux-arm64 quark-darwin-amd64 quark-darwin-arm64 quark-windows-amd64.exe
+            quark-linux-amd64.tar.gz quark-linux-arm64.tar.gz
+            quark-darwin-amd64.tar.gz quark-darwin-arm64.tar.gz
+            quark-windows-amd64.zip
+            "quark_${VERSION}_amd64.deb" "quark_${VERSION}_arm64.deb"
+          )
+          NAMES=$(gh release view "$TAG" --repo "$REPO" --json assets --jq '.assets[].name')
+          MISSING=()
+          for a in "${EXPECTED[@]}"; do
+            grep -qxF "$a" <<<"$NAMES" || MISSING+=("$a")
+          done
+          if [ "${#MISSING[@]}" -gt 0 ]; then
+            echo "::error::Release $TAG is missing assets: ${MISSING[*]}"
+            exit 1
+          fi
+          echo "All ${#EXPECTED[@]} expected assets are present."
+
+      - name: Publish release
+        env:
+          # PAT (not GITHUB_TOKEN) so `release: published` triggers the
+          # apt and Homebrew workflows.
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
+        run: |
+          set -euo pipefail
+          if [ "$(gh release view "$TAG" --repo "$REPO" --json isDraft --jq .isDraft)" = "true" ]; then
+            gh release edit "$TAG" --repo "$REPO" --draft=false --latest
+            echo "Published release $TAG"
+          else
+            echo "Release $TAG is already published."
+          fi

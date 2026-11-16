@@ -1,8 +1,14 @@
 name: Winget Manifest Validation
 
+# Runs before merge on packaging changes (see npm-validate.yml).
 on:
-  push:
-    tags: ['v*']
+  pull_request:
+    branches: ["master", "main"]
+    paths:
+      - '.goreleaser.yaml'
+      - '.winget/**'
+      - 'scripts/gen-completions.sh'
+      - '.github/workflows/winget-validate.yml'
   workflow_dispatch:
 
 permissions:
@@ -11,86 +17,52 @@ permissions:
 jobs:
   validate:
     runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
 
       - name: Set up Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version: '1.26'
           cache: true
 
       - name: Install GoReleaser
-        uses: goreleaser/goreleaser-action@v5
+        uses: goreleaser/goreleaser-action@5742e2a039330cbb23ebf35f046f814d4c6ff811 # v5.1.0
         with:
           version: v1.26.2
           install-only: true
 
-      - name: Build binaries
+      # `release --snapshot`, not `build`: only release produces archives and SHA256SUMS.
+      - name: Build snapshot archives
+        run: goreleaser release --snapshot --skip=publish --clean
+
+      - name: Verify Windows zip, binary and checksum
         run: |
-          mkdir -p dist/binaries
-          goreleaser build --snapshot --clean
+          set -euo pipefail
+          ZIP=dist/quark-windows-amd64.zip
+          test -f "$ZIP" || { echo "❌ $ZIP not found"; exit 1; }
+          test -f dist/SHA256SUMS || { echo "❌ dist/SHA256SUMS not found"; exit 1; }
+          unzip -l "$ZIP" | grep -q ' quark.exe$' || { echo "❌ quark.exe not in zip"; exit 1; }
 
-      - name: Generate checksums
-        shell: bash
-        run: |
-          cd dist
-          mkdir -p binaries
-          # Extract tar.gz files using tar (Git Bash on Windows)
-          for arch in amd64 arm64; do
-            if [ -f "quark-linux-${arch}.tar.gz" ]; then
-              tar --no-same-owner -xzf "quark-linux-${arch}.tar.gz" -C binaries/
-              [ -f "binaries/quark" ] && mv "binaries/quark" "binaries/quark-linux-${arch}"
-            fi
-            if [ -f "quark-darwin-${arch}.tar.gz" ]; then
-              tar --no-same-owner -xzf "quark-darwin-${arch}.tar.gz" -C binaries/
-              [ -f "binaries/quark" ] && mv "binaries/quark" "binaries/quark-darwin-${arch}"
-            fi
-          done
-          # Extract zip file
-          if [ -f "quark-windows-amd64.zip" ]; then
-            unzip -o "quark-windows-amd64.zip" -d binaries/
-            [ -f "binaries/quark.exe" ] && chmod +x "binaries/quark.exe"
-          fi
-          # Generate checksums
-          if [ -d "binaries" ] && [ "$(ls -A binaries/)" ]; then
-            rm -f SHA256SUMS
-            (cd binaries && sha256sum quark-* > ../SHA256SUMS 2>/dev/null || true)
-            [ -f "*.tar.gz" ] && sha256sum quark-*.tar.gz >> SHA256SUMS 2>/dev/null || true
-            [ -f "*.zip" ] && sha256sum quark-*.zip >> SHA256SUMS 2>/dev/null || true
-          fi
-          echo "✓ Extraction complete"
-          ls -lh binaries/ || echo "No binaries directory"
+          mkdir -p extracted
+          unzip -o "$ZIP" quark.exe -d extracted/
+          ./extracted/quark.exe --version
 
-      - name: Verify Windows binary and zip
-        shell: bash
-        run: |
-          # Verify the Windows zip was created and contains quark.exe
-          if [ ! -f "dist/quark-windows-amd64.zip" ]; then
-            echo "❌ Windows zip not found: dist/quark-windows-amd64.zip"
-            exit 1
-          fi
-          echo "✓ Windows zip exists: dist/quark-windows-amd64.zip"
-
-          # Verify SHA256SUMS was created
-          if [ ! -f "dist/SHA256SUMS" ]; then
-            echo "❌ SHA256SUMS not found"
-            exit 1
-          fi
-          echo "✓ SHA256SUMS exists"
-
-          # Extract and verify quark.exe is in the zip
-          unzip -l dist/quark-windows-amd64.zip | grep -q "quark.exe" && echo "✓ quark.exe found in zip" || (echo "❌ quark.exe not in zip"; exit 1)
-
-          # Show the hash for the zip (needed for winget manifest)
+          LINE=$(grep -E '^[0-9a-f]{64}  quark-windows-amd64\.zip$' dist/SHA256SUMS) \
+            || { echo "❌ zip not listed in SHA256SUMS"; exit 1; }
+          (cd dist && sha256sum --check --strict <<<"$LINE")
           echo ""
           echo "Hash for winget manifest:"
-          grep "quark-windows-amd64.zip" dist/SHA256SUMS
+          echo "$LINE"
 
       - name: Note on winget manifests
         run: |
           echo "ℹ️  Winget manifest generation requires GoReleaser v1.27+ (currently v1.26.2)"
           echo "Manifests are created manually via DISTRIBUTION.md or WINGET-AGENT-PLAN.md"
-          echo ""
-          echo "Once GoReleaser is upgraded, uncomment the wingets section in .goreleaser.yaml"

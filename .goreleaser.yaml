@@ -2,10 +2,12 @@ version: 1
 
 project_name: quark
 
+# No `go mod tidy` here: the release must build exactly what is committed.
+# CI checks tidiness instead (ci.yml, `go mod tidy -diff`). Completions go to
+# the gitignored .completions/ dir so the hook never dirties tracked files.
 before:
   hooks:
-    - go mod tidy
-    - make generate-completions
+    - bash scripts/gen-completions.sh .completions
 
 builds:
   - id: quark
@@ -39,7 +41,9 @@ archives:
         {{- end -}}
     wrap_in_directory: false
     files:
-      - completions/**
+      - src: .completions/*
+        dst: completions
+        strip_parent: true
 
 checksum:
   name_template: SHA256SUMS
@@ -55,6 +59,9 @@ release:
   github:
     owner: crazy-vedic
     name: Quark
+  # Created as a draft; release-build.yml uploads the remaining assets and
+  # publishes it only once everything is present.
+  draft: true
 
 nfpms:
   - id: quark-deb

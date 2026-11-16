@@ -20,10 +20,12 @@ This document covers the process for distributing Quark through winget and npm, 
 
 When you merge a PR with `Release: vX.Y.Z` in the body:
 
-1. **tag-on-merge.yml** validates version, creates tag, and pushes
-2. **release job** builds binaries, creates GitHub Release, uploads artifacts
-3. **publish-npm job** automatically publishes to npm registry (OIDC) — no manual intervention needed
-4. **submit-winget job** prints manual submission instructions (manual submission required; see DISTRIBUTION.md and WINGET-AGENT-PLAN.md)
+1. **tag-on-merge.yml** finds the merged PR, re-validates the version against the latest release, creates the tag, and pushes it. A `Release:` line that is invalid or cannot be tagged fails the run instead of being skipped. An auto-added line (`<!-- release-validation:auto -->`) whose version another PR already took is bumped to the next patch.
+2. **release job** (`release-build.yml`, shared with `release-manual.yml`) has GoReleaser create a **draft** release, uploads the raw binaries, `SHA256SUMS` and the install scripts, attests build provenance, checks that every asset is present, and only then publishes the release. Re-running it repairs a partial release.
+3. **publish-npm job** dispatches `publish-npm.yml`, waits for it, and fails if the npm publish fails. The publish verifies binaries against `SHA256SUMS` and ends with an install smoke test.
+4. Publishing the release triggers **publish-apt.yml** and **publish-homebrew.yml**. Each verifies its downloads against `SHA256SUMS`, runs an install smoke test after publishing, and appends its note to the release body.
+
+Winget submission is manual (see below and WINGET-AGENT-PLAN.md).
 
 ---
 
@@ -279,12 +281,13 @@ Once approved, Microsoft merges the PR. The package goes live on winget within h
   gh workflow run publish-npm.yml -f tag=v1.0.0
   ```
 
-### submit-winget Job
+### winget
 
-Currently **prints instructions** only (no automated submission):
+Not automated: there is no release job for it.
 - winget approval is not yet complete (Microsoft review in progress)
 - Manual submission allows full control over timing and manifest tuning
 - See DISTRIBUTION.md (Manual Submission Steps) or WINGET-AGENT-PLAN.md for guided steps
+- To automate later: upgrade GoReleaser to v1.27+ and enable the `wingets` section in `.goreleaser.yaml`
 
 ---
 
@@ -311,7 +314,7 @@ Currently **prints instructions** only (no automated submission):
 
 **Risk:** Manifest version doesn't match folder path or the actual binary.
 
-**Mitigation:** Use the release workflow's `submit-winget` job which auto-generates manifests from the tag.
+**Mitigation:** Take the version and the zip hash from the release's `SHA256SUMS`. `winget-validate.yml` prints the hash for a snapshot build.
 
 ---
 

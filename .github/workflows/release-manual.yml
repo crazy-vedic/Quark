@@ -1,5 +1,8 @@
 name: Manual Release
 
+# Build and publish (or repair) the release for an existing tag. Safe to
+# re-run: see release-build.yml.
+
 on:
   workflow_dispatch:
     inputs:
@@ -8,198 +11,44 @@ on:
         required: true
         type: string
 
+# Shared with tag-on-merge.yml so manual and automatic releases never overlap.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  release:
+  verify:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-
       - name: Verify tag exists
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.tag }}
+          REPO: ${{ github.repository }}
         run: |
-          TAG="${{ inputs.tag }}"
-          if ! git rev-parse "$TAG" >/dev/null 2>&1; then
-            echo "ERROR: Tag $TAG does not exist."
-            echo ""
-            echo "Create the tag first:"
-            echo "  git tag -a $TAG -m \"Release $TAG\""
-            echo "  git push origin $TAG"
+          set -euo pipefail
+          if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Invalid tag format: $TAG (expected vX.Y.Z)"
+            exit 1
+          fi
+          if ! gh api "repos/$REPO/git/ref/tags/$TAG" >/dev/null 2>&1; then
+            echo "::error::Tag $TAG does not exist. Create it first:"
+            echo "  git tag -a $TAG -m \"Release $TAG\" && git push origin $TAG"
             exit 1
           fi
           echo "Tag $TAG exists."
 
-      - name: Verify tag was created by automation
-        id: verify
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          TAG_NAME="${{ inputs.tag }}"
-          REPO="${{ github.repository }}"
-
-          # Use GitHub API to get the tag message (more reliable than git cat-file in actions/checkout)
-          # This works for both annotated and lightweight tags
-          TAG_MESSAGE=$(gh api "repos/${REPO}/git/ref/tags/${TAG_NAME}" | jq -r '.object.url' | xargs gh api | jq -r '.message // empty')
-
-          # Check for the automation marker added by tag-on-merge.yml
-          if ! echo "$TAG_MESSAGE" | grep -q "automated-release: tag-on-merge.yml"; then
-            echo "WARNING: Tag $TAG_NAME was not created by the automated release workflow."
-            echo ""
-            echo "Tag annotation:"
-            echo "$TAG_MESSAGE"
-            echo ""
-            echo "Proceeding anyway since this is a manual backfill."
-          fi
-
-          # Extract PR link and commit SHA from the tag annotation
-          PR_LINK=$(echo "$TAG_MESSAGE" | grep -oP 'https://github.com/[^ ]+/pull/\d+' || true)
-          COMMIT_SHA=$(echo "$TAG_MESSAGE" | grep -oP 'Commit: \K[0-9a-f]{40}' || true)
-
-          if [ -z "$COMMIT_SHA" ]; then
-            # Fallback to the tag's target commit
-            COMMIT_SHA=$(git rev-parse "${TAG_NAME}^{commit}")
-          fi
-
-          echo "Tag $TAG_NAME verified."
-          echo "pr_link=${PR_LINK}" >> "$GITHUB_OUTPUT"
-          echo "commit_sha=${COMMIT_SHA}" >> "$GITHUB_OUTPUT"
-
-      - name: Checkout tag
-        run: |
-          git checkout "${{ inputs.tag }}"
-
-      - name: Set up Go
-        uses: actions/setup-go@v6
-        with:
-          go-version: '1.26'
-          cache: true
-
-      - name: Generate completion files
-        run: |
-          go build -o quark ./cmd/quark
-          mkdir -p completions
-          ./quark completion bash > completions/quark.bash
-          ./quark completion zsh > completions/quark.zsh
-          ./quark completion fish > completions/quark.fish
-
-      - name: Check if release artifacts already exist
-        id: check_release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          TAG="${{ inputs.tag }}"
-          # Try to get the release
-          if gh release view "$TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
-            echo "Release $TAG exists. Checking for required artifacts..."
-            ASSET_COUNT=$(gh release view "$TAG" --repo "${{ github.repository }}" --json assets --jq '.assets | length')
-            if [ "$ASSET_COUNT" -gt 0 ]; then
-              echo "Found $ASSET_COUNT artifacts. Skipping GoReleaser."
-              echo "skip_goreleaser=true" >> "$GITHUB_OUTPUT"
-            else
-              echo "Release exists but has no artifacts. Will rebuild."
-              echo "skip_goreleaser=false" >> "$GITHUB_OUTPUT"
-            fi
-          else
-            echo "Release $TAG does not exist yet. Will create it."
-            echo "skip_goreleaser=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Install GoReleaser
-        if: steps.check_release.outputs.skip_goreleaser != 'true'
-        uses: goreleaser/goreleaser-action@v5
-        with:
-          version: v1.26.2
-          install-only: true
-
-      - name: Run GoReleaser
-        if: steps.check_release.outputs.skip_goreleaser != 'true'
-        env:
-          GITHUB_TOKEN: ${{ secrets.RELEASE_PAT }}
-          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-        run: |
-          goreleaser release --skip=validate
-
-      - name: Extract binaries and regenerate checksums
-        if: steps.check_release.outputs.skip_goreleaser != 'true'
-        run: |
-          cd dist
-          mkdir -p binaries
-          # Extract from tar.gz (all have "quark" inside)
-          for arch in amd64 arm64; do
-            tar -xzf quark-linux-${arch}.tar.gz -C binaries/
-            mv binaries/quark binaries/quark-linux-${arch}
-            tar -xzf quark-darwin-${arch}.tar.gz -C binaries/
-            mv binaries/quark binaries/quark-darwin-${arch}
-          done
-          # Extract from zip (has quark.exe inside)
-          unzip -o quark-windows-amd64.zip -d binaries/
-          mv binaries/quark.exe binaries/quark-windows-amd64.exe
-          # Regenerate SHA256SUMS with clean paths (no binaries/ prefix)
-          rm SHA256SUMS
-          (cd binaries && sha256sum quark-* > ../SHA256SUMS)
-          sha256sum quark-*.tar.gz quark-*.zip >> SHA256SUMS
-
-      - name: Upload binaries and install scripts to release
-        if: steps.check_release.outputs.skip_goreleaser != 'true'
-        env:
-          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
-        run: |
-          TAG="${{ inputs.tag }}"
-          # Upload extracted binaries
-          gh release upload "$TAG" dist/binaries/quark-* \
-            --repo crazy-vedic/Quark --clobber
-          # Upload checksums
-          gh release upload "$TAG" dist/SHA256SUMS \
-            --repo crazy-vedic/Quark --clobber
-          # Upload install scripts
-          gh release upload "$TAG" install.sh install.ps1 \
-            --repo crazy-vedic/Quark --clobber
-
-  submit-winget:
-    needs: release
-    runs-on: ubuntu-latest
+  release:
+    needs: verify
     permissions:
-      contents: read
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-
-      - name: Set up Go
-        uses: actions/setup-go@v6
-        with:
-          go-version: '1.26'
-          cache: true
-
-      - name: Install GoReleaser
-        uses: goreleaser/goreleaser-action@v5
-        with:
-          version: v1.26.2
-          install-only: true
-
-      - name: Build and generate winget manifests
-        env:
-          GITHUB_TOKEN: ${{ secrets.RELEASE_PAT }}
-        run: |
-          git checkout "${{ inputs.tag }}"
-          goreleaser release --skip=validate --skip=publish
-
-      - name: Manual submission instructions
-        run: |
-          TAG="${{ inputs.tag }}"
-          echo "::notice::Winget submission requires manual steps (see DISTRIBUTION.md):"
-          echo ""
-          echo "1. Fork https://github.com/microsoft/winget-pkgs if you haven't already"
-          echo "2. Clone your fork: git clone https://github.com/<your-username>/winget-pkgs.git"
-          echo "3. Create a new branch: git checkout -b Quark.Quark-$TAG"
-          echo "4. Copy manifests from dist/winget/manifests/q/Quark/Quark/$TAG/"
-          echo "5. Validate: winget validate manifests/q/Quark/Quark/$TAG"
-          echo "6. Push and open a PR against microsoft/winget-pkgs"
-          echo ""
-          echo "Or use WINGET-AGENT-PLAN.md for automated submission steps."
-          echo ""
-          echo "Manifests are in: dist/winget/"
+      contents: write
+      id-token: write
+      attestations: write
+    uses: ./.github/workflows/release-build.yml
+    with:
+      tag: ${{ inputs.tag }}
+    secrets:
+      RELEASE_PAT: ${{ secrets.RELEASE_PAT }}
