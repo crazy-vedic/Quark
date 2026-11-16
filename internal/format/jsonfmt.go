@@ -226,8 +226,10 @@ func detectIndent(body string) string {
 					for k < len(runes) && (runes[k] == ' ' || runes[k] == '\t') {
 						k++
 					}
-					// If we found actual content (not just whitespace), return the indent
-					if k < len(runes) && runes[k] != '\n' && runes[k] != '\r' {
+					// If we found indented content (not just whitespace, and not
+					// unindented at column 0), return the indent. An empty indent
+					// means "not found", so fall back to the default.
+					if k > indentStart && k < len(runes) && runes[k] != '\n' && runes[k] != '\r' {
 						return string(runes[indentStart:k])
 					}
 					break
