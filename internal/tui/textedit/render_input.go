@@ -16,7 +16,8 @@ var cursorStyle = lipgloss.NewStyle().Reverse(true)
 // visible. The selection is drawn in st and the cursor cell is reversed.
 //
 // The widget's own scroll offset is not exported, so the window is computed
-// here from the cursor on every render. Each rune counts as one cell.
+// here from the cursor on every render. The window is measured in display
+// cells, so a wide rune such as CJK takes two.
 func RenderInput(input *textinput.Model, sel Selection, st lipgloss.Style) string {
 	runes := []rune(input.Value())
 	if len(runes) == 0 && input.Placeholder != "" {
@@ -28,14 +29,9 @@ func RenderInput(input *textinput.Model, sel Selection, st lipgloss.Style) strin
 
 	// Width 0 means no window: the whole value is shown, and the caller's pane
 	// clips it. Real fields always set Width, so the cursor stays visible.
-	offset := 0
-	if w := input.Width; w > 0 && pos >= w {
-		// Keep the cursor cell inside the w-cell window.
-		offset = pos - w + 1
-	}
-	visibleEnd := len(runes)
+	offset, visibleEnd := 0, len(runes)
 	if w := input.Width; w > 0 {
-		visibleEnd = min(len(runes), offset+w)
+		offset, visibleEnd = cellWindow(runes, pos, w)
 	}
 
 	var b strings.Builder
@@ -56,4 +52,46 @@ func RenderInput(input *textinput.Model, sel Selection, st lipgloss.Style) strin
 		b.WriteString(cursorStyle.Render(" "))
 	}
 	return b.String()
+}
+
+// cellWindow returns the rune range [offset, end) that fits in w display cells
+// and keeps the cursor cell visible. A cursor after the last rune needs one
+// blank cell of its own.
+func cellWindow(runes []rune, pos, w int) (offset, end int) {
+	cursorCells := 1
+	if pos < len(runes) {
+		cursorCells = cellWidth(runes[pos])
+	}
+
+	// Scroll left from the cursor while the cursor cell still fits in w.
+	offset, used := pos, cursorCells
+	for offset > 0 {
+		rw := cellWidth(runes[offset-1])
+		if used+rw > w {
+			break
+		}
+		used += rw
+		offset--
+	}
+
+	// Fill right from offset, leaving the trailing cursor cell free if needed.
+	budget := w
+	if pos == len(runes) {
+		budget--
+	}
+	end, cells := offset, 0
+	for end < len(runes) {
+		rw := cellWidth(runes[end])
+		if cells+rw > budget {
+			break
+		}
+		cells += rw
+		end++
+	}
+	return offset, end
+}
+
+// cellWidth is the number of display cells a rune occupies.
+func cellWidth(r rune) int {
+	return lipgloss.Width(string(r))
 }
