@@ -181,6 +181,17 @@ func (m Model) WithHelpCursor(n int) Model          { m.helpCursor = n; return m
 func (m Model) WithHelpScrollOffset(n int) Model    { m.helpScrollOffset = n; return m }
 func (m Model) WithSearchInputValue(v string) Model { m.searchInput.SetValue(v); return m }
 
+// WithSearchEdit focuses the search input, as opening search does, so keys
+// reach the widget.
+func (m Model) WithSearchEdit() Model { m.searchInput.Focus(); return m }
+
+// WithSearchSelection selects [start, end) in the search input.
+func (m Model) WithSearchSelection(start, end int) Model {
+	m.searchSelection.SelectRange(start, end)
+	m.searchInput.SetCursor(end)
+	return m
+}
+
 func (m Model) WithImportPreview(p *curl.ImportResult) Model {
 	m.importPreview = p
 	return m
@@ -468,8 +479,8 @@ func (m Model) URLSelection() textedit.Selection        { return m.urlSelection 
 func (m Model) BodySelection() textedit.Selection       { return m.bodySelection }
 func (m Model) HeaderKeySelection() textSelection       { return m.headerKeySelection }
 func (m Model) HeaderValueSelection() textSelection     { return m.headerValueSelection }
-func (m Model) SearchSelection() textSelection          { return m.searchSelection }
-func (m Model) ViewerFindSelection() textSelection      { return m.viewerFindSelection }
+func (m Model) SearchSelection() textedit.Selection     { return m.searchSelection }
+func (m Model) ViewerFindSelection() textedit.Selection { return m.viewerFindSelection }
 func (m Model) ImportInputSelection() textSelection     { return m.importInputSelection }
 func (m Model) AuthTokenSelection() textSelection       { return m.authTokenSelection }
 func (m Model) AuthUsernameSelection() textSelection    { return m.authUsernameSelection }

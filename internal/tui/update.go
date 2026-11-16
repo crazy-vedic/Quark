@@ -1059,34 +1059,13 @@ func (m Model) triggerCurlImport(raw string) (Model, tea.Cmd) {
 // --- Search modal ---
 
 func (m Model) handleSearchKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	// Handle copy/cut for search
+	ed := newTextEditor()
+	b := textedit.Input(&m.searchInput)
+	if cmd, handled := ed.HandleKey(&m.searchSelection, b, msg); handled {
+		return m.searchQueryChanged(cmd)
+	}
 	if msg.Type == tea.KeyCtrlC {
-		text := copySelectionText(m.searchInput.Value(), m.searchSelection)
-		if text != "" {
-			return m, copyToClipboardCmd(text)
-		}
-		return m, nil
-	}
-	if msg.Type == tea.KeyCtrlX {
-		text := copySelectionText(m.searchInput.Value(), m.searchSelection)
-		newValue, newCursorPos := cutSelection(
-			m.searchInput.Value(), m.searchSelection, m.searchInput.Position(),
-		)
-		m.searchInput.SetValue(newValue)
-		m.searchInput.SetCursor(newCursorPos)
-		m.searchSelection.Clear(newCursorPos)
-		if text != "" {
-			return m, copyToClipboardCmd(text)
-		}
-		return m, nil
-	}
-
-	// Handle selection keys
-	handled, shouldUpdateComponent := handleSelectionKeyForInput(
-		msg, &m.searchSelection, &m.searchInput, m.searchInput.Position())
-	if handled && !shouldUpdateComponent {
-		_, selEnd := m.searchSelection.Range()
-		m.searchInput.SetCursor(selEnd)
+		// No selection: nothing to copy. Ctrl+C never quits the app.
 		return m, nil
 	}
 
@@ -1141,10 +1120,7 @@ func (m Model) handleSearchKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	beforeCursor := m.searchInput.Position()
 	var inputCmd tea.Cmd
 	m.searchInput, inputCmd = m.searchInput.Update(msg)
-	// Clear selection after regular key handling
-	if !handled || shouldUpdateComponent {
-		m.searchSelection.Clear(m.searchInput.Position())
-	}
+	ed.Sync(&m.searchSelection, b)
 	if m.debugLog != nil {
 		fmt.Fprintf(
 			m.debugLog,
@@ -1157,6 +1133,12 @@ func (m Model) handleSearchKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.searchInput.Position(),
 		)
 	}
+	return m.searchQueryChanged(inputCmd)
+}
+
+// searchQueryChanged re-runs the search (or refreshes the command palette)
+// after the search input's text changed.
+func (m Model) searchQueryChanged(inputCmd tea.Cmd) (tea.Model, tea.Cmd) {
 	query := m.searchInput.Value()
 	if m.isCommandPaletteQuery(query) {
 		m.commands = m.filterCommandPalette(strings.TrimSpace(strings.TrimPrefix(query, ">")))

@@ -12,6 +12,7 @@ import (
 
 	"github.com/crazy-vedic/quark/internal/domain"
 	"github.com/crazy-vedic/quark/internal/exec"
+	"github.com/crazy-vedic/quark/internal/tui/textedit"
 )
 
 func TestViewerAbs(t *testing.T) {
@@ -145,19 +146,19 @@ func TestViewerFindSelectionCopyAndCut(t *testing.T) {
 	assert.Nil(t, cmd)
 
 	// Select all, then Ctrl+C copies.
-	m.viewerFindSelection = textSelection{anchor: 0, cursor: 5}
+	m.viewerFindSelection = textedit.Selection{Anchor: 0, Cursor: 5}
 	_, cmd = sendKey(t, m, tea.KeyMsg{Type: tea.KeyCtrlC})
 	assert.NotNil(t, cmd)
 
 	// Ctrl+X cuts and copies the selection.
-	m.viewerFindSelection = textSelection{anchor: 0, cursor: 5}
+	m.viewerFindSelection = textedit.Selection{Anchor: 0, Cursor: 5}
 	cut, cmd := sendKey(t, m, tea.KeyMsg{Type: tea.KeyCtrlX})
 	assert.NotNil(t, cmd)
 	assert.Equal(t, "", cut.viewerFind.Value())
 
 	// Ctrl+X with nothing selected removes nothing and returns no command.
 	m.viewerFind.SetValue("abc")
-	m.viewerFindSelection = textSelection{}
+	m.viewerFindSelection = textedit.Selection{}
 	cut, cmd = sendKey(t, m, tea.KeyMsg{Type: tea.KeyCtrlX})
 	assert.Nil(t, cmd)
 	assert.Equal(t, "abc", cut.viewerFind.Value())

@@ -356,8 +356,8 @@ type Model struct {
 	bodySelection            textedit.Selection // selection in body textarea
 	headerKeySelection       textSelection      // selection in header key input
 	headerValueSelection     textSelection      // selection in header value input
-	searchSelection          textSelection      // selection in search input
-	viewerFindSelection      textSelection      // selection in viewer find input
+	searchSelection          textedit.Selection // selection in search input
+	viewerFindSelection      textedit.Selection // selection in viewer find input
 	importInputSelection     textSelection      // selection in import textarea
 	authTokenSelection       textSelection      // selection in auth token field
 	authUsernameSelection    textSelection      // selection in auth username field

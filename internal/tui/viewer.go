@@ -10,6 +10,8 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+
+	"github.com/crazy-vedic/quark/internal/tui/textedit"
 )
 
 const viewerDoubleClickWindow = 400
@@ -86,36 +88,14 @@ func (m Model) openViewerFind() (Model, tea.Cmd) {
 
 func (m Model) handleViewerKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.viewerFindOpen {
-		// Handle copy/cut for viewer find
+		ed := newTextEditor()
+		b := textedit.Input(&m.viewerFind)
+		if cmd, handled := ed.HandleKey(&m.viewerFindSelection, b, msg); handled {
+			m.viewerFindFirstMatch()
+			return m, cmd
+		}
 		if msg.Type == tea.KeyCtrlC {
-			text := copySelectionText(m.viewerFind.Value(), m.viewerFindSelection)
-			if text != "" {
-				return m, copyToClipboardCmd(text)
-			}
-			return m, nil
-		}
-		if msg.Type == tea.KeyCtrlX {
-			text := copySelectionText(m.viewerFind.Value(), m.viewerFindSelection)
-			newValue, newCursorPos := cutSelection(
-				m.viewerFind.Value(), m.viewerFindSelection, m.viewerFind.Position(),
-			)
-			m.viewerFind.SetValue(newValue)
-			m.viewerFind.SetCursor(newCursorPos)
-			m.viewerFindSelection.Clear(newCursorPos)
-			m.viewerFindFirstMatch()
-			if text != "" {
-				return m, copyToClipboardCmd(text)
-			}
-			return m, nil
-		}
-
-		// Handle selection keys
-		handled, shouldUpdateComponent := handleSelectionKeyForInput(
-			msg, &m.viewerFindSelection, &m.viewerFind, m.viewerFind.Position())
-		if handled && !shouldUpdateComponent {
-			_, selEnd := m.viewerFindSelection.Range()
-			m.viewerFind.SetCursor(selEnd)
-			m.viewerFindFirstMatch()
+			// No selection: nothing to copy. Ctrl+C never quits the app.
 			return m, nil
 		}
 
@@ -134,10 +114,7 @@ func (m Model) handleViewerKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		var cmd tea.Cmd
 		m.viewerFind, cmd = m.viewerFind.Update(msg)
-		// Clear selection after regular key handling if not a selection key
-		if !handled || shouldUpdateComponent {
-			m.viewerFindSelection.Clear(m.viewerFind.Position())
-		}
+		ed.Sync(&m.viewerFindSelection, b)
 		m.viewerFindFirstMatch()
 		return m, cmd
 	}
