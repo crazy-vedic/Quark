@@ -87,6 +87,21 @@ func TestViewerClipboardCmdsReturnMessages(t *testing.T) {
 	assert.True(t, ok)
 }
 
+func TestViewerFooterListsOverriddenCloseKeysOnly(t *testing.T) {
+	m := viewerTestModel(t)
+	assert.Contains(t, strings.ToLower(m.viewViewer()), "esc/tab")
+
+	m.cfg.Keybindings.ViewerClose = "q"
+	m.cacheTextKeys()
+	footer := m.viewViewer()
+	assert.Contains(t, footer, "q] close")
+	assert.NotContains(t, strings.ToLower(footer), "tab")
+
+	m, _ = sendKey(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'f'}})
+	require.True(t, m.ViewerFindOpen())
+	assert.NotContains(t, strings.ToLower(m.viewViewer()), "tab")
+}
+
 func viewerTestModel(t *testing.T) Model {
 	t.Helper()
 	m := New(Deps{})

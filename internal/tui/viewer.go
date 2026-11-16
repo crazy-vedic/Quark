@@ -252,11 +252,11 @@ func copyCurlCommandCmd(content string) tea.Cmd {
 func (m Model) viewViewer() string {
 	keys := m.textKeys()
 	help := "[" + keys.ViewerFind[0] + "] find  [" + keys.ViewerCopy[0] + "] copy body  [" +
-		keys.ViewerClose[0] + "/tab] close  [shift+click] terminal select"
+		strings.Join(keys.ViewerClose, "/") + "] close  [shift+click] terminal select"
 	matchStatus := m.viewerMatchStatus()
 	if m.viewerFindOpen {
 		help = "Find: " + m.viewerFind.View() + matchStatus + "  [" + keys.FindNext[0] +
-			"] next  [" + keys.FindPrev[0] + "] previous  [" + keys.ViewerClose[0] + "/tab] close"
+			"] next  [" + keys.FindPrev[0] + "] previous  [" + strings.Join(keys.ViewerClose, "/") + "] close"
 	} else if matchStatus != "" {
 		help += matchStatus
 	}
