@@ -91,23 +91,16 @@ func (m Model) reportCurlReplace(result *curl.ImportResult) Model {
 
 // isPasteKey reports whether msg inserts pasted text: a bracketed paste from the
 // terminal or the editor's Ctrl+V clipboard paste.
-func isPasteKey(msg tea.KeyMsg, k textedit.Keymap) bool {
-	return msg.Paste || k.Paste.Match(msg.String())
+func isPasteKey(msg tea.KeyMsg, _ textedit.Keymap) bool {
+	return msg.Paste
 }
 
-// pastedText returns the text a paste key would insert: the bracketed paste
-// runes, or the clipboard for Ctrl+V. ok is false for any other key. A clipboard
-// read error counts as no text.
-func pastedText(msg tea.KeyMsg, k textedit.Keymap) (text string, ok bool) {
-	switch {
-	case msg.Paste:
+// pastedText returns the text of a bracketed paste. ok is false for any other
+// key. Ctrl+V is not read here: it reads the clipboard asynchronously and
+// arrives as a bracketed paste, so the UI never blocks on the clipboard.
+func pastedText(msg tea.KeyMsg, _ textedit.Keymap) (text string, ok bool) {
+	if msg.Paste {
 		return string(msg.Runes), true
-	case k.Paste.Match(msg.String()):
-		clip, err := readClipboardText()
-		if err != nil {
-			return "", true
-		}
-		return clip, true
 	}
 	return "", false
 }

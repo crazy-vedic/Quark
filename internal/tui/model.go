@@ -224,6 +224,7 @@ type Model struct {
 	activeEnvStore  store.ActiveEnvironmentStore
 	scheduler       store.ScheduledRunStore
 	cfg             config.Config
+	editKeys        *textedit.Keymap // built from cfg by cacheTextKeys; nil falls back to building it
 	theme           theme.Theme
 	styles          styleSet
 	terminalDark    bool
@@ -599,6 +600,7 @@ func New(deps Deps) Model {
 		m.tmuxWarning = "GNU screen detected: some Ctrl+w bindings may be intercepted"
 	}
 
+	m.cacheTextKeys()
 	m.terminalDark = lipgloss.HasDarkBackground()
 	selected, err := theme.Resolve(deps.ConfigDir, deps.Config.UI.Theme, m.terminalDark)
 	if err != nil {

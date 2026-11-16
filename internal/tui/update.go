@@ -2002,6 +2002,7 @@ func (m Model) persistImportedCertificate(
 		return m, err
 	}
 	m.cfg = nextConfig
+	m.cacheTextKeys()
 	m.clientCerts = append([]config.ClientCertificate(nil), next...)
 	return m, nil
 }

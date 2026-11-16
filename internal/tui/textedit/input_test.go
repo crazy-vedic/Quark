@@ -10,7 +10,7 @@ import (
 
 type nopClipboard struct{}
 
-func (nopClipboard) Read() (string, error)   { return "", nil }
+func (nopClipboard) ReadCmd() tea.Cmd        { return nil }
 func (nopClipboard) WriteCmd(string) tea.Cmd { return nil }
 
 func TestInputAdapterRoundTrip(t *testing.T) {

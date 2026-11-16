@@ -255,3 +255,35 @@ func (e *recordingExecutor) Execute(
 	e.reqs = append(e.reqs, &cloned)
 	return &exec.ExecuteResult{StatusCode: 200}, nil
 }
+
+// callPaste sends msg and then runs the returned command, feeding a bracketed
+// paste key back into the model as the Bubble Tea loop does. Ctrl+V reads the
+// clipboard asynchronously, so its text only lands through this loop.
+func callPaste(t *testing.T, m tui.Model, msg tea.Msg) tui.Model {
+	t.Helper()
+	m, cmd := tuitest.UpdateWithCmd(t, m, msg)
+	return feedPastes(t, m, cmd)
+}
+
+// feedPastes runs cmd and feeds every bracketed paste key it produces back into
+// the model. Batched commands are unwrapped, since a handler may batch the
+// paste with other work.
+func feedPastes(t *testing.T, m tui.Model, cmd tea.Cmd) tui.Model {
+	t.Helper()
+	if cmd == nil {
+		return m
+	}
+	switch out := cmd().(type) {
+	case tea.BatchMsg:
+		for _, c := range out {
+			m = feedPastes(t, m, c)
+		}
+	case tea.KeyMsg:
+		if out.Paste {
+			var next tea.Cmd
+			m, next = tuitest.UpdateWithCmd(t, m, out)
+			m = feedPastes(t, m, next)
+		}
+	}
+	return m
+}

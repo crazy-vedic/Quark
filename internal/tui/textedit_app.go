@@ -17,7 +17,7 @@ var _ textedit.Clipboard = appClipboard{}
 // supply clipboard text without touching the real clipboard.
 var readClipboardText = clipboard.ReadAll
 
-func (appClipboard) Read() (string, error)        { return readClipboardText() }
+func (appClipboard) ReadCmd() tea.Cmd             { return textedit.PasteCmd(readClipboardText) }
 func (appClipboard) WriteCmd(text string) tea.Cmd { return copyToClipboardCmd(text) }
 
 // newTextEditor returns the editor for text fields, with key bindings taken
@@ -26,9 +26,19 @@ func (m Model) newTextEditor() textedit.Editor {
 	return textedit.Editor{Keys: m.textKeys(), Clip: appClipboard{}}
 }
 
+// cacheTextKeys builds the text-editing keymap from the config once. It runs
+// at construction and whenever the config changes, so keystrokes reuse it.
+func (m *Model) cacheTextKeys() {
+	k := textedit.KeymapFromConfig(m.cfg.Keybindings)
+	m.editKeys = &k
+}
+
 // textKeys returns the text-editing keymap built from the config. Every text
 // key check in the TUI reads its binding from here, so remapping applies
-// everywhere.
+// everywhere. Models built without cacheTextKeys still get a correct keymap.
 func (m Model) textKeys() textedit.Keymap {
+	if m.editKeys != nil {
+		return *m.editKeys
+	}
 	return textedit.KeymapFromConfig(m.cfg.Keybindings)
 }

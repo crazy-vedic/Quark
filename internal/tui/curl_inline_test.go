@@ -1,6 +1,7 @@
 package tui_test
 
 import (
+	"errors"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -150,7 +151,7 @@ func TestCurlMultiLineCtrlVOpensReplaceDialog(t *testing.T) {
 		WithURLEdit().
 		WithURLValue("")
 
-	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyCtrlV})
+	m = callPaste(t, m, tea.KeyMsg{Type: tea.KeyCtrlV})
 	require.Equal(t, tui.ImportMode, m.Mode(), "Ctrl+V of a multi-line curl opens the dialog")
 	assert.Empty(t, m.URLValue())
 
@@ -187,4 +188,47 @@ func TestCurlMultiLinePasteKeepsURLFieldText(t *testing.T) {
 	require.Equal(t, tui.ImportMode, m.Mode())
 	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyEsc})
 	assert.Equal(t, req.URL, m.URLValue(), "URL field text is unchanged")
+}
+
+// Ctrl+V must not read the clipboard while Update runs. The read happens in
+// the returned command, so a slow clipboard cannot block the UI.
+func TestCtrlVReadsClipboardOnlyInCommand(t *testing.T) {
+	reads := 0
+	restore := tui.StubClipboardForTest(func() (string, error) {
+		reads++
+		return "PASTED", nil
+	})
+	t.Cleanup(restore)
+
+	m := newModelWithCurl().
+		WithFocus(tui.RequestPane).
+		WithActiveRequest(existingRequest()).
+		WithURLEdit().
+		WithURLValue("")
+
+	m2, cmd := callUpdateWithCmd(t, m, tea.KeyMsg{Type: tea.KeyCtrlV})
+	assert.Equal(t, 0, reads, "Update must not read the clipboard")
+	assert.Equal(t, "", m2.URLValue())
+	require.NotNil(t, cmd)
+
+	m3 := callPaste(t, m, tea.KeyMsg{Type: tea.KeyCtrlV})
+	assert.Equal(t, 1, reads)
+	assert.Equal(t, "PASTED", m3.URLValue())
+}
+
+// A failed clipboard read leaves the field alone.
+func TestCtrlVClipboardErrorLeavesFieldAlone(t *testing.T) {
+	restore := tui.StubClipboardForTest(func() (string, error) {
+		return "", errors.New("no clipboard")
+	})
+	t.Cleanup(restore)
+
+	m := newModelWithCurl().
+		WithFocus(tui.RequestPane).
+		WithActiveRequest(existingRequest()).
+		WithURLEdit().
+		WithURLValue("keep")
+
+	m2 := callPaste(t, m, tea.KeyMsg{Type: tea.KeyCtrlV})
+	assert.Equal(t, "keep", m2.URLValue())
 }

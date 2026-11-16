@@ -6,6 +6,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 type fakeBackend struct {
@@ -57,7 +58,9 @@ type recordingClipboard struct {
 	readErr error
 }
 
-func (r *recordingClipboard) Read() (string, error) { return r.content, r.readErr }
+func (r *recordingClipboard) ReadCmd() tea.Cmd {
+	return PasteCmd(func() (string, error) { return r.content, r.readErr })
+}
 func (r *recordingClipboard) WriteCmd(s string) tea.Cmd {
 	r.writes = append(r.writes, s)
 	return nil
@@ -78,8 +81,15 @@ func newHarness(text string, cur int) *harness {
 	return h
 }
 
+// press sends msg and then runs any returned command and feeds its message
+// back, as the Bubble Tea loop does. A paste therefore lands in the same call.
 func (h *harness) press(msg tea.KeyMsg) bool {
-	_, handled := h.ed.HandleKey(&h.sel, h.b, msg)
+	cmd, handled := h.ed.HandleKey(&h.sel, h.b, msg)
+	if cmd != nil {
+		if km, ok := cmd().(tea.KeyMsg); ok {
+			h.ed.HandleKey(&h.sel, h.b, km)
+		}
+	}
 	return handled
 }
 
@@ -251,6 +261,20 @@ func TestPasteStripsNewlinesForSingleLine(t *testing.T) {
 	assert.Equal(t, "https://x.dev", h.b.text)
 }
 
+func TestPasteIsDeferredUntilClipboardReadRuns(t *testing.T) {
+	h := newHarness("ad", 1)
+	h.clp.content = "bc"
+	cmd, handled := h.ed.HandleKey(&h.sel, h.b, keyFor("ctrl+v"))
+	assert.True(t, handled)
+	assert.Equal(t, "ad", h.b.text, "the UI must not read or insert synchronously")
+	require.NotNil(t, cmd)
+	km, ok := cmd().(tea.KeyMsg)
+	require.True(t, ok)
+	assert.True(t, km.Paste)
+	h.ed.HandleKey(&h.sel, h.b, km)
+	assert.Equal(t, "abcd", h.b.text)
+}
+
 func TestPasteFailureLeavesTextAlone(t *testing.T) {
 	h := newHarness("abc", 1)
 	h.clp.readErr = errors.New("no clipboard")
@@ -336,4 +360,25 @@ func TestSyncKeepsSelectionWhenCursorUnchanged(t *testing.T) {
 	h.ed.Sync(&h.sel, h.b) // e.g. a cursor blink tick: nothing moved
 	s, e := h.sel.Range()
 	assert.Equal(t, [2]int{0, 2}, [2]int{s, e})
+}
+
+// Enter in a single-line field is not owned by the editor. The caller handles
+// it, and the selection must survive the key untouched.
+func TestEnterInSingleLineFieldIsLeftToCaller(t *testing.T) {
+	h := newHarness("abc", 0)
+	h.b.multi = false
+	h.key("shift+end")
+	before := h.sel
+	assert.False(t, h.press(tea.KeyMsg{Type: tea.KeyEnter}))
+	assert.Equal(t, "abc", h.b.text)
+	assert.Equal(t, before, h.sel)
+}
+
+// Pasting multi-line text into a single-line field drops the newlines, as
+// sanitize documents. It must not insert a stray line break.
+func TestPasteMultiLineIntoSingleLineDropsNewlines(t *testing.T) {
+	h := newHarness("", 0)
+	h.clp.content = "one\ntwo"
+	h.key("ctrl+v")
+	assert.Equal(t, "onetwo", h.b.text)
 }

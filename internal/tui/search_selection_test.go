@@ -57,6 +57,6 @@ func TestSearchSelectAllThenPasteReplaces(t *testing.T) {
 	m := newSearchWithText("old")
 	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyCtrlA})
 	require.True(t, m.SearchSelection().Active())
-	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyCtrlV})
+	m = callPaste(t, m, tea.KeyMsg{Type: tea.KeyCtrlV})
 	assert.Equal(t, "new", m.SearchInputValue())
 }

@@ -81,7 +81,7 @@ func TestHeaderKeyCopyCutPaste(t *testing.T) {
 	assert.NotNil(t, cmd, "cut writes the selected key")
 	assert.Equal(t, "", m3.HeaderKeyValue())
 
-	m4 := callUpdate(t, m, tea.KeyMsg{Type: tea.KeyCtrlV})
+	m4 := callPaste(t, m, tea.KeyMsg{Type: tea.KeyCtrlV})
 	assert.Equal(t, "PASTE", m4.HeaderKeyValue(), "paste replaces the selected key")
 }
 
@@ -111,7 +111,7 @@ func TestAuthTokenCopyCutPaste(t *testing.T) {
 	assert.NotNil(t, cmd)
 	assert.Equal(t, "", m2.AuthTokenValue())
 
-	m3 := callUpdate(t, m2, tea.KeyMsg{Type: tea.KeyCtrlV})
+	m3 := callPaste(t, m2, tea.KeyMsg{Type: tea.KeyCtrlV})
 	assert.Equal(t, "NEW", m3.AuthTokenValue())
 }
 

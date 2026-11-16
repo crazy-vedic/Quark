@@ -56,3 +56,14 @@ func TestRenderInputSelectionKeepsTextAndStyle(t *testing.T) {
 	assert.Contains(t, out, st.Render("d"))
 	assert.NotContains(t, out, st.Render("e"))
 }
+
+// A field with Width 0 has no window: it renders the whole value, keeps the
+// cursor cell and draws the selection. The header and auth inputs are unset,
+// so this is their normal path.
+func TestRenderInputWithoutWidthRendersWholeValue(t *testing.T) {
+	ti := newField(0, "abcdefghijklmnopqrstuvwxyz")
+	ti.SetCursor(20)
+	sel := Selection{Anchor: 2, Cursor: 5}
+	out := RenderInput(ti, sel, lipgloss.NewStyle())
+	assert.Equal(t, "> abcdefghijklmnopqrstuvwxyz", ansi.Strip(out))
+}

@@ -3,6 +3,7 @@ package textedit
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/charmbracelet/bubbles/textarea"
 	tea "github.com/charmbracelet/bubbletea"
@@ -233,4 +234,25 @@ func TestAreaSetCursorLargeBody(t *testing.T) {
 	assert.Equal(t, target, b.Cursor())
 	b.SetCursor(12) // line 2, col 2: walk back up
 	assert.Equal(t, 12, b.Cursor())
+}
+
+// A 10,000-line body must move the cursor to either end without walking the
+// whole document once per call.
+func TestAreaSetCursorOnTenThousandLineBody(t *testing.T) {
+	lines := make([]string, 10000)
+	for i := range lines {
+		lines[i] = "line"
+	}
+	text := strings.Join(lines, "\n")
+	total := len([]rune(text))
+	b := Area(newArea(80, 20, text))
+
+	start := time.Now()
+	b.SetCursor(total)
+	assert.Equal(t, total, b.Cursor())
+	b.SetCursor(0)
+	assert.Equal(t, 0, b.Cursor())
+	b.SetCursor(total / 2)
+	assert.Equal(t, total/2, b.Cursor())
+	assert.Less(t, time.Since(start), 5*time.Second)
 }

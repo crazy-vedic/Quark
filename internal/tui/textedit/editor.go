@@ -46,11 +46,9 @@ func (e Editor) HandleKey(sel *Selection, b Backend, msg tea.KeyMsg) (tea.Cmd, b
 		return e.Clip.WriteCmd(text), true
 
 	case k.Paste.Match(key):
-		text, err := e.Clip.Read()
-		if err == nil && text != "" {
-			e.insert(sel, b, sanitize(text, multiLine(b)))
-		}
-		return nil, true
+		// The read is asynchronous. The text returns as a paste key and is
+		// inserted when it arrives, so the UI is never blocked on the clipboard.
+		return e.Clip.ReadCmd(), true
 
 	case k.SelectCharLeft.Match(key), k.SelectCharRight.Match(key),
 		k.SelectWordLeft.Match(key), k.SelectWordRight.Match(key),
