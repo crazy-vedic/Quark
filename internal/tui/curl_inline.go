@@ -21,11 +21,22 @@ func isCurlCommand(s string) bool {
 	return rest == "" || rest[0] == ' ' || rest[0] == '\t' || rest[0] == '\n' || rest[0] == '\r'
 }
 
-// openCurlReplace parses a curl command pasted or entered into the URL field
-// and opens the import dialog in replace mode. Confirming replaces the active
-// request; cancelling leaves it unchanged. On a parse error the text stays in
-// the field so the user can fix it.
+// openCurlReplace parses a curl command entered into the URL field and opens
+// the import dialog in replace mode. Confirming replaces the active request;
+// cancelling leaves it unchanged. On a parse error the text stays in the field
+// so the user can fix it.
 func (m Model) openCurlReplace(raw string) Model {
+	return m.openCurlReplaceFrom(raw, false)
+}
+
+// openCurlReplaceFromPaste is openCurlReplace for a bracketed paste. A paste
+// never reaches the URL field, so on a parse error the import dialog opens
+// pre-filled with the pasted text instead, where the user can fix it.
+func (m Model) openCurlReplaceFromPaste(raw string) Model {
+	return m.openCurlReplaceFrom(raw, true)
+}
+
+func (m Model) openCurlReplaceFrom(raw string, fromPaste bool) Model {
 	if m.activeRequest == nil {
 		return m.status("error", "Select a request first, then paste the curl command")
 	}
@@ -34,6 +45,12 @@ func (m Model) openCurlReplace(raw string) Model {
 	}
 	result, err := m.importer.Parse(strings.NewReader(strings.TrimSpace(raw)))
 	if err != nil {
+		if fromPaste {
+			m = m.openCurlImport()
+			m.importInput.SetValue(raw)
+			m.importError = "Could not parse curl: " + err.Error()
+			return m
+		}
 		return m.status("error", "Could not parse curl: "+err.Error())
 	}
 

@@ -265,3 +265,18 @@ func TestCurlReplaceClearsPreviousAuth(t *testing.T) {
 	assert.Empty(t, req.AuthType, "previous request's auth type must not apply to the curl request")
 	assert.Empty(t, req.AuthConfig, "previous request's auth config must not apply to the curl request")
 }
+
+func TestCurlMultiLinePasteParseErrorKeepsTextRecoverable(t *testing.T) {
+	req := existingRequest()
+	broken := "curl -X POST https://api.example.com/items \\\n  -d '{\n  \"a\": 1"
+	m := newModelWithCurl().
+		WithFocus(tui.RequestPane).
+		WithActiveRequest(req).
+		WithURLEdit().
+		WithURLValue("")
+
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(broken), Paste: true})
+	require.Equal(t, tui.ImportMode, m.Mode(), "a failed paste opens the import dialog")
+	assert.Equal(t, broken, m.ImportInputValue(), "pasted text is kept for editing")
+	assert.Equal(t, "https://old.example", req.URL, "request is unchanged")
+}
