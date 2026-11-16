@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -57,11 +58,26 @@ func debugHeaderKeys(headers http.Header) string {
 	return strings.Join(keys, ",")
 }
 
+// mouseReportRe matches SGR mouse reports (ESC [ < b ; x ; y M) whose escape
+// byte was lost, so they arrive as plain text.
+var mouseReportRe = regexp.MustCompile(`^(\[?<\d+;\d+;\d+[Mm])+$`)
+
+// isMouseReportText reports whether km is a mouse report that Bubble Tea failed
+// to parse, which happens when a fast drag splits a report across reads. Typed
+// text arrives one rune per key, so a multi-rune match is never the user's.
+func isMouseReportText(km tea.KeyMsg) bool {
+	return km.Type == tea.KeyRunes && !km.Paste && len(km.Runes) > 5 &&
+		mouseReportRe.MatchString(string(km.Runes))
+}
+
 // Update implements tea.Model — routes every message to the correct handler.
 //
 // Update routes a message. A paste request (Ctrl+V) takes a new ticket so that
 // results are applied in request order; see paste_routing.go.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if km, ok := msg.(tea.KeyMsg); ok && isMouseReportText(km) {
+		return m, nil
+	}
 	if km, ok := msg.(tea.KeyMsg); ok && !km.Paste && m.textKeys().Paste.Match(km.String()) {
 		target := m.pasteTargetOf()
 		next, cmd := m.update(msg)

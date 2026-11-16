@@ -430,3 +430,51 @@ func TestBodyClickHonoursWrappedRows(t *testing.T) {
 	assert.Equal(t, 201+3, got.bodySelection.Anchor)
 	assert.Equal(t, 201+17+5, got.bodySelection.Cursor)
 }
+
+func dragTo(x, y int) tea.MouseMsg {
+	return tea.MouseMsg{X: x, Y: y, Action: tea.MouseActionMotion, Button: tea.MouseButtonLeft}
+}
+
+// Press, then move with the left button held: the selection grows from the
+// press position, in the URL line and in the body.
+func TestDragSelectsInURLAndBody(t *testing.T) {
+	m := editorTestModel(t, nil)
+	x, y, ok := m.RequestURLLineClickPos()
+	require.True(t, ok)
+	updated, _ := m.Update(press(x, y))
+	m = requireModel(t, updated)
+	start := m.urlInput.Position()
+	m.lastTextClickSource = ""
+	for _, dx := range []int{2, 5, 9} {
+		updated, _ = m.Update(dragTo(x+dx, y))
+		m = requireModel(t, updated)
+	}
+	assert.Equal(t, start, m.urlSelection.Anchor)
+	assert.Equal(t, start+9, m.urlSelection.Cursor)
+
+	req := &domain.Request{ID: "r", Method: "POST", URL: "u", Body: "hello world\nsecond"}
+	b := editorTestModel(t, req)
+	b = b.WithActiveField(bodyField).WithBodyEdit()
+	layout := b.currentLayout()
+	ll := b.requestPaneLineLayout(layout)
+	left := b.bodyTextareaTextLeft(layout)
+	updated, _ = b.Update(press(left+1, ll.editorContentY))
+	b = requireModel(t, updated)
+	updated, _ = b.Update(dragTo(left+4, ll.editorContentY+1))
+	b = requireModel(t, updated)
+	assert.Equal(t, 1, b.bodySelection.Anchor)
+	assert.Equal(t, 12+4, b.bodySelection.Cursor)
+}
+
+// Mouse reports that lose their escape byte must not be typed into the body.
+func TestLeakedMouseReportsAreNotTyped(t *testing.T) {
+	b := editorTestModel(t, &domain.Request{ID: "r", Method: "POST", URL: "u", Body: "ab"})
+	b = b.WithActiveField(bodyField).WithBodyEdit()
+	leak := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("[<32;49;8M[<32;48;6M")}
+	updated, _ := b.Update(leak)
+	assert.Equal(t, "ab", requireModel(t, updated).BodyValue())
+
+	// Ordinary typing and pastes still work.
+	updated, _ = b.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")})
+	assert.Contains(t, requireModel(t, updated).BodyValue(), "x")
+}
