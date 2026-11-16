@@ -182,20 +182,28 @@ jobs:
         run: |
           set -euo pipefail
           VERSION="${TAG#v}"
-          # The registry can take several minutes to serve a new version, and
-          # npm may keep a stale "no such version" packument in its cache or
-          # behind the CDN. Use a fresh cache and force revalidation on every
-          # attempt so a cached miss can't outlive the registry lag.
-          ATTEMPTS=20
+          # The registry makes new versions visible gradually and out of order:
+          # the main package can resolve minutes before a platform package.
+          # npm silently skips an optional dependency it cannot resolve, which
+          # yields a main package with no binary. So wait until the main
+          # package AND this runner's platform package are both visible, with a
+          # fresh cache and forced revalidation on each check.
+          PLATFORM=$(node -p "process.platform + '-' + process.arch")
+          ATTEMPTS=40
           for attempt in $(seq 1 "$ATTEMPTS"); do
             CACHE="$(mktemp -d)"
-            if npm install -g --prefer-online --cache "$CACHE" "@quark-client/quark@${VERSION}"; then break; fi
+            if npm view --prefer-online --cache "$CACHE" "@quark-client/quark@${VERSION}" version >/dev/null 2>&1 \
+              && npm view --prefer-online --cache "$CACHE" "@quark-client/quark-${PLATFORM}@${VERSION}" version >/dev/null 2>&1; then
+              break
+            fi
             if [ "$attempt" -eq "$ATTEMPTS" ]; then
-              echo "::error::Could not install @quark-client/quark@${VERSION} from npm"
+              echo "::error::@quark-client/quark@${VERSION} and/or quark-${PLATFORM} not visible on npm after $ATTEMPTS attempts"
               exit 1
             fi
+            echo "Waiting for registry (attempt $attempt/$ATTEMPTS)..."
             sleep 30
           done
+          npm install -g --prefer-online --cache "$(mktemp -d)" "@quark-client/quark@${VERSION}"
           OUT=$(quark --version)
           echo "$OUT"
           grep -qF "$VERSION" <<<"$OUT" || { echo "::error::Installed quark does not report version $VERSION"; exit 1; }
