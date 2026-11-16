@@ -3,6 +3,7 @@ package tui
 import (
 	"strings"
 
+	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -84,6 +85,30 @@ func (m Model) urlCursorPosFromClick(relX int, layout normalLayout) int {
 	displayed := truncate(value, urlAvail)
 	pos := displayColumnToByteOffset(displayed, relX)
 	return min(pos, len(value))
+}
+
+// bodyViewCache holds the body textarea's last rendered view. Rendering the
+// whole body is the expensive part of mapping a click to a text offset, and a
+// drag sends many clicks against an unchanged body, so the handler reuses the
+// frame Bubble Tea just drew. The pointer is shared by every copy of the Model.
+type bodyViewCache struct {
+	text string
+	view string
+}
+
+func (c *bodyViewCache) store(text, view string) {
+	if c != nil {
+		c.text, c.view = text, view
+	}
+}
+
+// lookup returns the cached view while it still matches the textarea's text,
+// and renders afresh otherwise (for example before the first frame is drawn).
+func (c *bodyViewCache) lookup(ta *textarea.Model, text string) string {
+	if c != nil && c.view != "" && c.text == text {
+		return c.view
+	}
+	return ta.View()
 }
 
 // clickSelect applies a click to sel. A shift+click on an input that is already
@@ -300,21 +325,36 @@ func (m Model) handleBodyTextareaClick(msg tea.MouseMsg) Model {
 	}
 
 	backend := textedit.Area(&m.bodyTextarea)
+	// Value() rebuilds the whole body, so read it once and share it.
+	text := m.bodyTextarea.Value()
+	cursor := -1
+	curPos := func() int {
+		if cursor < 0 {
+			cursor = backend.Cursor()
+		}
+		return cursor
+	}
 	anchor := m.bodySelection.Anchor
 	if !m.bodySelection.Active() {
-		anchor = backend.Cursor()
+		anchor = curPos()
 	}
 	// Map the click through the visible window so scrolling and wrapped rows
 	// are handled; fall back to the unscrolled mapping if the window is unknown.
-	view := m.bodyTextarea.View()
-	pos, ok := textedit.AreaOffsetAt(view, &m.bodyTextarea, bodyTextareaGutter, relY, relX)
-	if ok {
+	view := m.bodyView.lookup(&m.bodyTextarea, text)
+	pos, ok := textedit.AreaOffsetAt(
+		view, &m.bodyTextarea, text, curPos(), bodyTextareaGutter, relY, relX,
+	)
+	switch {
+	case ok:
 		backend.SetCursor(pos)
-	} else if !m.positionBodyCursorAtDisplayLine(relY, relX) {
+		cursor = pos
+	case m.positionBodyCursorAtDisplayLine(relY, relX):
+		cursor = backend.Cursor()
+	default:
 		return m
 	}
 	if msg.Shift {
-		m.bodySelection.SelectRange(anchor, backend.Cursor())
+		m.bodySelection.SelectRange(anchor, cursor)
 		return m
 	}
 	m.newTextEditor().Sync(&m.bodySelection, backend)

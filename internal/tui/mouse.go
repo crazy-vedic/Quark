@@ -101,7 +101,10 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 
 	// Dragging with the left button held extends the selection like a
 	// shift+click, from where the press placed the cursor.
-	if msg.Action == tea.MouseActionMotion && msg.Button == tea.MouseButtonLeft {
+	// The release carries the pointer's final cell, which may have been held
+	// back by the motion throttle, so it extends the selection as well.
+	if (msg.Action == tea.MouseActionMotion || msg.Action == tea.MouseActionRelease) &&
+		msg.Button == tea.MouseButtonLeft {
 		msg.Shift = true
 		return m.handleShiftClick(msg)
 	}
@@ -156,8 +159,7 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 // It only acts on a request input that is being edited (URL, headers, auth,
 // body); any other shift-click is ignored.
 func (m Model) handleShiftClick(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
-	if msg.Button != tea.MouseButtonLeft ||
-		(msg.Action != tea.MouseActionPress && msg.Action != tea.MouseActionMotion) {
+	if msg.Button != tea.MouseButtonLeft {
 		return m, nil
 	}
 	layout := m.currentLayout()

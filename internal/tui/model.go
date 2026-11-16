@@ -354,6 +354,7 @@ type Model struct {
 	// --- Text selection state (keyboard and mouse) ---
 	urlSelection         textedit.Selection // selection in URL input
 	bodySelection        textedit.Selection // selection in body textarea
+	bodyView             *bodyViewCache     // last rendered body view; shared by Model copies
 	headerKeySelection   textedit.Selection // selection in header key input
 	headerValueSelection textedit.Selection // selection in header value input
 	searchSelection      textedit.Selection // selection in search input
@@ -577,6 +578,7 @@ func New(deps Deps) Model {
 		scheduler:               deps.Scheduler,
 		activeEnv:               make(map[string]string),
 		now:                     now,
+		bodyView:                &bodyViewCache{},
 		scheduleInput:           scheduleInput,
 		clientCertHost:          clientCertHost,
 		clientCertFile:          clientCertFile,

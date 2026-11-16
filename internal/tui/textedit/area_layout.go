@@ -43,8 +43,14 @@ func resetRowLayoutCache() {
 // visualRows lists every wrapped row of the textarea's value, reusing the last
 // layout when the text, width and frame are unchanged.
 func visualRows(ta *textarea.Model) []visualRow {
+	return visualRowsOf(ta, ta.Value())
+}
+
+// visualRowsOf is visualRows for a caller that already holds ta.Value(), which
+// rebuilds the whole text on every call.
+func visualRowsOf(ta *textarea.Model, text string) []visualRow {
 	key := rowLayoutKey{
-		text:       ta.Value(),
+		text:       text,
 		width:      ta.Width(),
 		prompt:     ta.Prompt,
 		lineNumber: ta.ShowLineNumbers,

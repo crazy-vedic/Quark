@@ -580,8 +580,10 @@ func (m Model) viewRequestPane(w, h int) string {
 	// Inline body / headers field.
 	switch {
 	case m.activeField == bodyField && m.activeRequest != nil:
+		bodyView := m.bodyTextarea.View()
+		m.bodyView.store(m.bodyTextarea.Value(), bodyView)
 		content = textedit.RenderArea(
-			m.bodyTextarea.View(), &m.bodyTextarea, bodyTextareaGutter,
+			bodyView, &m.bodyTextarea, bodyTextareaGutter,
 			m.bodySelection, m.styles.selectionStyle,
 		)
 	case m.activeField == authField && m.activeRequest != nil:
