@@ -5,10 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -1663,4 +1665,17 @@ func TestEnvKeyCtrlCWithoutSelectionKeepsEditing(t *testing.T) {
 	assert.Nil(t, cmd)
 	assert.True(t, m2.EnvEditing(), "Ctrl+C never leaves the editor")
 	assert.Equal(t, "KEEP", m2.EnvKeyValue())
+}
+
+func TestImportInputWrappedSelectionKeepsVisibleText(t *testing.T) {
+	long := strings.Repeat("word ", 30)
+	m := newModel(defaultConfig()).WithImportInputEdit(long)
+	m = callUpdate(t, m, tea.WindowSizeMsg{Width: 100, Height: 40})
+	plain := ansi.Strip(m.View())
+
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyCtrlA})
+	require.True(t, m.ImportInputSelection().Active())
+	selected := ansi.Strip(m.View())
+	assert.Equal(t, plain, selected,
+		"highlighting a wrapped selection must not move or drop visible text")
 }

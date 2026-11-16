@@ -281,3 +281,17 @@ func TestBodyTextareaTextLeftIsPastGutter(t *testing.T) {
 	assert.Equal(t, layout.requestContentRect().left+textareaPromptGutter+textareaLineNumberW,
 		m.bodyTextareaTextLeft(layout))
 }
+
+func TestURLClickCollapsesSelection(t *testing.T) {
+	m := editorTestModel(t, nil)
+	m.activeField = urlField
+	m.urlInput.SetValue("https://example.com")
+	m.urlSelection.SelectRange(0, 5)
+	require.True(t, m.urlSelection.Active())
+
+	updated, _ := m.handleURLLineClick(press(999, 5))
+	got, ok := updated.(Model)
+	require.True(t, ok)
+	assert.False(t, got.urlSelection.Active(), "a click drops the old selection")
+	assert.Equal(t, len([]rune("https://example.com")), got.urlSelection.Cursor)
+}
