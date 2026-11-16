@@ -950,18 +950,16 @@ func (m Model) handleRequestKey(_ string, msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// Inline field routing — when active, all keys go to the field.
 	switch m.activeField {
 	case urlField:
-		// A multi-line curl command (with \ continuations or multi-line bodies)
-		// cannot live in the single-line field, so hand the raw text to the
-		// parser instead of inserting it.
-		if text, ok := pastedText(msg, m.textKeys()); ok && isMultiLineCurl(text) {
+		// A pasted curl command (single- or multi-line) is handed to the
+		// parser instead of being inserted into the single-line field. The
+		// check runs on the pasted text, not the field, so an existing URL
+		// before the cursor does not hide it.
+		if text, ok := pastedText(msg, m.textKeys()); ok && isCurlCommand(text) {
 			return m.openCurlReplace(text), nil
 		}
 		ed := m.newTextEditor()
 		b := textedit.Input(&m.urlInput)
 		if cmd, handled := ed.HandleKey(&m.urlSelection, b, msg); handled {
-			if isPasteKey(msg, m.textKeys()) && isCurlCommand(m.urlInput.Value()) {
-				return m.openCurlReplace(m.urlInput.Value()), nil
-			}
 			return m, cmd
 		}
 		if m.textKeys().Copy.Match(msg.String()) {

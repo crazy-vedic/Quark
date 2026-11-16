@@ -78,6 +78,19 @@ func TestCurlPastedIntoURLOpensReplaceDialog(t *testing.T) {
 	assert.Equal(t, "https://old.example", req.URL, "paste alone does not replace the request")
 }
 
+func TestCurlPastedAtEndOfExistingURLOpensReplaceDialog(t *testing.T) {
+	req := existingRequest()
+	m := newModelWithCurl().
+		WithFocus(tui.RequestPane).
+		WithActiveRequest(req).
+		WithURLValue(req.URL).
+		WithURLEdit()
+
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(testCurl), Paste: true})
+	assert.Equal(t, tui.ImportMode, m.Mode(), "single-line curl paste opens the dialog")
+	assert.Equal(t, req.URL, m.URLValue(), "URL field is unchanged by the paste")
+}
+
 func TestCurlWithoutRequestShowsMessage(t *testing.T) {
 	m := newModelWithCurl().
 		WithFocus(tui.RequestPane).

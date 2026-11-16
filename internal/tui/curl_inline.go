@@ -89,12 +89,6 @@ func (m Model) reportCurlReplace(result *curl.ImportResult) Model {
 	))
 }
 
-// isPasteKey reports whether msg inserts pasted text: a bracketed paste from the
-// terminal or the editor's Ctrl+V clipboard paste.
-func isPasteKey(msg tea.KeyMsg, _ textedit.Keymap) bool {
-	return msg.Paste
-}
-
 // pastedText returns the text of a bracketed paste. ok is false for any other
 // key. Ctrl+V is not read here: it reads the clipboard asynchronously and
 // arrives as a bracketed paste, so the UI never blocks on the clipboard.
