@@ -45,10 +45,11 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	if m.effectiveDim() == DimAbsurd {
 		return m, nil
 	}
-	// Shift-clicks are intentionally ignored so terminals that support the
+	// Shift+click extends the selection in the URL line and the body editor.
+	// Everywhere else shift-clicks are ignored so terminals that support the
 	// modifier-key native selection escape hatch can handle them themselves.
 	if msg.Shift {
-		return m, nil
+		return m.handleShiftClick(msg)
 	}
 
 	layout := m.currentLayout()
@@ -139,6 +140,31 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		return m.handleRequestClick(msg)
 	case responsePane:
 		return m.handleResponseClick(msg)
+	}
+	return m, nil
+}
+
+// handleShiftClick extends the active text selection to the clicked position.
+// It only acts on the request URL line and body editor while they are being
+// edited; any other shift-click is ignored.
+func (m Model) handleShiftClick(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	if msg.Action != tea.MouseActionPress || msg.Button != tea.MouseButtonLeft {
+		return m, nil
+	}
+	layout := m.currentLayout()
+	if pane, ok := layout.paneAt(msg.X, msg.Y); !ok || pane != requestPane {
+		return m, nil
+	}
+	switch m.activeField {
+	case urlField:
+		if m.requestPaneChromeRects(layout).urlLine.contains(msg.X, msg.Y) {
+			return m.handleURLLineClick(msg)
+		}
+	case bodyField:
+		ll := m.requestPaneLineLayout(layout)
+		if msg.Y >= ll.editorContentY && msg.Y < ll.editorContentY+m.bodyTextarea.Height() {
+			return m.handleBodyTextareaClick(msg), nil
+		}
 	}
 	return m, nil
 }

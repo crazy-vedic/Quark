@@ -97,6 +97,12 @@ func (m Model) handleURLLineClick(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	}
 
 	var cmd tea.Cmd
+	// Shift+click keeps the anchor and moves only the cursor end.
+	extend := msg.Shift && m.activeField == urlField
+	anchor := m.urlSelection.Anchor
+	if !m.urlSelection.Active() {
+		anchor = m.urlInput.Position()
+	}
 	if m.activeField != urlField {
 		m, cmd = m.beginURLEdit()
 	} else {
@@ -105,6 +111,10 @@ func (m Model) handleURLLineClick(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 
 	cursorPos := m.urlCursorPosFromClick(relX, layout)
 	m.urlInput.SetCursor(cursorPos)
+	if extend {
+		m.urlSelection.SelectRange(anchor, cursorPos)
+		return m, textinput.Blink
+	}
 	m.urlSelection.Collapse(cursorPos)
 
 	// Double-click selects word at cursor
@@ -271,10 +281,19 @@ func (m Model) handleBodyTextareaClick(msg tea.MouseMsg) Model {
 		return m
 	}
 
+	backend := textedit.Area(&m.bodyTextarea)
+	anchor := m.bodySelection.Anchor
+	if !m.bodySelection.Active() {
+		anchor = backend.Cursor()
+	}
 	if !m.positionBodyCursorAtDisplayLine(relY, relX) {
 		return m
 	}
-	m.newTextEditor().Sync(&m.bodySelection, textedit.Area(&m.bodyTextarea))
+	if msg.Shift {
+		m.bodySelection.SelectRange(anchor, backend.Cursor())
+		return m
+	}
+	m.newTextEditor().Sync(&m.bodySelection, backend)
 	return m
 }
 

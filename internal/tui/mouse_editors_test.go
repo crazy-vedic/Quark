@@ -295,3 +295,66 @@ func TestURLClickCollapsesSelection(t *testing.T) {
 	assert.False(t, got.urlSelection.Active(), "a click drops the old selection")
 	assert.Equal(t, len([]rune("https://example.com")), got.urlSelection.Cursor)
 }
+
+func shiftPress(x, y int) tea.MouseMsg {
+	msg := press(x, y)
+	msg.Shift = true
+	return msg
+}
+
+func TestShiftClickExtendsURLSelection(t *testing.T) {
+	m := editorTestModel(t, nil)
+	x, y, ok := m.RequestURLLineClickPos()
+	require.True(t, ok)
+
+	updated, _ := m.handleURLLineClick(press(x, y))
+	m = requireModel(t, updated)
+	require.Equal(t, urlField, m.activeField)
+	start := m.urlInput.Position()
+	m.lastTextClickSource = "" // the next click must not count as a double click
+
+	updated, _ = m.Update(shiftPress(x+8, y))
+	m = requireModel(t, updated)
+	assert.True(t, m.urlSelection.Active(), "shift+click selects from the old cursor")
+	assert.Equal(t, start, m.urlSelection.Anchor)
+	assert.Equal(t, start+8, m.urlSelection.Cursor)
+
+	// A second shift+click moves only the cursor end; the anchor stays.
+	updated, _ = m.Update(shiftPress(x+3, y))
+	m = requireModel(t, updated)
+	assert.Equal(t, start, m.urlSelection.Anchor)
+	assert.Equal(t, start+3, m.urlSelection.Cursor)
+
+	// A plain click collapses it again.
+	updated, _ = m.Update(press(x, y))
+	m = requireModel(t, updated)
+	assert.False(t, m.urlSelection.Active())
+}
+
+func TestShiftClickOutsideEditedTextIsIgnored(t *testing.T) {
+	m := editorTestModel(t, nil)
+	x, y, ok := m.RequestURLLineClickPos()
+	require.True(t, ok)
+	m.activeField = noneField
+
+	updated, cmd := m.Update(shiftPress(x, y))
+	got := requireModel(t, updated)
+	assert.Nil(t, cmd)
+	assert.Equal(t, noneField, got.activeField, "shift+click must not start editing")
+}
+
+func TestShiftClickExtendsBodySelection(t *testing.T) {
+	m := editorTestModel(t, &domain.Request{ID: "r", Method: "POST", URL: "u", Body: "hello world"})
+	m = m.WithActiveField(bodyField).WithBodyEdit()
+	layout := m.currentLayout()
+	ll := m.requestPaneLineLayout(layout)
+	left := m.bodyTextareaTextLeft(layout)
+	m.bodyTextarea.SetCursor(0)
+	m.bodySelection.Collapse(0)
+
+	updated, _ := m.Update(shiftPress(left+5, ll.editorContentY))
+	m = requireModel(t, updated)
+	assert.True(t, m.bodySelection.Active())
+	assert.Equal(t, 0, m.bodySelection.Anchor)
+	assert.Equal(t, 5, m.bodySelection.Cursor)
+}
