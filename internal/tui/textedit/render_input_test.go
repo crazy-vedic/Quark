@@ -9,10 +9,12 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+// newField returns a focused field, since most cases check the cursor cell.
 func newField(width int, value string) *textinput.Model {
 	ti := textinput.New()
 	ti.Width = width
 	ti.SetValue(value)
+	ti.Focus()
 	return &ti
 }
 
@@ -66,4 +68,21 @@ func TestRenderInputWithoutWidthRendersWholeValue(t *testing.T) {
 	sel := Selection{Anchor: 2, Cursor: 5}
 	out := RenderInput(ti, sel, lipgloss.NewStyle())
 	assert.Equal(t, "> abcdefghijklmnopqrstuvwxyz", ansi.Strip(out))
+}
+
+// An unfocused field must not draw a cursor. The header and env editors render
+// both Key and Value through RenderInput, so only the focused one shows it.
+func TestRenderInputUnfocusedDrawsNoCursor(t *testing.T) {
+	forceColor(t)
+	ti := newField(0, "hello")
+	ti.SetCursor(2)
+	ti.Blur()
+	assert.False(t, ti.Focused())
+	out := RenderInput(ti, Selection{}, lipgloss.NewStyle())
+	assert.Equal(t, "> hello", ansi.Strip(out))
+	assert.NotContains(t, out, "\x1b[7m")
+
+	ti.Focus()
+	out = RenderInput(ti, Selection{}, lipgloss.NewStyle())
+	assert.Contains(t, out, "\x1b[7m")
 }
