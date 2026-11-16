@@ -29,29 +29,38 @@ if (!pkgName) {
   process.exit(1);
 }
 
-let binPath;
-try {
-  // Try require.resolve first (for local node_modules)
-  let found = false;
+const exeName = platform === 'win32' ? 'quark.exe' : 'quark';
+
+// Locate the platform package directory without importing it as a module
+// (it has no `main`). Resolving its package.json via the normal Node lookup
+// from this file covers npm's nested layout
+// (<main>/node_modules/@quark-client/...) and hoisted/flat layouts. The
+// explicit candidates are a fallback for unusual layouts.
+function findPackageDir() {
   try {
-    const pkgPath = require.resolve(pkgName);
-    binPath = path.join(path.dirname(pkgPath), '..', 'bin', platform === 'win32' ? 'quark.exe' : 'quark');
-    found = true;
-  } catch {
-    // Fall back to looking in npm's global node_modules
-    const globalNodeModulesParent = path.resolve(__dirname, '../..', '..');
-    const pkgDir = path.join(globalNodeModulesParent, pkgName);
-    const pkgJsonPath = path.join(pkgDir, 'package.json');
-    if (fs.existsSync(pkgJsonPath)) {
-      binPath = path.join(pkgDir, 'bin', platform === 'win32' ? 'quark.exe' : 'quark');
-      found = true;
-    }
-  }
-  if (!found) throw new Error('package not found');
-} catch (err) {
+    return path.dirname(require.resolve(`${pkgName}/package.json`));
+  } catch {}
+  const mainPkgDir = path.resolve(__dirname, '..');
+  const candidates = [
+    path.join(mainPkgDir, 'node_modules', pkgName),
+    path.resolve(mainPkgDir, '..', '..', pkgName),
+  ];
+  return candidates.find((d) => fs.existsSync(path.join(d, 'package.json')));
+}
+
+const pkgDir = findPackageDir();
+if (!pkgDir) {
   console.error(`quark: platform package not found (${pkgName})`);
   console.error('This may happen if npm installed the main package without the matching platform package.');
   console.error('Try: npm install -g @quark-client/quark@latest');
+  process.exit(1);
+}
+
+const binPath = path.join(pkgDir, 'bin', exeName);
+if (!fs.existsSync(binPath)) {
+  console.error(`quark: platform package ${pkgName} is installed at ${pkgDir}, but the executable is missing: ${binPath}`);
+  console.error('The installation may be corrupt (e.g. interrupted or blocked by antivirus).');
+  console.error('Try: npm uninstall -g @quark-client/quark && npm install -g @quark-client/quark@latest');
   process.exit(1);
 }
 
