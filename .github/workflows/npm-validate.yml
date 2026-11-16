@@ -43,6 +43,7 @@ jobs:
         shell: bash
         run: |
           cd dist
+          mkdir -p binaries
           # Extract from tar.gz (all have "quark" inside)
           for arch in amd64 arm64; do
             tar -xzf quark-linux-${arch}.tar.gz -C binaries/
