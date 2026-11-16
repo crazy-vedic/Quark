@@ -28,6 +28,47 @@ type pasteTarget struct {
 	help       bool
 	prompt     promptType
 	clientCert bool
+	widgets    uint32 // one bit per text widget that has focus; see focusedWidgets
+}
+
+// focusedWidgets returns a bit for each text widget that has focus. Every text
+// widget in the model must appear here, or focus moving into it would not
+// change the paste target. The coverage test in paste_coverage_test.go fails
+// when a widget is missing.
+func focusedWidgets(m Model) uint32 {
+	focused := [...]bool{
+		m.urlInput.Focused(),
+		m.viewerFind.Focused(),
+		m.searchInput.Focused(),
+		m.importInput.Focused(),
+		m.importName.Focused(),
+		m.postmanPath.Focused(),
+		m.promptInput.Focused(),
+		m.scheduleInput.Focused(),
+		m.clientCertHost.Focused(),
+		m.clientCertFile.Focused(),
+		m.clientCertType.Focused(),
+		m.clientCertKeyFile.Focused(),
+		m.clientCertCAFile.Focused(),
+		m.clientCertPassword.Focused(),
+		m.bodyTextarea.Focused(),
+		m.headerKeyInput.Focused(),
+		m.headerValueInput.Focused(),
+		m.authEditor.tokenInput.Focused(),
+		m.authEditor.usernameInput.Focused(),
+		m.authEditor.passwordInput.Focused(),
+		m.authEditor.apiKeyNameInput.Focused(),
+		m.authEditor.apiKeyValueInput.Focused(),
+		m.envEditor.editKey.Focused(),
+		m.envEditor.editVal.Focused(),
+	}
+	var bits uint32
+	for i, f := range focused {
+		if f {
+			bits |= 1 << i
+		}
+	}
+	return bits
 }
 
 // pasteTargetOf returns the input that currently receives keys.
@@ -43,6 +84,7 @@ func (m Model) pasteTargetOf() pasteTarget {
 		help:       m.helpSearch,
 		prompt:     m.promptMode,
 		clientCert: m.clientCertEditing,
+		widgets:    focusedWidgets(m),
 	}
 	if m.headerEditing {
 		t.header = 2 * m.headerCursor

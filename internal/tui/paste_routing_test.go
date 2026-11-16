@@ -2,9 +2,13 @@ package tui_test
 
 import (
 	"errors"
+	"reflect"
+	"sort"
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/bubbles/textarea"
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -156,4 +160,69 @@ func TestPasteDroppedWhenAuthFieldChangesBeforeRead(t *testing.T) {
 		"token must not receive another field's paste")
 	assert.NotContains(t, m.AuthPasswordValue(), "leaked",
 		"the newly focused field must not receive it")
+}
+
+// Every text widget in tui.Model must be covered by the paste target. A widget
+// that is missing from TextWidgetAccessors fails here, which means it was added
+// without a focus entry, so paste could land in it after focus moves.
+
+var (
+	textinputType = reflect.TypeOf(textinput.Model{})
+	textareaType  = reflect.TypeOf(textarea.Model{})
+	modelPkg      = reflect.TypeOf(tui.Model{}).PkgPath()
+)
+
+// reflectWidgetPaths lists every textinput or textarea reachable from tui.Model,
+// following fields of struct types defined in the tui package.
+func reflectWidgetPaths() []string {
+	var out []string
+	var walk func(rt reflect.Type, prefix string)
+	walk = func(rt reflect.Type, prefix string) {
+		for i := 0; i < rt.NumField(); i++ {
+			f := rt.Field(i)
+			name := prefix + f.Name
+			switch f.Type {
+			case textinputType, textareaType:
+				out = append(out, name)
+			default:
+				if f.Type.Kind() == reflect.Struct && f.Type.PkgPath() == modelPkg {
+					walk(f.Type, name+".")
+				}
+			}
+		}
+	}
+	walk(reflect.TypeOf(tui.Model{}), "")
+	sort.Strings(out)
+	return out
+}
+
+func TestEveryTextWidgetHasPasteCoverage(t *testing.T) {
+	accessors := tui.TextWidgetAccessors()
+	var missing []string
+	paths := reflectWidgetPaths()
+	for _, p := range paths {
+		if _, ok := accessors[p]; !ok {
+			missing = append(missing, p)
+		}
+	}
+	require.Empty(t, missing, "text widgets missing from TextWidgetAccessors and focusedWidgets")
+	require.Len(t, accessors, len(paths))
+}
+
+// Focusing any one text widget must change the paste target, and no two widgets
+// may give the same target. Otherwise a paste requested in one input could land
+// in another after focus moves.
+func TestFocusingEachTextWidgetChangesPasteTarget(t *testing.T) {
+	baseline := tui.BlurredModelForTest().PasteTargetForTest()
+	seen := map[any]string{}
+	for name, acc := range tui.TextWidgetAccessors() {
+		m := tui.BlurredModelForTest()
+		acc(&m).Focus()
+		target := m.PasteTargetForTest()
+		assert.NotEqual(t, baseline, target, "focusing %s does not change the paste target", name)
+		if other, dup := seen[target]; dup {
+			t.Errorf("focusing %s and %s produce the same paste target", name, other)
+		}
+		seen[target] = name
+	}
 }

@@ -737,3 +737,64 @@ func (m Model) EnvKeyValue() string { return m.envEditor.editKey.Value() }
 
 // EnvEditing reports whether the env editor is in edit mode.
 func (m Model) EnvEditing() bool { return m.envEditor.editing }
+
+// TextWidget is the part of textinput and textarea that focus uses.
+type TextWidget interface {
+	Focus() tea.Cmd
+	Blur()
+	Focused() bool
+}
+
+// widgetAccessors names every text widget in Model, including those inside
+// authEditor and envEditor. A new widget must be added here and to
+// focusedWidgets, or these tests fail. That keeps paste from silently landing
+// in the wrong input after focus moves.
+// TextWidgetAccessors returns the table of text widgets by path.
+func TextWidgetAccessors() map[string]func(*Model) TextWidget {
+	return textWidgetAccessors
+}
+
+var textWidgetAccessors = map[string]func(*Model) TextWidget{
+	"urlInput":                    func(m *Model) TextWidget { return &m.urlInput },
+	"viewerFind":                  func(m *Model) TextWidget { return &m.viewerFind },
+	"searchInput":                 func(m *Model) TextWidget { return &m.searchInput },
+	"importInput":                 func(m *Model) TextWidget { return &m.importInput },
+	"importName":                  func(m *Model) TextWidget { return &m.importName },
+	"postmanPath":                 func(m *Model) TextWidget { return &m.postmanPath },
+	"promptInput":                 func(m *Model) TextWidget { return &m.promptInput },
+	"scheduleInput":               func(m *Model) TextWidget { return &m.scheduleInput },
+	"clientCertHost":              func(m *Model) TextWidget { return &m.clientCertHost },
+	"clientCertFile":              func(m *Model) TextWidget { return &m.clientCertFile },
+	"clientCertType":              func(m *Model) TextWidget { return &m.clientCertType },
+	"clientCertKeyFile":           func(m *Model) TextWidget { return &m.clientCertKeyFile },
+	"clientCertCAFile":            func(m *Model) TextWidget { return &m.clientCertCAFile },
+	"clientCertPassword":          func(m *Model) TextWidget { return &m.clientCertPassword },
+	"bodyTextarea":                func(m *Model) TextWidget { return &m.bodyTextarea },
+	"headerKeyInput":              func(m *Model) TextWidget { return &m.headerKeyInput },
+	"headerValueInput":            func(m *Model) TextWidget { return &m.headerValueInput },
+	"authEditor.tokenInput":       func(m *Model) TextWidget { return &m.authEditor.tokenInput },
+	"authEditor.usernameInput":    func(m *Model) TextWidget { return &m.authEditor.usernameInput },
+	"authEditor.passwordInput":    func(m *Model) TextWidget { return &m.authEditor.passwordInput },
+	"authEditor.apiKeyNameInput":  func(m *Model) TextWidget { return &m.authEditor.apiKeyNameInput },
+	"authEditor.apiKeyValueInput": func(m *Model) TextWidget { return &m.authEditor.apiKeyValueInput },
+	"envEditor.editKey":           func(m *Model) TextWidget { return &m.envEditor.editKey },
+	"envEditor.editVal":           func(m *Model) TextWidget { return &m.envEditor.editVal },
+}
+
+// BlurredModelForTest returns a model with every text widget blurred.
+func BlurredModelForTest() Model {
+	m := New(Deps{})
+	// The auth and env editors build their inputs only when opened, so build
+	// them here the same way the editors do.
+	m.authEditor = newAuthEditor(&domain.Request{AuthType: "bearer"})
+	m.envEditor.editKey = textinput.New()
+	m.envEditor.editVal = textinput.New()
+	for _, acc := range textWidgetAccessors {
+		acc(&m).Blur()
+	}
+	return m
+}
+
+// PasteTargetForTest returns the value that identifies the input receiving keys.
+// Two models with equal values route keys to the same input.
+func (m Model) PasteTargetForTest() any { return m.pasteTargetOf() }
