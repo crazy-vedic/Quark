@@ -1602,3 +1602,48 @@ func TestUpdate_ResolverSingleKeybindingHelp(t *testing.T) {
 	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'!'}})
 	assert.Equal(t, tui.HelpMode, m.Mode(), "! must open help mode")
 }
+
+func TestImportInputCopyCutAndTypeOverSelection(t *testing.T) {
+	m := newModel(defaultConfig()).WithImportInputEdit("alpha beta\ngamma")
+
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyCtrlA})
+	assert.True(t, m.ImportInputSelection().Active(), "Ctrl+A selects all import text")
+	m2, cmd := callUpdateWithCmd(t, m, tea.KeyMsg{Type: tea.KeyCtrlC})
+	assert.NotNil(t, cmd, "copy writes the selection")
+	assert.Equal(t, "alpha beta\ngamma", m2.ImportInputValue(), "copy keeps the text")
+
+	m3, cmd := callUpdateWithCmd(t, m, tea.KeyMsg{Type: tea.KeyCtrlX})
+	assert.NotNil(t, cmd, "cut writes the selection")
+	assert.Equal(t, "", m3.ImportInputValue())
+
+	m4 := callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")})
+	assert.Equal(t, "x", m4.ImportInputValue(), "typing replaces the selection")
+}
+
+func TestImportInputCtrlCWithoutSelectionDoesNothing(t *testing.T) {
+	m := newModel(defaultConfig()).WithImportInputEdit("keep")
+	m2, cmd := callUpdateWithCmd(t, m, tea.KeyMsg{Type: tea.KeyCtrlC})
+	assert.Nil(t, cmd)
+	assert.Equal(t, "keep", m2.ImportInputValue())
+	assert.Equal(t, tui.ImportMode, m2.Mode(), "Ctrl+C never quits")
+}
+
+func TestImportInputEnterInsertsNewline(t *testing.T) {
+	m := newModel(defaultConfig()).WithImportInputEdit("a")
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("b")})
+	assert.Equal(t, "a\nb", m.ImportInputValue(), "Enter in the input stage is a newline")
+	assert.Equal(t, tui.ImportMode, m.Mode())
+}
+
+func TestImportInputSelectsAcrossLines(t *testing.T) {
+	m := newModel(defaultConfig()).WithImportInputEdit("one\ntwo")
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyCtrlA})
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyUp})
+	assert.False(t, m.ImportInputSelection().Active(), "an unshifted Up clears the selection")
+
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyCtrlA})
+	sel := m.ImportInputSelection()
+	assert.Equal(t, 0, sel.Anchor)
+	assert.Equal(t, len([]rune("one\ntwo")), sel.Cursor)
+}

@@ -1851,49 +1851,6 @@ func helpResetAllDiffs(current keybindings.Keybindings) []string {
 // --- Import modal ---
 
 func (m Model) handleImportKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	// Handle copy/cut for import
-	if msg.Type == tea.KeyCtrlC {
-		text := copySelectionText(m.importInput.Value(), m.importInputSelection)
-		if text != "" {
-			return m, copyToClipboardCmd(text)
-		}
-		return m, nil
-	}
-	if msg.Type == tea.KeyCtrlX {
-		text := copySelectionText(m.importInput.Value(), m.importInputSelection)
-		cursorPos := textareaAbsoluteCursor(&m.importInput)
-		newValue, newCursorPos := cutSelection(
-			m.importInput.Value(),
-			m.importInputSelection,
-			cursorPos,
-		)
-		m.importInput.SetValue(newValue)
-		m.importInput.SetCursor(newCursorPos)
-		m.importInputSelection.Clear(newCursorPos)
-		if text != "" {
-			return m, copyToClipboardCmd(text)
-		}
-		return m, nil
-	}
-
-	// Handle selection keys
-	cursorPos := textareaAbsoluteCursor(&m.importInput)
-	handled, shouldUpdateComponent := handleSelectionKeyForTextarea(
-		msg, &m.importInputSelection, &m.importInput, cursorPos)
-	if handled && !shouldUpdateComponent {
-		_, selEnd := m.importInputSelection.Range()
-		line, col := setTextareaCursorFromAbsolutePos(m.importInput.Value(), selEnd)
-		// Navigate import textarea to the correct line
-		for i := 0; i < line; i++ {
-			m.importInput.CursorDown()
-		}
-		for i := 0; i > line; i-- {
-			m.importInput.CursorUp()
-		}
-		m.importInput.SetCursor(col)
-		return m, nil
-	}
-
 	if m.importPreview == nil && msg.Type == tea.KeyCtrlV {
 		m.debugCurl("clipboard read requested")
 		return m, readCurlClipboardCmd()
@@ -1993,12 +1950,24 @@ func (m Model) handleImportKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	var cmd tea.Cmd
-	if m.importPreview == nil {
-		m.importInput, cmd = m.importInput.Update(msg)
-	} else {
+	if m.importPreview != nil {
+		var cmd tea.Cmd
 		m.importName, cmd = m.importName.Update(msg)
+		return m, cmd
 	}
+
+	ed := newTextEditor()
+	b := textedit.Area(&m.importInput)
+	if cmd, handled := ed.HandleKey(&m.importInputSelection, b, msg); handled {
+		return m, cmd
+	}
+	if msg.Type == tea.KeyCtrlC {
+		// No selection: nothing to copy. Ctrl+C never quits the app.
+		return m, nil
+	}
+	var cmd tea.Cmd
+	m.importInput, cmd = m.importInput.Update(msg)
+	ed.Sync(&m.importInputSelection, b)
 	return m, cmd
 }
 

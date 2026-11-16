@@ -481,7 +481,7 @@ func (m Model) HeaderKeySelection() textedit.Selection   { return m.headerKeySel
 func (m Model) HeaderValueSelection() textedit.Selection { return m.headerValueSelection }
 func (m Model) SearchSelection() textedit.Selection      { return m.searchSelection }
 func (m Model) ViewerFindSelection() textedit.Selection  { return m.viewerFindSelection }
-func (m Model) ImportInputSelection() textSelection      { return m.importInputSelection }
+func (m Model) ImportInputSelection() textedit.Selection { return m.importInputSelection }
 func (m Model) AuthTokenSelection() textedit.Selection   { return m.authEditor.tokenSelection }
 func (m Model) AuthUsernameSelection() textedit.Selection {
 	return m.authEditor.usernameSelection
@@ -702,3 +702,16 @@ func (m Model) AuthPasswordValue() string { return m.authEditor.passwordInput.Va
 
 // AuthAPIKeyValueValue returns the API key value input's text.
 func (m Model) AuthAPIKeyValueValue() string { return m.authEditor.apiKeyValueInput.Value() }
+
+// WithImportInputEdit opens the import dialog in its input stage with text in
+// the multi-line input, as the replace and import flows do before a preview.
+func (m Model) WithImportInputEdit(text string) Model {
+	m.mode = importMode
+	m.importPreview = nil
+	m.importInput.SetValue(text)
+	m.importInput.Focus()
+	return m
+}
+
+// ImportInputValue returns the import textarea's text.
+func (m Model) ImportInputValue() string { return m.importInput.Value() }

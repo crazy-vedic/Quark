@@ -15,6 +15,10 @@ const (
 	textareaLineNumberW  = 4 // line number column when ShowLineNumbers is true
 	// bodyTextareaGutter is the columns the body textarea draws before its text.
 	bodyTextareaGutter = textareaPromptGutter + textareaLineNumberW
+	// importTextareaGutter is the columns the import textarea draws before its
+	// text. It is built with the same textarea defaults as the body, so the
+	// gutter matches (checked in tests).
+	importTextareaGutter = textareaPromptGutter + textareaLineNumberW
 )
 
 type requestPaneLineLayout struct {

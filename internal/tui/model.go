@@ -358,7 +358,7 @@ type Model struct {
 	headerValueSelection textedit.Selection // selection in header value input
 	searchSelection      textedit.Selection // selection in search input
 	viewerFindSelection  textedit.Selection // selection in viewer find input
-	importInputSelection textSelection      // selection in import textarea
+	importInputSelection textedit.Selection // selection in import textarea
 	envEditKeySelection  textedit.Selection // selection in env editor key field
 	envEditValSelection  textedit.Selection // selection in env editor value field
 

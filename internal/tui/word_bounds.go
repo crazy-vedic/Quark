@@ -1,8 +1,6 @@
 package tui
 
 import (
-	"github.com/charmbracelet/bubbles/textarea"
-
 	"github.com/crazy-vedic/quark/internal/tui/textedit"
 )
 
@@ -99,67 +97,3 @@ func nextWordBoundary(runes []rune, pos int) int { return textedit.NextWordBound
 // prevWordBoundary finds the position of the previous word boundary when
 // moving backward from pos. Returns 0 if at the start.
 func prevWordBoundary(runes []rune, pos int) int { return textedit.PrevWordBoundary(runes, pos) }
-
-// textareaAbsoluteCursor returns the caret's absolute rune offset in the
-// textarea's full text, including the column within the current logical line.
-// Selection works in rune offsets, so the caret column is required.
-func textareaAbsoluteCursor(ta *textarea.Model) int {
-	info := ta.LineInfo()
-	return getTextareaAbsoluteCursorPos(
-		ta.Value(),
-		ta.Line(),
-	) + info.StartColumn + info.ColumnOffset
-}
-
-// getTextareaAbsoluteCursorPos returns the rune offset where the given logical
-// line starts within text.
-func getTextareaAbsoluteCursorPos(text string, line int) int {
-	if line < 0 {
-		return 0
-	}
-
-	runes := stringToRunes(text)
-	lineIdx := 0
-	pos := 0
-
-	for i, r := range runes {
-		if lineIdx == line {
-			// Found target line, return the position at the start of this line
-			return pos
-		}
-		if r == '\n' {
-			lineIdx++
-			pos = i + 1
-		}
-	}
-
-	// Line not found or at end, return end of text
-	return len(runes)
-}
-
-// setTextareaCursorFromAbsolutePos converts an absolute rune offset back to
-// line/column pair for textarea SetCursor. For now, we just set the column
-// offset relative to the current line, which is a simplification.
-// A proper implementation would need to navigate to the correct line first.
-func setTextareaCursorFromAbsolutePos(text string, absPos int) (line int, col int) {
-	if absPos < 0 {
-		return 0, 0
-	}
-
-	runes := stringToRunes(text)
-	if absPos >= len(runes) {
-		absPos = len(runes)
-	}
-
-	currentLine := 0
-	lineStart := 0
-
-	for i := 0; i < absPos && i < len(runes); i++ {
-		if runes[i] == '\n' {
-			currentLine++
-			lineStart = i + 1
-		}
-	}
-
-	return currentLine, absPos - lineStart
-}

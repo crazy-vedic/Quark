@@ -2165,10 +2165,11 @@ func (m Model) viewImportModal() string {
 				"Paste the complete command below. Enter inserts a newline.",
 			))
 		sb.WriteString("\n\n")
-		sb.WriteString(m.importInput.View())
+		sb.WriteString(textedit.RenderArea(
+			m.importInput.View(), &m.importInput, importTextareaGutter,
+			m.importInputSelection, m.styles.selectionStyle,
+		))
 		sb.WriteString("\n")
-		// TODO: W9-W11 - Apply selection rendering to import textarea
-		// Textarea requires custom rendering due to wrapped display
 		if m.importError != "" {
 			sb.WriteString("\n" + m.styles.errorStyle.Render("✗ "+stripANSI(m.importError)) + "\n")
 		}
