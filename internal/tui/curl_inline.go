@@ -9,7 +9,6 @@ import (
 
 	"github.com/crazy-vedic/quark/internal/curl"
 	"github.com/crazy-vedic/quark/internal/domain"
-	"github.com/crazy-vedic/quark/internal/tui/textedit"
 )
 
 // isCurlCommand reports whether the URL text is a curl command rather than a URL.
@@ -102,14 +101,9 @@ func (m Model) reportCurlReplace(result *curl.ImportResult) Model {
 // pastedText returns the text of a bracketed paste. ok is false for any other
 // key. Ctrl+V is not read here: it reads the clipboard asynchronously and
 // arrives as a bracketed paste, so the UI never blocks on the clipboard.
-func pastedText(msg tea.KeyMsg, _ textedit.Keymap) (text string, ok bool) {
+func pastedText(msg tea.KeyMsg) (text string, ok bool) {
 	if msg.Paste {
 		return string(msg.Runes), true
 	}
 	return "", false
-}
-
-// isMultiLineCurl reports whether text is a curl command spanning several lines.
-func isMultiLineCurl(text string) bool {
-	return isCurlCommand(text) && strings.ContainsAny(text, "\r\n")
 }

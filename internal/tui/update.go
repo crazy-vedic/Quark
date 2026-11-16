@@ -670,17 +670,9 @@ func (m Model) dispatchNormalAction(action string) (tea.Model, tea.Cmd) {
 	case keybindings.ActionImportPostman:
 		return m.openPostmanImportModal(), textinput.Blink
 	case keybindings.ActionEnvNext:
-		// Only switch environments when no text field is focused
-		if m.activeField == noneField {
-			return m.cycleEnv(1)
-		}
-		return m, nil
+		return m.cycleEnv(1)
 	case keybindings.ActionEnvPrev:
-		// Only switch environments when no text field is focused
-		if m.activeField == noneField {
-			return m.cycleEnv(-1)
-		}
-		return m, nil
+		return m.cycleEnv(-1)
 	}
 
 	// Pane-specific actions.
@@ -957,7 +949,7 @@ func (m Model) handleRequestKey(_ string, msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// parser instead of being inserted into the single-line field. The
 		// check runs on the pasted text, not the field, so an existing URL
 		// before the cursor does not hide it.
-		if text, ok := pastedText(msg, m.textKeys()); ok && isCurlCommand(text) {
+		if text, ok := pastedText(msg); ok && isCurlCommand(text) {
 			return m.openCurlReplace(text), nil
 		}
 		ed := m.newTextEditor()
