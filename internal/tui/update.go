@@ -2641,6 +2641,11 @@ func copyToClipboardCmd(text string) tea.Cmd {
 	}
 }
 
+// clipboardMsg signals a successful clipboard copy.
+type clipboardMsg struct {
+	text string
+}
+
 // clipboardErrorMsg signals clipboard operation failure
 type clipboardErrorMsg struct {
 	err error

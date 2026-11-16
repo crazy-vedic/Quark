@@ -5,6 +5,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
@@ -495,8 +496,8 @@ func (m Model) AuthAPIKeyNameSelection() textedit.Selection {
 func (m Model) AuthAPIKeyValueSelection() textedit.Selection {
 	return m.authEditor.apiKeyValueSelection
 }
-func (m Model) EnvEditKeySelection() textedit.Selection { return m.envEditKeySelection }
-func (m Model) EnvEditValSelection() textedit.Selection { return m.envEditValSelection }
+func (m Model) EnvEditKeySelection() textedit.Selection { return m.envEditor.keySel }
+func (m Model) EnvEditValSelection() textedit.Selection { return m.envEditor.valSel }
 func (m Model) ResponseTab() responseTabID              { return m.responseTab }
 func (m Model) SearchResults() []*search.SearchHit      { return m.searchResults }
 
@@ -715,3 +716,21 @@ func (m Model) WithImportInputEdit(text string) Model {
 
 // ImportInputValue returns the import textarea's text.
 func (m Model) ImportInputValue() string { return m.importInput.Value() }
+
+// WithEnvKeyEdit puts the env editor in edit mode on the key field with text.
+func (m Model) WithEnvKeyEdit(text string) Model {
+	m.mode = envMode
+	m.envEditor.editing = true
+	m.envEditor.editKey = textinput.New()
+	m.envEditor.editVal = textinput.New()
+	m.envEditor.editKey.SetValue(text)
+	m.envEditor.editKey.Focus()
+	m.envEditor.keySel = textedit.Selection{}
+	return m
+}
+
+// EnvKeyValue returns the env editor's key input text.
+func (m Model) EnvKeyValue() string { return m.envEditor.editKey.Value() }
+
+// EnvEditing reports whether the env editor is in edit mode.
+func (m Model) EnvEditing() bool { return m.envEditor.editing }

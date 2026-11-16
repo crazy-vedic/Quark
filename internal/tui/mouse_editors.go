@@ -105,6 +105,7 @@ func (m Model) handleURLLineClick(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 
 	cursorPos := m.urlCursorPosFromClick(relX, layout)
 	m.urlInput.SetCursor(cursorPos)
+	m.urlSelection.Collapse(cursorPos)
 
 	// Double-click selects word at cursor
 	if m.isDoubleTextClick(msg, "request-url") {
@@ -158,6 +159,7 @@ func (m Model) handleHeaderEditClick(msg tea.MouseMsg) (Model, tea.Cmd) {
 		m.headerKeyInput.Focus()
 		m.headerValueInput.Blur()
 		m.headerKeyInput.SetCursor(displayColumnToByteOffset(m.headerKeyInput.Value(), relX))
+		m.headerKeySelection.Collapse(m.headerKeyInput.Position())
 		return m, textinput.Blink
 	case ll.headerValInputY:
 		relX := msg.X - content.left
@@ -167,6 +169,7 @@ func (m Model) handleHeaderEditClick(msg tea.MouseMsg) (Model, tea.Cmd) {
 		m.headerValueInput.Focus()
 		m.headerKeyInput.Blur()
 		m.headerValueInput.SetCursor(displayColumnToByteOffset(m.headerValueInput.Value(), relX))
+		m.headerValueSelection.Collapse(m.headerValueInput.Position())
 		return m, textinput.Blink
 	default:
 		return m, nil
@@ -202,6 +205,9 @@ func (m Model) handleAuthEditClick(msg tea.MouseMsg) (Model, tea.Cmd) {
 		m.authEditor.beginEdit()
 		in := m.authEditor.inputForRow(row)
 		in.SetCursor(displayColumnToByteOffset(in.Value(), relX))
+		if sel, _ := m.authEditor.activeInput(row); sel != nil {
+			sel.Collapse(in.Position())
+		}
 		m.authEditor.assignInput(row, in)
 		return m, textinput.Blink
 	}

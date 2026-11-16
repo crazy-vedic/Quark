@@ -1647,3 +1647,20 @@ func TestImportInputSelectsAcrossLines(t *testing.T) {
 	assert.Equal(t, 0, sel.Anchor)
 	assert.Equal(t, len([]rune("one\ntwo")), sel.Cursor)
 }
+
+func TestEnvKeyCtrlASelectsAndTypingReplaces(t *testing.T) {
+	m := newModel(defaultConfig()).WithEnvKeyEdit("BASE_URL")
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyCtrlA})
+	assert.True(t, m.EnvEditKeySelection().Active(), "Ctrl+A selects the env key")
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("API")})
+	assert.False(t, m.EnvEditKeySelection().Active())
+	assert.Equal(t, "API", m.EnvKeyValue())
+}
+
+func TestEnvKeyCtrlCWithoutSelectionKeepsEditing(t *testing.T) {
+	m := newModel(defaultConfig()).WithEnvKeyEdit("KEEP")
+	m2, cmd := callUpdateWithCmd(t, m, tea.KeyMsg{Type: tea.KeyCtrlC})
+	assert.Nil(t, cmd)
+	assert.True(t, m2.EnvEditing(), "Ctrl+C never leaves the editor")
+	assert.Equal(t, "KEEP", m2.EnvKeyValue())
+}

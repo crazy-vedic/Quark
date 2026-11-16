@@ -426,7 +426,9 @@ func (m Model) viewHeadersPreview(w int) string {
 	var preview strings.Builder
 	if m.headerEditing {
 		preview.WriteString("Key:\n")
-		keyDisplay := m.renderInputWithSelection(&m.headerKeyInput, &m.headerKeySelection)
+		keyDisplay := textedit.RenderInput(
+			&m.headerKeyInput, m.headerKeySelection, m.styles.selectionStyle,
+		)
 		preview.WriteString(keyDisplay)
 		preview.WriteString("\n\n")
 		if m.headerKeyInput.Focused() {
@@ -436,7 +438,9 @@ func (m Model) viewHeadersPreview(w int) string {
 			}
 		}
 		preview.WriteString("Value:\n")
-		valueDisplay := m.renderInputWithSelection(&m.headerValueInput, &m.headerValueSelection)
+		valueDisplay := textedit.RenderInput(
+			&m.headerValueInput, m.headerValueSelection, m.styles.selectionStyle,
+		)
 		preview.WriteString(valueDisplay)
 		preview.WriteString("\n")
 		if m.headerKeyInput.Focused() {
@@ -513,7 +517,7 @@ func (m Model) viewRequestPane(w, h int) string {
 	}
 	var urlDisplay string
 	if m.activeField == urlField {
-		urlDisplay = m.renderInputWithSelection(&m.urlInput, &m.urlSelection)
+		urlDisplay = textedit.RenderInput(&m.urlInput, m.urlSelection, m.styles.selectionStyle)
 		if suggestion := m.urlSuggestion(m.urlInput.Value()); suggestion != "" {
 			urlDisplay += m.styles.mutedStyle.Render(
 				completionSuffix(m.urlInput.Value(), suggestion),
@@ -743,7 +747,9 @@ func (m Model) viewAuthEditor(maxRows, contentWidth int) string {
 
 		// Apply selection rendering if editing
 		if m.authEditor.editing && idx == selected {
-			value = m.renderAuthFieldWithSelection(row, value)
+			if sel, in := m.authEditor.activeInput(row); in != nil && sel.Active() {
+				value = textedit.RenderInput(in, *sel, m.styles.selectionStyle)
+			}
 		}
 
 		line := cursor + label + ": " + value
@@ -1692,7 +1698,9 @@ func (m Model) viewSearchModal() string {
 	}
 	// Render search input with selection support, but fall back to View() for proper styling
 	if m.searchSelection.Active() {
-		sb.WriteString(m.renderInputWithSelection(&m.searchInput, &m.searchSelection))
+		sb.WriteString(textedit.RenderInput(
+			&m.searchInput, m.searchSelection, m.styles.selectionStyle,
+		))
 	} else {
 		sb.WriteString(m.searchInput.View())
 	}
@@ -2019,7 +2027,9 @@ func (m Model) viewHelp() string {
 	sb.WriteString(m.styles.titleStyle.Render("Keyboard Reference"))
 	sb.WriteString("\n\n")
 	if m.helpSearch {
-		sb.WriteString(m.renderInputWithSelection(&m.searchInput, &m.searchSelection))
+		sb.WriteString(textedit.RenderInput(
+			&m.searchInput, m.searchSelection, m.styles.selectionStyle,
+		))
 		sb.WriteString("\n\n")
 	}
 
@@ -2651,8 +2661,16 @@ func (m Model) viewEnvModal() string {
 	// Editing sub-mode.
 	if m.envEditor.editing {
 		sb.WriteString("\n")
-		sb.WriteString("Key:   " + m.envEditor.editKey.View() + "\n")
-		sb.WriteString("Value: " + m.envEditor.editVal.View() + "\n")
+		sb.WriteString(
+			"Key:   " + textedit.RenderInput(
+				&m.envEditor.editKey, m.envEditor.keySel, m.styles.selectionStyle,
+			) + "\n",
+		)
+		sb.WriteString(
+			"Value: " + textedit.RenderInput(
+				&m.envEditor.editVal, m.envEditor.valSel, m.styles.selectionStyle,
+			) + "\n",
+		)
 		sb.WriteString("\n" + m.styles.mutedStyle.Render("  "+m.renderHints([]hintItem{
 			{Label: "switch", Actions: []string{"env_edit_switch_field"}},
 			{Label: helpLabelConfirm, Actions: []string{"env_edit_confirm"}},

@@ -14,6 +14,7 @@ import (
 	"github.com/crazy-vedic/quark/internal/exec"
 	"github.com/crazy-vedic/quark/internal/keybindings"
 	"github.com/crazy-vedic/quark/internal/store"
+	"github.com/crazy-vedic/quark/internal/tui/textedit"
 )
 
 // envDBTimeout is the context deadline for environment DB reads.
@@ -58,6 +59,8 @@ type envEditor struct {
 	editing   bool
 	editKey   textinput.Model
 	editVal   textinput.Model
+	keySel    textedit.Selection
+	valSel    textedit.Selection
 	dirty     bool
 	saveErr   string
 	drafts    map[string]envDraft
@@ -330,6 +333,7 @@ func (m Model) envAddVar() (tea.Model, tea.Cmd) {
 	m.envEditor.editing = true
 	m.envEditor.editKey = textinput.New()
 	m.envEditor.editVal = textinput.New()
+	m.envEditor.keySel, m.envEditor.valSel = textedit.Selection{}, textedit.Selection{}
 	m.styleInputs()
 	m.envEditor.editKey.Focus()
 	return m, textinput.Blink
@@ -361,6 +365,8 @@ func (m Model) envEditVar() (tea.Model, tea.Cmd) {
 		m.envEditor.editing = true
 		m.envEditor.editKey = textinput.New()
 		m.envEditor.editVal = textinput.New()
+		m.envEditor.keySel, m.envEditor.valSel = textedit.Selection{}, textedit.Selection{}
+		m.envEditor.keySel, m.envEditor.valSel = textedit.Selection{}, textedit.Selection{}
 		m.styleInputs()
 		m.envEditor.editKey.SetValue(m.envEditor.vars[m.envEditor.varCursor].Key)
 		m.envEditor.editVal.SetValue(m.envEditor.vars[m.envEditor.varCursor].Value)
@@ -450,6 +456,7 @@ func (m Model) copyInheritedEnvVar() (tea.Model, tea.Cmd) {
 	m.envEditor.editing = true
 	m.envEditor.editKey = textinput.New()
 	m.envEditor.editVal = textinput.New()
+	m.envEditor.keySel, m.envEditor.valSel = textedit.Selection{}, textedit.Selection{}
 	m.styleInputs()
 	m.envEditor.editKey.SetValue(inherited.Key)
 	m.envEditor.editVal.SetValue(inherited.Value)
@@ -506,12 +513,22 @@ func (m Model) handleEnvEditKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	var cmd tea.Cmd
-	if m.envEditor.editKey.Focused() {
-		m.envEditor.editKey, cmd = m.envEditor.editKey.Update(msg)
-	} else {
-		m.envEditor.editVal, cmd = m.envEditor.editVal.Update(msg)
+	input, sel := &m.envEditor.editKey, &m.envEditor.keySel
+	if !m.envEditor.editKey.Focused() {
+		input, sel = &m.envEditor.editVal, &m.envEditor.valSel
 	}
+	ed := newTextEditor()
+	b := textedit.Input(input)
+	if cmd, handled := ed.HandleKey(sel, b, msg); handled {
+		return m, cmd
+	}
+	if msg.Type == tea.KeyCtrlC {
+		// No selection: nothing to copy. Ctrl+C never quits the app.
+		return m, nil
+	}
+	var cmd tea.Cmd
+	*input, cmd = input.Update(msg)
+	ed.Sync(sel, b)
 	return m, cmd
 }
 

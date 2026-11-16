@@ -359,8 +359,6 @@ type Model struct {
 	searchSelection      textedit.Selection // selection in search input
 	viewerFindSelection  textedit.Selection // selection in viewer find input
 	importInputSelection textedit.Selection // selection in import textarea
-	envEditKeySelection  textedit.Selection // selection in env editor key field
-	envEditValSelection  textedit.Selection // selection in env editor value field
 
 	// --- Misc ---
 	tmuxDetected    bool
@@ -1428,47 +1426,6 @@ func prevMethod(current string) string {
 
 // HelpCursor returns the current cursor position in the help overlay.
 func (m Model) HelpCursor() int { return m.helpCursor }
-
-// renderInputWithSelection renders a single-line input. Without a selection it
-// is the widget's own view. With one, the selected runes are highlighted.
-func (m Model) renderInputWithSelection(input *textinput.Model, sel *textedit.Selection) string {
-	if !sel.Active() {
-		return input.View()
-	}
-
-	start, end := sel.Range()
-	runes := []rune(input.Value())
-
-	// Clamp selection to valid range
-	if start < 0 {
-		start = 0
-	}
-	if end > len(runes) {
-		end = len(runes)
-	}
-	if start > end {
-		start = end
-	}
-
-	var result strings.Builder
-	result.WriteString(string(runes[:start]))
-	if start < end {
-		result.WriteString(m.styles.selectionStyle.Render(string(runes[start:end])))
-	}
-	result.WriteString(string(runes[end:]))
-	return result.String()
-}
-
-// renderAuthFieldWithSelection highlights the selection in the auth field for
-// row. Rows that are not text fields, and fields without a selection, keep
-// baseValue.
-func (m Model) renderAuthFieldWithSelection(row authRowID, baseValue string) string {
-	sel, input := m.authEditor.activeInput(row)
-	if input == nil || !sel.Active() {
-		return baseValue
-	}
-	return m.renderInputWithSelection(input, sel)
-}
 
 // searchPlaceholder is the hint shown in the empty search input.
 const searchPlaceholder = "search requests (optional)..."
