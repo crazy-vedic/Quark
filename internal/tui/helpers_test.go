@@ -14,6 +14,7 @@ import (
 	"github.com/crazy-vedic/quark/internal/domain"
 	"github.com/crazy-vedic/quark/internal/exec"
 	"github.com/crazy-vedic/quark/internal/tui"
+	"github.com/crazy-vedic/quark/internal/tui/textedit"
 	"github.com/crazy-vedic/quark/internal/tuitest"
 )
 
@@ -265,9 +266,9 @@ func callPaste(t *testing.T, m tui.Model, msg tea.Msg) tui.Model {
 	return feedPastes(t, m, cmd)
 }
 
-// feedPastes runs cmd and feeds every bracketed paste key it produces back into
-// the model. Batched commands are unwrapped, since a handler may batch the
-// paste with other work.
+// feedPastes runs cmd and delivers every clipboard paste result it produces
+// back into the model, as the Bubble Tea loop does. Batched commands are
+// unwrapped, since a handler may batch the paste with other work.
 func feedPastes(t *testing.T, m tui.Model, cmd tea.Cmd) tui.Model {
 	t.Helper()
 	if cmd == nil {
@@ -278,12 +279,10 @@ func feedPastes(t *testing.T, m tui.Model, cmd tea.Cmd) tui.Model {
 		for _, c := range out {
 			m = feedPastes(t, m, c)
 		}
-	case tea.KeyMsg:
-		if out.Paste {
-			var next tea.Cmd
-			m, next = tuitest.UpdateWithCmd(t, m, out)
-			m = feedPastes(t, m, next)
-		}
+	case textedit.PasteResultMsg:
+		var next tea.Cmd
+		m, next = tuitest.UpdateWithCmd(t, m, out)
+		m = feedPastes(t, m, next)
 	}
 	return m
 }

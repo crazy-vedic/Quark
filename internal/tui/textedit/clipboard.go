@@ -13,16 +13,27 @@ type Clipboard interface {
 	WriteCmd(text string) tea.Cmd
 }
 
-// PasteCmd runs read off the UI goroutine and delivers the text as a
-// bracketed paste key. The key then goes through the same routing as a
-// terminal paste, so the focused field inserts it and multi-line handling
-// applies. An empty or failed read delivers nothing.
+// PasteResultMsg is the result of a clipboard read for paste. It is not a key
+// message: the application decides where the text goes, based on the focus
+// that was active when the paste was requested. Ticket and Target are set by
+// the application when it receives the paste request; the editor leaves them
+// zero.
+type PasteResultMsg struct {
+	Text   string
+	Err    error
+	Ticket uint64
+	Target string
+}
+
+// PasteCmd runs read off the UI goroutine and delivers a PasteResultMsg. An
+// empty clipboard delivers nothing, so pressing paste on an empty clipboard
+// stays silent. A failed read is delivered as Err so it can be reported.
 func PasteCmd(read func() (string, error)) tea.Cmd {
 	return func() tea.Msg {
 		text, err := read()
-		if err != nil || text == "" {
+		if err == nil && text == "" {
 			return nil
 		}
-		return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(text), Paste: true}
+		return PasteResultMsg{Text: text, Err: err}
 	}
 }

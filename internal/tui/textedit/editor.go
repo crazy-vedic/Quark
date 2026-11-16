@@ -46,8 +46,9 @@ func (e Editor) HandleKey(sel *Selection, b Backend, msg tea.KeyMsg) (tea.Cmd, b
 		return e.Clip.WriteCmd(text), true
 
 	case k.Paste.Match(key):
-		// The read is asynchronous. The text returns as a paste key and is
-		// inserted when it arrives, so the UI is never blocked on the clipboard.
+		// The read is asynchronous. The text returns as a PasteResultMsg and is
+		// inserted when the application delivers it, so the UI is never blocked
+		// on the clipboard.
 		return e.Clip.ReadCmd(), true
 
 	case k.SelectCharLeft.Match(key), k.SelectCharRight.Match(key),

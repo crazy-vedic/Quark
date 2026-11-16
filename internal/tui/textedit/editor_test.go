@@ -86,8 +86,8 @@ func newHarness(text string, cur int) *harness {
 func (h *harness) press(msg tea.KeyMsg) bool {
 	cmd, handled := h.ed.HandleKey(&h.sel, h.b, msg)
 	if cmd != nil {
-		if km, ok := cmd().(tea.KeyMsg); ok {
-			h.ed.HandleKey(&h.sel, h.b, km)
+		if res, ok := cmd().(PasteResultMsg); ok && res.Err == nil {
+			h.ed.HandleKey(&h.sel, h.b, pasteKey(res.Text))
 		}
 	}
 	return handled
@@ -268,11 +268,30 @@ func TestPasteIsDeferredUntilClipboardReadRuns(t *testing.T) {
 	assert.True(t, handled)
 	assert.Equal(t, "ad", h.b.text, "the UI must not read or insert synchronously")
 	require.NotNil(t, cmd)
-	km, ok := cmd().(tea.KeyMsg)
+	res, ok := cmd().(PasteResultMsg)
 	require.True(t, ok)
-	assert.True(t, km.Paste)
-	h.ed.HandleKey(&h.sel, h.b, km)
+	assert.Equal(t, "bc", res.Text)
+	h.ed.HandleKey(&h.sel, h.b, pasteKey(res.Text))
 	assert.Equal(t, "abcd", h.b.text)
+}
+
+func TestPasteReadFailureIsDelivered(t *testing.T) {
+	h := newHarness("abc", 1)
+	h.clp.readErr = errors.New("no clipboard")
+	cmd, _ := h.ed.HandleKey(&h.sel, h.b, keyFor("ctrl+v"))
+	res, ok := cmd().(PasteResultMsg)
+	require.True(t, ok)
+	assert.Error(t, res.Err)
+}
+
+func TestPasteEmptyClipboardDeliversNothing(t *testing.T) {
+	h := newHarness("abc", 1)
+	cmd, _ := h.ed.HandleKey(&h.sel, h.b, keyFor("ctrl+v"))
+	assert.Nil(t, cmd())
+}
+
+func pasteKey(text string) tea.KeyMsg {
+	return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(text), Paste: true}
 }
 
 func TestPasteFailureLeavesTextAlone(t *testing.T) {

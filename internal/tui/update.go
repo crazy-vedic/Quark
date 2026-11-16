@@ -58,9 +58,25 @@ func debugHeaderKeys(headers http.Header) string {
 
 // Update implements tea.Model — routes every message to the correct handler.
 //
-//nolint:gocyclo // Bubble Tea keeps the top-level message dispatcher centralized.
+// Update routes a message. A paste request (Ctrl+V) takes a new ticket so that
+// only its result is applied; see paste_routing.go.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if km, ok := msg.(tea.KeyMsg); ok && !km.Paste && m.textKeys().Paste.Match(km.String()) {
+		m.pasteTicket++
+		ticket, target := m.pasteTicket, m.pasteTarget()
+		next, cmd := m.update(msg)
+		return next, tagPasteCmd(cmd, ticket, target)
+	}
+	return m.update(msg)
+}
+
+//nolint:gocyclo // Bubble Tea keeps the top-level message dispatcher centralized.
+func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case textedit.PasteResultMsg:
+		return m.handlePasteResult(msg)
+	case clipboardErrorMsg:
+		return m.status("error", "Clipboard: "+msg.err.Error()), nil
 	case themeWatchTickMsg:
 		if m.configDir == "" || m.ctx.Err() != nil {
 			return m, nil
@@ -283,6 +299,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyMsg:
+		// A terminal paste in normal mode has no field to receive it. Its text
+		// must not be read as shortcuts such as q, so it is dropped here.
+		if msg.Paste && m.activeField == noneField && m.mode == normalMode {
+			return m.status("warn", "Paste ignored: no field is focused"), nil
+		}
 		if m.debugLog != nil {
 			if m.mode == importMode || m.mode == postmanImportMode {
 				// The import textarea can contain credentials, request bodies, and
