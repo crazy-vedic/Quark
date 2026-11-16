@@ -1162,6 +1162,7 @@ func (m Model) openHelp() Model {
 	m.helpSearch = false
 	m.searchInput.Blur()
 	m.searchInput.SetValue("")
+	m.searchSelection.Collapse(0)
 	m.searchInput.Placeholder = searchPlaceholder
 	return m
 }
@@ -1176,6 +1177,7 @@ func (m Model) closeHelp() Model {
 	m.helpSearch = false
 	m.searchInput.Blur()
 	m.searchInput.SetValue("")
+	m.searchSelection.Collapse(0)
 	m.searchInput.Placeholder = searchPlaceholder
 	return m
 }
@@ -1183,6 +1185,7 @@ func (m Model) closeHelp() Model {
 func (m Model) openSearch() (Model, tea.Cmd) {
 	m.mode = searchMode
 	m.searchInput.SetValue("")
+	m.searchSelection.Collapse(0)
 	m.searchInput.Placeholder = searchPlaceholder
 	m.searchInput.Focus()
 	m.searchResults = nil
@@ -1207,6 +1210,7 @@ func (m Model) closeSearch() Model {
 	m.mode = normalMode
 	m.searchInput.Blur()
 	m.searchInput.SetValue("")
+	m.searchSelection.Collapse(0)
 	m.searchInput.Placeholder = searchPlaceholder
 	m.searchResults = nil
 	m.commands = nil
@@ -1623,6 +1627,13 @@ func filterKeybindingEntries(entries []keybindings.Entry, query string) []keybin
 
 // handleHelpSearchKey handles keys while the keybinding reference search is open.
 func (m Model) handleHelpSearchKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	ed := m.newTextEditor()
+	b := textedit.Input(&m.searchInput)
+	if cmd, handled := ed.HandleKey(&m.searchSelection, b, msg); handled {
+		m.helpCursor = 0
+		m.helpScrollOffset = 0
+		return m, cmd
+	}
 	if action, ok := m.resolver.Resolve(2, 0, msg); ok {
 		switch action {
 		case keybindings.ActionSearch:
@@ -1631,6 +1642,7 @@ func (m Model) handleHelpSearchKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.helpSearch = false
 			m.searchInput.Blur()
 			m.searchInput.SetValue("")
+			m.searchSelection.Collapse(0)
 			m.helpCursor = 0
 			m.helpScrollOffset = 0
 			return m, nil
@@ -1658,6 +1670,7 @@ func (m Model) handleHelpSearchKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 	var inputCmd tea.Cmd
 	m.searchInput, inputCmd = m.searchInput.Update(msg)
+	ed.Sync(&m.searchSelection, b)
 	m.helpCursor = 0
 	m.helpScrollOffset = 0
 	return m, inputCmd
@@ -1749,6 +1762,7 @@ func (m Model) handleHelpKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case keybindings.ActionSearch:
 			m.helpSearch = true
 			m.searchInput.SetValue("")
+			m.searchSelection.Collapse(0)
 			m.searchInput.Placeholder = "search keybindings (optional)..."
 			m.searchInput.Focus()
 			m.helpCursor = 0
