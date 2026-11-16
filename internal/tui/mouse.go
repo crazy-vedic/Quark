@@ -45,10 +45,11 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	if m.effectiveDim() == DimAbsurd {
 		return m, nil
 	}
-	// Shift-clicks are intentionally ignored so terminals that support the
+	// Shift+click extends the selection in the URL line and the body editor.
+	// Everywhere else shift-clicks are ignored so terminals that support the
 	// modifier-key native selection escape hatch can handle them themselves.
 	if msg.Shift {
-		return m, nil
+		return m.handleShiftClick(msg)
 	}
 
 	layout := m.currentLayout()
@@ -98,6 +99,16 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	// Dragging with the left button held extends the selection like a
+	// shift+click, from where the press placed the cursor.
+	// The release carries the pointer's final cell, which may have been held
+	// back by the motion throttle, so it extends the selection as well.
+	if (msg.Action == tea.MouseActionMotion || msg.Action == tea.MouseActionRelease) &&
+		msg.Button == tea.MouseButtonLeft {
+		msg.Shift = true
+		return m.handleShiftClick(msg)
+	}
+
 	if msg.Action != tea.MouseActionPress || msg.Button != tea.MouseButtonLeft {
 		return m, nil
 	}
@@ -106,7 +117,10 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	if !ok {
 		return m, nil
 	}
-	textClick := false
+	// The URL line handles its own double-click word selection, so keep the
+	// click sequence intact instead of resetting it here.
+	textClick := pane == requestPane &&
+		m.requestPaneChromeRects(layout).urlLine.contains(msg.X, msg.Y)
 	if pane == requestPane && m.activeField == noneField {
 		r := m.requestBodyPreviewRect(layout)
 		if r.contains(msg.X, msg.Y) {
@@ -136,6 +150,40 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		return m.handleRequestClick(msg)
 	case responsePane:
 		return m.handleResponseClick(msg)
+	}
+	return m, nil
+}
+
+// handleShiftClick extends the active text selection to the clicked position.
+// A left-button drag arrives here too, as motion events.
+// It only acts on a request input that is being edited (URL, headers, auth,
+// body); any other shift-click is ignored.
+func (m Model) handleShiftClick(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	if msg.Button != tea.MouseButtonLeft {
+		return m, nil
+	}
+	layout := m.currentLayout()
+	if pane, ok := layout.paneAt(msg.X, msg.Y); !ok || pane != requestPane {
+		return m, nil
+	}
+	switch m.activeField {
+	case urlField:
+		if m.requestPaneChromeRects(layout).urlLine.contains(msg.X, msg.Y) {
+			return m.handleURLLineClick(msg)
+		}
+	case headersField:
+		if m.headerEditing {
+			return m.handleHeaderEditClick(msg)
+		}
+	case authField:
+		if m.authEditor.editing {
+			return m.handleAuthEditClick(msg)
+		}
+	case bodyField:
+		ll := m.requestPaneLineLayout(layout)
+		if msg.Y >= ll.editorContentY && msg.Y < ll.editorContentY+m.bodyTextarea.Height() {
+			return m.handleBodyTextareaClick(msg), nil
+		}
 	}
 	return m, nil
 }

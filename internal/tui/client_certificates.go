@@ -245,6 +245,7 @@ func (m Model) saveClientCert() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	m.cfg = nextCfg
+	m.cacheTextKeys()
 	m.clientCerts = next
 	m.clientCertEditing = false
 	m.clientCertError = ""
@@ -280,6 +281,7 @@ func (m Model) deleteClientCert() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	m.cfg = nextCfg
+	m.cacheTextKeys()
 	m.clientCerts = next
 	if m.clientCertCursor >= len(next) && m.clientCertCursor > 0 {
 		m.clientCertCursor--

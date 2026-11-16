@@ -14,6 +14,7 @@ import (
 	"github.com/crazy-vedic/quark/internal/config"
 	"github.com/crazy-vedic/quark/internal/curl"
 	"github.com/crazy-vedic/quark/internal/domain"
+	"github.com/crazy-vedic/quark/internal/tui/textedit"
 )
 
 const exactIAMCurl = `curl 'https://access.dev.wealthcareadmin.com/access/connect/token' \
@@ -88,13 +89,38 @@ func TestURLFieldNeverAutoImportsCurl(t *testing.T) {
 
 	require.Equal(t, normalMode, m.mode)
 	require.Equal(t, 0, importer.calls)
-	require.Contains(t, m.statusErr, "press I")
+	require.Contains(t, m.statusErr, "Select a request first")
+}
+
+func TestIsCurlCommandRequiresCurlWord(t *testing.T) {
+	cases := []struct {
+		in   string
+		want bool
+	}{
+		{"curl https://x", true},
+		{"curl\t-X POST https://x", true},
+		{"  curl https://x", true},
+		{"curl", true},
+		{"curl.example.com", false},
+		{"curlish", false},
+		{"https://api.example.com", false},
+	}
+	for _, tc := range cases {
+		require.Equal(t, tc.want, isCurlCommand(tc.in), "isCurlCommand(%q)", tc.in)
+	}
 }
 
 func TestCompleteClipboardValueParsesExactIAMCommand(t *testing.T) {
 	m := New(Deps{Importer: curl.NewImporter()}).openCurlImport()
 	var ok bool
-	updated, _ := m.Update(curlClipboardMsg{value: exactIAMCurl})
+	restore := StubClipboardForTest(func() (string, error) { return exactIAMCurl, nil })
+	defer restore()
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlV})
+	m, ok = updated.(Model)
+	require.True(t, ok)
+	res, ok := cmd().(textedit.PasteResultMsg)
+	require.True(t, ok)
+	updated, _ = m.Update(res)
 	m, ok = updated.(Model)
 	require.True(t, ok)
 	require.Equal(t, exactIAMCurl, m.importInput.Value())

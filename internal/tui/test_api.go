@@ -5,6 +5,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/crazy-vedic/quark/internal/exec"
 	"github.com/crazy-vedic/quark/internal/search"
 	"github.com/crazy-vedic/quark/internal/store"
+	"github.com/crazy-vedic/quark/internal/tui/textedit"
 )
 
 // Test-support message constructors used by integration harnesses outside
@@ -125,6 +127,11 @@ func (m Model) WithURLValue(v string) Model {
 	return m
 }
 
+func (m Model) WithBodyValue(v string) Model {
+	m.bodyTextarea.SetValue(v)
+	return m
+}
+
 func (m Model) WithCollections(c []*domain.Collection) Model {
 	m.collections = c
 	return m
@@ -144,6 +151,11 @@ func (m Model) WithActiveField(f requestField) Model  { m.activeField = f; retur
 
 func (m Model) WithActiveRequest(r *domain.Request) Model {
 	m.activeRequest = r
+	return m
+}
+
+func (m Model) WithURLSelection(start, end int) Model {
+	m.urlSelection.SelectRange(start, end)
 	return m
 }
 
@@ -169,6 +181,17 @@ func (m Model) WithPromptInputValue(v string) Model { m.promptInput.SetValue(v);
 func (m Model) WithHelpCursor(n int) Model          { m.helpCursor = n; return m }
 func (m Model) WithHelpScrollOffset(n int) Model    { m.helpScrollOffset = n; return m }
 func (m Model) WithSearchInputValue(v string) Model { m.searchInput.SetValue(v); return m }
+
+// WithSearchEdit focuses the search input, as opening search does, so keys
+// reach the widget.
+func (m Model) WithSearchEdit() Model { m.searchInput.Focus(); return m }
+
+// WithSearchSelection selects [start, end) in the search input.
+func (m Model) WithSearchSelection(start, end int) Model {
+	m.searchSelection.SelectRange(start, end)
+	m.searchInput.SetCursor(end)
+	return m
+}
 
 func (m Model) WithImportPreview(p *curl.ImportResult) Model {
 	m.importPreview = p
@@ -451,10 +474,32 @@ func (m Model) RequestPaneContentClickPos() (x, y int, ok bool) {
 	return x, y, true
 }
 
-func (m Model) Method() string                     { return m.method }
-func (m Model) URLValue() string                   { return m.urlInput.Value() }
-func (m Model) ResponseTab() responseTabID         { return m.responseTab }
-func (m Model) SearchResults() []*search.SearchHit { return m.searchResults }
+func (m Model) Method() string                           { return m.method }
+func (m Model) URLValue() string                         { return m.urlInput.Value() }
+func (m Model) URLSelection() textedit.Selection         { return m.urlSelection }
+func (m Model) BodySelection() textedit.Selection        { return m.bodySelection }
+func (m Model) HeaderKeySelection() textedit.Selection   { return m.headerKeySelection }
+func (m Model) HeaderValueSelection() textedit.Selection { return m.headerValueSelection }
+func (m Model) SearchSelection() textedit.Selection      { return m.searchSelection }
+func (m Model) ViewerFindSelection() textedit.Selection  { return m.viewerFindSelection }
+func (m Model) ImportInputSelection() textedit.Selection { return m.importInputSelection }
+func (m Model) AuthTokenSelection() textedit.Selection   { return m.authEditor.tokenSelection }
+func (m Model) AuthUsernameSelection() textedit.Selection {
+	return m.authEditor.usernameSelection
+}
+func (m Model) AuthPasswordSelection() textedit.Selection {
+	return m.authEditor.passwordSelection
+}
+func (m Model) AuthAPIKeyNameSelection() textedit.Selection {
+	return m.authEditor.apiKeyNameSelection
+}
+func (m Model) AuthAPIKeyValueSelection() textedit.Selection {
+	return m.authEditor.apiKeyValueSelection
+}
+func (m Model) EnvEditKeySelection() textedit.Selection { return m.envEditor.keySel }
+func (m Model) EnvEditValSelection() textedit.Selection { return m.envEditor.valSel }
+func (m Model) ResponseTab() responseTabID              { return m.responseTab }
+func (m Model) SearchResults() []*search.SearchHit      { return m.searchResults }
 
 // ResponseTabClickPos returns coordinates for clicking a response tab label.
 // tab must be BodyTab, HeadersTab, or RawTab.
@@ -545,18 +590,21 @@ func (m Model) ResponseHistoryRowClickPos(rowIndex int) (x, y int, ok bool) {
 	x = popupLeft + 3
 	return x, y, true
 }
-func (m Model) SearchInputValue() string             { return m.searchInput.Value() }
-func (m Model) ScheduleTimerSeq() int                { return m.scheduleTimerSeq }
-func (m Model) ScheduleInputValue() string           { return m.scheduleInput.Value() }
-func (m Model) ImportPreview() interface{}           { return m.importPreview }
-func (m Model) TmuxDetected() bool                   { return m.tmuxDetected }
-func (m Model) TmuxWarning() string                  { return m.tmuxWarning }
-func (m Model) ActiveField() requestField            { return m.activeField }
-func (m Model) ActiveRequest() *domain.Request       { return m.activeRequest }
-func (m Model) BodyValue() string                    { return m.bodyTextarea.Value() }
-func (m Model) HeaderPairs() []headerPair            { return m.headerPairs }
-func (m Model) HeaderEditing() bool                  { return m.headerEditing }
-func (m Model) AuthEditor() authEditor               { return m.authEditor }
+func (m Model) SearchInputValue() string       { return m.searchInput.Value() }
+func (m Model) ScheduleTimerSeq() int          { return m.scheduleTimerSeq }
+func (m Model) ScheduleInputValue() string     { return m.scheduleInput.Value() }
+func (m Model) ImportPreview() interface{}     { return m.importPreview }
+func (m Model) TmuxDetected() bool             { return m.tmuxDetected }
+func (m Model) TmuxWarning() string            { return m.tmuxWarning }
+func (m Model) ActiveField() requestField      { return m.activeField }
+func (m Model) ActiveRequest() *domain.Request { return m.activeRequest }
+func (m Model) BodyValue() string              { return m.bodyTextarea.Value() }
+func (m Model) HeaderPairs() []headerPair      { return m.headerPairs }
+func (m Model) HeaderEditing() bool            { return m.headerEditing }
+func (m Model) AuthEditor() authEditor         { return m.authEditor }
+
+// AuthCursor returns the index of the auth field that has focus.
+func (m Model) AuthCursor() int                      { return m.authEditor.cursor }
 func (m Model) Searched() bool                       { return m.searched }
 func (m Model) PromptMode() promptType               { return m.promptMode }
 func (m Model) HelpScrollOffset() int                { return m.helpScrollOffset }
@@ -593,3 +641,146 @@ func LimitLines(s string, contentWidth, maxRows int) string {
 	return limitLines(s, contentWidth, maxRows)
 }
 func VisualRows(s string, contentWidth int) int { return visualRows(s, contentWidth) }
+
+// WithBodyEdit starts editing the active request's body, the same way the body
+// field does when the user presses b: the textarea is loaded and focused.
+func (m Model) WithBodyEdit() Model { return m.beginBodyEdit() }
+
+// WithURLEdit starts editing the URL field the way pressing u does: the value
+// is remembered for cancel and the input is focused.
+func (m Model) WithURLEdit() Model {
+	mm, _ := m.beginURLEdit()
+	return mm
+}
+
+// StubClipboardForTest replaces the clipboard reader and returns a function that
+// restores the original.
+func StubClipboardForTest(read func() (string, error)) (restore func()) {
+	prev := readClipboardText
+	readClipboardText = read
+	return func() { readClipboardText = prev }
+}
+
+// WithHeaderPairEdit opens the header key/value editor on a pair, as Enter on a
+// header row does.
+func (m Model) WithHeaderPairEdit(key, value string) Model {
+	mm, _ := m.beginHeaderPairEdit(headerPair{Key: key, Value: value})
+	mm.activeField = headersField
+	return mm
+}
+
+// WithAuthFieldEdit opens the auth editor for authType with the text row at
+// rowIndex (0 is the type row) in edit mode, holding value.
+func (m Model) WithAuthFieldEdit(authType string, rowIndex int, value string) Model {
+	ed := newAuthEditor(&domain.Request{AuthType: authType})
+	ed.cursor = rowIndex
+	ed.beginEdit()
+	switch ed.currentRow() {
+	case authRowToken:
+		ed.tokenInput.SetValue(value)
+	case authRowUsername:
+		ed.usernameInput.SetValue(value)
+	case authRowPassword:
+		ed.passwordInput.SetValue(value)
+	case authRowAPIKeyName:
+		ed.apiKeyNameInput.SetValue(value)
+	case authRowAPIKeyValue:
+		ed.apiKeyValueInput.SetValue(value)
+	}
+	m.authEditor = ed
+	m.activeField = authField
+	return m
+}
+
+// HeaderKeyValue returns the header key input's text.
+func (m Model) HeaderKeyValue() string { return m.headerKeyInput.Value() }
+
+// HeaderValueValue returns the header value input's text.
+func (m Model) HeaderValueValue() string { return m.headerValueInput.Value() }
+
+// AuthTokenValue returns the bearer token input's text.
+func (m Model) AuthTokenValue() string { return m.authEditor.tokenInput.Value() }
+
+// AuthPasswordValue returns the basic auth password input's text.
+func (m Model) AuthPasswordValue() string { return m.authEditor.passwordInput.Value() }
+
+// AuthAPIKeyValueValue returns the API key value input's text.
+func (m Model) AuthAPIKeyValueValue() string { return m.authEditor.apiKeyValueInput.Value() }
+
+// WithImportInputEdit opens the import dialog in its input stage with text in
+// the multi-line input, as the replace and import flows do before a preview.
+func (m Model) WithImportInputEdit(text string) Model {
+	m.mode = importMode
+	m.importPreview = nil
+	m.importInput.SetValue(text)
+	m.importInput.Focus()
+	return m
+}
+
+// ImportInputValue returns the import textarea's text.
+func (m Model) ImportInputValue() string { return m.importInput.Value() }
+
+// AuthUsernameValue returns the basic auth username input's text.
+func (m Model) AuthUsernameValue() string { return m.authEditor.usernameInput.Value() }
+
+// AuthAPIKeyNameValue returns the API key name input's text.
+func (m Model) AuthAPIKeyNameValue() string { return m.authEditor.apiKeyNameInput.Value() }
+
+// WithEnvValEdit puts the env editor in edit mode on the value field with text.
+func (m Model) WithEnvValEdit(text string) Model {
+	m = m.WithEnvKeyEdit("")
+	m.envEditor.editKey.Blur()
+	m.envEditor.editVal.SetValue(text)
+	m.envEditor.editVal.Focus()
+	return m
+}
+
+// EnvValValue returns the env editor's value input text.
+func (m Model) EnvValValue() string { return m.envEditor.editVal.Value() }
+
+// WithEnvKeyEdit puts the env editor in edit mode on the key field with text.
+func (m Model) WithEnvKeyEdit(text string) Model {
+	m.mode = envMode
+	m.envEditor.editing = true
+	m.envEditor.editKey = textinput.New()
+	m.envEditor.editVal = textinput.New()
+	m.envEditor.editKey.SetValue(text)
+	m.envEditor.editKey.Focus()
+	m.envEditor.keySel = textedit.Selection{}
+	return m
+}
+
+// EnvKeyValue returns the env editor's key input text.
+func (m Model) EnvKeyValue() string { return m.envEditor.editKey.Value() }
+
+// EnvEditing reports whether the env editor is in edit mode.
+func (m Model) EnvEditing() bool { return m.envEditor.editing }
+
+// TextWidgetAccessors returns every text widget in Model by path, from the list
+// the paste target is built from.
+func TextWidgetAccessors() map[string]func(*Model) TextWidget {
+	out := make(map[string]func(*Model) TextWidget, len(textWidgets))
+	for _, w := range textWidgets {
+		out[w.name] = w.get
+	}
+	return out
+}
+
+// BlurredModelForTest returns a model with every text widget blurred.
+func BlurredModelForTest() Model {
+	m := New(Deps{})
+	// The auth and env editors build their inputs only when opened, so build
+	// them here the same way the editors do.
+	m.authEditor = newAuthEditor(&domain.Request{AuthType: "bearer"})
+	m.envEditor.editKey = textinput.New()
+	m.envEditor.editVal = textinput.New()
+	for _, w := range textWidgets {
+		acc := w.get
+		acc(&m).Blur()
+	}
+	return m
+}
+
+// PasteTargetForTest returns the value that identifies the input receiving keys.
+// Two models with equal values route keys to the same input.
+func (m Model) PasteTargetForTest() any { return m.pasteTargetOf() }

@@ -176,8 +176,8 @@ func TestE2E_FullUserJourney(t *testing.T) {
 	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyTab})
 	assert.Equal(t, tui.ResponsePane, m.Focus())
 
-	// 19. Quit
-	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
+	// 20. Quit. Ctrl+C only copies; q quits.
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
 	require.NotNil(t, cmd)
 }
 

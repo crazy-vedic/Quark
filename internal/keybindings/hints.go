@@ -43,9 +43,9 @@ func FormatKey(key string) string {
 		return "↑"
 	case "down":
 		return "↓"
-	case "left":
+	case KeyLeft:
 		return "←"
-	case "right":
+	case KeyRight:
 		return "→"
 	case "shift+left":
 		return "Shift+←"
@@ -80,9 +80,9 @@ func formatKeyPart(part string) string {
 		return "↑"
 	case "down":
 		return "↓"
-	case "left":
+	case KeyLeft:
 		return "←"
-	case "right":
+	case KeyRight:
 		return "→"
 	case "enter":
 		return "Enter"
