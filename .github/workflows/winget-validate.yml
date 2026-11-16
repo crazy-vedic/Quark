@@ -27,41 +27,28 @@ jobs:
           version: v1.26.2
           install-only: true
 
-      - name: Build binaries
-        run: |
-          mkdir -p dist/binaries
-          goreleaser build --snapshot --clean
+      - name: Build release archives
+        run: goreleaser release --snapshot --skip=publish --clean
 
       - name: Generate checksums
         shell: bash
         run: |
           cd dist
           mkdir -p binaries
-          # Extract tar.gz files using tar (Git Bash on Windows)
           for arch in amd64 arm64; do
-            if [ -f "quark-linux-${arch}.tar.gz" ]; then
-              tar --no-same-owner -xzf "quark-linux-${arch}.tar.gz" -C binaries/
-              [ -f "binaries/quark" ] && mv "binaries/quark" "binaries/quark-linux-${arch}"
-            fi
-            if [ -f "quark-darwin-${arch}.tar.gz" ]; then
-              tar --no-same-owner -xzf "quark-darwin-${arch}.tar.gz" -C binaries/
-              [ -f "binaries/quark" ] && mv "binaries/quark" "binaries/quark-darwin-${arch}"
-            fi
+            tar --no-same-owner -xzf "quark-linux-${arch}.tar.gz" -C binaries/
+            mv binaries/quark "binaries/quark-linux-${arch}"
+            tar --no-same-owner -xzf "quark-darwin-${arch}.tar.gz" -C binaries/
+            mv binaries/quark "binaries/quark-darwin-${arch}"
           done
-          # Extract zip file
-          if [ -f "quark-windows-amd64.zip" ]; then
-            unzip -o "quark-windows-amd64.zip" -d binaries/
-            [ -f "binaries/quark.exe" ] && chmod +x "binaries/quark.exe"
-          fi
-          # Generate checksums
-          if [ -d "binaries" ] && [ "$(ls -A binaries/)" ]; then
-            rm -f SHA256SUMS
-            (cd binaries && sha256sum quark-* > ../SHA256SUMS 2>/dev/null || true)
-            [ -f "*.tar.gz" ] && sha256sum quark-*.tar.gz >> SHA256SUMS 2>/dev/null || true
-            [ -f "*.zip" ] && sha256sum quark-*.zip >> SHA256SUMS 2>/dev/null || true
-          fi
-          echo "✓ Extraction complete"
-          ls -lh binaries/ || echo "No binaries directory"
+          unzip -o quark-windows-amd64.zip -d binaries/
+          mv binaries/quark.exe binaries/quark-windows-amd64.exe
+          # Same layout as the release workflow: binaries first, then archives
+          rm -f SHA256SUMS
+          (cd binaries && sha256sum quark-* > ../SHA256SUMS)
+          sha256sum quark-*.tar.gz quark-*.zip >> SHA256SUMS
+          echo "✓ Checksums generated"
+          cat SHA256SUMS
 
       - name: Verify Windows binary and zip
         shell: bash
