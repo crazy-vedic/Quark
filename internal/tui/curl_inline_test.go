@@ -232,3 +232,23 @@ func TestCtrlVClipboardErrorLeavesFieldAlone(t *testing.T) {
 	m2 := callPaste(t, m, tea.KeyMsg{Type: tea.KeyCtrlV})
 	assert.Equal(t, "keep", m2.URLValue())
 }
+
+func TestCurlReplaceClearsPreviousAuth(t *testing.T) {
+	req := existingRequest()
+	req.AuthType = domain.AuthTypeBearer
+	req.AuthConfig = `{"bearer":{"token":"old-token"}}`
+	m := newModelWithCurl().
+		WithFocus(tui.RequestPane).
+		WithActiveRequest(req).
+		WithURLEdit().
+		WithURLValue(testCurl)
+
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	require.Equal(t, tui.ImportMode, m.Mode())
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	require.Equal(t, tui.NormalMode, m.Mode())
+
+	assert.Equal(t, "https://api.example.com/items", req.URL, "replace applied")
+	assert.Empty(t, req.AuthType, "previous request's auth type must not apply to the curl request")
+	assert.Empty(t, req.AuthConfig, "previous request's auth config must not apply to the curl request")
+}
