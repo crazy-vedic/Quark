@@ -15,6 +15,7 @@ permissions:
 jobs:
   validate:
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
@@ -103,7 +104,7 @@ jobs:
           mkdir -p packed
           for pkg in quark platforms/*/; do
             if [ -f "$pkg/package.json" ]; then
-              npm pack "$pkg" --pack-destination packed/ 2>&1 | grep -v "npm WARN"
+              npm pack "./$pkg" --pack-destination packed/ 2>&1 | grep -v "npm WARN"
             fi
           done
           ls -lh packed/
@@ -114,9 +115,14 @@ jobs:
         shell: bash
         run: |
           cd npm/packed
+          # Install the main package plus only the platform package for this runner
+          PLATFORM=$(node -p "({darwin:'darwin',linux:'linux',win32:'win32'})[process.platform] + '-' + process.arch")
+          MAIN=$(ls quark-client-quark-[0-9]*.tgz)
+          PLAT=$(ls quark-client-quark-${PLATFORM}-*.tgz)
+          echo "Installing $MAIN + $PLAT"
           mkdir -p test-install
           cd test-install
           npm init -y
-          npm install ../quark-*.tgz --no-save --prefer-offline
+          npm install --no-save --prefer-offline "../$MAIN" "../$PLAT"
           npx quark version
           echo "✓ npm package installed and runs successfully"
