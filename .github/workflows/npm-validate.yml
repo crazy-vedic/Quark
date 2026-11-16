@@ -122,3 +122,31 @@ jobs:
           echo "$OUT"
           grep -qF "$VERSION" <<<"$OUT"
           echo "✓ npm package installed and runs successfully"
+
+      - name: Test global install (nested platform package)
+        run: |
+          set -euo pipefail
+          # npm nests optional dependencies under the main package in a global
+          # install (<root>/@quark-client/quark/node_modules/@quark-client/...),
+          # which is the layout the launcher once failed to resolve on Windows.
+          # The platform tarball isn't on the registry yet, so reproduce that
+          # layout by installing it into the globally installed main package.
+          PLATFORM=$(node -p "process.platform + '-' + process.arch")
+          cd npm/packed
+          MAIN="$PWD/quark-client-quark-${VERSION}.tgz"
+          PLAT="$PWD/quark-client-quark-${PLATFORM}-${VERSION}.tgz"
+          PREFIX="$(node -p "require('path').resolve('global-prefix')")"
+          npm install -g --prefix "$PREFIX" "$MAIN"
+          GROOT="$(npm root -g --prefix "$PREFIX")"
+          MAINDIR="$GROOT/@quark-client/quark"
+          (cd "$MAINDIR" && npm install --no-save --no-package-lock "$PLAT")
+          NESTED="$MAINDIR/node_modules/@quark-client/quark-${PLATFORM}"
+          test -f "$NESTED/package.json"
+          # The platform package must be nested only, not hoisted to the global root.
+          test ! -e "$GROOT/@quark-client/quark-${PLATFORM}"
+          # Run the launcher script from the global install (works on every OS
+          # without relying on PATH or .cmd shims).
+          OUT=$(node "$MAINDIR/bin/quark.js" --version)
+          echo "$OUT"
+          grep -qF "$VERSION" <<<"$OUT"
+          echo "✓ global install with nested platform package runs successfully"
