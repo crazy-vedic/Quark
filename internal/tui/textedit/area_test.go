@@ -72,6 +72,30 @@ func TestVisualRowsLeaveRealWidgetUntouched(t *testing.T) {
 	assert.Equal(t, before, Area(ta).Cursor())
 }
 
+// TestRenderAreaBuildsRowLayoutOncePerTextAndWidth checks that repeated frames
+// with the same text and width reuse one row layout instead of walking the
+// whole body again.
+func TestRenderAreaBuildsRowLayoutOncePerTextAndWidth(t *testing.T) {
+	forceColor(t)
+	resetRowLayoutCache()
+	ta := newArea(20, 10, strings.Repeat("abc def ghi\n", 300))
+	ta.Focus()
+	view := ta.View()
+	var sel Selection
+	sel.SelectRange(3, 500)
+	style := lipgloss.NewStyle().Reverse(true)
+
+	before := rowLayoutBuilds.Load()
+	for i := 0; i < 20; i++ {
+		RenderArea(view, ta, bodyGutter, sel, style)
+	}
+	assert.Equal(t, before+1, rowLayoutBuilds.Load(), "same text and width should build the layout once")
+
+	ta.SetWidth(30)
+	RenderArea(ta.View(), ta, bodyGutter, sel, style)
+	assert.Equal(t, before+2, rowLayoutBuilds.Load(), "a width change should rebuild the layout")
+}
+
 func TestRenderAreaNoSelectionReturnsViewUnchanged(t *testing.T) {
 	ta := newArea(20, 5, "hello")
 	view := ta.View()
