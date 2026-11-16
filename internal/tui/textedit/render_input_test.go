@@ -86,3 +86,14 @@ func TestRenderInputUnfocusedDrawsNoCursor(t *testing.T) {
 	out = RenderInput(ti, Selection{}, lipgloss.NewStyle())
 	assert.Contains(t, out, "\x1b[7m")
 }
+
+// The cursor must not pin to the right edge: text after it stays visible so
+// the user can see what follows the cursor.
+func TestRenderInputShowsContextRightOfCursor(t *testing.T) {
+	ti := newField(5, "0123456789")
+	ti.SetCursor(7)
+	out := RenderInput(ti, Selection{Anchor: 7, Cursor: 7}, lipgloss.NewStyle())
+	plain := ansi.Strip(out)
+	assert.Contains(t, plain, "7")
+	assert.Contains(t, plain, "89")
+}

@@ -38,9 +38,11 @@ func RenderInput(input *textinput.Model, sel Selection, st lipgloss.Style) strin
 	// Width 0 means no window: the whole value is shown, and the caller's pane
 	// clips it. Real fields always set Width, so the cursor stays visible.
 	offset := 0
-	if w := input.Width; w > 0 && pos >= w {
-		// Keep the cursor cell inside the w-cell window.
-		offset = pos - w + 1
+	if w := input.Width; w > 0 && len(runes)+1 > w {
+		// Centre the cursor so text on both sides stays visible. The window
+		// stays inside the cells 0..len, where len is the end-of-value cursor
+		// cell, so a cursor at the end still fits in w cells.
+		offset = min(max(pos-(w-1)/2, 0), len(runes)+1-w)
 	}
 	visibleEnd := len(runes)
 	if w := input.Width; w > 0 {
