@@ -524,7 +524,7 @@ func (m Model) handleEnvEditKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 	if m.textKeys().Copy.Match(msg.String()) {
 		// No selection: nothing to copy. Ctrl+C never quits the app.
-		return m, nil
+		return m.ctrlCNoSelection(), nil
 	}
 	var cmd tea.Cmd
 	*input, cmd = input.Update(msg)

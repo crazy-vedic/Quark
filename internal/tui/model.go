@@ -798,6 +798,12 @@ func (m Model) status(level, msg string) Model {
 	return m
 }
 
+// ctrlCNoSelection is the Ctrl+C result when there is nothing to copy. Ctrl+C
+// never quits, so the hint names the key that does.
+func (m Model) ctrlCNoSelection() Model {
+	return m.status("warn", "Press q to quit")
+}
+
 // unsavedRequestKey is the validation-error map key used for the request
 // currently in the pane when it has no persisted ID yet (new/unsaved request).
 const unsavedRequestKey = "\x00unsaved"

@@ -559,7 +559,7 @@ func (m Model) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	// Ctrl+C never quits the app. Use q to quit.
 	if m.textKeys().Copy.Match(msg.String()) {
-		return m, nil
+		return m.ctrlCNoSelection(), nil
 	}
 	if m.focus == responsePane {
 		if keys := m.textKeys(); keys.HistoryNext.Match(msg.String()) {
@@ -966,7 +966,7 @@ func (m Model) handleRequestKey(_ string, msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		if m.textKeys().Copy.Match(msg.String()) {
 			// No selection: nothing to copy. Ctrl+C never quits the app.
-			return m, nil
+			return m.ctrlCNoSelection(), nil
 		}
 		if msg.Type == tea.KeyTab {
 			if suggestion := m.urlSuggestion(m.urlInput.Value()); suggestion != "" {
@@ -1056,7 +1056,7 @@ func (m Model) handleSearchKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 	if m.textKeys().Copy.Match(msg.String()) {
 		// No selection: nothing to copy. Ctrl+C never quits the app.
-		return m, nil
+		return m.ctrlCNoSelection(), nil
 	}
 
 	// Resolver lookup for overlay mode.
@@ -1952,7 +1952,7 @@ func (m Model) handleImportKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 	if m.textKeys().Copy.Match(msg.String()) {
 		// No selection: nothing to copy. Ctrl+C never quits the app.
-		return m, nil
+		return m.ctrlCNoSelection(), nil
 	}
 	var cmd tea.Cmd
 	m.importInput, cmd = m.importInput.Update(msg)
@@ -2100,7 +2100,7 @@ func (m Model) handleBodyFieldKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 	if m.textKeys().Copy.Match(msg.String()) {
 		// No selection: nothing to copy. Ctrl+C never quits the app.
-		return m, nil
+		return m.ctrlCNoSelection(), nil
 	}
 
 	var cmd tea.Cmd
@@ -2188,7 +2188,7 @@ func (m Model) handleAuthFieldEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 	if m.textKeys().Copy.Match(msg.String()) {
 		// No selection: nothing to copy. Ctrl+C never quits the app.
-		return m, nil
+		return m.ctrlCNoSelection(), nil
 	}
 	if msg.Type == tea.KeyTab {
 		return m, nil
@@ -2270,7 +2270,7 @@ func (m Model) handleHeaderFieldEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 	if m.textKeys().Copy.Match(msg.String()) {
 		// No selection: nothing to copy. Ctrl+C never quits the app.
-		return m, nil
+		return m.ctrlCNoSelection(), nil
 	}
 
 	if msg.Type == tea.KeyTab {
