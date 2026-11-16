@@ -33,6 +33,10 @@ type Keymap struct {
 	SelectLineDown       Binding
 	SelectAll, Copy, Cut Binding
 	Paste, DeleteWord    Binding
+	// Emacs-style deletes. They edit the text, so with a selection they remove
+	// the selection, like Backspace and Delete do.
+	DeleteCharForward, DeleteWordForward Binding
+	DeleteToLineStart, DeleteToLineEnd   Binding
 
 	// Find and viewer keys, used by the response viewer and its find field.
 	FindOpen           Binding
@@ -49,27 +53,31 @@ type Keymap struct {
 // key for them.
 func DefaultKeymap() Keymap {
 	return Keymap{
-		CharLeft:        Binding{"left"},
-		CharRight:       Binding{"right"},
-		WordLeft:        Binding{"ctrl+left", "alt+left"},
-		WordRight:       Binding{"ctrl+right", "alt+right"},
-		LineStart:       Binding{"home"},
-		LineEnd:         Binding{"end"},
-		SelectCharLeft:  Binding{"shift+left"},
-		SelectCharRight: Binding{"shift+right"},
-		SelectWordLeft:  Binding{"ctrl+shift+left"},
-		SelectWordRight: Binding{"ctrl+shift+right"},
-		SelectLineStart: Binding{"shift+home"},
-		SelectLineEnd:   Binding{"shift+end"},
-		LineUp:          Binding{"up"},
-		LineDown:        Binding{"down"},
-		SelectLineUp:    Binding{"shift+up"},
-		SelectLineDown:  Binding{"shift+down"},
-		SelectAll:       Binding{"ctrl+a"},
-		Copy:            Binding{"ctrl+c"},
-		Cut:             Binding{"ctrl+x"},
-		Paste:           Binding{"ctrl+v"},
-		DeleteWord:      Binding{"ctrl+w", "alt+backspace"},
+		CharLeft:          Binding{"left"},
+		CharRight:         Binding{"right"},
+		WordLeft:          Binding{"ctrl+left", "alt+left"},
+		WordRight:         Binding{"ctrl+right", "alt+right"},
+		LineStart:         Binding{"home"},
+		LineEnd:           Binding{"end"},
+		SelectCharLeft:    Binding{"shift+left"},
+		SelectCharRight:   Binding{"shift+right"},
+		SelectWordLeft:    Binding{"ctrl+shift+left"},
+		SelectWordRight:   Binding{"ctrl+shift+right"},
+		SelectLineStart:   Binding{"shift+home"},
+		SelectLineEnd:     Binding{"shift+end"},
+		LineUp:            Binding{"up"},
+		LineDown:          Binding{"down"},
+		SelectLineUp:      Binding{"shift+up"},
+		SelectLineDown:    Binding{"shift+down"},
+		SelectAll:         Binding{"ctrl+a"},
+		Copy:              Binding{"ctrl+c"},
+		Cut:               Binding{"ctrl+x"},
+		Paste:             Binding{"ctrl+v"},
+		DeleteWord:        Binding{"ctrl+w", "alt+backspace"},
+		DeleteCharForward: Binding{"ctrl+d"},
+		DeleteWordForward: Binding{"alt+d"},
+		DeleteToLineStart: Binding{"ctrl+u"},
+		DeleteToLineEnd:   Binding{"ctrl+k"},
 
 		FindOpen:    Binding{"ctrl+f", "cmd+f"},
 		FindNext:    Binding{"enter"},

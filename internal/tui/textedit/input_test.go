@@ -56,3 +56,40 @@ func TestInputShiftLeftThenBackspaceOnRealWidget(t *testing.T) {
 	assert.Equal(t, "ab", m.Value())
 	assert.Equal(t, 2, m.Position())
 }
+
+// Emacs-style delete keys must respect an active selection, like Backspace
+// and Delete do. The widget otherwise deletes by its own rule and Sync keeps
+// a selection whose range no longer fits the text.
+func TestEmacsDeleteKeysDeleteSelectionOnRealWidget(t *testing.T) {
+	cases := []struct {
+		name     string
+		msg      tea.KeyMsg
+		anchor   int
+		cursor   int
+		wantText string
+	}{
+		{"ctrl+k", tea.KeyMsg{Type: tea.KeyCtrlK}, 11, 6, "hello "},
+		{"ctrl+u", tea.KeyMsg{Type: tea.KeyCtrlU}, 0, 5, " world"},
+		{"ctrl+d", tea.KeyMsg{Type: tea.KeyCtrlD}, 0, 5, " world"},
+		{"alt+d", tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("d"), Alt: true}, 0, 5, " world"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			m := textinput.New()
+			m.Focus()
+			m.SetValue("hello world")
+			ed := New(nopClipboard{})
+			var sel Selection
+			sel.SelectRange(tc.anchor, tc.cursor)
+			b := Input(&m)
+			b.SetCursor(tc.cursor)
+
+			_, handled := ed.HandleKey(&sel, b, tc.msg)
+			assert.True(t, handled)
+			assert.Equal(t, tc.wantText, m.Value())
+			assert.False(t, sel.Active(), "selection must be removed with the text")
+			assert.LessOrEqual(t, sel.Cursor, len([]rune(m.Value())))
+			assert.LessOrEqual(t, sel.Anchor, len([]rune(m.Value())))
+		})
+	}
+}

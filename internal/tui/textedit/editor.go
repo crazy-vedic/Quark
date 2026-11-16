@@ -123,6 +123,12 @@ func (e Editor) HandleKey(sel *Selection, b Backend, msg tea.KeyMsg) (tea.Cmd, b
 
 	if editsText(msg, e.Keys, b) {
 		if sel.Active() {
+			// Deletion keys remove only the selection when one exists. They are
+			// checked before typed text, since Alt+D arrives as a rune.
+			if isDeleteKey(msg, k) {
+				e.deleteSelection(sel, b)
+				return nil, true
+			}
 			// Typed or pasted text replaces the selection. It is inserted here
 			// rather than forwarded, so it does not depend on the widget's focus.
 			if msg.Type == tea.KeyRunes || msg.Type == tea.KeySpace {
@@ -134,10 +140,6 @@ func (e Editor) HandleKey(sel *Selection, b Backend, msg tea.KeyMsg) (tea.Cmd, b
 				return nil, true
 			}
 			e.deleteSelection(sel, b)
-			// Deletion keys remove only the selection when one exists.
-			if isDeleteKey(msg, k) {
-				return nil, true
-			}
 		}
 		cmd := b.Update(msg)
 		sel.Collapse(b.Cursor())
@@ -251,15 +253,19 @@ func editsText(msg tea.KeyMsg, k Keymap, b Backend) bool {
 	case tea.KeyEnter:
 		return multiLine(b)
 	}
-	return k.DeleteWord.Match(msg.String())
+	return isDeleteKey(msg, k)
 }
 
+// isDeleteKey reports whether msg removes text without typing a replacement.
 func isDeleteKey(msg tea.KeyMsg, k Keymap) bool {
 	switch msg.Type {
 	case tea.KeyBackspace, tea.KeyDelete:
 		return true
 	}
-	return k.DeleteWord.Match(msg.String())
+	key := msg.String()
+	return k.DeleteWord.Match(key) || k.DeleteCharForward.Match(key) ||
+		k.DeleteWordForward.Match(key) || k.DeleteToLineStart.Match(key) ||
+		k.DeleteToLineEnd.Match(key)
 }
 
 // selectedText returns the text covered by the selection.
