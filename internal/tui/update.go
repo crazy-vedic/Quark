@@ -950,7 +950,7 @@ func (m Model) handleRequestKey(_ string, msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// check runs on the pasted text, not the field, so an existing URL
 		// before the cursor does not hide it.
 		if text, ok := pastedText(msg); ok && isCurlCommand(text) {
-			return m.openCurlReplace(text), nil
+			return m.openCurlReplaceFromPaste(text), nil
 		}
 		ed := m.newTextEditor()
 		b := textedit.Input(&m.urlInput)
