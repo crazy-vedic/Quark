@@ -37,7 +37,7 @@ jobs:
       - name: Build binaries
         run: |
           mkdir -p dist/binaries
-          goreleaser build --snapshot --clean
+          goreleaser release --snapshot --skip=publish --clean
 
       - name: Extract binaries from archives
         shell: bash
