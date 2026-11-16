@@ -284,3 +284,14 @@ func TestCurlMultiLinePasteParseErrorKeepsTextRecoverable(t *testing.T) {
 	assert.Equal(t, broken, m.ImportInputValue(), "pasted text is kept for editing")
 	assert.Equal(t, "https://old.example", req.URL, "request is unchanged")
 }
+
+func TestCurlPastedWithNoFieldFocusedOpensReplaceDialog(t *testing.T) {
+	req := existingRequest()
+	m := newModelWithCurl().
+		WithFocus(tui.RequestPane).
+		WithActiveRequest(req)
+
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(testCurl), Paste: true})
+	assert.Equal(t, tui.ImportMode, m.Mode(), "a curl paste opens the dialog even with no field focused")
+	assert.Equal(t, "https://old.example", req.URL, "paste alone does not replace the request")
+}

@@ -367,6 +367,9 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// A terminal paste in normal mode has no field to receive it. Its text
 		// must not be read as shortcuts such as q, so it is dropped here.
 		if msg.Paste && m.activeField == noneField && m.mode == normalMode {
+			if isCurlCommand(string(msg.Runes)) {
+				return m.openCurlReplaceFromPaste(string(msg.Runes)), nil
+			}
 			return m.status("warn", "Paste ignored: no field is focused"), nil
 		}
 		if m.debugLog != nil {
