@@ -70,12 +70,59 @@ func isMouseReportText(km tea.KeyMsg) bool {
 		mouseReportRe.MatchString(string(km.Runes))
 }
 
+// mouseLeakWindow is how long after a mouse event a stray piece of a mouse
+// report is still treated as part of one.
+const mouseLeakWindow = 300 * time.Millisecond
+
+// mouseFragmentRunes are the characters an SGR mouse report is made of.
+const mouseFragmentRunes = "[<0123456789;Mm"
+
+// isLeakedMouseKey reports whether km is a piece of a mouse report that Bubble
+// Tea failed to parse. A whole report is recognised by its shape. A partial one
+// (a lone "[", "<32;4", "8M") is recognised by its characters, and only while
+// a mouse event is in flight, so ordinary typing is never affected.
+func (m Model) isLeakedMouseKey(km tea.KeyMsg) bool {
+	if isMouseReportText(km) {
+		return true
+	}
+	if km.Paste || len(km.Runes) == 0 || m.lastMouseAt.IsZero() ||
+		m.now().Sub(m.lastMouseAt) > mouseLeakWindow {
+		return false
+	}
+	if km.Type != tea.KeyRunes {
+		return false
+	}
+	return strings.Trim(string(km.Runes), mouseFragmentRunes) == ""
+}
+
+func (m Model) logMouse(mm tea.MouseMsg) {
+	if m.debugLog == nil {
+		return
+	}
+	fmt.Fprintf(m.debugLog, "[%s] mouse action=%v button=%v x=%d y=%d shift=%v alt=%v ctrl=%v\n",
+		time.Now().Format("15:04:05.000"), mm.Action, mm.Button, mm.X, mm.Y,
+		mm.Shift, mm.Alt, mm.Ctrl)
+}
+
+func (m Model) logDroppedKey(km tea.KeyMsg) {
+	if m.debugLog == nil {
+		return
+	}
+	fmt.Fprintf(m.debugLog, "[%s] dropped leaked mouse report key=%q runes=%q alt=%v\n",
+		time.Now().Format("15:04:05.000"), km.String(), string(km.Runes), km.Alt)
+}
+
 // Update implements tea.Model — routes every message to the correct handler.
 //
 // Update routes a message. A paste request (Ctrl+V) takes a new ticket so that
 // results are applied in request order; see paste_routing.go.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	if km, ok := msg.(tea.KeyMsg); ok && isMouseReportText(km) {
+	if mm, ok := msg.(tea.MouseMsg); ok {
+		m.lastMouseAt = m.now()
+		m.logMouse(mm)
+	}
+	if km, ok := msg.(tea.KeyMsg); ok && m.isLeakedMouseKey(km) {
+		m.logDroppedKey(km)
 		return m, nil
 	}
 	if km, ok := msg.(tea.KeyMsg); ok && !km.Paste && m.textKeys().Paste.Match(km.String()) {

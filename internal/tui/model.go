@@ -219,6 +219,7 @@ type Model struct {
 	activeEnvStore  store.ActiveEnvironmentStore
 	scheduler       store.ScheduledRunStore
 	cfg             config.Config
+	lastMouseAt     time.Time                          // last mouse event; stray mouse-report pieces shortly after it are dropped
 	pasteTicket     uint64                             // last Ctrl+V request issued; 0 means none, and results with ticket 0 are ignored
 	pasteApplied    uint64                             // last ticket whose result was applied; results apply in ticket order
 	pasteHeld       map[uint64]textedit.PasteResultMsg // out-of-order results waiting for earlier tickets

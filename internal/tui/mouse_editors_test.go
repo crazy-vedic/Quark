@@ -3,6 +3,7 @@ package tui
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/charmbracelet/bubbles/textarea"
 	tea "github.com/charmbracelet/bubbletea"
@@ -477,4 +478,30 @@ func TestLeakedMouseReportsAreNotTyped(t *testing.T) {
 	// Ordinary typing and pastes still work.
 	updated, _ = b.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")})
 	assert.Contains(t, requireModel(t, updated).BodyValue(), "x")
+}
+
+// A fast drag can leave a lone "[" or a piece such as "<32;4" in the key stream.
+// Typed over a selection it would replace the text, so pieces that follow a
+// mouse event are dropped, and only then.
+func TestStrayMouseReportPiecesDoNotReplaceSelection(t *testing.T) {
+	now := time.Unix(1000, 0)
+	m := editorTestModel(t, &domain.Request{ID: "r", Method: "POST", URL: "u", Body: "hello world"})
+	m.now = func() time.Time { return now }
+	m = m.WithActiveField(bodyField).WithBodyEdit()
+	m.bodySelection.SelectRange(0, 5)
+
+	updated, _ := m.Update(dragTo(1, 1))
+	m = requireModel(t, updated)
+	for _, piece := range []string{"[", "<32;4", "8M"} {
+		updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(piece)})
+		m = requireModel(t, updated)
+	}
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("["), Alt: true})
+	m = requireModel(t, updated)
+	assert.Equal(t, "hello world", m.BodyValue())
+
+	// Long after the last mouse event, "[" is ordinary typing again.
+	now = now.Add(time.Second)
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("[")})
+	assert.Contains(t, requireModel(t, updated).BodyValue(), "[")
 }
