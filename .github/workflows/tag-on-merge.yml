@@ -346,6 +346,7 @@ jobs:
     runs-on: ubuntu-latest
     if: needs.tag.outputs.tag_created == 'true'
     permissions:
+      actions: write
       contents: read
       id-token: write
     steps:
