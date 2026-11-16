@@ -14,6 +14,7 @@ import (
 	"github.com/crazy-vedic/quark/internal/config"
 	"github.com/crazy-vedic/quark/internal/curl"
 	"github.com/crazy-vedic/quark/internal/domain"
+	"github.com/crazy-vedic/quark/internal/tui/textedit"
 )
 
 const exactIAMCurl = `curl 'https://access.dev.wealthcareadmin.com/access/connect/token' \
@@ -94,7 +95,14 @@ func TestURLFieldNeverAutoImportsCurl(t *testing.T) {
 func TestCompleteClipboardValueParsesExactIAMCommand(t *testing.T) {
 	m := New(Deps{Importer: curl.NewImporter()}).openCurlImport()
 	var ok bool
-	updated, _ := m.Update(curlClipboardMsg{value: exactIAMCurl})
+	restore := StubClipboardForTest(func() (string, error) { return exactIAMCurl, nil })
+	defer restore()
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlV})
+	m, ok = updated.(Model)
+	require.True(t, ok)
+	res, ok := cmd().(textedit.PasteResultMsg)
+	require.True(t, ok)
+	updated, _ = m.Update(res)
 	m, ok = updated.(Model)
 	require.True(t, ok)
 	require.Equal(t, exactIAMCurl, m.importInput.Value())

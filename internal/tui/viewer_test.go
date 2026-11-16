@@ -85,8 +85,6 @@ func TestViewerClipboardCmdsReturnMessages(t *testing.T) {
 	assert.True(t, ok)
 	_, ok = copyCurlCommandCmd("curl x")().(curlExportClipboardMsg)
 	assert.True(t, ok)
-	_, ok = readCurlClipboardCmd()().(curlClipboardMsg)
-	assert.True(t, ok)
 }
 
 func viewerTestModel(t *testing.T) Model {

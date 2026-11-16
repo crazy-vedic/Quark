@@ -120,19 +120,6 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
-	case curlClipboardMsg:
-		if m.mode != importMode || m.importPreview != nil {
-			return m, nil
-		}
-		if msg.err != nil {
-			m.importError = "Clipboard read failed: " + msg.err.Error()
-			return m, nil
-		}
-		m.importInput.SetValue(msg.value)
-		m.importInput.CursorEnd()
-		m.importError = ""
-		m.debugCurl("clipboard read bytes=%d", len(msg.value))
-		return m, nil
 	case postmanImportResultMsg:
 		m.postmanBusy = false
 		m.postmanOutput = strings.TrimSpace(msg.output)
@@ -1854,10 +1841,9 @@ func helpResetAllDiffs(current keybindings.Keybindings) []string {
 // --- Import modal ---
 
 func (m Model) handleImportKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	if m.importPreview == nil && m.textKeys().Paste.Match(msg.String()) {
-		m.debugCurl("clipboard read requested")
-		return m, readCurlClipboardCmd()
-	}
+	// Ctrl+V falls through to the import input's editor below. It is read by
+	// the same ticketed clipboard path as every other field, and it inserts at
+	// the cursor, so existing import text is kept.
 	// Resolver lookup for overlay mode.
 	if action, ok := m.resolver.Resolve(3, 0, msg); ok && action != keybindings.ActionImportCurl {
 		switch action {

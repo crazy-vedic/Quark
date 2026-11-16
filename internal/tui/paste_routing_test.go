@@ -174,6 +174,12 @@ var (
 
 // reflectWidgetPaths lists every textinput or textarea reachable from tui.Model,
 // following fields of struct types defined in the tui package.
+//
+// Limit: the walk follows direct fields and nested structs only. It does not
+// enter slices, maps, or pointers. A widget stored in one of those would not
+// be found, so it would also be missing from the guard. If a collection of
+// widgets is ever added to Model, extend this walk and add the collection to
+// textWidgets.
 func reflectWidgetPaths() []string {
 	var out []string
 	var walk func(rt reflect.Type, prefix string)
@@ -225,4 +231,176 @@ func TestFocusingEachTextWidgetChangesPasteTarget(t *testing.T) {
 		}
 		seen[target] = name
 	}
+}
+
+// routeCase opens one text widget the way a user does, pastes into it, and
+// reads back its value. A widget with a routeCase is covered by the insert
+// route. Every other widget must appear in untestedWidgets with a reason.
+type routeCase struct {
+	name    string
+	open    func(*testing.T) tui.Model
+	deliver func(*testing.T, tui.Model, tea.Cmd) tui.Model
+	value   func(tui.Model) string
+}
+
+// deliver feeds a Ctrl+V command's result back in. Every text widget uses the
+// same ticketed PasteResultMsg, so feedPastes covers them all.
+func deliver(t *testing.T, m tui.Model, cmd tea.Cmd) tui.Model {
+	t.Helper()
+	return feedPastes(t, m, cmd)
+}
+
+var routingCases = []routeCase{
+	{
+		name:    "urlInput",
+		open:    func(*testing.T) tui.Model { return pasteFixture("") },
+		deliver: deliver,
+		value:   tui.Model.URLValue,
+	},
+	{
+		name:    "bodyTextarea",
+		open:    func(*testing.T) tui.Model { return pasteFixture("").WithBodyEdit() },
+		deliver: deliver,
+		value:   tui.Model.BodyValue,
+	},
+	{
+		name:    "searchInput",
+		open:    openSearchByKey,
+		deliver: deliver,
+		value:   tui.Model.SearchInputValue,
+	},
+	{
+		name:    "importInput",
+		open:    func(*testing.T) tui.Model { return pasteFixture("").WithImportInputEdit("") },
+		deliver: deliver,
+		value:   tui.Model.ImportInputValue,
+	},
+	{
+		name:    "headerKeyInput",
+		open:    func(*testing.T) tui.Model { return pasteFixture("").WithHeaderPairEdit("", "") },
+		deliver: deliver,
+		value:   tui.Model.HeaderKeyValue,
+	},
+	{
+		name:    "headerValueInput",
+		open:    openHeaderValueByTab,
+		deliver: deliver,
+		value:   tui.Model.HeaderValueValue,
+	},
+	{
+		name:    "authEditor.tokenInput",
+		open:    func(*testing.T) tui.Model { return pasteFixture("").WithAuthFieldEdit("bearer", 1, "") },
+		deliver: deliver,
+		value:   tui.Model.AuthTokenValue,
+	},
+	{
+		name:    "authEditor.passwordInput",
+		open:    func(*testing.T) tui.Model { return pasteFixture("").WithAuthFieldEdit("basic", 2, "") },
+		deliver: deliver,
+		value:   tui.Model.AuthPasswordValue,
+	},
+	{
+		name:    "envEditor.editKey",
+		open:    func(*testing.T) tui.Model { return pasteFixture("").WithEnvKeyEdit("") },
+		deliver: deliver,
+		value:   tui.Model.EnvKeyValue,
+	},
+}
+
+// untestedWidgets lists every text widget that has no routeCase, with the reason.
+// Adding a widget here is a visible decision: the reason must say what is missing.
+// An empty reason fails TestEveryTextWidgetIsRoutedOrExplained.
+//
+//nolint:gosec // G101 matches widget names such as clientCertPassword; these are not credentials.
+var untestedWidgets = map[string]string{
+	"viewerFind":                  "find bar in the response viewer; no test helper opens it",
+	"importName":                  "name field shown after a curl import preview; no helper opens a preview",
+	"postmanPath":                 "path field in the Postman import dialog; no helper opens it",
+	"promptInput":                 "prompt modal input; no helper opens a prompt",
+	"scheduleInput":               "schedule entry field; no helper opens the scheduler",
+	"clientCertHost":              "client certificate dialog, host field; no helper opens it",
+	"clientCertFile":              "client certificate dialog, file field; no helper opens it",
+	"clientCertType":              "client certificate dialog, type field; no helper opens it",
+	"clientCertKeyFile":           "client certificate dialog, key file field; no helper opens it",
+	"clientCertCAFile":            "client certificate dialog, CA file field; no helper opens it",
+	"clientCertPassword":          "client certificate dialog, password field; no helper opens it",
+	"authEditor.usernameInput":    "basic auth username row; the password row is routed, this one is not yet",
+	"authEditor.apiKeyNameInput":  "API key name row of the auth editor; no helper opens it",
+	"authEditor.apiKeyValueInput": "API key value row of the auth editor; no helper opens it",
+	"envEditor.editVal":           "env value input; the key input is routed, this one is not yet",
+}
+
+// TestPasteRoutesToEachRoutedWidget checks that a tagged paste lands in the
+// widget's own value.
+func TestPasteRoutesToEachRoutedWidget(t *testing.T) {
+	restore := tui.StubClipboardForTest(func() (string, error) { return "R", nil })
+	t.Cleanup(restore)
+
+	for _, c := range routingCases {
+		t.Run(c.name, func(t *testing.T) {
+			m, cmd := callUpdateWithCmd(t, c.open(t), tea.KeyMsg{Type: tea.KeyCtrlV})
+			require.NotNil(t, cmd)
+			m = c.deliver(t, m, cmd)
+			assert.Contains(t, c.value(m), "R", "the paste must land in %s", c.name)
+		})
+	}
+}
+
+// Import paste inserts at the cursor and keeps existing text. It is not a
+// replace: the import dialog does not promise an empty field.
+func TestImportPasteInsertsAndKeepsExistingText(t *testing.T) {
+	restore := tui.StubClipboardForTest(func() (string, error) { return "R", nil })
+	t.Cleanup(restore)
+
+	m := pasteFixture("").WithImportInputEdit("curl ")
+	m = callPaste(t, m, tea.KeyMsg{Type: tea.KeyCtrlV})
+	assert.Equal(t, "curl R", m.ImportInputValue())
+}
+
+// Every text widget in Model is either routed or explained. A widget that is
+// in neither place fails here, so a new widget cannot slip past silently.
+func TestEveryTextWidgetIsRoutedOrExplained(t *testing.T) {
+	routed := map[string]bool{}
+	for _, c := range routingCases {
+		routed[c.name] = true
+	}
+	for name := range tui.TextWidgetAccessors() {
+		if routed[name] {
+			continue
+		}
+		reason, ok := untestedWidgets[name]
+		assert.True(t, ok, "%s has no routeCase and no untestedWidgets reason", name)
+		assert.NotEmpty(t, strings.TrimSpace(reason), "%s needs a reason in untestedWidgets", name)
+	}
+}
+
+// Every entry in untestedWidgets must name a real widget that is not routed.
+// A stale entry, or one for a routed widget, fails here.
+func TestUntestedWidgetsAreAccurate(t *testing.T) {
+	accessors := tui.TextWidgetAccessors()
+	routed := map[string]bool{}
+	for _, c := range routingCases {
+		routed[c.name] = true
+	}
+	for name := range untestedWidgets {
+		assert.Contains(t, accessors, name, "untestedWidgets names a widget that does not exist")
+		assert.False(t, routed[name], "%s is routed, so it should not be in untestedWidgets", name)
+	}
+}
+
+// openSearchByKey enters search mode with the same key a user presses.
+func openSearchByKey(t *testing.T) tui.Model {
+	t.Helper()
+	m := newModelWithCurl().WithFocus(tui.RequestPane).WithActiveRequest(existingRequest())
+	m, _ = callUpdateWithCmd(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("/")})
+	require.Equal(t, tui.SearchMode, m.Mode(), "precondition: / opens search")
+	return m
+}
+
+// openHeaderValueByTab opens a header pair and moves focus to its value input.
+func openHeaderValueByTab(t *testing.T) tui.Model {
+	t.Helper()
+	m := pasteFixture("").WithHeaderPairEdit("Zq-Probe", "")
+	m, _ = callUpdateWithCmd(t, m, tea.KeyMsg{Type: tea.KeyTab})
+	return m
 }

@@ -31,40 +31,65 @@ type pasteTarget struct {
 	widgets    uint32 // one bit per text widget that has focus; see focusedWidgets
 }
 
-// focusedWidgets returns a bit for each text widget that has focus. Every text
-// widget in the model must appear here, or focus moving into it would not
-// change the paste target. The coverage test in paste_coverage_test.go fails
-// when a widget is missing.
+// TextWidget is the focus surface of a text input or text area in Model.
+type TextWidget interface {
+	Focus() tea.Cmd
+	Blur()
+	Focused() bool
+}
+
+// namedWidget pairs a widget's path in Model with a getter for it.
+type namedWidget struct {
+	name string
+	get  func(*Model) TextWidget
+}
+
+// textWidgets lists every text widget in Model, including those inside
+// authEditor and envEditor. It is the single list the paste target is built
+// from. A widget missing here gets no focus bit, so focus moving into it would
+// not change the paste target. The guard tests in paste_routing_test.go check
+// this list against Model by reflection. The array length is bounded to 32
+// below, because each widget uses one bit of the uint32 mask.
+var textWidgets = [...]namedWidget{
+	{"urlInput", func(m *Model) TextWidget { return &m.urlInput }},
+	{"viewerFind", func(m *Model) TextWidget { return &m.viewerFind }},
+	{"searchInput", func(m *Model) TextWidget { return &m.searchInput }},
+	{"importInput", func(m *Model) TextWidget { return &m.importInput }},
+	{"importName", func(m *Model) TextWidget { return &m.importName }},
+	{"postmanPath", func(m *Model) TextWidget { return &m.postmanPath }},
+	{"promptInput", func(m *Model) TextWidget { return &m.promptInput }},
+	{"scheduleInput", func(m *Model) TextWidget { return &m.scheduleInput }},
+	{"clientCertHost", func(m *Model) TextWidget { return &m.clientCertHost }},
+	{"clientCertFile", func(m *Model) TextWidget { return &m.clientCertFile }},
+	{"clientCertType", func(m *Model) TextWidget { return &m.clientCertType }},
+	{"clientCertKeyFile", func(m *Model) TextWidget { return &m.clientCertKeyFile }},
+	{"clientCertCAFile", func(m *Model) TextWidget { return &m.clientCertCAFile }},
+	{"clientCertPassword", func(m *Model) TextWidget { return &m.clientCertPassword }},
+	{"bodyTextarea", func(m *Model) TextWidget { return &m.bodyTextarea }},
+	{"headerKeyInput", func(m *Model) TextWidget { return &m.headerKeyInput }},
+	{"headerValueInput", func(m *Model) TextWidget { return &m.headerValueInput }},
+	{"authEditor.tokenInput", func(m *Model) TextWidget { return &m.authEditor.tokenInput }},
+	{"authEditor.usernameInput", func(m *Model) TextWidget { return &m.authEditor.usernameInput }},
+	{"authEditor.passwordInput", func(m *Model) TextWidget { return &m.authEditor.passwordInput }},
+	{"authEditor.apiKeyNameInput", func(m *Model) TextWidget {
+		return &m.authEditor.apiKeyNameInput
+	}},
+	{"authEditor.apiKeyValueInput", func(m *Model) TextWidget {
+		return &m.authEditor.apiKeyValueInput
+	}},
+	{"envEditor.editKey", func(m *Model) TextWidget { return &m.envEditor.editKey }},
+	{"envEditor.editVal", func(m *Model) TextWidget { return &m.envEditor.editVal }},
+}
+
+// The mask has 32 bits; a longer list would silently lose widgets.
+var _ [32 - len(textWidgets)]struct{}
+
+// focusedWidgets returns a bit for each text widget in textWidgets that has
+// focus. Bit i is set when textWidgets[i] is focused.
 func focusedWidgets(m Model) uint32 {
-	focused := [...]bool{
-		m.urlInput.Focused(),
-		m.viewerFind.Focused(),
-		m.searchInput.Focused(),
-		m.importInput.Focused(),
-		m.importName.Focused(),
-		m.postmanPath.Focused(),
-		m.promptInput.Focused(),
-		m.scheduleInput.Focused(),
-		m.clientCertHost.Focused(),
-		m.clientCertFile.Focused(),
-		m.clientCertType.Focused(),
-		m.clientCertKeyFile.Focused(),
-		m.clientCertCAFile.Focused(),
-		m.clientCertPassword.Focused(),
-		m.bodyTextarea.Focused(),
-		m.headerKeyInput.Focused(),
-		m.headerValueInput.Focused(),
-		m.authEditor.tokenInput.Focused(),
-		m.authEditor.usernameInput.Focused(),
-		m.authEditor.passwordInput.Focused(),
-		m.authEditor.apiKeyNameInput.Focused(),
-		m.authEditor.apiKeyValueInput.Focused(),
-		m.envEditor.editKey.Focused(),
-		m.envEditor.editVal.Focused(),
-	}
 	var bits uint32
-	for i, f := range focused {
-		if f {
+	for i, w := range textWidgets {
+		if w.get(&m).Focused() {
 			bits |= 1 << i
 		}
 	}
@@ -136,6 +161,10 @@ func tagPasteMsg(msg tea.Msg, ticket uint64, target pasteTarget) tea.Msg {
 // errors are reported.
 func (m Model) handlePasteResult(msg textedit.PasteResultMsg) (tea.Model, tea.Cmd) {
 	if msg.Err != nil {
+		if m.mode == importMode {
+			m.importError = "Clipboard read failed: " + msg.Err.Error()
+			return m, nil
+		}
 		return m.status("error", "Clipboard read failed: "+msg.Err.Error()), nil
 	}
 	if msg.Ticket == 0 || msg.Ticket != m.pasteTicket {
