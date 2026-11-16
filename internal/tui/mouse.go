@@ -145,8 +145,8 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 }
 
 // handleShiftClick extends the active text selection to the clicked position.
-// It only acts on the request URL line and body editor while they are being
-// edited; any other shift-click is ignored.
+// It only acts on a request input that is being edited (URL, headers, auth,
+// body); any other shift-click is ignored.
 func (m Model) handleShiftClick(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	if msg.Action != tea.MouseActionPress || msg.Button != tea.MouseButtonLeft {
 		return m, nil
@@ -159,6 +159,14 @@ func (m Model) handleShiftClick(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	case urlField:
 		if m.requestPaneChromeRects(layout).urlLine.contains(msg.X, msg.Y) {
 			return m.handleURLLineClick(msg)
+		}
+	case headersField:
+		if m.headerEditing {
+			return m.handleHeaderEditClick(msg)
+		}
+	case authField:
+		if m.authEditor.editing {
+			return m.handleAuthEditClick(msg)
 		}
 	case bodyField:
 		ll := m.requestPaneLineLayout(layout)

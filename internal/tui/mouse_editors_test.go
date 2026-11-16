@@ -358,3 +358,35 @@ func TestShiftClickExtendsBodySelection(t *testing.T) {
 	assert.Equal(t, 0, m.bodySelection.Anchor)
 	assert.Equal(t, 5, m.bodySelection.Cursor)
 }
+
+func TestShiftClickExtendsHeaderAndAuthSelection(t *testing.T) {
+	m := editorTestModel(t, nil)
+	m = m.WithHeaderPairEdit("Authorization", "")
+	m.activeField = headersField
+	layout := m.currentLayout()
+	ll := m.requestPaneLineLayout(layout)
+	left := layout.requestContentRect().left
+	m.headerKeyInput.SetCursor(0)
+	m.headerKeySelection.Collapse(0)
+
+	updated, _ := m.Update(shiftPress(left+6, ll.headerKeyInputY))
+	got := requireModel(t, updated)
+	assert.Equal(t, 0, got.headerKeySelection.Anchor)
+	assert.Equal(t, 6, got.headerKeySelection.Cursor)
+
+	// A shift+click on the other input only moves focus; nothing is extended.
+	updated, _ = got.Update(shiftPress(left+2, ll.headerValInputY))
+	got = requireModel(t, updated)
+	assert.False(t, got.headerValueSelection.Active())
+
+	a := editorTestModel(t, nil).WithAuthFieldEdit("bearer", 1, "secrettoken")
+	layout = a.currentLayout()
+	ll = a.requestPaneLineLayout(layout)
+	a.authEditor.tokenInput.SetCursor(0)
+	a.authEditor.tokenSelection.Collapse(0)
+	x := authRowTextLeft(layout.requestContentRect().left, authRowToken) + 4
+	updated, _ = a.Update(shiftPress(x, ll.editorContentY+3+1))
+	a = requireModel(t, updated)
+	assert.Equal(t, 0, a.authEditor.tokenSelection.Anchor)
+	assert.Equal(t, 4, a.authEditor.tokenSelection.Cursor)
+}

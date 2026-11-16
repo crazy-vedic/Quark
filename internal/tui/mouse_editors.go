@@ -86,6 +86,21 @@ func (m Model) urlCursorPosFromClick(relX int, layout normalLayout) int {
 	return min(pos, len(value))
 }
 
+// clickSelect applies a click to sel. A shift+click on an input that is already
+// being edited extends from the existing anchor, or from oldPos when nothing is
+// selected; any other click collapses the selection onto newPos.
+func clickSelect(sel *textedit.Selection, extend bool, oldPos, newPos int) {
+	if !extend {
+		sel.Collapse(newPos)
+		return
+	}
+	anchor := oldPos
+	if sel.Active() {
+		anchor = sel.Anchor
+	}
+	sel.SelectRange(anchor, newPos)
+}
+
 func (m Model) handleURLLineClick(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	m.focus = requestPane
 	layout := m.currentLayout()
@@ -99,10 +114,7 @@ func (m Model) handleURLLineClick(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	// Shift+click keeps the anchor and moves only the cursor end.
 	extend := msg.Shift && m.activeField == urlField
-	anchor := m.urlSelection.Anchor
-	if !m.urlSelection.Active() {
-		anchor = m.urlInput.Position()
-	}
+	oldPos := m.urlInput.Position()
 	if m.activeField != urlField {
 		m, cmd = m.beginURLEdit()
 	} else {
@@ -112,7 +124,7 @@ func (m Model) handleURLLineClick(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	cursorPos := m.urlCursorPosFromClick(relX, layout)
 	m.urlInput.SetCursor(cursorPos)
 	if extend {
-		m.urlSelection.SelectRange(anchor, cursorPos)
+		clickSelect(&m.urlSelection, true, oldPos, cursorPos)
 		return m, textinput.Blink
 	}
 	m.urlSelection.Collapse(cursorPos)
@@ -166,20 +178,24 @@ func (m Model) handleHeaderEditClick(msg tea.MouseMsg) (Model, tea.Cmd) {
 		if relX < 0 {
 			relX = 0
 		}
+		extend := msg.Shift && m.headerKeyInput.Focused()
+		oldPos := m.headerKeyInput.Position()
 		m.headerKeyInput.Focus()
 		m.headerValueInput.Blur()
 		m.headerKeyInput.SetCursor(displayColumnToByteOffset(m.headerKeyInput.Value(), relX))
-		m.headerKeySelection.Collapse(m.headerKeyInput.Position())
+		clickSelect(&m.headerKeySelection, extend, oldPos, m.headerKeyInput.Position())
 		return m, textinput.Blink
 	case ll.headerValInputY:
 		relX := msg.X - content.left
 		if relX < 0 {
 			relX = 0
 		}
+		extend := msg.Shift && m.headerValueInput.Focused()
+		oldPos := m.headerValueInput.Position()
 		m.headerValueInput.Focus()
 		m.headerKeyInput.Blur()
 		m.headerValueInput.SetCursor(displayColumnToByteOffset(m.headerValueInput.Value(), relX))
-		m.headerValueSelection.Collapse(m.headerValueInput.Position())
+		clickSelect(&m.headerValueSelection, extend, oldPos, m.headerValueInput.Position())
 		return m, textinput.Blink
 	default:
 		return m, nil
@@ -201,6 +217,7 @@ func (m Model) handleAuthEditClick(msg tea.MouseMsg) (Model, tea.Cmd) {
 			continue
 		}
 
+		sameRow := m.authEditor.editing && m.authEditor.cursor == idx
 		m.authEditor.cursor = idx
 		if !authRowEditable(row) {
 			return m, nil
@@ -214,9 +231,10 @@ func (m Model) handleAuthEditClick(msg tea.MouseMsg) (Model, tea.Cmd) {
 
 		m.authEditor.beginEdit()
 		in := m.authEditor.inputForRow(row)
+		oldPos := in.Position()
 		in.SetCursor(displayColumnToByteOffset(in.Value(), relX))
 		if sel, _ := m.authEditor.activeInput(row); sel != nil {
-			sel.Collapse(in.Position())
+			clickSelect(sel, msg.Shift && sameRow, oldPos, in.Position())
 		}
 		m.authEditor.assignInput(row, in)
 		return m, textinput.Blink
