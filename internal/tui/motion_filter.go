@@ -10,8 +10,8 @@ import (
 // motionWindow is the shortest gap between two mouse-motion events that reach
 // the model. A drag reports every cell the pointer crosses, and Bubble Tea
 // redraws after each message, so an unthrottled fast drag queues far more work
-// than a 60 Hz screen can show and the selection trails the pointer.
-const motionWindow = 16 * time.Millisecond
+// than the screen can show and the selection trails the pointer.
+const motionWindow = time.Second / 144
 
 // coalescedMotion carries a held motion event back into the loop so the filter
 // can tell it apart from a fresh one and let it through.
@@ -19,7 +19,7 @@ type coalescedMotion struct{ tea.MouseMsg }
 
 // MotionCoalescer throttles mouse-motion events. The first event in a burst
 // passes at once; later ones are held and only the newest is delivered when the
-// window ends, so the pointer's final position is never lost.
+// window ends (at most 144 events per second), so the pointer's final position is never lost.
 type MotionCoalescer struct {
 	mu      sync.Mutex
 	send    func(tea.Msg)
