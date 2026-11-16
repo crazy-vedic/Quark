@@ -393,13 +393,28 @@ func TestEnterInSingleLineFieldIsLeftToCaller(t *testing.T) {
 	assert.Equal(t, before, h.sel)
 }
 
-// Pasting multi-line text into a single-line field drops the newlines, as
-// sanitize documents. It must not insert a stray line break.
-func TestPasteMultiLineIntoSingleLineDropsNewlines(t *testing.T) {
+// Pasting multi-line text into a single-line field turns inner newlines into
+// spaces, as sanitize documents. It must not insert a stray line break.
+func TestPasteMultiLineIntoSingleLineReplacesNewlinesWithSpace(t *testing.T) {
 	h := newHarness("", 0)
 	h.clp.content = "one\ntwo"
 	h.key("ctrl+v")
-	assert.Equal(t, "onetwo", h.b.text)
+	assert.Equal(t, "one two", h.b.text)
+}
+
+func TestSanitizeSingleLine(t *testing.T) {
+	cases := map[string]string{
+		"foo\nbar":    "foo bar",
+		"foo\r\nbar":  "foo bar",
+		"foo\rbar":    "foo bar",
+		"\nfoo\n":     "foo",
+		"\r\nfoo\r\n": "foo",
+		"a\n\nb":      "a b",
+		"plain":       "plain",
+	}
+	for in, want := range cases {
+		assert.Equal(t, want, sanitize(in, false), "input %q", in)
+	}
 }
 
 // CRLF line endings from the clipboard must become a single line break.

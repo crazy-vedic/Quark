@@ -271,15 +271,17 @@ func selectedText(text string, sel Selection) string {
 	return string(runes[start:end])
 }
 
-// sanitize makes pasted text fit the widget: a single line widget drops
-// newlines.
+// sanitize makes pasted text fit the widget: a single line widget trims
+// leading and trailing line breaks and turns each inner run of line breaks
+// (\r\n, \r or \n) into one space.
 func sanitize(text string, multiLine bool) string {
 	if multiLine {
 		// Clipboards on Windows use CRLF; the widget would show each as a
 		// line break plus an extra blank line.
 		return strings.ReplaceAll(text, "\r\n", "\n")
 	}
-	return strings.NewReplacer("\r\n", "", "\n", "", "\r", "").Replace(text)
+	text = strings.NewReplacer("\r\n", "\n", "\r", "\n").Replace(text)
+	return strings.Join(strings.FieldsFunc(text, func(r rune) bool { return r == '\n' }), " ")
 }
 
 func runeLen(s string) int { return len([]rune(s)) }
