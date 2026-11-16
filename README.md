@@ -207,7 +207,7 @@ Edit URLs, request headers, bodies, and auth fields with familiar keyboard short
 - Double-click — Select word at cursor in the request URL field only
 
 **Clipboard:**
-- `Ctrl+C` — Copy selected text
+- `Ctrl+C` — Copy selected text. With nothing selected it does not quit; the status bar shows "Press q to quit". Use `q` to quit the app.
 - `Ctrl+X` — Cut selected text
 - `Ctrl+V` — Paste (replaces selection if active)
 

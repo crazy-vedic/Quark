@@ -1807,3 +1807,20 @@ func TestBodyCtrlJInsertsNewline(t *testing.T) {
 	assert.Equal(t, tui.BodyField, m.ActiveField(), "Ctrl+J must stay in the editor")
 	assert.Equal(t, "ab\n", m.BodyValue())
 }
+
+// Ctrl+C with nothing to copy must not be silent: it points the user at q.
+func TestCtrlCNoSelectionShowsQuitHint(t *testing.T) {
+	cases := map[string]tui.Model{
+		"normal": newTestModel(),
+		"url field": newTestModel().
+			WithFocus(tui.RequestPane).
+			WithActiveField(tui.URLField).
+			WithURLValue("https://example.com"),
+	}
+	for name, m := range cases {
+		t.Run(name, func(t *testing.T) {
+			updated := callUpdate(t, m, tea.KeyMsg{Type: tea.KeyCtrlC})
+			assert.Equal(t, "Press q to quit", updated.StatusErr())
+		})
+	}
+}

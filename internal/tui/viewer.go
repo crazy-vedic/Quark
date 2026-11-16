@@ -98,7 +98,7 @@ func (m Model) handleViewerKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		if keys.Copy.Match(key) {
 			// No selection: nothing to copy. Ctrl+C never quits the app.
-			return m, nil
+			return m.ctrlCNoSelection(), nil
 		}
 		switch {
 		case keys.ViewerClose.Match(key):
