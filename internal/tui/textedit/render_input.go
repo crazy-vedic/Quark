@@ -17,11 +17,20 @@ var cursorStyle = lipgloss.NewStyle().Reverse(true)
 //
 // The widget's own scroll offset is not exported, so the window is computed
 // here from the cursor on every render. Each rune counts as one cell.
+//
+// The cursor cell is drawn only while input is focused, so an unfocused field
+// (such as the Key or Value of a non-active header or env row) shows no cursor.
+//
+// Blink is dropped on purpose. The widget's blink state only changes when its
+// cursor tick messages are delivered, and this function is a pure render that
+// does not receive them. Reading that state here would freeze the cursor in
+// whatever phase it was last in, so the focused cursor is drawn solid.
 func RenderInput(input *textinput.Model, sel Selection, st lipgloss.Style) string {
 	runes := []rune(input.Value())
 	if len(runes) == 0 && input.Placeholder != "" {
 		return input.View()
 	}
+	focused := input.Focused()
 	pos := clamp(input.Position(), len(runes))
 	start, end := sel.Range()
 	start, end = clamp(start, len(runes)), clamp(end, len(runes))
@@ -43,7 +52,7 @@ func RenderInput(input *textinput.Model, sel Selection, st lipgloss.Style) strin
 	for i := offset; i < visibleEnd; i++ {
 		r := string(runes[i])
 		switch {
-		case i == pos:
+		case i == pos && focused:
 			b.WriteString(cursorStyle.Render(r))
 		case i >= start && i < end:
 			b.WriteString(st.Render(r))
@@ -51,7 +60,7 @@ func RenderInput(input *textinput.Model, sel Selection, st lipgloss.Style) strin
 			b.WriteString(input.TextStyle.Render(r))
 		}
 	}
-	if pos == len(runes) {
+	if pos == len(runes) && focused {
 		// The cursor sits after the last rune and needs its own cell.
 		b.WriteString(cursorStyle.Render(" "))
 	}
