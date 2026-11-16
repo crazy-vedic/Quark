@@ -219,7 +219,7 @@ type Model struct {
 	activeEnvStore  store.ActiveEnvironmentStore
 	scheduler       store.ScheduledRunStore
 	cfg             config.Config
-	pasteTicket     uint64           // latest Ctrl+V request; older paste results are dropped
+	pasteTicket     uint64           // last Ctrl+V request; 0 means none, and results with ticket 0 are ignored
 	editKeys        *textedit.Keymap // built from cfg by cacheTextKeys; nil falls back to building it
 	theme           theme.Theme
 	styles          styleSet

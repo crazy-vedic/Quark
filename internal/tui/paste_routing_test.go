@@ -51,7 +51,9 @@ func TestPasteInsertedWhenFocusUnchanged(t *testing.T) {
 	assert.Equal(t, "pasted", m.URLValue())
 }
 
-func TestOlderPasteRequestIsDropped(t *testing.T) {
+// Two Ctrl+V presses in the same input both apply, in the order they were
+// pressed, because the focus target never changed.
+func TestDoublePasteInSameInputAppliesBothInOrder(t *testing.T) {
 	restore := tui.StubClipboardForTest(func() (string, error) { return "X", nil })
 	t.Cleanup(restore)
 
@@ -60,9 +62,9 @@ func TestOlderPasteRequestIsDropped(t *testing.T) {
 	m, second := callUpdateWithCmd(t, m, tea.KeyMsg{Type: tea.KeyCtrlV})
 
 	m = feedPastes(t, m, first)
-	assert.Equal(t, "", m.URLValue(), "a superseded paste must not insert")
+	assert.Equal(t, "X", m.URLValue(), "the older paste must apply when focus is unchanged")
 	m = feedPastes(t, m, second)
-	assert.Equal(t, "X", m.URLValue())
+	assert.Equal(t, "XX", m.URLValue(), "the newer paste must apply after the older one")
 }
 
 // A paste result delivered in normal mode must not reach the global shortcut
