@@ -304,3 +304,12 @@ func TestFormatJSONIfValidWhitespaceOnly(t *testing.T) {
 		t.Fatalf("whitespace input should be unchanged, got %q changed=%v", got, changed)
 	}
 }
+
+func TestFormatJSONIfValidUnindentedMultiline(t *testing.T) {
+	in := "{\n\"a\":{\"b\":[1,2]}\n}"
+	want := "{\n  \"a\": {\n    \"b\": [\n      1,\n      2\n    ]\n  }\n}"
+	got, changed := FormatJSONIfValid(in)
+	if got != want || !changed {
+		t.Fatalf("got %q (changed=%v), want %q", got, changed, want)
+	}
+}
