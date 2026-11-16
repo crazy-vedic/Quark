@@ -629,3 +629,11 @@ func (m Model) WithURLEdit() Model {
 	mm, _ := m.beginURLEdit()
 	return mm
 }
+
+// StubClipboardForTest replaces the clipboard reader and returns a function that
+// restores the original.
+func StubClipboardForTest(read func() (string, error)) (restore func()) {
+	prev := readClipboardText
+	readClipboardText = read
+	return func() { readClipboardText = prev }
+}

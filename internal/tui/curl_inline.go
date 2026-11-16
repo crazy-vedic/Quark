@@ -93,3 +93,25 @@ func (m Model) reportCurlReplace(result *curl.ImportResult) Model {
 func isPasteKey(msg tea.KeyMsg) bool {
 	return msg.Paste || msg.Type == tea.KeyCtrlV
 }
+
+// pastedText returns the text a paste key would insert: the bracketed paste
+// runes, or the clipboard for Ctrl+V. ok is false for any other key. A clipboard
+// read error counts as no text.
+func pastedText(msg tea.KeyMsg) (text string, ok bool) {
+	switch {
+	case msg.Paste:
+		return string(msg.Runes), true
+	case msg.Type == tea.KeyCtrlV:
+		clip, err := readClipboardText()
+		if err != nil {
+			return "", true
+		}
+		return clip, true
+	}
+	return "", false
+}
+
+// isMultiLineCurl reports whether text is a curl command spanning several lines.
+func isMultiLineCurl(text string) bool {
+	return isCurlCommand(text) && strings.ContainsAny(text, "\r\n")
+}

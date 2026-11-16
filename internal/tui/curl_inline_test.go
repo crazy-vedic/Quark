@@ -113,3 +113,78 @@ func TestCurlReplaceRejectsClientCertificate(t *testing.T) {
 	assert.Equal(t, tui.ImportMode, m.Mode(), "dialog stays open")
 	assert.Equal(t, "https://old.example", req.URL, "certificate case does not replace")
 }
+
+const multiLineCurl = "curl -X POST https://api.example.com/items \\\n" +
+	"  -H 'Content-Type: application/json' \\\n" +
+	"  -d '{\n  \"a\": 1\n}'"
+
+func TestCurlMultiLinePasteOpensReplaceDialog(t *testing.T) {
+	req := existingRequest()
+	m := newModelWithCurl().
+		WithFocus(tui.RequestPane).
+		WithActiveRequest(req).
+		WithURLEdit().
+		WithURLValue("")
+
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(multiLineCurl), Paste: true})
+	require.Equal(t, tui.ImportMode, m.Mode(), "multi-line curl paste opens the dialog")
+	assert.Empty(t, m.URLValue(), "multi-line curl is not inserted into the URL field")
+
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	assert.Equal(t, tui.NormalMode, m.Mode())
+	assert.Equal(t, "POST", req.Method)
+	assert.Equal(t, "https://api.example.com/items", req.URL)
+	assert.Equal(t, "{\n  \"a\": 1\n}", req.Body)
+	assert.Contains(t, req.Headers, "Content-Type")
+	assert.Equal(t, "keep me", req.Name, "name is not overwritten")
+}
+
+func TestCurlMultiLineCtrlVOpensReplaceDialog(t *testing.T) {
+	restore := tui.StubClipboardForTest(func() (string, error) { return multiLineCurl, nil })
+	t.Cleanup(restore)
+
+	req := existingRequest()
+	m := newModelWithCurl().
+		WithFocus(tui.RequestPane).
+		WithActiveRequest(req).
+		WithURLEdit().
+		WithURLValue("")
+
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyCtrlV})
+	require.Equal(t, tui.ImportMode, m.Mode(), "Ctrl+V of a multi-line curl opens the dialog")
+	assert.Empty(t, m.URLValue())
+
+	callUpdate(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	assert.Equal(t, "POST", req.Method)
+	assert.Equal(t, "https://api.example.com/items", req.URL)
+}
+
+func TestMultiLinePasteNotCurlStillInsertsWithoutNewlines(t *testing.T) {
+	m := newModelWithCurl().
+		WithFocus(tui.RequestPane).
+		WithActiveRequest(existingRequest()).
+		WithURLEdit().
+		WithURLValue("")
+
+	m = callUpdate(t, m, tea.KeyMsg{
+		Type: tea.KeyRunes, Runes: []rune("https://a.example\n/b"), Paste: true,
+	})
+	assert.Equal(t, tui.NormalMode, m.Mode(), "non-curl paste does not open the dialog")
+	assert.Equal(t, tui.URLField, m.ActiveField())
+	assert.NotContains(t, m.URLValue(), "\n", "pasted text has no newlines in the field")
+	assert.Equal(t, "https://a.example /b", m.URLValue(), "newline becomes a space, as before")
+}
+
+func TestCurlMultiLinePasteKeepsURLFieldText(t *testing.T) {
+	req := existingRequest()
+	m := newModelWithCurl().
+		WithFocus(tui.RequestPane).
+		WithActiveRequest(req).
+		WithURLValue(req.URL).
+		WithURLEdit()
+
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(multiLineCurl), Paste: true})
+	require.Equal(t, tui.ImportMode, m.Mode())
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyEsc})
+	assert.Equal(t, req.URL, m.URLValue(), "URL field text is unchanged")
+}

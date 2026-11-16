@@ -13,7 +13,11 @@ type appClipboard struct{}
 
 var _ textedit.Clipboard = appClipboard{}
 
-func (appClipboard) Read() (string, error)        { return clipboard.ReadAll() }
+// readClipboardText reads the system clipboard. It is a variable so tests can
+// supply clipboard text without touching the real clipboard.
+var readClipboardText = clipboard.ReadAll
+
+func (appClipboard) Read() (string, error)        { return readClipboardText() }
 func (appClipboard) WriteCmd(text string) tea.Cmd { return copyToClipboardCmd(text) }
 
 // newTextEditor returns the shared editor for single-line fields. It holds no
