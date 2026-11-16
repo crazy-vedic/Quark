@@ -21,9 +21,8 @@ func TestKeymapFromConfigUnsetKeepsDefault(t *testing.T) {
 }
 
 func TestKeymapFromConfigDefaultKeepsEditorBindings(t *testing.T) {
-	// The config default for SelectWordLeft is alt+shift+left, which bubbletea
-	// never reports. Keeping the editor default keeps ctrl+shift+left working.
 	k := KeymapFromConfig(keybindings.DefaultKeybindings())
 	assert.Equal(t, DefaultKeymap().SelectWordLeft, k.SelectWordLeft)
 	assert.True(t, k.SelectWordLeft.Match("ctrl+shift+left"))
+	assert.True(t, k.SelectWordRight.Match("ctrl+shift+right"))
 }

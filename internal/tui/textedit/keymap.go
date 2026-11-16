@@ -84,10 +84,7 @@ func DefaultKeymap() Keymap {
 
 // KeymapFromConfig starts from DefaultKeymap and replaces each action whose
 // config value is set and differs from the config default. An unset action,
-// or one left at its config default, keeps the editor's own bindings. The
-// config defaults for word-select keys (alt+shift+...) are combinations
-// bubbletea never reports, so keeping the editor default there is what keeps
-// those keys working.
+// or one left at its config default, keeps the editor's own bindings.
 func KeymapFromConfig(cfg keybindings.Keybindings) Keymap {
 	k := DefaultKeymap()
 	defs := keybindings.DefaultKeybindings()
