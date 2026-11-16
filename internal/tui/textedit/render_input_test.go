@@ -97,3 +97,16 @@ func TestRenderInputShowsContextRightOfCursor(t *testing.T) {
 	assert.Contains(t, plain, "7")
 	assert.Contains(t, plain, "89")
 }
+
+// Wide runes take two cells each, so the window must be measured in display
+// cells, not runes. A width-5 field with CJK text stays within 5 cells after
+// the prompt for every cursor position.
+func TestRenderInputWideRunesStayWithinWidth(t *testing.T) {
+	for _, pos := range []int{0, 2, 4, 6} {
+		ti := newField(5, "中文字符测试")
+		ti.SetCursor(pos)
+		out := RenderInput(ti, Selection{Anchor: pos, Cursor: pos}, lipgloss.NewStyle())
+		plain := ansi.Strip(out)
+		assert.LessOrEqual(t, lipgloss.Width(plain), 2+5, "cursor at %d: %q", pos, plain)
+	}
+}
