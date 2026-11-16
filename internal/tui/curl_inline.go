@@ -14,7 +14,12 @@ import (
 
 // isCurlCommand reports whether the URL text is a curl command rather than a URL.
 func isCurlCommand(s string) bool {
-	return strings.HasPrefix(strings.TrimSpace(s), "curl")
+	t := strings.TrimSpace(s)
+	if !strings.HasPrefix(t, "curl") {
+		return false
+	}
+	rest := t[len("curl"):]
+	return rest == "" || rest[0] == ' ' || rest[0] == '\t' || rest[0] == '\n' || rest[0] == '\r'
 }
 
 // openCurlReplace parses a curl command pasted or entered into the URL field
