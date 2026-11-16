@@ -84,3 +84,46 @@ func TestHelpSearchFiltersKeybindingsLive(t *testing.T) {
 		require.Equal(t, "Header Editor", entry.Group)
 	}
 }
+
+func TestHelpSearchTypingReplacesSelection(t *testing.T) {
+	m := New(Deps{Config: config.Default(t.TempDir())})
+	m.mode = helpMode
+	m.helpSearch = true
+	m = m.WithSearchInputValue("hello").WithSearchEdit().WithSearchSelection(0, 5)
+
+	updated, _ := m.handleHelpKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
+	m = requireModel(t, updated)
+	require.Equal(t, "x", m.searchInput.Value())
+}
+
+func TestHelpSearchOpenCollapsesStaleSelection(t *testing.T) {
+	m := New(Deps{Config: config.Default(t.TempDir())})
+	m.mode = helpMode
+	m = m.WithSearchInputValue("abc").WithSearchSelection(0, 3)
+
+	updated, _ := m.handleHelpKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
+	m = requireModel(t, updated)
+	require.True(t, m.helpSearch)
+	require.False(t, m.SearchSelection().Active())
+}
+
+func TestHelpSearchCloseCollapsesSelection(t *testing.T) {
+	m := New(Deps{Config: config.Default(t.TempDir())})
+	m.mode = helpMode
+	m.helpSearch = true
+	m = m.WithSearchInputValue("abc").WithSearchEdit().WithSearchSelection(0, 3)
+
+	updated, _ := m.handleHelpKey(tea.KeyMsg{Type: tea.KeyEsc})
+	m = requireModel(t, updated)
+	require.False(t, m.helpSearch)
+	require.False(t, m.SearchSelection().Active())
+}
+
+func TestSearchCloseCollapsesSelection(t *testing.T) {
+	m := New(Deps{Config: config.Default(t.TempDir())})
+	m.mode = searchMode
+	m = m.WithSearchInputValue("abc").WithSearchEdit().WithSearchSelection(0, 3)
+
+	m = m.closeSearch()
+	require.False(t, m.SearchSelection().Active())
+}
