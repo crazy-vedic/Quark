@@ -304,7 +304,11 @@ func (m Model) handleBodyTextareaClick(msg tea.MouseMsg) Model {
 	if !m.bodySelection.Active() {
 		anchor = backend.Cursor()
 	}
-	if !m.positionBodyCursorAtDisplayLine(relY, relX) {
+	// Map the click through the visible window so scrolling and wrapped rows
+	// are handled; fall back to the unscrolled mapping if the window is unknown.
+	if pos, ok := textedit.AreaOffsetAt(m.bodyTextarea.View(), &m.bodyTextarea, bodyTextareaGutter, relY, relX); ok {
+		backend.SetCursor(pos)
+	} else if !m.positionBodyCursorAtDisplayLine(relY, relX) {
 		return m
 	}
 	if msg.Shift {

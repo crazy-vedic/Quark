@@ -102,3 +102,31 @@ func overlayRow(line string, gutter int, row []rune, a, b int, st lipgloss.Style
 	right := ansi.Cut(line, endCol, w)
 	return left + st.Render(mid) + right
 }
+
+// AreaOffsetAt maps a click inside the textarea's visible window to a rune
+// offset. relY is the row within the view and relX the display column after the
+// gutter. It accounts for scrolling and wrapped rows by using the same window
+// match as RenderArea. ok is false when the window cannot be matched.
+func AreaOffsetAt(view string, ta *textarea.Model, gutter, relY, relX int) (pos int, ok bool) {
+	rows := visualRows(ta)
+	lines := strings.Split(view, "\n")
+	if len(rows) == 0 || relY < 0 || relY >= len(lines) {
+		return 0, false
+	}
+	runes := []rune(ta.Value())
+	curRow := rowIndexAt(rows, AreaBackend{m: ta}.Cursor())
+	top, found := findWindowTop(rows, runes, lines, gutter, curRow)
+	if !found || top+relY >= len(rows) {
+		return 0, false
+	}
+	r := rows[top+relY]
+	col, w := 0, 0
+	for col = 0; r.start+col < r.end; col++ {
+		cw := ansi.StringWidth(string(runes[r.start+col]))
+		if w+cw > relX {
+			break
+		}
+		w += cw
+	}
+	return r.start + col, true
+}

@@ -11,6 +11,7 @@ import (
 
 	"github.com/crazy-vedic/quark/internal/config"
 	"github.com/crazy-vedic/quark/internal/domain"
+	"github.com/crazy-vedic/quark/internal/tui/textedit"
 )
 
 func editorTestModel(t *testing.T, req *domain.Request) Model {
@@ -389,4 +390,46 @@ func TestShiftClickExtendsHeaderAndAuthSelection(t *testing.T) {
 	a = requireModel(t, updated)
 	assert.Equal(t, 0, a.authEditor.tokenSelection.Anchor)
 	assert.Equal(t, 4, a.authEditor.tokenSelection.Cursor)
+}
+
+func TestShiftClickBodyMultiline(t *testing.T) {
+	body := "{\n  \"name\": \"quark\",\n  \"id\": 12345\n}"
+	m := editorTestModel(t, &domain.Request{ID: "r", Method: "POST", URL: "u", Body: body})
+	m = m.WithActiveField(bodyField).WithBodyEdit()
+	layout := m.currentLayout()
+	ll := m.requestPaneLineLayout(layout)
+	left := m.bodyTextareaTextLeft(layout)
+	t.Logf("value=%q line=%d width=%d", m.bodyTextarea.Value(), m.bodyTextarea.Line(), m.bodyTextarea.Width())
+	t.Logf("cursor=%d sel=%+v", textedit.Area(&m.bodyTextarea).Cursor(), m.bodySelection)
+
+	updated, _ := m.Update(shiftPress(left+5, ll.editorContentY+1))
+	m = requireModel(t, updated)
+	t.Logf("after: cursor=%d line=%d sel=%+v", textedit.Area(&m.bodyTextarea).Cursor(), m.bodyTextarea.Line(), m.bodySelection)
+	assert.True(t, m.bodySelection.Active())
+}
+
+// A wrapped row above the click used to make body clicks fail closed, so
+// neither plain nor shift clicks did anything on such a body.
+func TestBodyClickHonoursWrappedRows(t *testing.T) {
+	body := strings.Repeat("w", 200) + "\nsecond line here\nthird line here"
+	m := editorTestModel(t, &domain.Request{ID: "r", Method: "POST", URL: "u", Body: body})
+	m = m.WithActiveField(bodyField).WithBodyEdit()
+	layout := m.currentLayout()
+	ll := m.requestPaneLineLayout(layout)
+	left := m.bodyTextareaTextLeft(layout)
+	require.Equal(t, 0, strings.Index(m.bodyTextarea.View(), "┃")) // sanity: view rendered
+
+	rows := len(wrapRunes([]rune(strings.Repeat("w", 200)), m.bodyTextarea.Width()))
+	require.Greater(t, rows, 1, "the first line must wrap")
+
+	// Plain click on "second line" (the row after the wrapped line).
+	updated, _ := m.Update(press(left+3, ll.editorContentY+rows))
+	got := requireModel(t, updated)
+	assert.Equal(t, 201+3, textedit.Area(&got.bodyTextarea).Cursor())
+
+	// Shift+click on the third line extends from there.
+	updated, _ = got.Update(shiftPress(left+5, ll.editorContentY+rows+1))
+	got = requireModel(t, updated)
+	assert.Equal(t, 201+3, got.bodySelection.Anchor)
+	assert.Equal(t, 201+17+5, got.bodySelection.Cursor)
 }
