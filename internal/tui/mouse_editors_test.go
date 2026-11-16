@@ -492,7 +492,7 @@ func TestStrayMouseReportPiecesDoNotReplaceSelection(t *testing.T) {
 
 	updated, _ := m.Update(dragTo(1, 1))
 	m = requireModel(t, updated)
-	for _, piece := range []string{"[", "<32;4", "8M"} {
+	for _, piece := range []string{"[", "<32;4", "9;8M"} {
 		updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(piece)})
 		m = requireModel(t, updated)
 	}

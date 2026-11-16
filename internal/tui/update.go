@@ -72,15 +72,15 @@ func isMouseReportText(km tea.KeyMsg) bool {
 
 // mouseLeakWindow is how long after a mouse event a stray piece of a mouse
 // report is still treated as part of one.
-const mouseLeakWindow = 300 * time.Millisecond
+const mouseLeakWindow = 200 * time.Millisecond
 
 // mouseFragmentRunes are the characters an SGR mouse report is made of.
 const mouseFragmentRunes = "[<0123456789;Mm"
 
 // isLeakedMouseKey reports whether km is a piece of a mouse report that Bubble
 // Tea failed to parse. A whole report is recognised by its shape. A partial one
-// (a lone "[", "<32;4", "8M") is recognised by its characters, and only while
-// a mouse event is in flight, so ordinary typing is never affected.
+// (a lone "[", "<32;4") is recognised by its characters, and only just after
+// mouse motion, so ordinary typing is never affected.
 func (m Model) isLeakedMouseKey(km tea.KeyMsg) bool {
 	if isMouseReportText(km) {
 		return true
@@ -92,7 +92,10 @@ func (m Model) isLeakedMouseKey(km tea.KeyMsg) bool {
 	if km.Type != tea.KeyRunes {
 		return false
 	}
-	return strings.Trim(string(km.Runes), mouseFragmentRunes) == ""
+	text := string(km.Runes)
+	// A bare digit or "M" is ordinary typing; require a character that only a
+	// mouse report contains.
+	return strings.Trim(text, mouseFragmentRunes) == "" && strings.ContainsAny(text, "[<;")
 }
 
 func (m Model) logMouse(mm tea.MouseMsg) {
@@ -118,7 +121,9 @@ func (m Model) logDroppedKey(km tea.KeyMsg) {
 // results are applied in request order; see paste_routing.go.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if mm, ok := msg.(tea.MouseMsg); ok {
-		m.lastMouseAt = m.now()
+		if mm.Action == tea.MouseActionMotion {
+			m.lastMouseAt = m.now()
+		}
 		m.logMouse(mm)
 	}
 	if km, ok := msg.(tea.KeyMsg); ok && m.isLeakedMouseKey(km) {
