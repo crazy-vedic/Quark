@@ -88,7 +88,7 @@ func TestURLFieldNeverAutoImportsCurl(t *testing.T) {
 
 	require.Equal(t, normalMode, m.mode)
 	require.Equal(t, 0, importer.calls)
-	require.Contains(t, m.statusErr, "press I")
+	require.Contains(t, m.statusErr, "Select a request first")
 }
 
 func TestCompleteClipboardValueParsesExactIAMCommand(t *testing.T) {

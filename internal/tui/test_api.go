@@ -13,6 +13,7 @@ import (
 	"github.com/crazy-vedic/quark/internal/exec"
 	"github.com/crazy-vedic/quark/internal/search"
 	"github.com/crazy-vedic/quark/internal/store"
+	"github.com/crazy-vedic/quark/internal/tui/textedit"
 )
 
 // Test-support message constructors used by integration harnesses outside
@@ -153,8 +154,7 @@ func (m Model) WithActiveRequest(r *domain.Request) Model {
 }
 
 func (m Model) WithURLSelection(start, end int) Model {
-	m.urlSelection.anchor = start
-	m.urlSelection.cursor = end
+	m.urlSelection.SelectRange(start, end)
 	return m
 }
 
@@ -464,8 +464,8 @@ func (m Model) RequestPaneContentClickPos() (x, y int, ok bool) {
 
 func (m Model) Method() string                          { return m.method }
 func (m Model) URLValue() string                        { return m.urlInput.Value() }
-func (m Model) URLSelection() textSelection             { return m.urlSelection }
-func (m Model) BodySelection() textSelection            { return m.bodySelection }
+func (m Model) URLSelection() textedit.Selection        { return m.urlSelection }
+func (m Model) BodySelection() textedit.Selection       { return m.bodySelection }
 func (m Model) HeaderKeySelection() textSelection       { return m.headerKeySelection }
 func (m Model) HeaderValueSelection() textSelection     { return m.headerValueSelection }
 func (m Model) SearchSelection() textSelection          { return m.searchSelection }
@@ -618,3 +618,14 @@ func LimitLines(s string, contentWidth, maxRows int) string {
 	return limitLines(s, contentWidth, maxRows)
 }
 func VisualRows(s string, contentWidth int) int { return visualRows(s, contentWidth) }
+
+// WithBodyEdit starts editing the active request's body, the same way the body
+// field does when the user presses b: the textarea is loaded and focused.
+func (m Model) WithBodyEdit() Model { return m.beginBodyEdit() }
+
+// WithURLEdit starts editing the URL field the way pressing u does: the value
+// is remembered for cancel and the input is focused.
+func (m Model) WithURLEdit() Model {
+	mm, _ := m.beginURLEdit()
+	return mm
+}

@@ -6,11 +6,15 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+
+	"github.com/crazy-vedic/quark/internal/tui/textedit"
 )
 
 const (
 	textareaPromptGutter = 2 // default thick-border prompt + space
 	textareaLineNumberW  = 4 // line number column when ShowLineNumbers is true
+	// bodyTextareaGutter is the columns the body textarea draws before its text.
+	bodyTextareaGutter = textareaPromptGutter + textareaLineNumberW
 )
 
 type requestPaneLineLayout struct {
@@ -102,7 +106,7 @@ func (m Model) handleURLLineClick(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	if m.isDoubleTextClick(msg, "request-url") {
 		runes := stringToRunes(m.urlInput.Value())
 		start, end := wordBoundsAt(runes, cursorPos)
-		m.urlSelection.SelectWord(start, end)
+		m.urlSelection.SelectRange(start, end)
 		m.urlInput.SetCursor(end)
 	}
 
@@ -260,6 +264,7 @@ func (m Model) handleBodyTextareaClick(msg tea.MouseMsg) Model {
 	if !m.positionBodyCursorAtDisplayLine(relY, relX) {
 		return m
 	}
+	newTextEditor().Sync(&m.bodySelection, textedit.Area(&m.bodyTextarea))
 	return m
 }
 

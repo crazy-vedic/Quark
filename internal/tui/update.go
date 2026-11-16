@@ -27,6 +27,7 @@ import (
 	"github.com/crazy-vedic/quark/internal/store"
 	"github.com/crazy-vedic/quark/internal/theme"
 	"github.com/crazy-vedic/quark/internal/timing"
+	"github.com/crazy-vedic/quark/internal/tui/textedit"
 )
 
 func (m Model) debugCurl(format string, args ...any) {
@@ -465,6 +466,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if m.activeField == bodyField {
 		var cmd tea.Cmd
 		m.bodyTextarea, cmd = m.bodyTextarea.Update(msg)
+		newTextEditor().Sync(&m.bodySelection, textedit.Area(&m.bodyTextarea))
 		return m, cmd
 	}
 	if m.activeField == authField {
@@ -547,9 +549,9 @@ func (m Model) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleRequestKey("", msg)
 	}
 
-	// Ctrl+C quits in normal mode when no field is focused
+	// Ctrl+C never quits the app. Use q to quit.
 	if msg.Type == tea.KeyCtrlC {
-		return m, tea.Quit
+		return m, nil
 	}
 	if m.focus == responsePane && isResponseHistoryKey(msg) {
 		if msg.Type == tea.KeyShiftDown || msg.Type == tea.KeyPgDown ||
@@ -958,62 +960,32 @@ func (m Model) handleRequestKey(_ string, msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// Inline field routing — when active, all keys go to the field.
 	switch m.activeField {
 	case urlField:
-		// Handle copy/cut before selection keys so they take precedence
+		ed := newTextEditor()
+		b := textedit.Input(&m.urlInput)
+		if cmd, handled := ed.HandleKey(&m.urlSelection, b, msg); handled {
+			if isPasteKey(msg) && isCurlCommand(m.urlInput.Value()) {
+				return m.openCurlReplace(m.urlInput.Value()), nil
+			}
+			return m, cmd
+		}
 		if msg.Type == tea.KeyCtrlC {
-			text := copySelectionText(m.urlInput.Value(), m.urlSelection)
-			if text != "" {
-				return m, copyToClipboardCmd(text)
-			}
-			// No selection: quit in normal mode
-			return m, tea.Quit
-		}
-		if msg.Type == tea.KeyCtrlX {
-			// Capture selected text BEFORE removing it
-			text := copySelectionText(m.urlInput.Value(), m.urlSelection)
-			// Remove the selected text
-			newValue, newCursorPos := cutSelection(
-				m.urlInput.Value(), m.urlSelection, m.urlInput.Position(),
-			)
-			m.urlInput.SetValue(newValue)
-			m.urlInput.SetCursor(newCursorPos)
-			m.urlSelection.Clear(newCursorPos)
-			// Write the captured text to clipboard
-			if text != "" {
-				return m, copyToClipboardCmd(text)
-			}
+			// No selection: nothing to copy. Ctrl+C never quits the app.
 			return m, nil
 		}
-
-		// Handle selection keys (Shift+arrows, Ctrl+A, etc.)
-		handled, shouldUpdateComponent := handleSelectionKeyForInput(
-			msg, &m.urlSelection, &m.urlInput, m.urlInput.Position())
-		if handled && !shouldUpdateComponent {
-			// Selection key was handled; update input cursor to match selection cursor
-			_, selEnd := m.urlSelection.Range()
-			m.urlInput.SetCursor(selEnd)
-			return m, nil
-		}
-
 		if msg.Type == tea.KeyTab {
 			if suggestion := m.urlSuggestion(m.urlInput.Value()); suggestion != "" {
 				m.urlInput.SetValue(suggestion)
 				m.urlInput.SetCursor(len([]rune(suggestion)))
-				m.urlSelection.Clear(len([]rune(suggestion)))
+				m.urlSelection.Collapse(len([]rune(suggestion)))
 				return m, nil
 			}
 		}
 		var cmd tea.Cmd
 		m.urlInput, cmd = m.urlInput.Update(msg)
-		// Regular character input or other keys clear selection
-		if !handled || shouldUpdateComponent {
-			m.urlSelection.Clear(m.urlInput.Position())
-		}
+		ed.Sync(&m.urlSelection, b)
 		if msg.Type == tea.KeyEnter {
-			if strings.HasPrefix(strings.TrimSpace(m.urlInput.Value()), "curl") {
-				return m.status(
-					"error",
-					"This looks like curl; press I to open the curl importer",
-				), nil
+			if isCurlCommand(m.urlInput.Value()) {
+				return m.openCurlReplace(m.urlInput.Value()), nil
 			}
 			return m.finishURLEdit()
 		}
@@ -1538,6 +1510,7 @@ func (m Model) openImport(preview *curl.ImportResult) (Model, tea.Cmd) {
 		len(preview.Body),
 	)
 	m.importPreview = preview
+	m.importReplace = false
 	m.importError = ""
 	m.importColID = m.activeCollectionID()
 	m.mode = importMode
@@ -1550,6 +1523,7 @@ func (m Model) openImport(preview *curl.ImportResult) (Model, tea.Cmd) {
 func (m Model) openCurlImport() Model {
 	m.mode = importMode
 	m.importPreview = nil
+	m.importReplace = false
 	m.importError = ""
 	m.importID = uuid.NewString()
 	m.importColID = m.activeCollectionID()
@@ -1568,6 +1542,7 @@ func (m Model) openCurlImport() Model {
 func (m Model) closeImport() Model {
 	m.mode = normalMode
 	m.importPreview = nil
+	m.importReplace = false
 	m.importError = ""
 	m.importID = ""
 	m.importInput.SetValue("")
@@ -1946,6 +1921,9 @@ func (m Model) handleImportKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if m.importPreview == nil {
 				break // Enter remains a newline in the multiline input stage.
 			}
+			if m.importReplace {
+				return m.confirmCurlReplace()
+			}
 			if m.importPreview.Certificate != nil && m.writer == nil {
 				m.importError = "Cannot save imported request: request storage is unavailable"
 				return m, nil
@@ -2016,7 +1994,7 @@ func (m Model) handleImportKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 
 	// Check for edit action when naming the imported request.
-	if m.importPreview != nil {
+	if m.importPreview != nil && !m.importReplace {
 		if action, ok := m.resolver.Resolve(3, 0, msg); ok &&
 			action == keybindings.ActionImportEdit {
 			m.importPreview = nil
@@ -2153,54 +2131,34 @@ func (m Model) handleHTTPErr(msg httpErrMsg) (tea.Model, tea.Cmd) {
 // --- Inline body / header field handlers ---
 
 func (m Model) handleBodyFieldKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	// Handle copy/cut for body
-	if msg.Type == tea.KeyCtrlC {
-		text := copySelectionText(m.bodyTextarea.Value(), m.bodySelection)
-		if text != "" {
-			return m, copyToClipboardCmd(text)
-		}
-		// No selection: quit
-		return m, tea.Quit
-	}
-	if msg.Type == tea.KeyCtrlX {
-		text := copySelectionText(m.bodyTextarea.Value(), m.bodySelection)
-		cursorPos := textareaAbsoluteCursor(&m.bodyTextarea)
-		newValue, newCursorPos := cutSelection(m.bodyTextarea.Value(), m.bodySelection, cursorPos)
-		m.bodyTextarea.SetValue(newValue)
-		m.bodyTextarea.SetCursor(newCursorPos)
-		m.bodySelection.Clear(newCursorPos)
-		if text != "" {
-			return m, copyToClipboardCmd(text)
-		}
-		return m, nil
-	}
+	ed := newTextEditor()
+	b := textedit.Area(&m.bodyTextarea)
 
-	// Handle selection keys
-	cursorPos := textareaAbsoluteCursor(&m.bodyTextarea)
-	handled, shouldUpdateComponent := handleSelectionKeyForTextarea(
-		msg, &m.bodySelection, &m.bodyTextarea, cursorPos)
-	if handled && !shouldUpdateComponent {
-		_, selEnd := m.bodySelection.Range()
-		line, col := setTextareaCursorFromAbsolutePos(m.bodyTextarea.Value(), selEnd)
-		m.navigateBodyToLogicalLine(line)
-		m.bodyTextarea.SetCursor(col)
-		return m, nil
-	}
-
-	// Resolver lookup for body editor mode.
+	// Body actions come first: Enter saves and Ctrl+J inserts a newline. The
+	// editor would otherwise take Enter as a plain newline.
 	if action, ok := m.resolver.Resolve(4, 0, msg); ok {
 		switch action {
 		case "save":
-			return m.saveBody()
+			saved, cmd := m.saveBody()
+			newTextEditor().Sync(&saved.bodySelection, textedit.Area(&saved.bodyTextarea))
+			return saved, cmd
 		case "insert_newline":
-			m.bodyTextarea.InsertString("\n")
+			ed.InsertText(&m.bodySelection, b, "\n")
 			return m, nil
 		}
 	}
+
+	if cmd, handled := ed.HandleKey(&m.bodySelection, b, msg); handled {
+		return m, cmd
+	}
+	if msg.Type == tea.KeyCtrlC {
+		// No selection: nothing to copy. Ctrl+C never quits the app.
+		return m, nil
+	}
+
 	var cmd tea.Cmd
 	m.bodyTextarea, cmd = m.bodyTextarea.Update(msg)
-	// TODO: W9-W11 - Apply selection rendering to textarea
-	// Textarea requires custom rendering due to wrapped display
+	ed.Sync(&m.bodySelection, b)
 	return m, cmd
 }
 
@@ -2300,8 +2258,8 @@ func (m Model) handleAuthFieldEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if text != "" {
 			return m, copyToClipboardCmd(text)
 		}
-		// No selection: quit
-		return m, tea.Quit
+		// No selection: nothing to copy. Ctrl+C never quits the app.
+		return m, nil
 	}
 	if msg.Type == tea.KeyCtrlX {
 		var text string
@@ -2499,8 +2457,8 @@ func (m Model) handleHeaderFieldEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				return m, copyToClipboardCmd(text)
 			}
 		}
-		// No selection: quit
-		return m, tea.Quit
+		// No selection: nothing to copy. Ctrl+C never quits the app.
+		return m, nil
 	}
 	if msg.Type == tea.KeyCtrlX {
 		if m.headerKeyInput.Focused() {

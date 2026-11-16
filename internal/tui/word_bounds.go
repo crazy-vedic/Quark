@@ -1,61 +1,22 @@
 package tui
 
 import (
-	"unicode"
-
 	"github.com/charmbracelet/bubbles/textarea"
+
+	"github.com/crazy-vedic/quark/internal/tui/textedit"
 )
 
 // isWordChar returns true if r is part of a word. Words consist of letters,
 // digits, and underscores. Hyphens are treated as word separators to allow
 // proper word selection in hyphenated identifiers (e.g., content-type -> select
 // "content" or "type" separately, not the whole hyphenated word).
-func isWordChar(r rune) bool {
-	return unicode.IsLetter(r) || unicode.IsNumber(r) || r == '_'
-}
+func isWordChar(r rune) bool { return textedit.IsWordChar(r) }
 
 // wordBoundsAt finds the start and end (in rune offsets) of the word at or
 // containing the given rune position. If pos is at whitespace or punctuation,
 // finds the bounds of that character only. Returns [start, end) range.
 func wordBoundsAt(runes []rune, pos int) (start, end int) {
-	if len(runes) == 0 {
-		return 0, 0
-	}
-	if pos < 0 {
-		pos = 0
-	}
-	if pos > len(runes) {
-		pos = len(runes)
-	}
-
-	// If we're at the end of the string, back up one position to find the word.
-	if pos == len(runes) && pos > 0 {
-		pos--
-	}
-
-	// Determine if the character at pos is a word character.
-	if pos >= len(runes) {
-		return pos, pos
-	}
-
-	r := runes[pos]
-	if !isWordChar(r) {
-		// Non-word character: select just itself.
-		return pos, pos + 1
-	}
-
-	// Word character: find the start and end of the word.
-	start = pos
-	for start > 0 && isWordChar(runes[start-1]) {
-		start--
-	}
-
-	end = pos + 1
-	for end < len(runes) && isWordChar(runes[end]) {
-		end++
-	}
-
-	return start, end
+	return textedit.WordBoundsAt(runes, pos)
 }
 
 // stringToRunes converts a string to a slice of runes, handling multi-byte
@@ -133,53 +94,11 @@ func removeSelectedRange(s string, start, end int) (string, int) {
 // nextWordBoundary finds the position of the next word boundary when moving
 // forward from pos. A word boundary is where the word-character status changes.
 // Returns the position of the next boundary, or len(runes) if at the end.
-func nextWordBoundary(runes []rune, pos int) int {
-	if pos < 0 || len(runes) == 0 {
-		return 0
-	}
-	if pos >= len(runes) {
-		return len(runes)
-	}
-
-	// If we're in a word, skip to the end of it.
-	if isWordChar(runes[pos]) {
-		for pos < len(runes) && isWordChar(runes[pos]) {
-			pos++
-		}
-	}
-
-	// Skip any non-word characters (whitespace, punctuation).
-	for pos < len(runes) && !isWordChar(runes[pos]) {
-		pos++
-	}
-
-	return pos
-}
+func nextWordBoundary(runes []rune, pos int) int { return textedit.NextWordBoundary(runes, pos) }
 
 // prevWordBoundary finds the position of the previous word boundary when
 // moving backward from pos. Returns 0 if at the start.
-func prevWordBoundary(runes []rune, pos int) int {
-	if pos <= 0 || len(runes) == 0 {
-		return 0
-	}
-	if pos > len(runes) {
-		pos = len(runes)
-	}
-
-	pos--
-
-	// Skip any non-word characters.
-	for pos > 0 && !isWordChar(runes[pos]) {
-		pos--
-	}
-
-	// If we're in a word, skip to the start of it.
-	for pos > 0 && isWordChar(runes[pos-1]) {
-		pos--
-	}
-
-	return pos
-}
+func prevWordBoundary(runes []rune, pos int) int { return textedit.PrevWordBoundary(runes, pos) }
 
 // textareaAbsoluteCursor returns the caret's absolute rune offset in the
 // textarea's full text, including the column within the current logical line.

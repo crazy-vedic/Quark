@@ -19,6 +19,7 @@ import (
 	"github.com/crazy-vedic/quark/internal/keybindings"
 	"github.com/crazy-vedic/quark/internal/search"
 	"github.com/crazy-vedic/quark/internal/timing"
+	"github.com/crazy-vedic/quark/internal/tui/textedit"
 )
 
 // ansiEscape strips ANSI/VT100 escape sequences from untrusted terminal output.
@@ -576,9 +577,10 @@ func (m Model) viewRequestPane(w, h int) string {
 	// Inline body / headers field.
 	switch {
 	case m.activeField == bodyField && m.activeRequest != nil:
-		content = m.bodyTextarea.View()
-		// TODO: W9-W11 - Apply selection rendering to textarea
-		// Textarea requires custom rendering due to wrapped display
+		content = textedit.RenderArea(
+			m.bodyTextarea.View(), &m.bodyTextarea, bodyTextareaGutter,
+			m.bodySelection, m.styles.selectionStyle,
+		)
 	case m.activeField == authField && m.activeRequest != nil:
 		// Render after measuring the request pane so the auth editor can keep
 		// its selected row inside the available content viewport.
@@ -2155,7 +2157,11 @@ func (m Model) viewHelp() string {
 
 func (m Model) viewImportModal() string {
 	var sb strings.Builder
-	sb.WriteString(m.styles.titleStyle.Render("Import curl command") + "\n\n")
+	title := "Import curl command"
+	if m.importReplace {
+		title = "Replace request with curl command"
+	}
+	sb.WriteString(m.styles.titleStyle.Render(title) + "\n\n")
 	innerW := max(20, min(m.width-8, 96)-4)
 	if m.importPreview == nil {
 		sb.WriteString(
@@ -2238,14 +2244,26 @@ func (m Model) viewImportModal() string {
 		sb.WriteString(m.styles.warnStyle.Render("⚠ "+w) + "\n")
 	}
 	sb.WriteString("\n")
-	sb.WriteString("Save as: " + m.importName.View() + "\n\n")
+	if m.importReplace {
+		warn := "This replaces the current request's method, URL, headers and body."
+		sb.WriteString(m.styles.warnStyle.Render(warn) + "\n\n")
+	} else {
+		sb.WriteString("Save as: " + m.importName.View() + "\n\n")
+	}
 	if m.importError != "" {
 		sb.WriteString(m.styles.errorStyle.Render("✗ "+stripANSI(m.importError)) + "\n")
 	}
+	confirmLabel := "import"
+	if m.importReplace {
+		confirmLabel = "replace"
+	}
 	sb.WriteString(m.styles.mutedStyle.Render(m.renderHints([]hintItem{
-		{Label: "import", Actions: []string{"import_confirm"}},
+		{Label: confirmLabel, Actions: []string{"import_confirm"}},
 		{Label: helpLabelCancel, Actions: []string{keybindings.ActionImportCancel}},
-	})) + "   e: edit command")
+	})))
+	if !m.importReplace {
+		sb.WriteString("   e: edit command")
+	}
 
 	box := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).

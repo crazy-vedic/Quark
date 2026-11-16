@@ -40,6 +40,7 @@ func (m Model) beginBodyEdit() Model {
 	m.preEditBody = m.activeRequest.Body
 	m.bodyTextarea.SetValue(m.activeRequest.Body)
 	m.bodyTextarea.Focus()
+	m.bodySelection.Collapse(0)
 	m.activeField = bodyField
 	m = m.clearStatus()
 	return m.resizeBodyTextarea()
@@ -94,12 +95,12 @@ func (m Model) cancelActiveFieldEdit() Model {
 		m.activeField = noneField
 		m.urlInput.SetValue(m.preEditURL)
 		m.urlInput.Blur()
-		m.urlSelection.Clear(0)
+		m.urlSelection.Collapse(0)
 	case bodyField:
 		m.activeField = noneField
 		m.bodyTextarea.Blur()
 		m.bodyTextarea.SetValue(m.preEditBody)
-		m.bodySelection.Clear(0)
+		m.bodySelection.Collapse(0)
 	case authField:
 		m.activeField = noneField
 		m.authEditor = authEditor{}
@@ -137,7 +138,7 @@ func (m Model) cycleMethod(cycle func(string) string) (Model, tea.Cmd) {
 func (m Model) finishURLEdit() (Model, tea.Cmd) {
 	m.activeField = noneField
 	m.urlInput.Blur()
-	m.urlSelection.Clear(0)
+	m.urlSelection.Collapse(0)
 	if m.activeRequest == nil {
 		return m, nil
 	}

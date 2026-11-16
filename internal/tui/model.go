@@ -24,6 +24,7 @@ import (
 	"github.com/crazy-vedic/quark/internal/store"
 	"github.com/crazy-vedic/quark/internal/theme"
 	"github.com/crazy-vedic/quark/internal/timing"
+	"github.com/crazy-vedic/quark/internal/tui/textedit"
 	"github.com/crazy-vedic/quark/internal/updates"
 )
 
@@ -307,6 +308,7 @@ type Model struct {
 
 	// --- Import modal ---
 	importPreview *curl.ImportResult
+	importReplace bool // dialog replaces the active request instead of creating one
 	importInput   textarea.Model
 	importError   string
 	importID      string
@@ -350,20 +352,20 @@ type Model struct {
 	authEditor       authEditor
 
 	// --- Text selection state (keyboard and mouse) ---
-	urlSelection             textSelection // selection in URL input
-	bodySelection            textSelection // selection in body textarea
-	headerKeySelection       textSelection // selection in header key input
-	headerValueSelection     textSelection // selection in header value input
-	searchSelection          textSelection // selection in search input
-	viewerFindSelection      textSelection // selection in viewer find input
-	importInputSelection     textSelection // selection in import textarea
-	authTokenSelection       textSelection // selection in auth token field
-	authUsernameSelection    textSelection // selection in auth username field
-	authPasswordSelection    textSelection // selection in auth password field
-	authAPIKeyNameSelection  textSelection // selection in auth API key name field
-	authAPIKeyValueSelection textSelection // selection in auth API key value field
-	envEditKeySelection      textSelection // selection in env editor key field
-	envEditValSelection      textSelection // selection in env editor value field
+	urlSelection             textedit.Selection // selection in URL input
+	bodySelection            textedit.Selection // selection in body textarea
+	headerKeySelection       textSelection      // selection in header key input
+	headerValueSelection     textSelection      // selection in header value input
+	searchSelection          textSelection      // selection in search input
+	viewerFindSelection      textSelection      // selection in viewer find input
+	importInputSelection     textSelection      // selection in import textarea
+	authTokenSelection       textSelection      // selection in auth token field
+	authUsernameSelection    textSelection      // selection in auth username field
+	authPasswordSelection    textSelection      // selection in auth password field
+	authAPIKeyNameSelection  textSelection      // selection in auth API key name field
+	authAPIKeyValueSelection textSelection      // selection in auth API key value field
+	envEditKeySelection      textSelection      // selection in env editor key field
+	envEditValSelection      textSelection      // selection in env editor value field
 
 	// --- Misc ---
 	tmuxDetected    bool
@@ -1434,7 +1436,13 @@ func (m Model) HelpCursor() int { return m.helpCursor }
 
 // renderInputWithSelection renders a text input value with selection highlighting.
 // If selection is active, applies the selection style to the selected text.
-func (m Model) renderInputWithSelection(value string, sel textSelection) string {
+// rangeSelection is satisfied by both textSelection and textedit.Selection.
+type rangeSelection interface {
+	Active() bool
+	Range() (start, end int)
+}
+
+func (m Model) renderInputWithSelection(value string, sel rangeSelection) string {
 	if !sel.Active() {
 		// No selection, render normally through bubbles
 		return m.urlInput.View()
