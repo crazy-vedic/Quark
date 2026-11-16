@@ -241,7 +241,7 @@ select_line_up = "shift+up"
 | Config key | Default | Action |
 | --- | --- | --- |
 | `select_char_left` / `select_char_right` | `shift+left` / `shift+right` | Extend selection by character |
-| `select_word_left` / `select_word_right` | `alt+shift+left` / `alt+shift+right` | Extend selection by word (the built-in `ctrl+shift+left/right` stays active unless overridden) |
+| `select_word_left` / `select_word_right` | `ctrl+shift+left` / `ctrl+shift+right` | Extend selection by word |
 | `select_line_start` / `select_line_end` | `shift+home` / `shift+end` | Extend selection to line start/end |
 | `select_line_up` / `select_line_down` | `shift+up` / `shift+down` | Extend selection by line |
 | `select_all` | `ctrl+a` | Select all |
