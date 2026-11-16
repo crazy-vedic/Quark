@@ -203,8 +203,8 @@ Edit URLs, request headers, bodies, and auth fields with familiar keyboard short
 **Selection:**
 - `Shift+Left/Right` — Select text character by character
 - `Shift+Home/End` — Select from cursor to line start/end
-- `Ctrl+A` — Select all text in the current field
-- Double-click — Select word at cursor
+- `Ctrl+A` — Select all text in the current field (URL, search, headers, body, auth, env, and viewer find fields; the prompt, schedule, Postman path, client-cert, and import-name inputs do not support selection yet)
+- Double-click — Select word at cursor in the request URL field only
 
 **Clipboard:**
 - `Ctrl+C` — Copy selected text
