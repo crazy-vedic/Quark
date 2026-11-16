@@ -236,7 +236,10 @@ func (e Editor) insert(sel *Selection, b Backend, text string) {
 	result = append(result, ins...)
 	result = append(result, runes[pos:]...)
 	b.SetText(string(result))
-	b.SetCursor(pos + len(ins))
+	// The widget may rewrite the text (a textarea expands tabs), so measure
+	// the cursor from the text that follows the insertion, not from len(ins).
+	after := []rune(b.Text())
+	b.SetCursor(len(after) - (len(runes) - pos))
 	sel.Collapse(b.Cursor())
 }
 
@@ -272,7 +275,9 @@ func selectedText(text string, sel Selection) string {
 // newlines.
 func sanitize(text string, multiLine bool) string {
 	if multiLine {
-		return text
+		// Clipboards on Windows use CRLF; the widget would show each as a
+		// line break plus an extra blank line.
+		return strings.ReplaceAll(text, "\r\n", "\n")
 	}
 	return strings.NewReplacer("\r\n", "", "\n", "", "\r", "").Replace(text)
 }

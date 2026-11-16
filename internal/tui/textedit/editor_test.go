@@ -401,3 +401,12 @@ func TestPasteMultiLineIntoSingleLineDropsNewlines(t *testing.T) {
 	h.key("ctrl+v")
 	assert.Equal(t, "onetwo", h.b.text)
 }
+
+// CRLF line endings from the clipboard must become a single line break.
+func TestPasteCRLFIntoMultiLineKeepsSingleBreaks(t *testing.T) {
+	h := newHarness("", 0)
+	h.b.multi = true
+	h.clp.content = "y\r\nz"
+	h.key("ctrl+v")
+	assert.Equal(t, "y\nz", h.b.text)
+}
