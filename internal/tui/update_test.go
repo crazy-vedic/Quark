@@ -13,6 +13,10 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/muesli/termenv"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/crazy-vedic/quark/internal/config"
 	"github.com/crazy-vedic/quark/internal/curl"
 	"github.com/crazy-vedic/quark/internal/domain"
@@ -20,9 +24,6 @@ import (
 	"github.com/crazy-vedic/quark/internal/keybindings"
 	"github.com/crazy-vedic/quark/internal/search"
 	"github.com/crazy-vedic/quark/internal/tui"
-	"github.com/muesli/termenv"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestUpdate_HttpResponse_ClearsLoadingState(t *testing.T) {
