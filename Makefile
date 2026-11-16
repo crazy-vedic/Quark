@@ -78,12 +78,8 @@ build: ## Build the binary
 	@echo "Built: $(BIN_DIR)/$(BINARY)"
 
 .PHONY: generate-completions
-generate-completions: build ## Generate shell completion files
-	@mkdir -p completions
-	$(BIN_DIR)/$(BINARY) completion bash > completions/quark.bash
-	$(BIN_DIR)/$(BINARY) completion zsh > completions/_quark
-	$(BIN_DIR)/$(BINARY) completion fish > completions/quark.fish
-	@echo "Generated completions in completions/"
+generate-completions: ## Generate shell completion files (COMPLETIONS_DIR=completions)
+	./scripts/gen-completions.sh $(or $(COMPLETIONS_DIR),completions)
 
 .PHONY: build-cover
 build-cover: ## Build coverage-instrumented binary for e2e CLI tests

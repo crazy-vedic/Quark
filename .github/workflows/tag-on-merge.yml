@@ -4,356 +4,206 @@ on:
   push:
     branches: ["main", "master"]
 
+# Serialize releases (shared with release-manual.yml) so two merges can never
+# race for the same version or interleave their release builds.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 permissions:
-  contents: write
-  pull-requests: read
+  contents: read
 
 jobs:
   tag:
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      pull-requests: read
     outputs:
-      version: ${{ steps.extract.outputs.version }}
-      pr_number: ${{ steps.extract.outputs.pr_number }}
-      tag_created: ${{ steps.created.outputs.tag_created }}
+      version: ${{ steps.version.outputs.version }}
+      release: ${{ steps.version.outputs.release }}
+    env:
+      REPO: ${{ github.repository }}
+      SHA: ${{ github.sha }}
+      BRANCH: ${{ github.ref_name }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           fetch-depth: 0
-          token: ${{ secrets.RELEASE_PAT }}
+          persist-credentials: false
 
-      - name: Find merged PR and extract version
-        id: extract
+      - name: Determine release version
+        id: version
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Find the PR that introduced this merge commit.
-          # The merge commit message looks like: "Merge pull request #123 from ..."
-          # We search for PRs associated with the current HEAD commit.
-          PR_JSON=$(gh pr list \
-            --repo "${{ github.repository }}" \
-            --json number,title,body,headRefName,mergeCommit \
-            --search "${{ github.sha }}" \
-            --state merged)
+          set -euo pipefail
 
-          PR_COUNT=$(echo "$PR_JSON" | jq 'length')
-          if [ "$PR_COUNT" -eq 0 ]; then
-            echo "No merged PR found for commit ${{ github.sha }}. Skipping."
-            echo "skip=true" >> "$GITHUB_OUTPUT"
+          # --- Find the merged PR for this commit (commits API, not search) ---
+          PR=""
+          for attempt in 1 2 3 4 5; do
+            PULLS=$(gh api "repos/$REPO/commits/$SHA/pulls")
+            # merge_commit_sha is the pushed head for merge, squash and rebase
+            # merges alike; any other associated PR merely contains this commit.
+            PR=$(jq -c --arg sha "$SHA" --arg base "$BRANCH" '
+              [.[] | select(.merged_at != null and .merge_commit_sha == $sha and .base.ref == $base)]
+              | first // empty' <<<"$PULLS")
+            [ -n "$PR" ] && break
+            echo "No merged PR associated with $SHA yet (attempt $attempt); retrying..."
+            sleep 10
+          done
+
+          if [ -z "$PR" ]; then
+            echo "::notice::No merged PR is associated with $SHA (direct push). No release."
+            echo "release=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          # Take the first match (most recent PR for this commit)
-          PR_NUMBER=$(echo "$PR_JSON" | jq -r '.[0].number')
-          PR_TITLE=$(echo "$PR_JSON" | jq -r '.[0].title')
-          PR_BODY=$(echo "$PR_JSON" | jq -r '.[0].body')
+          PR_NUMBER=$(jq -r '.number' <<<"$PR")
+          PR_BODY=$(jq -r '.body // ""' <<<"$PR")
+          echo "Found PR #$PR_NUMBER: $(jq -r '.title' <<<"$PR")"
+          echo "PR_NUMBER=$PR_NUMBER" >> "$GITHUB_ENV"
 
-          echo "Found PR #$PR_NUMBER: $PR_TITLE"
-
-          # Extract version from PR body.
-          # Accepts both "Release: v1.0.0" and "Release: 1.0.0", then normalizes to v-prefixed semver.
-          RAW_VERSION=$(echo "$PR_BODY" | grep -oiP 'release:\s*v?\d+\.\d+\.\d+' | head -1 | sed -E 's/.*release:\s*//I')
-
-          if [ -z "$RAW_VERSION" ]; then
-            echo "No 'Release: vX.Y.Z' or 'Release: X.Y.Z' found in PR #$PR_NUMBER body."
-            echo "skip=true" >> "$GITHUB_OUTPUT"
+          # --- Parse the Release: line ---
+          RELEASE_LINE=$(grep -iP 'release:\s*v?\d+\.\d+\.\d+' <<<"$PR_BODY" | head -1 || true)
+          if [ -z "$RELEASE_LINE" ]; then
+            if grep -qiP '^\s*release:' <<<"$PR_BODY"; then
+              echo "::error::PR #$PR_NUMBER has a 'Release:' line that is not a valid X.Y.Z version. No tag was created."
+              exit 1
+            fi
+            echo "::notice::PR #$PR_NUMBER does not request a release. No release."
+            echo "release=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          VERSION="$RAW_VERSION"
-          if [[ "$VERSION" != v* ]]; then
-            VERSION="v$VERSION"
+          VERSION=$(grep -oiP 'release:\s*v?\K\d+\.\d+\.\d+' <<<"$RELEASE_LINE" | head -1)
+          VERSION="v$VERSION"
+          AUTO=false
+          if grep -qF '<!-- release-validation:auto -->' <<<"$RELEASE_LINE"; then
+            AUTO=true
+          fi
+          echo "Requested release: $VERSION (auto-added: $AUTO)"
+
+          # --- Re-run: this commit is already tagged, so finish that release ---
+          EXISTING_TAG=$(git tag --points-at "$SHA" | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1 || true)
+          if [ -n "$EXISTING_TAG" ]; then
+            echo "Commit $SHA is already tagged $EXISTING_TAG; continuing that release (re-run)."
+            echo "version=$EXISTING_TAG" >> "$GITHUB_OUTPUT"
+            echo "tag_exists=true" >> "$GITHUB_OUTPUT"
+            echo "release=true" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
 
-          # Validate semver format
-          if ! echo "$VERSION" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
-            echo "Invalid version format: $VERSION"
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-            exit 0
+          # --- Re-validate against the latest release at merge time ---
+          LATEST=$(gh api "repos/$REPO/releases/latest" --jq '.tag_name' 2>/dev/null || true)
+
+          is_valid_next() {
+            local latest="${1#v}" prop="${2#v}"
+            local lM lm lp pM pm pp
+            IFS=. read -r lM lm lp <<<"$latest"
+            IFS=. read -r pM pm pp <<<"$prop"
+            if [ "$pM" -eq "$lM" ] && [ "$pm" -eq "$lm" ] && [ "$pp" -eq $((lp + 1)) ]; then return 0; fi
+            if [ "$pM" -eq "$lM" ] && [ "$pm" -eq $((lm + 1)) ] && [ "$pp" -eq 0 ]; then return 0; fi
+            if [ "$pM" -eq $((lM + 1)) ] && [ "$pm" -eq 0 ] && [ "$pp" -eq 0 ]; then return 0; fi
+            return 1
+          }
+
+          if [ -n "$LATEST" ] && ! is_valid_next "$LATEST" "$VERSION"; then
+            IFS=. read -r lM lm lp <<<"${LATEST#v}"
+            NEXT_PATCH="v${lM}.${lm}.$((lp + 1))"
+            if [ "$AUTO" = "true" ]; then
+              # The default patch version was claimed by another PR merged first.
+              echo "::notice::Auto-added release $VERSION is stale (latest is $LATEST); using $NEXT_PATCH."
+              VERSION="$NEXT_PATCH"
+            else
+              echo "::error::VERSION INCREMENT REJECTED for PR #$PR_NUMBER: $VERSION is not a valid next release after $LATEST. Allowed: $NEXT_PATCH, v${lM}.$((lm + 1)).0, v$((lM + 1)).0.0. No tag was created."
+              exit 1
+            fi
+          fi
+
+          # --- The tag must be new (this commit has no tag; checked above) ---
+          if git rev-parse -q --verify "refs/tags/$VERSION" >/dev/null; then
+            echo "::error::Tag $VERSION already exists at $(git rev-parse "$VERSION^{commit}"), not at $SHA. PR #$PR_NUMBER was NOT released."
+            exit 1
           fi
 
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
-          echo "Found release version: $VERSION"
-
-      - name: Validate version increment
-        id: validate
-        if: steps.extract.outputs.skip != 'true'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          VERSION="${{ steps.extract.outputs.version }}"
-
-          # Get the latest RELEASE (not just tag) from GitHub API.
-          # This is the authoritative source — a tag without a release is ignored.
-          LATEST_RELEASE=$(gh api repos/${{ github.repository }}/releases/latest 2>/dev/null | jq -r '.tag_name // empty')
-
-          if [ -z "$LATEST_RELEASE" ]; then
-            echo "No previous releases found on GitHub. First release is allowed."
-            exit 0
-          fi
-
-          echo "Previous release: $LATEST_RELEASE"
-          echo "Proposed release: $VERSION"
-
-          # Parse latest version
-          LATEST_MAJOR=$(echo "$LATEST_RELEASE" | sed 's/^v//' | cut -d. -f1)
-          LATEST_MINOR=$(echo "$LATEST_RELEASE" | sed 's/^v//' | cut -d. -f2)
-          LATEST_PATCH=$(echo "$LATEST_RELEASE" | sed 's/^v//' | cut -d. -f3)
-
-          # Parse proposed version
-          PROP_MAJOR=$(echo "$VERSION" | sed 's/^v//' | cut -d. -f1)
-          PROP_MINOR=$(echo "$VERSION" | sed 's/^v//' | cut -d. -f2)
-          PROP_PATCH=$(echo "$VERSION" | sed 's/^v//' | cut -d. -f3)
-
-          # Validate the increment is exactly +1 in one component
-          # Allowed transitions:
-          #   v1.0.0 -> v1.0.1 (patch +1)
-          #   v1.0.0 -> v1.1.0 (minor +1, patch resets)
-          #   v1.0.0 -> v2.0.0 (major +1, minor+patch reset)
-
-          if [ "$PROP_MAJOR" -eq "$LATEST_MAJOR" ]; then
-            if [ "$PROP_MINOR" -eq "$LATEST_MINOR" ]; then
-              # Patch increment only
-              if [ "$PROP_PATCH" -eq $((LATEST_PATCH + 1)) ]; then
-                echo "Valid: patch increment (+1)"
-                exit 0
-              fi
-            elif [ "$PROP_MINOR" -eq $((LATEST_MINOR + 1)) ]; then
-              # Minor increment, patch must be 0
-              if [ "$PROP_PATCH" -eq 0 ]; then
-                echo "Valid: minor increment (+1), patch reset"
-                exit 0
-              fi
-            fi
-          elif [ "$PROP_MAJOR" -eq $((LATEST_MAJOR + 1)) ]; then
-            # Major increment, minor and patch must be 0
-            if [ "$PROP_MINOR" -eq 0 ] && [ "$PROP_PATCH" -eq 0 ]; then
-              echo "Valid: major increment (+1), minor+patch reset"
-              exit 0
-            fi
-          fi
-
-          # If we reach here, the increment is invalid
-          PR_NUMBER="${{ steps.extract.outputs.pr_number }}"
-
-          echo "::error::VERSION INCREMENT REJECTED — PR #$PR_NUMBER"
-          echo ""
-          echo "Previous release: $LATEST_RELEASE"
-          echo "Proposed release:  $VERSION"
-          echo ""
-          echo "The allowed next release from $LATEST_RELEASE is:"
-          echo "  v${LATEST_MAJOR}.${LATEST_MINOR}.$((LATEST_PATCH + 1))  → patch release (bugfix)"
-          echo "  v${LATEST_MAJOR}.$((LATEST_MINOR + 1)).0             → minor release (feature)"
-          echo "  v$((LATEST_MAJOR + 1)).0.0                           → major release (breaking)"
-          echo ""
-          echo "Rule: Only one component can increase by exactly 1."
-          echo "      Components to the right of the increment must reset to 0."
-          echo ""
-          echo "To fix this PR:"
-          echo "  1. Edit the PR description and change the Release line to one of the allowed versions above."
-          echo "  2. If you need a larger jump, release incrementally (e.g. v1.0.0 → v1.1.0 → v1.2.0)."
-          echo ""
-          echo "skip=true" >> "$GITHUB_OUTPUT"
-          exit 1
-
-      - name: Check if tag already exists
-        id: check
-        if: steps.extract.outputs.skip != 'true' && steps.validate.outputs.skip != 'true'
-        run: |
-          VERSION="${{ steps.extract.outputs.version }}"
-          if git rev-parse "$VERSION" >/dev/null 2>&1; then
-            echo "Tag $VERSION already exists. Skipping."
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "Tag $VERSION does not exist. Proceeding."
-          fi
+          echo "release=true" >> "$GITHUB_OUTPUT"
 
       - name: Create and push tag
-        if: steps.extract.outputs.skip != 'true' && steps.validate.outputs.skip != 'true' && steps.check.outputs.skip != 'true'
+        if: steps.version.outputs.release == 'true' && steps.version.outputs.tag_exists != 'true'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          RELEASE_PAT: ${{ secrets.RELEASE_PAT }}
         run: |
-          VERSION="${{ steps.extract.outputs.version }}"
-          PR_NUMBER="${{ steps.extract.outputs.pr_number }}"
-
+          set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          COMMIT_SHA="${{ github.sha }}"
-          PR_LINK="https://github.com/${{ github.repository }}/pull/${PR_NUMBER}"
-
+          PR_LINK="https://github.com/${REPO}/pull/${PR_NUMBER}"
           git tag -a "$VERSION" \
             -m "Release $VERSION" \
             -m "PR: ${PR_LINK}" \
-            -m "Commit: ${COMMIT_SHA}" \
+            -m "Commit: ${SHA}" \
             -m "automated-release: tag-on-merge.yml"
-          git push origin "$VERSION"
+          # Token is used only for this push; it is not persisted in .git/config.
+          git push "https://x-access-token:${RELEASE_PAT}@github.com/${REPO}.git" "refs/tags/$VERSION"
 
-          echo "Created and pushed tag $VERSION"
-          echo "PR: ${PR_LINK}"
-          echo "Commit: ${COMMIT_SHA}"
-
-      - name: Record tag creation
-        id: created
-        if: steps.extract.outputs.skip != 'true' && steps.validate.outputs.skip != 'true' && steps.check.outputs.skip != 'true'
-        run: |
-          echo "tag_created=true" >> "$GITHUB_OUTPUT"
+          echo "Created and pushed tag $VERSION (PR: ${PR_LINK}, commit: ${SHA})"
 
   release:
     needs: tag
-    runs-on: ubuntu-latest
-    if: needs.tag.outputs.tag_created == 'true'
+    if: needs.tag.outputs.release == 'true'
     permissions:
       contents: write
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-
-      - name: Set up Go
-        uses: actions/setup-go@v6
-        with:
-          go-version: '1.26'
-          cache: true
-
-      - name: Generate completion files
-        run: |
-          go build -o quark ./cmd/quark
-          mkdir -p completions
-          ./quark completion bash > completions/quark.bash
-          ./quark completion zsh > completions/quark.zsh
-          ./quark completion fish > completions/quark.fish
-
-      - name: Check if release artifacts already exist
-        id: check_release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          TAG="${{ needs.tag.outputs.version }}"
-          # Try to get the release
-          if gh release view "$TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
-            echo "Release $TAG exists. Checking for required artifacts..."
-            ASSET_COUNT=$(gh release view "$TAG" --repo "${{ github.repository }}" --json assets --jq '.assets | length')
-            if [ "$ASSET_COUNT" -gt 0 ]; then
-              echo "Found $ASSET_COUNT artifacts. Skipping GoReleaser."
-              echo "skip_goreleaser=true" >> "$GITHUB_OUTPUT"
-            else
-              echo "Release exists but has no artifacts. Will rebuild."
-              echo "skip_goreleaser=false" >> "$GITHUB_OUTPUT"
-            fi
-          else
-            echo "Release $TAG does not exist yet. Will create it."
-            echo "skip_goreleaser=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Install GoReleaser
-        if: steps.check_release.outputs.skip_goreleaser != 'true'
-        uses: goreleaser/goreleaser-action@v5
-        with:
-          version: v1.26.2
-          install-only: true
-
-      - name: Run GoReleaser
-        if: steps.check_release.outputs.skip_goreleaser != 'true'
-        env:
-          GITHUB_TOKEN: ${{ secrets.RELEASE_PAT }}
-          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-        run: |
-          goreleaser release --skip=validate
-
-      - name: Extract binaries and regenerate checksums
-        if: steps.check_release.outputs.skip_goreleaser != 'true'
-        run: |
-          cd dist
-          mkdir -p binaries
-          # Extract from tar.gz (all have "quark" inside)
-          for arch in amd64 arm64; do
-            tar -xzf quark-linux-${arch}.tar.gz -C binaries/
-            mv binaries/quark binaries/quark-linux-${arch}
-            tar -xzf quark-darwin-${arch}.tar.gz -C binaries/
-            mv binaries/quark binaries/quark-darwin-${arch}
-          done
-          # Extract from zip (has quark.exe inside)
-          unzip -o quark-windows-amd64.zip -d binaries/
-          mv binaries/quark.exe binaries/quark-windows-amd64.exe
-          # Regenerate SHA256SUMS with clean paths (no binaries/ prefix)
-          rm SHA256SUMS
-          (cd binaries && sha256sum quark-* > ../SHA256SUMS)
-          sha256sum quark-*.tar.gz quark-*.zip >> SHA256SUMS
-
-      - name: Upload binaries and install scripts to release
-        if: steps.check_release.outputs.skip_goreleaser != 'true'
-        env:
-          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
-        run: |
-          VERSION="${{ needs.tag.outputs.version }}"
-          # Upload extracted binaries
-          gh release upload "$VERSION" dist/binaries/quark-* \
-            --repo crazy-vedic/Quark --clobber
-          # Upload checksums
-          gh release upload "$VERSION" dist/SHA256SUMS \
-            --repo crazy-vedic/Quark --clobber
-          # Upload install scripts
-          gh release upload "$VERSION" install.sh install.ps1 \
-            --repo crazy-vedic/Quark --clobber
-
-  submit-winget:
-    needs: [tag, release]
-    runs-on: ubuntu-latest
-    if: github.event_name == 'push'
-    permissions:
-      contents: read
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-
-      - name: Set up Go
-        uses: actions/setup-go@v6
-        with:
-          go-version: '1.26'
-          cache: true
-
-      - name: Install GoReleaser
-        uses: goreleaser/goreleaser-action@v5
-        with:
-          version: v1.26.2
-          install-only: true
-
-      - name: Build and generate winget manifests
-        env:
-          GITHUB_TOKEN: ${{ secrets.RELEASE_PAT }}
-        run: |
-          goreleaser release --skip=validate --skip=publish --snapshot
-
-      - name: Manual submission instructions
-        run: |
-          VERSION="${{ needs.tag.outputs.version }}"
-          echo "::notice::Winget submission requires manual steps (see DISTRIBUTION.md):"
-          echo ""
-          echo "1. Fork https://github.com/microsoft/winget-pkgs if you haven't already"
-          echo "2. Clone your fork: git clone https://github.com/<your-username>/winget-pkgs.git"
-          echo "3. Create a new branch: git checkout -b Quark.Quark-$VERSION"
-          echo "4. Copy manifests from dist/winget/manifests/q/Quark/Quark/$VERSION/"
-          echo "5. Validate: winget validate manifests/q/Quark/Quark/$VERSION"
-          echo "6. Push and open a PR against microsoft/winget-pkgs"
-          echo ""
-          echo "Or use WINGET-AGENT-PLAN.md for automated submission steps."
+      id-token: write
+      attestations: write
+    uses: ./.github/workflows/release-build.yml
+    with:
+      tag: ${{ needs.tag.outputs.version }}
+    secrets:
+      RELEASE_PAT: ${{ secrets.RELEASE_PAT }}
 
   publish-npm:
     needs: [tag, release]
     runs-on: ubuntu-latest
-    if: needs.tag.outputs.tag_created == 'true'
+    timeout-minutes: 60
     permissions:
       actions: write
       contents: read
-      id-token: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      REPO: ${{ github.repository }}
+      TAG: ${{ needs.tag.outputs.version }}
     steps:
-      - name: Publish to npm
+      # publish-npm.yml runs as its own workflow (npm trusted publishing is
+      # bound to that workflow file), so dispatch it and wait for the result.
+      - name: Dispatch npm publish and wait for it
         run: |
-          gh workflow run publish-npm.yml \
-            -f tag="${{ needs.tag.outputs.version }}" \
-            --repo "${{ github.repository }}"
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          set -euo pipefail
+          DISPATCH_ID="${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          gh workflow run publish-npm.yml --repo "$REPO" \
+            -f tag="$TAG" -f dispatch_id="$DISPATCH_ID"
+
+          RUN_ID=""
+          for attempt in $(seq 1 30); do
+            RUN_ID=$(gh run list --repo "$REPO" --workflow publish-npm.yml \
+              --event workflow_dispatch --limit 20 --json databaseId,displayTitle \
+              --jq ".[] | select(.displayTitle | contains(\"[$DISPATCH_ID]\")) | .databaseId" | head -1)
+            [ -n "$RUN_ID" ] && break
+            sleep 10
+          done
+          if [ -z "$RUN_ID" ]; then
+            echo "::error::Dispatched publish-npm.yml for $TAG but could not find the run."
+            exit 1
+          fi
+
+          RUN_URL="https://github.com/${REPO}/actions/runs/${RUN_ID}"
+          echo "Waiting for npm publish run: $RUN_URL"
+          if ! gh run watch "$RUN_ID" --repo "$REPO" --exit-status --interval 30 >/dev/null; then
+            echo "::error::npm publish for $TAG failed: $RUN_URL"
+            exit 1
+          fi
+          echo "npm publish for $TAG succeeded: $RUN_URL"

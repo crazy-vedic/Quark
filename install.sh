@@ -315,13 +315,14 @@ if [[ -n "$AUTH" ]]; then
 fi
 
 download_with_gh() {
+    local output="$1"
     if ! command -v gh &>/dev/null; then
         return 1
     fi
 
-    local gh_args=(release download --repo "$REPO" --pattern "$ASSET" --output "$INSTALL_PATH" --clobber)
+    local gh_args=(release download --repo "$REPO" --pattern "$ASSET" --output "$output" --clobber)
     if [[ "$VERSION" != "latest" ]]; then
-        gh_args=(release download "$VERSION" --repo "$REPO" --pattern "$ASSET" --output "$INSTALL_PATH" --clobber)
+        gh_args=(release download "$VERSION" --repo "$REPO" --pattern "$ASSET" --output "$output" --clobber)
     fi
 
     if [[ -n "$AUTH" ]]; then
@@ -387,10 +388,15 @@ verify_checksum() {
 echo "==> Installing Quark ${VERSION} for ${PLATFORM}"
 echo "==> Downloading ${ASSET}"
 
-if ! download_with_gh; then
-    "${CURL[@]}" "$URL" -o "$INSTALL_PATH"
+# Download into a temp dir next to the install path (same filesystem, so the
+# final mv is atomic). An existing binary is only replaced after verification.
+TMP_DIR=$(mktemp -d "${INSTALL_DIR}/.quark-install.XXXXXX")
+trap 'rm -rf "$TMP_DIR"' EXIT
+TMP_BIN="${TMP_DIR}/${ASSET}"
+
+if ! download_with_gh "$TMP_BIN"; then
+    "${CURL[@]}" "$URL" -o "$TMP_BIN"
 fi
-chmod +x "$INSTALL_PATH"
 
 # Verify checksum
 if [ "$VERSION" = "latest" ]; then
@@ -399,11 +405,31 @@ else
     SUMS_URL="https://github.com/${REPO}/releases/download/${VERSION}/SHA256SUMS"
 fi
 
-if ! verify_checksum "$INSTALL_PATH" "$SUMS_URL"; then
-    rm -f "$INSTALL_PATH"
+if ! verify_checksum "$TMP_BIN" "$SUMS_URL"; then
     echo "❌ Installation failed due to checksum verification error"
+    [[ -e "$INSTALL_PATH" ]] && echo "   Your existing ${INSTALL_PATH} was left unchanged."
     exit 1
 fi
+
+# SHA256SUMS comes from the same release, so it proves integrity, not origin.
+# Set QUARK_VERIFY_ATTESTATION=1 to also verify the GitHub build attestation
+# (needs an authenticated `gh`). Releases made before attestations were added
+# have none and fail this check.
+if [[ "${QUARK_VERIFY_ATTESTATION:-0}" == "1" ]]; then
+    if ! command -v gh &>/dev/null; then
+        echo "❌ QUARK_VERIFY_ATTESTATION=1 requires the GitHub CLI (gh)"
+        exit 1
+    fi
+    echo "==> Verifying build attestation..."
+    if ! gh attestation verify "$TMP_BIN" --repo "$REPO" >/dev/null; then
+        echo "❌ Build attestation verification failed for ${ASSET}"
+        exit 1
+    fi
+    echo "✅ Build attestation verified"
+fi
+
+chmod +x "$TMP_BIN"
+mv -f "$TMP_BIN" "$INSTALL_PATH"
 
 echo "==> Installed to ${INSTALL_PATH}"
 

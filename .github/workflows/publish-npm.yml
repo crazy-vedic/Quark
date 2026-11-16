@@ -1,4 +1,6 @@
 name: Publish to npm
+# dispatch_id lets tag-on-merge.yml find (and wait for) the run it dispatched.
+run-name: Publish to npm ${{ inputs.tag }} [${{ inputs.dispatch_id || 'manual' }}]
 
 on:
   workflow_dispatch:
@@ -7,19 +9,41 @@ on:
         description: 'Tag to publish (e.g. v1.3.37)'
         required: true
         type: string
+      dispatch_id:
+        description: 'Set by tag-on-merge.yml; leave empty for manual runs'
+        required: false
+        type: string
+
+concurrency:
+  group: npm-publish-${{ inputs.tag }}
+  cancel-in-progress: false
 
 permissions:
   contents: read
-  id-token: write
 
 jobs:
   publish:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      TAG: ${{ inputs.tag }}
     steps:
+      - name: Validate tag
+        run: |
+          set -euo pipefail
+          if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Invalid tag: $TAG"
+            exit 1
+          fi
+          echo "VERSION=${TAG#v}" >> "$GITHUB_ENV"
+
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
-          ref: ${{ inputs.tag }}
+          ref: refs/tags/${{ inputs.tag }}
+          persist-credentials: false
 
       - name: Validate npm packages exist
         run: |
@@ -33,38 +57,48 @@ jobs:
           echo "✓ All npm packages valid"
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '22'
           registry-url: 'https://registry.npmjs.org'
 
       - name: Upgrade npm for trusted publishing
         run: |
-          npm install -g npm@^11.5.1
+          # Pinned: this job holds an OIDC token that can publish.
+          npm install -g npm@11.6.2
           npm --version
 
       - name: Download release artifacts
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TAG="${{ inputs.tag }}"
+          set -euo pipefail
           mkdir -p dist/binaries
           gh release download "$TAG" \
             --pattern "quark-*" \
+            --pattern "SHA256SUMS" \
             --dir dist/binaries \
-            --repo crazy-vedic/Quark
+            --repo "${{ github.repository }}"
+
+      - name: Verify artifacts against SHA256SUMS
+        working-directory: dist/binaries
+        run: |
+          set -euo pipefail
+          for bin in quark-linux-amd64 quark-linux-arm64 quark-darwin-amd64 quark-darwin-arm64 quark-windows-amd64.exe; do
+            test -f "$bin" || { echo "::error::$bin was not downloaded"; exit 1; }
+            grep -qE "^[0-9a-f]{64}  ${bin}\$" SHA256SUMS || { echo "::error::$bin is not listed in SHA256SUMS"; exit 1; }
+          done
+          # Every downloaded asset that SHA256SUMS lists must match.
+          sha256sum --check --ignore-missing --strict SHA256SUMS
+          echo "✓ All binaries match SHA256SUMS"
 
       - name: Pack npm packages and add optionalDependencies
-        run: |
-          TAG="${{ inputs.tag }}"
-          node scripts/npm-pack.mjs "${TAG#v}" --with-deps
+        run: node scripts/npm-pack.mjs "$VERSION" --with-deps
 
       - name: Publish platform packages
         run: |
           set -u
           cd npm
-          VERSION="${{ inputs.tag }}"
-          VERSION="${VERSION#v}"
           FAILED=0
 
           for platform in linux-x64 linux-arm64 darwin-x64 darwin-arm64 win32-x64; do
@@ -103,8 +137,6 @@ jobs:
         run: |
           set -u
           cd npm
-          VERSION="${{ inputs.tag }}"
-          VERSION="${VERSION#v}"
           PKG="@quark-client/quark"
 
           # Check if version already exists
@@ -129,3 +161,36 @@ jobs:
               echo "✓ Published ${PKG}@${VERSION}"
             fi
           fi
+
+  smoke-test:
+    needs: publish
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+
+      - name: Install published package and run it
+        shell: bash
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          VERSION="${TAG#v}"
+          # The registry can take a little while to serve a new version.
+          for attempt in $(seq 1 10); do
+            if npm install -g "@quark-client/quark@${VERSION}"; then break; fi
+            if [ "$attempt" -eq 10 ]; then
+              echo "::error::Could not install @quark-client/quark@${VERSION} from npm"
+              exit 1
+            fi
+            sleep 30
+          done
+          OUT=$(quark --version)
+          echo "$OUT"
+          grep -qF "$VERSION" <<<"$OUT" || { echo "::error::Installed quark does not report version $VERSION"; exit 1; }

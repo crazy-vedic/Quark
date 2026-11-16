@@ -1,13 +1,17 @@
 name: npm Package Validation
 
+# Runs before merge on packaging changes, so a broken npm package blocks the PR
+# instead of being reported after the release has already shipped.
 on:
-  push:
-    tags: ['v*']
+  pull_request:
+    branches: ["master", "main"]
+    paths:
+      - '.goreleaser.yaml'
+      - 'npm/**'
+      - 'scripts/npm-pack.mjs'
+      - 'scripts/gen-completions.sh'
+      - '.github/workflows/npm-validate.yml'
   workflow_dispatch:
-    inputs:
-      version:
-        description: 'Version to validate (e.g., 1.2.3)'
-        required: true
 
 permissions:
   contents: read
@@ -19,110 +23,102 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
 
       - name: Set up Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version: '1.26'
           cache: true
 
       - name: Install GoReleaser
-        uses: goreleaser/goreleaser-action@v5
+        uses: goreleaser/goreleaser-action@5742e2a039330cbb23ebf35f046f814d4c6ff811 # v5.1.0
         with:
           version: v1.26.2
           install-only: true
 
-      - name: Build binaries
-        run: |
-          mkdir -p dist/binaries
-          goreleaser release --snapshot --skip=publish --clean
+      - name: Build snapshot archives
+        run: goreleaser release --snapshot --skip=publish --clean
 
       - name: Extract binaries from archives
-        shell: bash
+        working-directory: dist
         run: |
-          cd dist
+          set -euo pipefail
+          # After goreleaser: --clean wipes dist/.
           mkdir -p binaries
-          # Extract from tar.gz (all have "quark" inside)
-          for arch in amd64 arm64; do
-            tar -xzf quark-linux-${arch}.tar.gz -C binaries/
-            mv binaries/quark binaries/quark-linux-${arch}
-            tar -xzf quark-darwin-${arch}.tar.gz -C binaries/
-            mv binaries/quark binaries/quark-darwin-${arch}
+          for os in linux darwin; do
+            for arch in amd64 arm64; do
+              tar -xzf "quark-${os}-${arch}.tar.gz" -C binaries/ quark
+              mv binaries/quark "binaries/quark-${os}-${arch}"
+            done
           done
-          # Extract from zip (has quark.exe inside)
-          unzip -o quark-windows-amd64.zip -d binaries/
+          unzip -o quark-windows-amd64.zip quark.exe -d binaries/
           mv binaries/quark.exe binaries/quark-windows-amd64.exe
           echo "✓ Binaries extracted"
-          ls -lh binaries/quark-*
+          ls -lh binaries/
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: '18'
+          node-version: '22'
 
       - name: Determine version
-        id: version
-        shell: bash
         run: |
-          VERSION="${{ github.ref_name }}"
-          if [[ -z "$VERSION" || "$VERSION" == "main" || "$VERSION" == "master" ]]; then
-            VERSION="${{ inputs.version }}"
-          fi
-          VERSION="${VERSION#v}"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          set -euo pipefail
+          # The snapshot version baked into the binaries (e.g. 1.4.3-dev), so the
+          # installed package can be checked against `quark --version`.
+          VERSION=$(node -p "require('./dist/metadata.json').version")
+          echo "VERSION=${VERSION#v}" >> "$GITHUB_ENV"
 
       - name: Pack npm packages
-        run: node scripts/npm-pack.mjs ${{ steps.version.outputs.version }}
+        run: node scripts/npm-pack.mjs "$VERSION"
 
       - name: Validate npm package structure
-        shell: bash
         run: |
-          VERSION="${{ steps.version.outputs.version }}"
+          set -euo pipefail
           cd npm
-          for pkg in quark platforms/*/; do
-            pkgdir="$pkg"
-            pkgjson="$pkgdir/package.json"
-            if [ ! -f "$pkgjson" ]; then
-              echo "✗ Missing package.json in $pkgdir"
-              exit 1
-            fi
-            echo "✓ Found $pkgjson"
-            version=$(grep -o '"version": "[^"]*"' "$pkgjson" | head -1 | cut -d'"' -f4)
+          for pkgdir in quark platforms/*/; do
+            pkgjson="${pkgdir%/}/package.json"
+            test -f "$pkgjson" || { echo "✗ Missing $pkgjson"; exit 1; }
+            version=$(node -p "require('./$pkgjson').version")
             if [ "$version" != "$VERSION" ]; then
               echo "✗ Version mismatch in $pkgdir: expected $VERSION, got $version"
               exit 1
             fi
+            echo "✓ $pkgjson ($version)"
           done
 
       - name: Pack npm tarballs
-        shell: bash
         run: |
+          set -euo pipefail
           cd npm
           mkdir -p packed
-          for pkg in quark platforms/*/; do
-            if [ -f "$pkg/package.json" ]; then
-              npm pack "./$pkg" --pack-destination packed/ 2>&1 | grep -v "npm WARN"
-            fi
+          for pkgdir in quark platforms/*/; do
+            npm pack "./${pkgdir%/}" --pack-destination packed/
           done
           ls -lh packed/
-          echo "Packed tarballs:"
-          find packed -name "*.tgz" -exec basename {} \;
 
-      - name: Test installation
-        shell: bash
+      - name: Test installation and run
         run: |
+          set -euo pipefail
+          PLATFORM=$(node -p "process.platform + '-' + process.arch")
           cd npm/packed
-          # Install the main package plus only the platform package for this runner
-          PLATFORM=$(node -p "({darwin:'darwin',linux:'linux',win32:'win32'})[process.platform] + '-' + process.arch")
-          MAIN=$(ls quark-client-quark-[0-9]*.tgz)
-          PLAT=$(ls quark-client-quark-${PLATFORM}-*.tgz)
-          echo "Installing $MAIN + $PLAT"
-          mkdir -p test-install
-          cd test-install
-          npm init -y
-          npm install --no-save --prefer-offline "../$MAIN" "../$PLAT"
-          npx quark version
+          MAIN="$PWD/quark-client-quark-${VERSION}.tgz"
+          PLAT="$PWD/quark-client-quark-${PLATFORM}-${VERSION}.tgz"
+          test -f "$MAIN" && test -f "$PLAT"
+          mkdir -p test-install && cd test-install
+          npm init -y >/dev/null
+          # Only this runner's platform package: the others fail npm's os/cpu check.
+          npm install "$PLAT" "$MAIN" --no-save
+          OUT=$(npx --no-install quark --version)
+          echo "$OUT"
+          grep -qF "$VERSION" <<<"$OUT"
           echo "✓ npm package installed and runs successfully"

@@ -3,7 +3,7 @@
 const os = require('os');
 const path = require('path');
 const fs = require('fs');
-const { execSync } = require('child_process');
+const { spawnSync } = require('child_process');
 
 const platform = os.platform();
 const arch = os.arch();
@@ -55,11 +55,18 @@ try {
   process.exit(1);
 }
 
-try {
-  execSync(binPath + ' ' + process.argv.slice(2).join(' '), {
-    stdio: 'inherit',
-    shell: platform === 'win32',
-  });
-} catch (err) {
-  process.exit(err.status || 1);
+// Pass arguments straight to the binary: no shell, so spaces, quotes, `&`,
+// `|`, `$` etc. in arguments (URLs, JSON bodies, headers) arrive verbatim.
+const result = spawnSync(binPath, process.argv.slice(2), {
+  stdio: 'inherit',
+});
+
+if (result.error) {
+  console.error(`quark: failed to run ${binPath}: ${result.error.message}`);
+  process.exit(1);
 }
+if (result.signal) {
+  // Re-raise so the parent shell sees the same signal (e.g. Ctrl+C).
+  process.kill(process.pid, result.signal);
+}
+process.exit(result.status === null ? 1 : result.status);
