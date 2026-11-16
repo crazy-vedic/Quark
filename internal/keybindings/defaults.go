@@ -127,8 +127,8 @@ func DefaultKeybindings() Keybindings {
 		// Text selection
 		SelectCharLeft:  "shift+left",
 		SelectCharRight: "shift+right",
-		SelectWordLeft:  "alt+shift+left",  // Terminal compat: some terminals send this instead of ctrl+shift+left
-		SelectWordRight: "alt+shift+right", // Fallback for wide terminal support
+		SelectWordLeft:  "ctrl+shift+left",
+		SelectWordRight: "ctrl+shift+right",
 		SelectLineStart: "shift+home",
 		SelectLineEnd:   "shift+end",
 		SelectAll:       "ctrl+a",

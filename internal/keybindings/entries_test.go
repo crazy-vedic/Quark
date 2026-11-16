@@ -74,3 +74,11 @@ func TestRecordBinding_Unbind(t *testing.T) {
 	_, err = RecordBinding(newBinds, "sidebar_down", "j")
 	assert.NoError(t, err) // j is already sidebar_down, so no conflict.
 }
+
+func TestDefaultWordSelectBindings(t *testing.T) {
+	// bubbletea reports ctrl+shift+left/right, not alt+shift variants, so the
+	// config defaults must use the combinations the editor actually receives.
+	defs := DefaultKeybindings()
+	assert.Equal(t, "ctrl+shift+left", defs.SelectWordLeft)
+	assert.Equal(t, "ctrl+shift+right", defs.SelectWordRight)
+}
