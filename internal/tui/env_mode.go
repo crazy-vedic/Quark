@@ -366,7 +366,6 @@ func (m Model) envEditVar() (tea.Model, tea.Cmd) {
 		m.envEditor.editKey = textinput.New()
 		m.envEditor.editVal = textinput.New()
 		m.envEditor.keySel, m.envEditor.valSel = textedit.Selection{}, textedit.Selection{}
-		m.envEditor.keySel, m.envEditor.valSel = textedit.Selection{}, textedit.Selection{}
 		m.styleInputs()
 		m.envEditor.editKey.SetValue(m.envEditor.vars[m.envEditor.varCursor].Key)
 		m.envEditor.editVal.SetValue(m.envEditor.vars[m.envEditor.varCursor].Value)
