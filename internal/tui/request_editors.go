@@ -104,19 +104,14 @@ func (m Model) cancelActiveFieldEdit() Model {
 	case authField:
 		m.activeField = noneField
 		m.authEditor = authEditor{}
-		m.authTokenSelection.Clear(0)
-		m.authUsernameSelection.Clear(0)
-		m.authPasswordSelection.Clear(0)
-		m.authAPIKeyNameSelection.Clear(0)
-		m.authAPIKeyValueSelection.Clear(0)
 	case headersField:
 		m.activeField = noneField
 		m.headerPairs = nil
 		m.headerEditing = false
 		m.headerKeyInput.Blur()
 		m.headerValueInput.Blur()
-		m.headerKeySelection.Clear(0)
-		m.headerValueSelection.Clear(0)
+		m.headerKeySelection.Collapse(0)
+		m.headerValueSelection.Collapse(0)
 	}
 	return m
 }

@@ -426,9 +426,7 @@ func (m Model) viewHeadersPreview(w int) string {
 	var preview strings.Builder
 	if m.headerEditing {
 		preview.WriteString("Key:\n")
-		keyDisplay := m.renderInputWithSelection(
-			m.headerKeyInput.Value(), m.headerKeySelection,
-		)
+		keyDisplay := m.renderInputWithSelection(&m.headerKeyInput, &m.headerKeySelection)
 		preview.WriteString(keyDisplay)
 		preview.WriteString("\n\n")
 		if m.headerKeyInput.Focused() {
@@ -438,9 +436,7 @@ func (m Model) viewHeadersPreview(w int) string {
 			}
 		}
 		preview.WriteString("Value:\n")
-		valueDisplay := m.renderInputWithSelection(
-			m.headerValueInput.Value(), m.headerValueSelection,
-		)
+		valueDisplay := m.renderInputWithSelection(&m.headerValueInput, &m.headerValueSelection)
 		preview.WriteString(valueDisplay)
 		preview.WriteString("\n")
 		if m.headerKeyInput.Focused() {
@@ -517,7 +513,7 @@ func (m Model) viewRequestPane(w, h int) string {
 	}
 	var urlDisplay string
 	if m.activeField == urlField {
-		urlDisplay = m.renderInputWithSelection(m.urlInput.Value(), m.urlSelection)
+		urlDisplay = m.renderInputWithSelection(&m.urlInput, &m.urlSelection)
 		if suggestion := m.urlSuggestion(m.urlInput.Value()); suggestion != "" {
 			urlDisplay += m.styles.mutedStyle.Render(
 				completionSuffix(m.urlInput.Value(), suggestion),
@@ -1696,7 +1692,7 @@ func (m Model) viewSearchModal() string {
 	}
 	// Render search input with selection support, but fall back to View() for proper styling
 	if m.searchSelection.Active() {
-		sb.WriteString(m.renderInputWithSelection(m.searchInput.Value(), m.searchSelection))
+		sb.WriteString(m.renderInputWithSelection(&m.searchInput, &m.searchSelection))
 	} else {
 		sb.WriteString(m.searchInput.View())
 	}
@@ -2023,7 +2019,7 @@ func (m Model) viewHelp() string {
 	sb.WriteString(m.styles.titleStyle.Render("Keyboard Reference"))
 	sb.WriteString("\n\n")
 	if m.helpSearch {
-		sb.WriteString(m.renderInputWithSelection(m.searchInput.Value(), m.searchSelection))
+		sb.WriteString(m.renderInputWithSelection(&m.searchInput, &m.searchSelection))
 		sb.WriteString("\n\n")
 	}
 

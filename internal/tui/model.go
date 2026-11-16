@@ -352,20 +352,15 @@ type Model struct {
 	authEditor       authEditor
 
 	// --- Text selection state (keyboard and mouse) ---
-	urlSelection             textedit.Selection // selection in URL input
-	bodySelection            textedit.Selection // selection in body textarea
-	headerKeySelection       textSelection      // selection in header key input
-	headerValueSelection     textSelection      // selection in header value input
-	searchSelection          textedit.Selection // selection in search input
-	viewerFindSelection      textedit.Selection // selection in viewer find input
-	importInputSelection     textSelection      // selection in import textarea
-	authTokenSelection       textSelection      // selection in auth token field
-	authUsernameSelection    textSelection      // selection in auth username field
-	authPasswordSelection    textSelection      // selection in auth password field
-	authAPIKeyNameSelection  textSelection      // selection in auth API key name field
-	authAPIKeyValueSelection textSelection      // selection in auth API key value field
-	envEditKeySelection      textSelection      // selection in env editor key field
-	envEditValSelection      textSelection      // selection in env editor value field
+	urlSelection         textedit.Selection // selection in URL input
+	bodySelection        textedit.Selection // selection in body textarea
+	headerKeySelection   textedit.Selection // selection in header key input
+	headerValueSelection textedit.Selection // selection in header value input
+	searchSelection      textedit.Selection // selection in search input
+	viewerFindSelection  textedit.Selection // selection in viewer find input
+	importInputSelection textSelection      // selection in import textarea
+	envEditKeySelection  textedit.Selection // selection in env editor key field
+	envEditValSelection  textedit.Selection // selection in env editor value field
 
 	// --- Misc ---
 	tmuxDetected    bool
@@ -419,11 +414,11 @@ type authEditor struct {
 	apiKeyNameInput  textinput.Model
 	apiKeyValueInput textinput.Model
 	// Selection state for each auth field
-	tokenSelection       textSelection
-	usernameSelection    textSelection
-	passwordSelection    textSelection
-	apiKeyNameSelection  textSelection
-	apiKeyValueSelection textSelection
+	tokenSelection       textedit.Selection
+	usernameSelection    textedit.Selection
+	passwordSelection    textedit.Selection
+	apiKeyNameSelection  textedit.Selection
+	apiKeyValueSelection textedit.Selection
 }
 
 // Deps holds all TUI dependencies.
@@ -1434,23 +1429,15 @@ func prevMethod(current string) string {
 // HelpCursor returns the current cursor position in the help overlay.
 func (m Model) HelpCursor() int { return m.helpCursor }
 
-// renderInputWithSelection renders a text input value with selection highlighting.
-// If selection is active, applies the selection style to the selected text.
-// rangeSelection is satisfied by both textSelection and textedit.Selection.
-type rangeSelection interface {
-	Active() bool
-	Range() (start, end int)
-}
-
-func (m Model) renderInputWithSelection(value string, sel rangeSelection) string {
+// renderInputWithSelection renders a single-line input. Without a selection it
+// is the widget's own view. With one, the selected runes are highlighted.
+func (m Model) renderInputWithSelection(input *textinput.Model, sel *textedit.Selection) string {
 	if !sel.Active() {
-		// No selection, render normally through bubbles
-		return m.urlInput.View()
+		return input.View()
 	}
 
-	// Selection is active - render with background color on selected text
 	start, end := sel.Range()
-	runes := []rune(value)
+	runes := []rune(input.Value())
 
 	// Clamp selection to valid range
 	if start < 0 {
@@ -1463,51 +1450,24 @@ func (m Model) renderInputWithSelection(value string, sel rangeSelection) string
 		start = end
 	}
 
-	// Build the rendered output with selection styling
 	var result strings.Builder
 	result.WriteString(string(runes[:start]))
 	if start < end {
-		result.WriteString(m.styles.selectionStyle.Render(
-			string(runes[start:end]),
-		))
+		result.WriteString(m.styles.selectionStyle.Render(string(runes[start:end])))
 	}
 	result.WriteString(string(runes[end:]))
-
 	return result.String()
 }
 
-// renderAuthFieldWithSelection renders an auth field with selection highlighting.
-// It applies selection styling to the appropriate auth field based on the row type.
+// renderAuthFieldWithSelection highlights the selection in the auth field for
+// row. Rows that are not text fields, and fields without a selection, keep
+// baseValue.
 func (m Model) renderAuthFieldWithSelection(row authRowID, baseValue string) string {
-	var sel *textSelection
-	var fieldValue string
-
-	switch row {
-	case authRowToken:
-		sel = &m.authEditor.tokenSelection
-		fieldValue = m.authEditor.tokenInput.Value()
-	case authRowUsername:
-		sel = &m.authEditor.usernameSelection
-		fieldValue = m.authEditor.usernameInput.Value()
-	case authRowPassword:
-		sel = &m.authEditor.passwordSelection
-		fieldValue = m.authEditor.passwordInput.Value()
-	case authRowAPIKeyName:
-		sel = &m.authEditor.apiKeyNameSelection
-		fieldValue = m.authEditor.apiKeyNameInput.Value()
-	case authRowAPIKeyValue:
-		sel = &m.authEditor.apiKeyValueSelection
-		fieldValue = m.authEditor.apiKeyValueInput.Value()
-	default:
+	sel, input := m.authEditor.activeInput(row)
+	if input == nil || !sel.Active() {
 		return baseValue
 	}
-
-	if sel == nil || !sel.Active() {
-		return baseValue
-	}
-
-	// Apply selection styling to the field value
-	return m.renderInputWithSelection(fieldValue, *sel)
+	return m.renderInputWithSelection(input, sel)
 }
 
 // searchPlaceholder is the hint shown in the empty search input.

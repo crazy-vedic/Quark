@@ -2218,109 +2218,19 @@ func (m Model) handleAuthFieldKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleAuthFieldEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	// Handle copy/cut for auth fields
+	sel, input := m.authEditor.activeInput(m.authEditor.currentRow())
+	if input == nil {
+		return m, nil
+	}
+	ed := newTextEditor()
+	b := textedit.Input(input)
+	if cmd, handled := ed.HandleKey(sel, b, msg); handled {
+		return m, cmd
+	}
 	if msg.Type == tea.KeyCtrlC {
-		var text string
-		switch m.authEditor.currentRow() {
-		case authRowToken:
-			text = copySelectionText(
-				m.authEditor.tokenInput.Value(), m.authEditor.tokenSelection,
-			)
-		case authRowUsername:
-			text = copySelectionText(
-				m.authEditor.usernameInput.Value(), m.authEditor.usernameSelection,
-			)
-		case authRowPassword:
-			text = copySelectionText(
-				m.authEditor.passwordInput.Value(), m.authEditor.passwordSelection,
-			)
-		case authRowAPIKeyName:
-			text = copySelectionText(
-				m.authEditor.apiKeyNameInput.Value(), m.authEditor.apiKeyNameSelection,
-			)
-		case authRowAPIKeyValue:
-			text = copySelectionText(
-				m.authEditor.apiKeyValueInput.Value(), m.authEditor.apiKeyValueSelection,
-			)
-		}
-		if text != "" {
-			return m, copyToClipboardCmd(text)
-		}
 		// No selection: nothing to copy. Ctrl+C never quits the app.
 		return m, nil
 	}
-	if msg.Type == tea.KeyCtrlX {
-		var text string
-		var newValue string
-		var newCursorPos int
-		switch m.authEditor.currentRow() {
-		case authRowToken:
-			text = copySelectionText(
-				m.authEditor.tokenInput.Value(), m.authEditor.tokenSelection,
-			)
-			newValue, newCursorPos = cutSelection(
-				m.authEditor.tokenInput.Value(),
-				m.authEditor.tokenSelection,
-				m.authEditor.tokenInput.Position(),
-			)
-			m.authEditor.tokenInput.SetValue(newValue)
-			m.authEditor.tokenInput.SetCursor(newCursorPos)
-			m.authEditor.tokenSelection.Clear(newCursorPos)
-		case authRowUsername:
-			text = copySelectionText(
-				m.authEditor.usernameInput.Value(), m.authEditor.usernameSelection,
-			)
-			newValue, newCursorPos = cutSelection(
-				m.authEditor.usernameInput.Value(),
-				m.authEditor.usernameSelection,
-				m.authEditor.usernameInput.Position(),
-			)
-			m.authEditor.usernameInput.SetValue(newValue)
-			m.authEditor.usernameInput.SetCursor(newCursorPos)
-			m.authEditor.usernameSelection.Clear(newCursorPos)
-		case authRowPassword:
-			text = copySelectionText(
-				m.authEditor.passwordInput.Value(), m.authEditor.passwordSelection,
-			)
-			newValue, newCursorPos = cutSelection(
-				m.authEditor.passwordInput.Value(),
-				m.authEditor.passwordSelection,
-				m.authEditor.passwordInput.Position(),
-			)
-			m.authEditor.passwordInput.SetValue(newValue)
-			m.authEditor.passwordInput.SetCursor(newCursorPos)
-			m.authEditor.passwordSelection.Clear(newCursorPos)
-		case authRowAPIKeyName:
-			text = copySelectionText(
-				m.authEditor.apiKeyNameInput.Value(), m.authEditor.apiKeyNameSelection,
-			)
-			newValue, newCursorPos = cutSelection(
-				m.authEditor.apiKeyNameInput.Value(),
-				m.authEditor.apiKeyNameSelection,
-				m.authEditor.apiKeyNameInput.Position(),
-			)
-			m.authEditor.apiKeyNameInput.SetValue(newValue)
-			m.authEditor.apiKeyNameInput.SetCursor(newCursorPos)
-			m.authEditor.apiKeyNameSelection.Clear(newCursorPos)
-		case authRowAPIKeyValue:
-			text = copySelectionText(
-				m.authEditor.apiKeyValueInput.Value(), m.authEditor.apiKeyValueSelection,
-			)
-			newValue, newCursorPos = cutSelection(
-				m.authEditor.apiKeyValueInput.Value(),
-				m.authEditor.apiKeyValueSelection,
-				m.authEditor.apiKeyValueInput.Position(),
-			)
-			m.authEditor.apiKeyValueInput.SetValue(newValue)
-			m.authEditor.apiKeyValueInput.SetCursor(newCursorPos)
-			m.authEditor.apiKeyValueSelection.Clear(newCursorPos)
-		}
-		if text != "" {
-			return m, copyToClipboardCmd(text)
-		}
-		return m, nil
-	}
-
 	if msg.Type == tea.KeyTab {
 		return m, nil
 	}
@@ -2328,51 +2238,9 @@ func (m Model) handleAuthFieldEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.authEditor.endEdit()
 		return m, nil
 	}
-
-	// Handle selection keys for each auth field
-	var sel *textSelection
-	var input *textinput.Model
-	switch m.authEditor.currentRow() {
-	case authRowToken:
-		sel = &m.authEditor.tokenSelection
-		input = &m.authEditor.tokenInput
-	case authRowUsername:
-		sel = &m.authEditor.usernameSelection
-		input = &m.authEditor.usernameInput
-	case authRowPassword:
-		sel = &m.authEditor.passwordSelection
-		input = &m.authEditor.passwordInput
-	case authRowAPIKeyName:
-		sel = &m.authEditor.apiKeyNameSelection
-		input = &m.authEditor.apiKeyNameInput
-	case authRowAPIKeyValue:
-		sel = &m.authEditor.apiKeyValueSelection
-		input = &m.authEditor.apiKeyValueInput
-	}
-
-	if sel != nil && input != nil {
-		handled, shouldUpdateComponent := handleSelectionKeyForInput(
-			msg, sel, input, input.Position())
-		if handled && !shouldUpdateComponent {
-			_, selEnd := sel.Range()
-			input.SetCursor(selEnd)
-			return m, nil
-		}
-	}
-
 	var cmd tea.Cmd
-	switch m.authEditor.currentRow() {
-	case authRowToken:
-		m.authEditor.tokenInput, cmd = m.authEditor.tokenInput.Update(msg)
-	case authRowUsername:
-		m.authEditor.usernameInput, cmd = m.authEditor.usernameInput.Update(msg)
-	case authRowPassword:
-		m.authEditor.passwordInput, cmd = m.authEditor.passwordInput.Update(msg)
-	case authRowAPIKeyName:
-		m.authEditor.apiKeyNameInput, cmd = m.authEditor.apiKeyNameInput.Update(msg)
-	case authRowAPIKeyValue:
-		m.authEditor.apiKeyValueInput, cmd = m.authEditor.apiKeyValueInput.Update(msg)
-	}
+	*input, cmd = input.Update(msg)
+	ed.Sync(sel, b)
 	return m, cmd
 }
 
@@ -2432,66 +2300,17 @@ func (m Model) handleHeadersFieldKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleHeaderFieldEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	// Handle copy/cut for focused input
-	if msg.Type == tea.KeyCtrlC {
-		if m.headerKeyInput.Focused() {
-			text := copySelectionText(m.headerKeyInput.Value(), m.headerKeySelection)
-			if text != "" {
-				return m, copyToClipboardCmd(text)
-			}
-		} else {
-			text := copySelectionText(m.headerValueInput.Value(), m.headerValueSelection)
-			if text != "" {
-				return m, copyToClipboardCmd(text)
-			}
-		}
-		// No selection: nothing to copy. Ctrl+C never quits the app.
-		return m, nil
-	}
-	if msg.Type == tea.KeyCtrlX {
-		if m.headerKeyInput.Focused() {
-			text := copySelectionText(m.headerKeyInput.Value(), m.headerKeySelection)
-			newValue, newCursorPos := cutSelection(
-				m.headerKeyInput.Value(),
-				m.headerKeySelection,
-				m.headerKeyInput.Position(),
-			)
-			m.headerKeyInput.SetValue(newValue)
-			m.headerKeyInput.SetCursor(newCursorPos)
-			m.headerKeySelection.Clear(newCursorPos)
-			if text != "" {
-				return m, copyToClipboardCmd(text)
-			}
-		} else {
-			text := copySelectionText(m.headerValueInput.Value(), m.headerValueSelection)
-			newValue, newCursorPos := cutSelection(
-				m.headerValueInput.Value(), m.headerValueSelection, m.headerValueInput.Position(),
-			)
-			m.headerValueInput.SetValue(newValue)
-			m.headerValueInput.SetCursor(newCursorPos)
-			m.headerValueSelection.Clear(newCursorPos)
-			if text != "" {
-				return m, copyToClipboardCmd(text)
-			}
-		}
-		return m, nil
-	}
-
-	// Handle selection keys for whichever input is focused
-	var sel *textSelection
-	var input *textinput.Model
+	sel, input := &m.headerValueSelection, &m.headerValueInput
 	if m.headerKeyInput.Focused() {
-		sel = &m.headerKeySelection
-		input = &m.headerKeyInput
-	} else {
-		sel = &m.headerValueSelection
-		input = &m.headerValueInput
+		sel, input = &m.headerKeySelection, &m.headerKeyInput
 	}
-
-	handled, shouldUpdateComponent := handleSelectionKeyForInput(msg, sel, input, input.Position())
-	if handled && !shouldUpdateComponent {
-		_, selEnd := sel.Range()
-		input.SetCursor(selEnd)
+	ed := newTextEditor()
+	b := textedit.Input(input)
+	if cmd, handled := ed.HandleKey(sel, b, msg); handled {
+		return m, cmd
+	}
+	if msg.Type == tea.KeyCtrlC {
+		// No selection: nothing to copy. Ctrl+C never quits the app.
 		return m, nil
 	}
 
@@ -2500,7 +2319,7 @@ func (m Model) handleHeaderFieldEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if suggestion := headerNameSuggestion(m.headerKeyInput.Value()); suggestion != "" {
 				m.headerKeyInput.SetValue(suggestion)
 				m.headerKeyInput.SetCursor(len([]rune(suggestion)))
-				m.headerKeySelection.Clear(len([]rune(suggestion)))
+				m.headerKeySelection.Collapse(len([]rune(suggestion)))
 				return m, nil
 			}
 			m.headerKeyInput.Blur()
@@ -2508,7 +2327,7 @@ func (m Model) handleHeaderFieldEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		} else if suggestion := headerValueSuggestion(m.headerKeyInput.Value(), m.headerValueInput.Value()); suggestion != "" {
 			m.headerValueInput.SetValue(suggestion)
 			m.headerValueInput.SetCursor(len([]rune(suggestion)))
-			m.headerValueSelection.Clear(len([]rune(suggestion)))
+			m.headerValueSelection.Collapse(len([]rune(suggestion)))
 			return m, nil
 		} else {
 			m.headerValueInput.Blur()
@@ -2519,18 +2338,10 @@ func (m Model) handleHeaderFieldEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if msg.Type == tea.KeyEnter {
 		return m.finishHeaderPairEdit(), nil
 	}
+
 	var cmd tea.Cmd
-	if m.headerKeyInput.Focused() {
-		m.headerKeyInput, cmd = m.headerKeyInput.Update(msg)
-		if !handled || shouldUpdateComponent {
-			m.headerKeySelection.Clear(m.headerKeyInput.Position())
-		}
-	} else {
-		m.headerValueInput, cmd = m.headerValueInput.Update(msg)
-		if !handled || shouldUpdateComponent {
-			m.headerValueSelection.Clear(m.headerValueInput.Position())
-		}
-	}
+	*input, cmd = input.Update(msg)
+	ed.Sync(sel, b)
 	return m, cmd
 }
 

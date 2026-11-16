@@ -473,22 +473,30 @@ func (m Model) RequestPaneContentClickPos() (x, y int, ok bool) {
 	return x, y, true
 }
 
-func (m Model) Method() string                          { return m.method }
-func (m Model) URLValue() string                        { return m.urlInput.Value() }
-func (m Model) URLSelection() textedit.Selection        { return m.urlSelection }
-func (m Model) BodySelection() textedit.Selection       { return m.bodySelection }
-func (m Model) HeaderKeySelection() textSelection       { return m.headerKeySelection }
-func (m Model) HeaderValueSelection() textSelection     { return m.headerValueSelection }
-func (m Model) SearchSelection() textedit.Selection     { return m.searchSelection }
-func (m Model) ViewerFindSelection() textedit.Selection { return m.viewerFindSelection }
-func (m Model) ImportInputSelection() textSelection     { return m.importInputSelection }
-func (m Model) AuthTokenSelection() textSelection       { return m.authTokenSelection }
-func (m Model) AuthUsernameSelection() textSelection    { return m.authUsernameSelection }
-func (m Model) AuthPasswordSelection() textSelection    { return m.authPasswordSelection }
-func (m Model) AuthAPIKeyNameSelection() textSelection  { return m.authAPIKeyNameSelection }
-func (m Model) AuthAPIKeyValueSelection() textSelection { return m.authAPIKeyValueSelection }
-func (m Model) EnvEditKeySelection() textSelection      { return m.envEditKeySelection }
-func (m Model) EnvEditValSelection() textSelection      { return m.envEditValSelection }
+func (m Model) Method() string                           { return m.method }
+func (m Model) URLValue() string                         { return m.urlInput.Value() }
+func (m Model) URLSelection() textedit.Selection         { return m.urlSelection }
+func (m Model) BodySelection() textedit.Selection        { return m.bodySelection }
+func (m Model) HeaderKeySelection() textedit.Selection   { return m.headerKeySelection }
+func (m Model) HeaderValueSelection() textedit.Selection { return m.headerValueSelection }
+func (m Model) SearchSelection() textedit.Selection      { return m.searchSelection }
+func (m Model) ViewerFindSelection() textedit.Selection  { return m.viewerFindSelection }
+func (m Model) ImportInputSelection() textSelection      { return m.importInputSelection }
+func (m Model) AuthTokenSelection() textedit.Selection   { return m.authEditor.tokenSelection }
+func (m Model) AuthUsernameSelection() textedit.Selection {
+	return m.authEditor.usernameSelection
+}
+func (m Model) AuthPasswordSelection() textedit.Selection {
+	return m.authEditor.passwordSelection
+}
+func (m Model) AuthAPIKeyNameSelection() textedit.Selection {
+	return m.authEditor.apiKeyNameSelection
+}
+func (m Model) AuthAPIKeyValueSelection() textedit.Selection {
+	return m.authEditor.apiKeyValueSelection
+}
+func (m Model) EnvEditKeySelection() textedit.Selection { return m.envEditKeySelection }
+func (m Model) EnvEditValSelection() textedit.Selection { return m.envEditValSelection }
 func (m Model) ResponseTab() responseTabID              { return m.responseTab }
 func (m Model) SearchResults() []*search.SearchHit      { return m.searchResults }
 
@@ -648,3 +656,49 @@ func StubClipboardForTest(read func() (string, error)) (restore func()) {
 	readClipboardText = read
 	return func() { readClipboardText = prev }
 }
+
+// WithHeaderPairEdit opens the header key/value editor on a pair, as Enter on a
+// header row does.
+func (m Model) WithHeaderPairEdit(key, value string) Model {
+	mm, _ := m.beginHeaderPairEdit(headerPair{Key: key, Value: value})
+	mm.activeField = headersField
+	return mm
+}
+
+// WithAuthFieldEdit opens the auth editor for authType with the text row at
+// rowIndex (0 is the type row) in edit mode, holding value.
+func (m Model) WithAuthFieldEdit(authType string, rowIndex int, value string) Model {
+	ed := newAuthEditor(&domain.Request{AuthType: authType})
+	ed.cursor = rowIndex
+	ed.beginEdit()
+	switch ed.currentRow() {
+	case authRowToken:
+		ed.tokenInput.SetValue(value)
+	case authRowUsername:
+		ed.usernameInput.SetValue(value)
+	case authRowPassword:
+		ed.passwordInput.SetValue(value)
+	case authRowAPIKeyName:
+		ed.apiKeyNameInput.SetValue(value)
+	case authRowAPIKeyValue:
+		ed.apiKeyValueInput.SetValue(value)
+	}
+	m.authEditor = ed
+	m.activeField = authField
+	return m
+}
+
+// HeaderKeyValue returns the header key input's text.
+func (m Model) HeaderKeyValue() string { return m.headerKeyInput.Value() }
+
+// HeaderValueValue returns the header value input's text.
+func (m Model) HeaderValueValue() string { return m.headerValueInput.Value() }
+
+// AuthTokenValue returns the bearer token input's text.
+func (m Model) AuthTokenValue() string { return m.authEditor.tokenInput.Value() }
+
+// AuthPasswordValue returns the basic auth password input's text.
+func (m Model) AuthPasswordValue() string { return m.authEditor.passwordInput.Value() }
+
+// AuthAPIKeyValueValue returns the API key value input's text.
+func (m Model) AuthAPIKeyValueValue() string { return m.authEditor.apiKeyValueInput.Value() }
