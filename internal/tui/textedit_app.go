@@ -20,6 +20,15 @@ var readClipboardText = clipboard.ReadAll
 func (appClipboard) Read() (string, error)        { return readClipboardText() }
 func (appClipboard) WriteCmd(text string) tea.Cmd { return copyToClipboardCmd(text) }
 
-// newTextEditor returns the shared editor for single-line fields. It holds no
-// per-field state, so it is built on each use.
-func newTextEditor() textedit.Editor { return textedit.New(appClipboard{}) }
+// newTextEditor returns the editor for text fields, with key bindings taken
+// from the config. It holds no per-field state, so it is built on each use.
+func (m Model) newTextEditor() textedit.Editor {
+	return textedit.Editor{Keys: m.textKeys(), Clip: appClipboard{}}
+}
+
+// textKeys returns the text-editing keymap built from the config. Every text
+// key check in the TUI reads its binding from here, so remapping applies
+// everywhere.
+func (m Model) textKeys() textedit.Keymap {
+	return textedit.KeymapFromConfig(m.cfg.Keybindings)
+}

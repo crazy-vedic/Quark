@@ -35,14 +35,15 @@ func (b AreaBackend) Cursor() int {
 
 // SetCursor moves the cursor to an absolute rune offset. The textarea has no
 // absolute setter and CursorUp/CursorDown move by wrapped row, so the cursor
-// goes to the top, down to the target logical line, then to the column.
+// walks only from its current logical line to the target line, then to the
+// column. The walk is proportional to the distance moved, not the document.
 func (b AreaBackend) SetCursor(pos int) {
 	text := b.m.Value()
 	runes := []rune(text)
 	pos = clamp(pos, len(runes))
 	line, col := lineColAt(runes, pos)
 	limit := len(runes) + strings.Count(text, "\n") + 8
-	for i := 0; i < limit && b.m.Line() > 0; i++ {
+	for i := 0; i < limit && b.m.Line() > line; i++ {
 		b.m.CursorUp()
 	}
 	for i := 0; i < limit && b.m.Line() < line; i++ {

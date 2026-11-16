@@ -517,6 +517,9 @@ func (m Model) viewRequestPane(w, h int) string {
 	}
 	var urlDisplay string
 	if m.activeField == urlField {
+		// Give the field the pane width so it scrolls to the cursor instead of
+		// overflowing. m is a copy, so this does not change the stored widget.
+		m.urlInput.Width = max(1, urlAvail-lipgloss.Width(m.urlInput.Prompt))
 		urlDisplay = textedit.RenderInput(&m.urlInput, m.urlSelection, m.styles.selectionStyle)
 		if suggestion := m.urlSuggestion(m.urlInput.Value()); suggestion != "" {
 			urlDisplay += m.styles.mutedStyle.Render(

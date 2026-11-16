@@ -73,13 +73,36 @@ func (e Editor) HandleKey(sel *Selection, b Backend, msg tea.KeyMsg) (tea.Cmd, b
 		b.SetCursor(sel.Cursor)
 		return nil, true
 
+	case k.WordLeft.Match(key), k.WordRight.Match(key):
+		// Word movement is computed here, not by the widget, so every backend
+		// moves by the same rule regardless of its own keymap.
+		if sel.Active() {
+			start, end := sel.Range()
+			if k.WordLeft.Match(key) {
+				sel.Collapse(start)
+			} else {
+				sel.Collapse(end)
+			}
+			b.SetCursor(sel.Cursor)
+			return nil, true
+		}
+		runes := []rune(b.Text())
+		pos := b.Cursor()
+		if k.WordLeft.Match(key) {
+			pos = PrevWordBoundary(runes, pos)
+		} else {
+			pos = NextWordBoundary(runes, pos)
+		}
+		sel.Collapse(pos)
+		b.SetCursor(pos)
+		return nil, true
+
 	case k.CharLeft.Match(key), k.CharRight.Match(key),
-		k.WordLeft.Match(key), k.WordRight.Match(key),
 		k.LineStart.Match(key), k.LineEnd.Match(key):
 		if sel.Active() {
 			// Collapse to the edge the key moves toward, without moving further.
 			start, end := sel.Range()
-			if k.CharLeft.Match(key) || k.WordLeft.Match(key) || k.LineStart.Match(key) {
+			if k.CharLeft.Match(key) || k.LineStart.Match(key) {
 				sel.Collapse(start)
 			} else {
 				sel.Collapse(end)

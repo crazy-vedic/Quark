@@ -87,29 +87,29 @@ func (m Model) openViewerFind() (Model, tea.Cmd) {
 }
 
 func (m Model) handleViewerKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	key := msg.String()
+	keys := m.textKeys()
 	if m.viewerFindOpen {
-		ed := newTextEditor()
+		ed := m.newTextEditor()
 		b := textedit.Input(&m.viewerFind)
 		if cmd, handled := ed.HandleKey(&m.viewerFindSelection, b, msg); handled {
 			m.viewerFindFirstMatch()
 			return m, cmd
 		}
-		if msg.Type == tea.KeyCtrlC {
+		if keys.Copy.Match(key) {
 			// No selection: nothing to copy. Ctrl+C never quits the app.
 			return m, nil
 		}
-
-		switch msg.Type {
-		case tea.KeyEsc, tea.KeyTab, tea.KeyShiftTab:
+		switch {
+		case keys.ViewerClose.Match(key):
 			m.viewerFindOpen = false
 			m.viewerFind.Blur()
 			return m, nil
-		case tea.KeyEnter:
-			if viewerPreviousMatchKey(msg) {
-				m.moveViewerMatch(-1)
-			} else {
-				m.moveViewerMatch(1)
-			}
+		case keys.FindPrev.Match(key):
+			m.moveViewerMatch(-1)
+			return m, nil
+		case keys.FindNext.Match(key):
+			m.moveViewerMatch(1)
 			return m, nil
 		}
 		var cmd tea.Cmd
@@ -119,24 +119,20 @@ func (m Model) handleViewerKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	}
 
-	switch msg.Type {
-	case tea.KeyEsc, tea.KeyTab, tea.KeyShiftTab:
+	if keys.ViewerClose.Match(key) {
 		return m.closeViewer(), nil
+	}
+	switch msg.Type {
 	case tea.KeyUp, tea.KeyDown, tea.KeyPgUp, tea.KeyPgDown, tea.KeyHome, tea.KeyEnd:
 		m.scrollViewer(msg)
 		return m, nil
 	}
 
-	switch msg.String() {
-	case "f":
+	switch {
+	case keys.ViewerFind.Match(key), keys.FindOpen.Match(key):
 		return m.openViewerFind()
-	case "c":
+	case keys.ViewerCopy.Match(key):
 		return m, copyViewerContentCmd(m.viewerCopy)
-	case "ctrl+f", "cmd+f":
-		return m.openViewerFind()
-	}
-	if msg.Type == tea.KeyCtrlF {
-		return m.openViewerFind()
 	}
 	return m, nil
 }
@@ -195,11 +191,6 @@ func countFoldMatches(text, query string) int {
 		}
 	}
 	return count
-}
-
-func viewerPreviousMatchKey(msg tea.KeyMsg) bool {
-	return msg.String() == "shift+enter" || msg.String() == "shift+return" ||
-		msg.String() == "alt+enter"
 }
 
 func (m *Model) moveViewerMatch(direction int) {
@@ -266,10 +257,13 @@ func readCurlClipboardCmd() tea.Cmd {
 }
 
 func (m Model) viewViewer() string {
-	help := "[f] find  [c] copy body  [esc/tab] close  [shift+click] terminal select"
+	keys := m.textKeys()
+	help := "[" + keys.ViewerFind[0] + "] find  [" + keys.ViewerCopy[0] + "] copy body  [" +
+		keys.ViewerClose[0] + "/tab] close  [shift+click] terminal select"
 	matchStatus := m.viewerMatchStatus()
 	if m.viewerFindOpen {
-		help = "Find: " + m.viewerFind.View() + matchStatus + "  [enter] next  [shift+enter] previous  [esc/tab] close"
+		help = "Find: " + m.viewerFind.View() + matchStatus + "  [" + keys.FindNext[0] +
+			"] next  [" + keys.FindPrev[0] + "] previous  [" + keys.ViewerClose[0] + "/tab] close"
 	} else if matchStatus != "" {
 		help += matchStatus
 	}

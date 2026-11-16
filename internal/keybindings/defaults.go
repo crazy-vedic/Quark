@@ -90,8 +90,8 @@ func DefaultKeybindings() Keybindings {
 		AuthEdit:       "e",
 		AuthSave:       KeyEnter,
 		AuthCancel:     "esc",
-		AuthOptionNext: "right",
-		AuthOptionPrev: "left",
+		AuthOptionNext: KeyRight,
+		AuthOptionPrev: KeyLeft,
 
 		// Response pane
 		ResponseDown:  "j",
@@ -100,8 +100,8 @@ func DefaultKeybindings() Keybindings {
 		TabBody:       "b",
 		TabHeaders:    "h",
 		TabRaw:        "r",
-		TabNext:       "right",
-		TabPrev:       "left",
+		TabNext:       KeyRight,
+		TabPrev:       KeyLeft,
 
 		// Search modal
 		SearchSelect: KeyEnter,
@@ -134,5 +134,27 @@ func DefaultKeybindings() Keybindings {
 		SelectAll:       "ctrl+a",
 		Copy:            "ctrl+c",
 		Cut:             "ctrl+x",
+
+		CharLeft:       KeyLeft,
+		CharRight:      KeyRight,
+		WordLeft:       "ctrl+left", // alt+left is also bound by the editor
+		WordRight:      "ctrl+right",
+		LineStart:      "home",
+		LineEnd:        "end",
+		LineUp:         "up",
+		LineDown:       "down",
+		SelectLineUp:   "shift+up",
+		SelectLineDown: "shift+down",
+		DeleteWord:     "ctrl+w", // alt+backspace is also bound by the editor
+		Paste:          "ctrl+v",
+
+		FindOpen:    "ctrl+f", // cmd+f is also bound by the editor
+		FindNext:    KeyEnter,
+		FindPrev:    KeyShiftEnter, // shift+return and alt+enter are also bound
+		ViewerFind:  "f",
+		ViewerCopy:  "c",
+		ViewerClose: "esc", // tab and shift+tab are also bound
+		HistoryNext: "shift+pgdown",
+		HistoryPrev: "shift+pgup",
 	}
 }

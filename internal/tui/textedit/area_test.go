@@ -167,3 +167,70 @@ func TestAreaEnterReplacesSelectionWithNewline(t *testing.T) {
 	New(nopClipboard{}).HandleKey(&sel, b, tea.KeyMsg{Type: tea.KeyEnter})
 	assert.Equal(t, "a\ndef", ta.Value())
 }
+
+// wordKeyMsgs maps the word-movement key strings in DefaultKeymap to messages.
+// Keys are built from the bubbletea types so String() matches the keymap.
+var wordKeyMsgs = map[string]tea.KeyMsg{
+	"ctrl+left":  {Type: tea.KeyCtrlLeft},
+	"alt+left":   {Type: tea.KeyLeft, Alt: true},
+	"ctrl+right": {Type: tea.KeyCtrlRight},
+	"alt+right":  {Type: tea.KeyRight, Alt: true},
+}
+
+// TestWordKeysMoveRealTextarea drives every word-movement key in the keymap
+// through the real bubbles textarea. The textarea's own keymap does not bind
+// ctrl+left, so this fails if movement is delegated to the widget again.
+func TestWordKeysMoveRealTextarea(t *testing.T) {
+	ed := New(nopClipboard{})
+	for _, key := range append(append([]string{}, ed.Keys.WordLeft...), ed.Keys.WordRight...) {
+		msg, ok := wordKeyMsgs[key]
+		if !assert.True(t, ok, "no test message for %q", key) {
+			continue
+		}
+		assert.Equal(t, key, msg.String())
+		ta := newArea(40, 5, "foo bar baz")
+		b := Area(ta)
+		var sel Selection
+		sel.Collapse(11)
+		b.SetCursor(11)
+		ed.HandleKey(&sel, b, msg)
+		if ed.Keys.WordLeft.Match(key) {
+			assert.Equal(t, 8, sel.Cursor, key)
+		} else {
+			assert.Equal(t, 11, sel.Cursor, key) // already at end: stays put
+		}
+		assert.Equal(t, sel.Cursor, b.Cursor(), key)
+	}
+}
+
+func TestWordLeftMovesFromMiddleInRealTextarea(t *testing.T) {
+	ed := New(nopClipboard{})
+	ta := newArea(40, 5, "foo bar baz")
+	b := Area(ta)
+	var sel Selection
+	sel.Collapse(10)
+	b.SetCursor(10)
+	ed.HandleKey(&sel, b, wordKeyMsgs["ctrl+left"])
+	assert.Equal(t, 8, sel.Cursor)
+	assert.Equal(t, 8, b.Cursor())
+	ed.HandleKey(&sel, b, wordKeyMsgs["ctrl+right"])
+	assert.Equal(t, 11, sel.Cursor) // skips "baz" to the end
+}
+
+// TestAreaSetCursorLargeBody checks moves on a 10,000-line body in both
+// directions. The result must be exact; the walk is bounded by the distance.
+func TestAreaSetCursorLargeBody(t *testing.T) {
+	lines := make([]string, 10000)
+	for i := range lines {
+		lines[i] = "line"
+	}
+	value := strings.Join(lines, "\n")
+	ta := newArea(40, 10, value)
+	b := Area(ta)
+	// Offset of line 9000, column 2: 9000 lines of "line\n" (5 runes each).
+	target := 9000*5 + 2
+	b.SetCursor(target)
+	assert.Equal(t, target, b.Cursor())
+	b.SetCursor(12) // line 2, col 2: walk back up
+	assert.Equal(t, 12, b.Cursor())
+}

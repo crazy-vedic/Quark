@@ -8,6 +8,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/crazy-vedic/quark/internal/curl"
+	"github.com/crazy-vedic/quark/internal/tui/textedit"
 )
 
 // isCurlCommand reports whether the URL text is a curl command rather than a URL.
@@ -90,18 +91,18 @@ func (m Model) reportCurlReplace(result *curl.ImportResult) Model {
 
 // isPasteKey reports whether msg inserts pasted text: a bracketed paste from the
 // terminal or the editor's Ctrl+V clipboard paste.
-func isPasteKey(msg tea.KeyMsg) bool {
-	return msg.Paste || msg.Type == tea.KeyCtrlV
+func isPasteKey(msg tea.KeyMsg, k textedit.Keymap) bool {
+	return msg.Paste || k.Paste.Match(msg.String())
 }
 
 // pastedText returns the text a paste key would insert: the bracketed paste
 // runes, or the clipboard for Ctrl+V. ok is false for any other key. A clipboard
 // read error counts as no text.
-func pastedText(msg tea.KeyMsg) (text string, ok bool) {
+func pastedText(msg tea.KeyMsg, k textedit.Keymap) (text string, ok bool) {
 	switch {
 	case msg.Paste:
 		return string(msg.Runes), true
-	case msg.Type == tea.KeyCtrlV:
+	case k.Paste.Match(msg.String()):
 		clip, err := readClipboardText()
 		if err != nil {
 			return "", true

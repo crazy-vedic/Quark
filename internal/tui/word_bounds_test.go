@@ -1,6 +1,10 @@
 package tui
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/crazy-vedic/quark/internal/tui/textedit"
+)
 
 func TestIsWordChar(t *testing.T) {
 	tests := []struct {
@@ -25,8 +29,8 @@ func TestIsWordChar(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(string(tt.r), func(t *testing.T) {
-			if got := isWordChar(tt.r); got != tt.want {
-				t.Errorf("isWordChar(%q) = %v, want %v", tt.r, got, tt.want)
+			if got := textedit.IsWordChar(tt.r); got != tt.want {
+				t.Errorf("textedit.IsWordChar(%q) = %v, want %v", tt.r, got, tt.want)
 			}
 		})
 	}
@@ -196,9 +200,9 @@ func TestNextWordBoundary(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := nextWordBoundary(tt.runes, tt.pos)
+			got := textedit.NextWordBoundary(tt.runes, tt.pos)
 			if got != tt.want {
-				t.Errorf("nextWordBoundary(%v, %d) = %d, want %d",
+				t.Errorf("textedit.NextWordBoundary(%v, %d) = %d, want %d",
 					string(tt.runes), tt.pos, got, tt.want)
 			}
 		})
@@ -251,9 +255,9 @@ func TestPrevWordBoundary(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := prevWordBoundary(tt.runes, tt.pos)
+			got := textedit.PrevWordBoundary(tt.runes, tt.pos)
 			if got != tt.want {
-				t.Errorf("prevWordBoundary(%v, %d) = %d, want %d",
+				t.Errorf("textedit.PrevWordBoundary(%v, %d) = %d, want %d",
 					string(tt.runes), tt.pos, got, tt.want)
 			}
 		})

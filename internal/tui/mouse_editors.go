@@ -274,7 +274,7 @@ func (m Model) handleBodyTextareaClick(msg tea.MouseMsg) Model {
 	if !m.positionBodyCursorAtDisplayLine(relY, relX) {
 		return m
 	}
-	newTextEditor().Sync(&m.bodySelection, textedit.Area(&m.bodyTextarea))
+	m.newTextEditor().Sync(&m.bodySelection, textedit.Area(&m.bodyTextarea))
 	return m
 }
 

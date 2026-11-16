@@ -517,12 +517,12 @@ func (m Model) handleEnvEditKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if !m.envEditor.editKey.Focused() {
 		input, sel = &m.envEditor.editVal, &m.envEditor.valSel
 	}
-	ed := newTextEditor()
+	ed := m.newTextEditor()
 	b := textedit.Input(input)
 	if cmd, handled := ed.HandleKey(sel, b, msg); handled {
 		return m, cmd
 	}
-	if msg.Type == tea.KeyCtrlC {
+	if m.textKeys().Copy.Match(msg.String()) {
 		// No selection: nothing to copy. Ctrl+C never quits the app.
 		return m, nil
 	}

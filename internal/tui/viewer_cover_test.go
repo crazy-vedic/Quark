@@ -29,8 +29,9 @@ func TestCountFoldMatches(t *testing.T) {
 }
 
 func TestViewerPreviousMatchKey(t *testing.T) {
-	assert.True(t, viewerPreviousMatchKey(tea.KeyMsg{Type: tea.KeyEnter, Alt: true}))
-	assert.False(t, viewerPreviousMatchKey(tea.KeyMsg{Type: tea.KeyEnter}))
+	keys := textedit.DefaultKeymap()
+	assert.True(t, keys.FindPrev.Match(tea.KeyMsg{Type: tea.KeyEnter, Alt: true}.String()))
+	assert.False(t, keys.FindPrev.Match(tea.KeyMsg{Type: tea.KeyEnter}.String()))
 }
 
 func TestHighlightViewerMatches(t *testing.T) {

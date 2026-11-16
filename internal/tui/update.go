@@ -466,7 +466,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if m.activeField == bodyField {
 		var cmd tea.Cmd
 		m.bodyTextarea, cmd = m.bodyTextarea.Update(msg)
-		newTextEditor().Sync(&m.bodySelection, textedit.Area(&m.bodyTextarea))
+		m.newTextEditor().Sync(&m.bodySelection, textedit.Area(&m.bodyTextarea))
 		return m, cmd
 	}
 	if m.activeField == authField {
@@ -550,15 +550,15 @@ func (m Model) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 
 	// Ctrl+C never quits the app. Use q to quit.
-	if msg.Type == tea.KeyCtrlC {
+	if m.textKeys().Copy.Match(msg.String()) {
 		return m, nil
 	}
-	if m.focus == responsePane && isResponseHistoryKey(msg) {
-		if msg.Type == tea.KeyShiftDown || msg.Type == tea.KeyPgDown ||
-			msg.String() == "shift+pgdown" {
+	if m.focus == responsePane {
+		if keys := m.textKeys(); keys.HistoryNext.Match(msg.String()) {
 			return m.handleResponseAction("history_next", timingSpan)
+		} else if keys.HistoryPrev.Match(msg.String()) {
+			return m.handleResponseAction("history_prev", timingSpan)
 		}
-		return m.handleResponseAction("history_prev", timingSpan)
 	}
 	if m.focus == requestPane && m.activeField == noneField && isVerticalScrollKey(msg) {
 		m.requestText.SetDebugLog(m.debugLog, "request")
@@ -611,24 +611,6 @@ func (m Model) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func isVerticalScrollKey(msg tea.KeyMsg) bool {
 	return msg.Type == tea.KeyUp || msg.Type == tea.KeyDown || msg.Type == tea.KeyPgUp ||
 		msg.Type == tea.KeyPgDown
-}
-
-func isResponseHistoryKey(msg tea.KeyMsg) bool {
-	switch msg.Type {
-	case tea.KeyShiftUp, tea.KeyShiftDown:
-		return true
-	case tea.KeyPgUp, tea.KeyPgDown:
-		// Bubble Tea does not expose a separate Shift+PageUp key type on
-		// every terminal. Accept the modified form when the terminal reports
-		// it through the Alt flag, while plain PageUp/PageDown still scroll.
-		return msg.Alt
-	}
-	switch msg.String() {
-	case "shift+pgup", "shift+pageup", "shift+pgdown", "shift+pagedown":
-		return true
-	default:
-		return false
-	}
 }
 
 // dispatchNormalAction routes a resolver action in normal mode.
@@ -963,18 +945,18 @@ func (m Model) handleRequestKey(_ string, msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// A multi-line curl command (with \ continuations or multi-line bodies)
 		// cannot live in the single-line field, so hand the raw text to the
 		// parser instead of inserting it.
-		if text, ok := pastedText(msg); ok && isMultiLineCurl(text) {
+		if text, ok := pastedText(msg, m.textKeys()); ok && isMultiLineCurl(text) {
 			return m.openCurlReplace(text), nil
 		}
-		ed := newTextEditor()
+		ed := m.newTextEditor()
 		b := textedit.Input(&m.urlInput)
 		if cmd, handled := ed.HandleKey(&m.urlSelection, b, msg); handled {
-			if isPasteKey(msg) && isCurlCommand(m.urlInput.Value()) {
+			if isPasteKey(msg, m.textKeys()) && isCurlCommand(m.urlInput.Value()) {
 				return m.openCurlReplace(m.urlInput.Value()), nil
 			}
 			return m, cmd
 		}
-		if msg.Type == tea.KeyCtrlC {
+		if m.textKeys().Copy.Match(msg.String()) {
 			// No selection: nothing to copy. Ctrl+C never quits the app.
 			return m, nil
 		}
@@ -1059,12 +1041,12 @@ func (m Model) triggerCurlImport(raw string) (Model, tea.Cmd) {
 // --- Search modal ---
 
 func (m Model) handleSearchKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	ed := newTextEditor()
+	ed := m.newTextEditor()
 	b := textedit.Input(&m.searchInput)
 	if cmd, handled := ed.HandleKey(&m.searchSelection, b, msg); handled {
 		return m.searchQueryChanged(cmd)
 	}
-	if msg.Type == tea.KeyCtrlC {
+	if m.textKeys().Copy.Match(msg.String()) {
 		// No selection: nothing to copy. Ctrl+C never quits the app.
 		return m, nil
 	}
@@ -1851,7 +1833,7 @@ func helpResetAllDiffs(current keybindings.Keybindings) []string {
 // --- Import modal ---
 
 func (m Model) handleImportKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	if m.importPreview == nil && msg.Type == tea.KeyCtrlV {
+	if m.importPreview == nil && m.textKeys().Paste.Match(msg.String()) {
 		m.debugCurl("clipboard read requested")
 		return m, readCurlClipboardCmd()
 	}
@@ -1956,12 +1938,12 @@ func (m Model) handleImportKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	}
 
-	ed := newTextEditor()
+	ed := m.newTextEditor()
 	b := textedit.Area(&m.importInput)
 	if cmd, handled := ed.HandleKey(&m.importInputSelection, b, msg); handled {
 		return m, cmd
 	}
-	if msg.Type == tea.KeyCtrlC {
+	if m.textKeys().Copy.Match(msg.String()) {
 		// No selection: nothing to copy. Ctrl+C never quits the app.
 		return m, nil
 	}
@@ -2088,7 +2070,7 @@ func (m Model) handleHTTPErr(msg httpErrMsg) (tea.Model, tea.Cmd) {
 // --- Inline body / header field handlers ---
 
 func (m Model) handleBodyFieldKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	ed := newTextEditor()
+	ed := m.newTextEditor()
 	b := textedit.Area(&m.bodyTextarea)
 
 	// Body actions come first: Enter saves and Ctrl+J inserts a newline. The
@@ -2097,7 +2079,7 @@ func (m Model) handleBodyFieldKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		switch action {
 		case "save":
 			saved, cmd := m.saveBody()
-			newTextEditor().Sync(&saved.bodySelection, textedit.Area(&saved.bodyTextarea))
+			m.newTextEditor().Sync(&saved.bodySelection, textedit.Area(&saved.bodyTextarea))
 			return saved, cmd
 		case "insert_newline":
 			ed.InsertText(&m.bodySelection, b, "\n")
@@ -2108,7 +2090,7 @@ func (m Model) handleBodyFieldKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if cmd, handled := ed.HandleKey(&m.bodySelection, b, msg); handled {
 		return m, cmd
 	}
-	if msg.Type == tea.KeyCtrlC {
+	if m.textKeys().Copy.Match(msg.String()) {
 		// No selection: nothing to copy. Ctrl+C never quits the app.
 		return m, nil
 	}
@@ -2191,12 +2173,12 @@ func (m Model) handleAuthFieldEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if input == nil {
 		return m, nil
 	}
-	ed := newTextEditor()
+	ed := m.newTextEditor()
 	b := textedit.Input(input)
 	if cmd, handled := ed.HandleKey(sel, b, msg); handled {
 		return m, cmd
 	}
-	if msg.Type == tea.KeyCtrlC {
+	if m.textKeys().Copy.Match(msg.String()) {
 		// No selection: nothing to copy. Ctrl+C never quits the app.
 		return m, nil
 	}
@@ -2273,12 +2255,12 @@ func (m Model) handleHeaderFieldEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.headerKeyInput.Focused() {
 		sel, input = &m.headerKeySelection, &m.headerKeyInput
 	}
-	ed := newTextEditor()
+	ed := m.newTextEditor()
 	b := textedit.Input(input)
 	if cmd, handled := ed.HandleKey(sel, b, msg); handled {
 		return m, cmd
 	}
-	if msg.Type == tea.KeyCtrlC {
+	if m.textKeys().Copy.Match(msg.String()) {
 		// No selection: nothing to copy. Ctrl+C never quits the app.
 		return m, nil
 	}
