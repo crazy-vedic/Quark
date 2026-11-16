@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/crazy-vedic/quark/internal/config"
 	"github.com/crazy-vedic/quark/internal/keybindings"
@@ -47,7 +48,8 @@ func TestViewerAndHistoryKeysFollowConfig(t *testing.T) {
 func TestClipboardWriteSuccessShowsStatus(t *testing.T) {
 	m := Model{}
 	next, _ := m.Update(clipboardMsg{text: "héllo"})
-	got := next.(Model)
+	got, ok := next.(Model)
+	require.True(t, ok)
 	assert.Equal(t, "Copied 5 characters", got.statusSuccess)
 	assert.Empty(t, got.statusErr)
 }

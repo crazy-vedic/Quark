@@ -546,10 +546,20 @@ func Validate(binds Keybindings) map[string][]string {
 			{binds.CertSave, "cert_save"}},
 		// Text selection: only active inside text fields, so it is checked
 		// within itself but not against the normal-mode keys above.
-		{{binds.SelectCharLeft, "select_char_left"}, {binds.SelectCharRight, "select_char_right"},
-			{binds.SelectWordLeft, "select_word_left"}, {binds.SelectWordRight, "select_word_right"},
-			{binds.SelectLineStart, "select_line_start"}, {binds.SelectLineEnd, "select_line_end"},
-			{binds.SelectAll, "select_all"}, {binds.Copy, "copy"}, {binds.Cut, "cut"}},
+		{
+			{binds.SelectCharLeft, "select_char_left"},
+			{binds.SelectCharRight, "select_char_right"},
+			{
+				binds.SelectWordLeft,
+				"select_word_left",
+			},
+			{binds.SelectWordRight, "select_word_right"},
+			{binds.SelectLineStart, "select_line_start"},
+			{binds.SelectLineEnd, "select_line_end"},
+			{binds.SelectAll, "select_all"},
+			{binds.Copy, "copy"},
+			{binds.Cut, "cut"},
+		},
 	}
 
 	conflicts := make(map[string][]string)

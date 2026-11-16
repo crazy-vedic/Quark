@@ -89,7 +89,12 @@ func TestRenderAreaBuildsRowLayoutOncePerTextAndWidth(t *testing.T) {
 	for i := 0; i < 20; i++ {
 		RenderArea(view, ta, bodyGutter, sel, style)
 	}
-	assert.Equal(t, before+1, rowLayoutBuilds.Load(), "same text and width should build the layout once")
+	assert.Equal(
+		t,
+		before+1,
+		rowLayoutBuilds.Load(),
+		"same text and width should build the layout once",
+	)
 
 	ta.SetWidth(30)
 	RenderArea(ta.View(), ta, bodyGutter, sel, style)

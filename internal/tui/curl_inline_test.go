@@ -263,7 +263,11 @@ func TestCurlReplaceClearsPreviousAuth(t *testing.T) {
 
 	assert.Equal(t, "https://api.example.com/items", req.URL, "replace applied")
 	assert.Empty(t, req.AuthType, "previous request's auth type must not apply to the curl request")
-	assert.Empty(t, req.AuthConfig, "previous request's auth config must not apply to the curl request")
+	assert.Empty(
+		t,
+		req.AuthConfig,
+		"previous request's auth config must not apply to the curl request",
+	)
 }
 
 func TestCurlMultiLinePasteParseErrorKeepsTextRecoverable(t *testing.T) {

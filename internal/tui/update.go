@@ -77,7 +77,10 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case textedit.PasteResultMsg:
 		return m.handlePasteResult(msg)
 	case clipboardMsg:
-		return m.status("success", fmt.Sprintf("Copied %d characters", utf8.RuneCountInString(msg.text))), nil
+		return m.status(
+			"success",
+			fmt.Sprintf("Copied %d characters", utf8.RuneCountInString(msg.text)),
+		), nil
 	case clipboardErrorMsg:
 		return m.status("error", "Clipboard: "+msg.err.Error()), nil
 	case themeWatchTickMsg:
@@ -1047,7 +1050,8 @@ func (m Model) handleSearchKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// Up/Down belong to the result list, so the editor must not collapse a
 	// selection on them. Only a text change re-runs the search.
 	action, resolved := m.resolver.Resolve(1, 0, msg)
-	vertical := resolved && (action == keybindings.ActionNavigateUp || action == keybindings.ActionNavigateDown)
+	vertical := resolved &&
+		(action == keybindings.ActionNavigateUp || action == keybindings.ActionNavigateDown)
 	if !vertical {
 		before := m.searchInput.Value()
 		if cmd, handled := ed.HandleKey(&m.searchSelection, b, msg); handled {
