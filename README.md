@@ -220,6 +220,42 @@ All keyboard shortcuts match the behavior of standard text editors (VS Code, Pos
 
 **Terminal Compatibility:** Most modern terminals (macOS Terminal, iTerm2, GNOME Terminal, Windows Terminal) support these shortcuts. If a shortcut doesn't work, try the alternative or use mouse selection.
 
+#### Multi-line and word selection
+
+- `Shift+Up/Down` — Extend the selection one line up or down in multi-line fields (bodies)
+- `Ctrl+Shift+Left/Right` — Extend the selection word by word
+
+#### Pasting a curl command into the URL field
+
+Pasting a curl command into the URL field (`Ctrl+V`, or pressing `Enter` on a field that already holds one) opens the **Replace request with curl command** dialog instead of inserting the text. Multi-line curl commands pasted into the URL field open the same dialog. The dialog shows the pasted command; press `Ctrl+S` to parse it, review the preview, press `Enter` to replace the active request, or `Esc` to cancel.
+
+#### Text editing keys in config
+
+Text-field keys can be remapped in the `[keybindings]` table of `~/.quark/config.toml`. Only values that differ from the defaults below take effect. Example:
+
+```toml
+[keybindings]
+select_line_up = "shift+up"
+```
+
+| Config key | Default | Action |
+| --- | --- | --- |
+| `select_char_left` / `select_char_right` | `shift+left` / `shift+right` | Extend selection by character |
+| `select_word_left` / `select_word_right` | `alt+shift+left` / `alt+shift+right` | Extend selection by word (the built-in `ctrl+shift+left/right` stays active unless overridden) |
+| `select_line_start` / `select_line_end` | `shift+home` / `shift+end` | Extend selection to line start/end |
+| `select_line_up` / `select_line_down` | `shift+up` / `shift+down` | Extend selection by line |
+| `select_all` | `ctrl+a` | Select all |
+| `copy` / `cut` / `paste` | `ctrl+c` / `ctrl+x` / `ctrl+v` | Clipboard actions |
+| `char_left` / `char_right` | `left` / `right` | Move cursor by character |
+| `word_left` / `word_right` | `ctrl+left` / `ctrl+right` | Move cursor by word |
+| `line_start` / `line_end` | `home` / `end` | Move to line start/end |
+| `line_up` / `line_down` | `up` / `down` | Move cursor by line |
+| `delete_word` | `ctrl+w` | Delete previous word |
+| `find_open` | `ctrl+f` | Open find |
+| `find_next` / `find_prev` | `enter` / `shift+enter` | Next/previous find match |
+| `history_next` / `history_prev` | `shift+pgdown` / `shift+pgup` | Next/previous response history entry |
+| `viewer_find` / `viewer_copy` / `viewer_close` | `f` / `c` / `esc` | Response viewer find, copy, close |
+
 ---
 
 ## Themes
