@@ -324,12 +324,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		// Global shortcuts that work in all modes.
-		switch msg.Type {
-		case tea.KeyEsc:
-			if m.mode == normalMode {
-				m = m.handleEsc()
-				return m, nil
-			}
+		if msg.Type == tea.KeyEsc && m.mode == normalMode {
+			m = m.handleEsc()
+			return m, nil
 		}
 
 		// Mode-specific routing.
@@ -974,7 +971,9 @@ func (m Model) handleRequestKey(_ string, msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			// Capture selected text BEFORE removing it
 			text := copySelectionText(m.urlInput.Value(), m.urlSelection)
 			// Remove the selected text
-			newValue, newCursorPos := cutSelection(m.urlInput.Value(), m.urlSelection, m.urlInput.Position())
+			newValue, newCursorPos := cutSelection(
+				m.urlInput.Value(), m.urlSelection, m.urlInput.Position(),
+			)
 			m.urlInput.SetValue(newValue)
 			m.urlInput.SetCursor(newCursorPos)
 			m.urlSelection.Clear(newCursorPos)
@@ -1092,7 +1091,9 @@ func (m Model) handleSearchKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 	if msg.Type == tea.KeyCtrlX {
 		text := copySelectionText(m.searchInput.Value(), m.searchSelection)
-		newValue, newCursorPos := cutSelection(m.searchInput.Value(), m.searchSelection, m.searchInput.Position())
+		newValue, newCursorPos := cutSelection(
+			m.searchInput.Value(), m.searchSelection, m.searchInput.Position(),
+		)
 		m.searchInput.SetValue(newValue)
 		m.searchInput.SetCursor(newCursorPos)
 		m.searchSelection.Clear(newCursorPos)
@@ -1897,8 +1898,12 @@ func (m Model) handleImportKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 	if msg.Type == tea.KeyCtrlX {
 		text := copySelectionText(m.importInput.Value(), m.importInputSelection)
-		cursorPos := getTextareaAbsoluteCursorPos(m.importInput.Value(), m.importInput.Line())
-		newValue, newCursorPos := cutSelection(m.importInput.Value(), m.importInputSelection, cursorPos)
+		cursorPos := textareaAbsoluteCursor(&m.importInput)
+		newValue, newCursorPos := cutSelection(
+			m.importInput.Value(),
+			m.importInputSelection,
+			cursorPos,
+		)
 		m.importInput.SetValue(newValue)
 		m.importInput.SetCursor(newCursorPos)
 		m.importInputSelection.Clear(newCursorPos)
@@ -1909,8 +1914,7 @@ func (m Model) handleImportKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 
 	// Handle selection keys
-	cursorPos := getTextareaAbsoluteCursorPos(
-		m.importInput.Value(), m.importInput.Line())
+	cursorPos := textareaAbsoluteCursor(&m.importInput)
 	handled, shouldUpdateComponent := handleSelectionKeyForTextarea(
 		msg, &m.importInputSelection, &m.importInput, cursorPos)
 	if handled && !shouldUpdateComponent {
@@ -2160,7 +2164,7 @@ func (m Model) handleBodyFieldKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 	if msg.Type == tea.KeyCtrlX {
 		text := copySelectionText(m.bodyTextarea.Value(), m.bodySelection)
-		cursorPos := getTextareaAbsoluteCursorPos(m.bodyTextarea.Value(), m.bodyTextarea.Line())
+		cursorPos := textareaAbsoluteCursor(&m.bodyTextarea)
 		newValue, newCursorPos := cutSelection(m.bodyTextarea.Value(), m.bodySelection, cursorPos)
 		m.bodyTextarea.SetValue(newValue)
 		m.bodyTextarea.SetCursor(newCursorPos)
@@ -2172,8 +2176,7 @@ func (m Model) handleBodyFieldKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 
 	// Handle selection keys
-	cursorPos := getTextareaAbsoluteCursorPos(
-		m.bodyTextarea.Value(), m.bodyTextarea.Line())
+	cursorPos := textareaAbsoluteCursor(&m.bodyTextarea)
 	handled, shouldUpdateComponent := handleSelectionKeyForTextarea(
 		msg, &m.bodySelection, &m.bodyTextarea, cursorPos)
 	if handled && !shouldUpdateComponent {
@@ -2310,7 +2313,9 @@ func (m Model) handleAuthFieldEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.authEditor.tokenInput.Value(), m.authEditor.tokenSelection,
 			)
 			newValue, newCursorPos = cutSelection(
-				m.authEditor.tokenInput.Value(), m.authEditor.tokenSelection, m.authEditor.tokenInput.Position(),
+				m.authEditor.tokenInput.Value(),
+				m.authEditor.tokenSelection,
+				m.authEditor.tokenInput.Position(),
 			)
 			m.authEditor.tokenInput.SetValue(newValue)
 			m.authEditor.tokenInput.SetCursor(newCursorPos)
@@ -2320,7 +2325,9 @@ func (m Model) handleAuthFieldEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.authEditor.usernameInput.Value(), m.authEditor.usernameSelection,
 			)
 			newValue, newCursorPos = cutSelection(
-				m.authEditor.usernameInput.Value(), m.authEditor.usernameSelection, m.authEditor.usernameInput.Position(),
+				m.authEditor.usernameInput.Value(),
+				m.authEditor.usernameSelection,
+				m.authEditor.usernameInput.Position(),
 			)
 			m.authEditor.usernameInput.SetValue(newValue)
 			m.authEditor.usernameInput.SetCursor(newCursorPos)
@@ -2330,7 +2337,9 @@ func (m Model) handleAuthFieldEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.authEditor.passwordInput.Value(), m.authEditor.passwordSelection,
 			)
 			newValue, newCursorPos = cutSelection(
-				m.authEditor.passwordInput.Value(), m.authEditor.passwordSelection, m.authEditor.passwordInput.Position(),
+				m.authEditor.passwordInput.Value(),
+				m.authEditor.passwordSelection,
+				m.authEditor.passwordInput.Position(),
 			)
 			m.authEditor.passwordInput.SetValue(newValue)
 			m.authEditor.passwordInput.SetCursor(newCursorPos)
@@ -2340,7 +2349,9 @@ func (m Model) handleAuthFieldEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.authEditor.apiKeyNameInput.Value(), m.authEditor.apiKeyNameSelection,
 			)
 			newValue, newCursorPos = cutSelection(
-				m.authEditor.apiKeyNameInput.Value(), m.authEditor.apiKeyNameSelection, m.authEditor.apiKeyNameInput.Position(),
+				m.authEditor.apiKeyNameInput.Value(),
+				m.authEditor.apiKeyNameSelection,
+				m.authEditor.apiKeyNameInput.Position(),
 			)
 			m.authEditor.apiKeyNameInput.SetValue(newValue)
 			m.authEditor.apiKeyNameInput.SetCursor(newCursorPos)
@@ -2350,7 +2361,9 @@ func (m Model) handleAuthFieldEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.authEditor.apiKeyValueInput.Value(), m.authEditor.apiKeyValueSelection,
 			)
 			newValue, newCursorPos = cutSelection(
-				m.authEditor.apiKeyValueInput.Value(), m.authEditor.apiKeyValueSelection, m.authEditor.apiKeyValueInput.Position(),
+				m.authEditor.apiKeyValueInput.Value(),
+				m.authEditor.apiKeyValueSelection,
+				m.authEditor.apiKeyValueInput.Position(),
 			)
 			m.authEditor.apiKeyValueInput.SetValue(newValue)
 			m.authEditor.apiKeyValueInput.SetCursor(newCursorPos)
@@ -2492,7 +2505,11 @@ func (m Model) handleHeaderFieldEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if msg.Type == tea.KeyCtrlX {
 		if m.headerKeyInput.Focused() {
 			text := copySelectionText(m.headerKeyInput.Value(), m.headerKeySelection)
-			newValue, newCursorPos := cutSelection(m.headerKeyInput.Value(), m.headerKeySelection, m.headerKeyInput.Position())
+			newValue, newCursorPos := cutSelection(
+				m.headerKeyInput.Value(),
+				m.headerKeySelection,
+				m.headerKeyInput.Position(),
+			)
 			m.headerKeyInput.SetValue(newValue)
 			m.headerKeyInput.SetCursor(newCursorPos)
 			m.headerKeySelection.Clear(newCursorPos)
@@ -2896,33 +2913,6 @@ func copyToClipboardCmd(text string) tea.Cmd {
 		}
 		return clipboardMsg{text: text}
 	}
-}
-
-// activeTextSelection checks if any focused text field has an active selection.
-// Returns the selected text if found, or empty string and false if not.
-func (m Model) activeTextSelection() (text string, ok bool) {
-	switch m.activeField {
-	case urlField:
-		if m.urlSelection.Active() {
-			text := copySelectionText(m.urlInput.Value(), m.urlSelection)
-			return text, text != ""
-		}
-	case bodyField:
-		if m.bodySelection.Active() {
-			text := copySelectionText(m.bodyTextarea.Value(), m.bodySelection)
-			return text, text != ""
-		}
-	case headersField:
-		if m.headerKeySelection.Active() {
-			text := copySelectionText(m.headerKeyInput.Value(), m.headerKeySelection)
-			return text, text != ""
-		}
-		if m.headerValueSelection.Active() {
-			text := copySelectionText(m.headerValueInput.Value(), m.headerValueSelection)
-			return text, text != ""
-		}
-	}
-	return "", false
 }
 
 // clipboardErrorMsg signals clipboard operation failure

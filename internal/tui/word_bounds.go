@@ -1,6 +1,10 @@
 package tui
 
-import "unicode"
+import (
+	"unicode"
+
+	"github.com/charmbracelet/bubbles/textarea"
+)
 
 // isWordChar returns true if r is part of a word. Words consist of letters,
 // digits, and underscores. Hyphens are treated as word separators to allow
@@ -177,11 +181,19 @@ func prevWordBoundary(runes []rune, pos int) int {
 	return pos
 }
 
-// getTextareaAbsoluteCursorPos converts a textarea's line-based cursor position
-// to an absolute rune offset into the full text. This is needed for selection
-// which works with rune offsets, not line/column pairs.
-// Note: Since textarea doesn't expose col publicly, this uses a simplified approach
-// that counts all runes up to and including the current line.
+// textareaAbsoluteCursor returns the caret's absolute rune offset in the
+// textarea's full text, including the column within the current logical line.
+// Selection works in rune offsets, so the caret column is required.
+func textareaAbsoluteCursor(ta *textarea.Model) int {
+	info := ta.LineInfo()
+	return getTextareaAbsoluteCursorPos(
+		ta.Value(),
+		ta.Line(),
+	) + info.StartColumn + info.ColumnOffset
+}
+
+// getTextareaAbsoluteCursorPos returns the rune offset where the given logical
+// line starts within text.
 func getTextareaAbsoluteCursorPos(text string, line int) int {
 	if line < 0 {
 		return 0

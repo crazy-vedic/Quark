@@ -55,7 +55,7 @@ func (m Model) openViewerForRequest() Model {
 	m.viewerText.offset = 0
 	m.viewerText.SetDebugLog(m.debugLog, "viewer")
 	m.viewerText.SetTiming(m.timing)
-	_, m.viewerCopy = m.viewerRequestContent()
+	m.viewerCopy = m.viewerRequestContent()
 	m.mode = viewerMode
 	m.viewerFindOpen = false
 	m.viewerFind.SetValue("")
@@ -96,10 +96,13 @@ func (m Model) handleViewerKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		if msg.Type == tea.KeyCtrlX {
 			text := copySelectionText(m.viewerFind.Value(), m.viewerFindSelection)
-			newValue, newCursorPos := cutSelection(m.viewerFind.Value(), m.viewerFindSelection, m.viewerFind.Position())
+			newValue, newCursorPos := cutSelection(
+				m.viewerFind.Value(), m.viewerFindSelection, m.viewerFind.Position(),
+			)
 			m.viewerFind.SetValue(newValue)
 			m.viewerFind.SetCursor(newCursorPos)
 			m.viewerFindSelection.Clear(newCursorPos)
+			m.viewerFindFirstMatch()
 			if text != "" {
 				return m, copyToClipboardCmd(text)
 			}
@@ -233,15 +236,15 @@ func (m *Model) moveViewerMatch(direction int) {
 	m.viewerText.offset = m.viewerMatches[m.viewerLastMatch]
 }
 
-func (m Model) viewerRequestContent() (string, string) {
+// viewerRequestContent returns the text copied from the request viewer.
+func (m Model) viewerRequestContent() string {
 	if m.activeRequest == nil {
-		return "", ""
+		return ""
 	}
-	display := m.requestBodyPreviewContent()
 	if m.activeRequest.Body != "" {
-		return display, stripANSI(m.activeRequest.Body)
+		return stripANSI(m.activeRequest.Body)
 	}
-	return display, stripANSI(display)
+	return stripANSI(m.requestBodyPreviewContent())
 }
 
 func (m Model) viewerResponseContent() (string, string) {

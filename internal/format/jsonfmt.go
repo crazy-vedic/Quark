@@ -57,7 +57,7 @@ func formatTokens(decoder *json.Decoder, buf *bytes.Buffer, indent string, depth
 	case json.Delim:
 		switch t {
 		case '{':
-			buf.WriteString("{\n")
+			buf.WriteString("{")
 			depth++
 			first := true
 			for decoder.More() {
@@ -73,6 +73,8 @@ func formatTokens(decoder *json.Decoder, buf *bytes.Buffer, indent string, depth
 
 				if !first {
 					buf.WriteString(",\n")
+				} else {
+					buf.WriteString("\n")
 				}
 				first = false
 
@@ -92,20 +94,22 @@ func formatTokens(decoder *json.Decoder, buf *bytes.Buffer, indent string, depth
 			if err != nil {
 				return err
 			}
+			depth--
 			if !first {
 				buf.WriteString("\n")
+				buf.WriteString(strings.Repeat(indent, depth))
 			}
-			depth--
-			buf.WriteString(strings.Repeat(indent, depth))
 			buf.WriteString("}")
 
 		case '[':
-			buf.WriteString("[\n")
+			buf.WriteString("[")
 			depth++
 			first := true
 			for decoder.More() {
 				if !first {
 					buf.WriteString(",\n")
+				} else {
+					buf.WriteString("\n")
 				}
 				first = false
 				buf.WriteString(strings.Repeat(indent, depth))
@@ -119,25 +123,17 @@ func formatTokens(decoder *json.Decoder, buf *bytes.Buffer, indent string, depth
 			if err != nil {
 				return err
 			}
+			depth--
 			if !first {
 				buf.WriteString("\n")
+				buf.WriteString(strings.Repeat(indent, depth))
 			}
-			depth--
-			buf.WriteString(strings.Repeat(indent, depth))
 			buf.WriteString("]")
 		}
 
 	case json.Number:
 		// Preserve the original number representation
 		buf.WriteString(t.String())
-
-	case float64:
-		// Format number as JSON would
-		if t == float64(int64(t)) {
-			fmt.Fprintf(buf, "%.0f", t)
-		} else {
-			fmt.Fprintf(buf, "%g", t)
-		}
 
 	case string:
 		writeJSONString(buf, t)

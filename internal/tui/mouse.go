@@ -106,7 +106,10 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	if !ok {
 		return m, nil
 	}
-	textClick := false
+	// The URL line handles its own double-click word selection, so keep the
+	// click sequence intact instead of resetting it here.
+	textClick := pane == requestPane &&
+		m.requestPaneChromeRects(layout).urlLine.contains(msg.X, msg.Y)
 	if pane == requestPane && m.activeField == noneField {
 		r := m.requestBodyPreviewRect(layout)
 		if r.contains(msg.X, msg.Y) {

@@ -552,20 +552,13 @@ func TestBodyFieldShiftHomeToEnd(t *testing.T) {
 		WithActiveField(tui.BodyField).
 		WithBodyValue("single line body")
 
-	// Shift+End selects to end of line
-	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyShiftEnd})
+	// The caret starts at the end of the line, so Shift+Home selects to the start.
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyShiftHome})
 	sel := m.BodySelection()
 	start, end := sel.Range()
 	assert.True(t, sel.Active(), "Selection should be active")
-	assert.Greater(t, end, start, "Selection range should be valid")
-
-	// Shift+Home moves selection to start of line
-	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyShiftHome})
-	sel = m.BodySelection()
-	start, end = sel.Range()
-	// Shift+Home should collapse the selection to point at start
 	assert.Equal(t, 0, start, "Selection start should be at 0")
-	assert.Equal(t, 0, end, "Selection end should be at 0")
+	assert.Equal(t, len("single line body"), end, "Selection should end at the caret")
 }
 
 // TestImportFieldKeyboardSelection verifies keyboard selection in import textarea
