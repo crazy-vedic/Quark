@@ -2,6 +2,8 @@ package textedit
 
 import (
 	"strings"
+	"sync"
+	"sync/atomic"
 
 	"github.com/charmbracelet/bubbles/textarea"
 )
@@ -9,11 +11,58 @@ import (
 // visualRow is one wrapped row of the text as [start, end) rune offsets.
 type visualRow struct{ start, end int }
 
-// visualRows lists every wrapped row of the textarea's value. It walks a
-// scratch textarea configured like ta, so the real widget's viewport and
-// cursor are never touched.
+// rowLayoutBuilds counts full layout walks; tests use it to check the cache.
+var rowLayoutBuilds atomic.Int64
+
+// rowLayoutKey is everything the wrapped layout depends on.
+type rowLayoutKey struct {
+	text       string
+	width      int
+	prompt     string
+	lineNumber bool
+}
+
+// rowCache holds the layout of the last text laid out. Each frame calls
+// visualRows again, so one entry is enough to skip the walk while the body
+// is unchanged.
+var rowCache struct {
+	sync.Mutex
+	key  rowLayoutKey
+	rows []visualRow
+	ok   bool
+}
+
+// resetRowLayoutCache drops any cached layout; tests use it for a clean count.
+func resetRowLayoutCache() {
+	rowCache.Lock()
+	defer rowCache.Unlock()
+	rowCache.ok = false
+	rowCache.rows = nil
+}
+
+// visualRows lists every wrapped row of the textarea's value, reusing the last
+// layout when the text, width and frame are unchanged.
 func visualRows(ta *textarea.Model) []visualRow {
-	text := ta.Value()
+	key := rowLayoutKey{
+		text:       ta.Value(),
+		width:      ta.Width(),
+		prompt:     ta.Prompt,
+		lineNumber: ta.ShowLineNumbers,
+	}
+	rowCache.Lock()
+	defer rowCache.Unlock()
+	if rowCache.ok && rowCache.key == key {
+		return rowCache.rows
+	}
+	rows := buildVisualRows(ta, key.text)
+	rowCache.key, rowCache.rows, rowCache.ok = key, rows, true
+	return rows
+}
+
+// buildVisualRows walks a scratch textarea configured like ta, so the real
+// widget's viewport and cursor are never touched.
+func buildVisualRows(ta *textarea.Model, text string) []visualRow {
+	rowLayoutBuilds.Add(1)
 	runes := []rune(text)
 
 	probe := textarea.New()
