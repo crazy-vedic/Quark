@@ -82,3 +82,26 @@ func TestDefaultWordSelectBindings(t *testing.T) {
 	assert.Equal(t, "ctrl+shift+left", defs.SelectWordLeft)
 	assert.Equal(t, "ctrl+shift+right", defs.SelectWordRight)
 }
+
+func TestListEntries_IncludesTextSelectionActions(t *testing.T) {
+	entries := ListEntries(DefaultKeybindings())
+	want := map[string]string{
+		"select_char_left": "shift+left", "select_char_right": "shift+right",
+		"select_word_left": "ctrl+shift+left", "select_word_right": "ctrl+shift+right",
+		"select_line_start": "shift+home", "select_line_end": "shift+end",
+		"select_all": "ctrl+a", "copy": "ctrl+c", "cut": "ctrl+x",
+	}
+	for action, key := range want {
+		var found *Entry
+		for i := range entries {
+			if entries[i].Action == action {
+				found = &entries[i]
+				break
+			}
+		}
+		if assert.NotNil(t, found, "%s should be listed", action) {
+			assert.Equal(t, key, found.Key, action)
+			assert.Equal(t, "Text Selection", found.Group, action)
+		}
+	}
+}
