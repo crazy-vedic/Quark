@@ -182,22 +182,26 @@ jobs:
         run: |
           set -euo pipefail
           VERSION="${TAG#v}"
-          # The registry makes new versions visible gradually and out of order:
-          # the main package can resolve minutes before a platform package.
-          # npm silently skips an optional dependency it cannot resolve, which
-          # yields a main package with no binary. So wait until the main
-          # package AND this runner's platform package are both visible, with a
-          # fresh cache and forced revalidation on each check.
+          # The registry makes new versions visible gradually and out of order
+          # (observed: ~10 min for one platform package, and its packument
+          # listed the version minutes before the tarball stopped returning
+          # 404). npm silently skips an optional dependency it cannot fetch,
+          # which yields a main package with no binary. So wait until the
+          # main package AND this runner's platform package are both listed
+          # AND their tarballs are downloadable before installing.
           PLATFORM=$(node -p "process.platform + '-' + process.arch")
-          ATTEMPTS=40
+          ATTEMPTS=60
+          available() {
+            local pkg="$1" url
+            url=$(npm view --prefer-online --cache "$(mktemp -d)" "${pkg}@${VERSION}" dist.tarball 2>/dev/null) || return 1
+            [ -n "$url" ] && curl -fsSL -o /dev/null --range 0-0 "$url"
+          }
           for attempt in $(seq 1 "$ATTEMPTS"); do
-            CACHE="$(mktemp -d)"
-            if npm view --prefer-online --cache "$CACHE" "@quark-client/quark@${VERSION}" version >/dev/null 2>&1 \
-              && npm view --prefer-online --cache "$CACHE" "@quark-client/quark-${PLATFORM}@${VERSION}" version >/dev/null 2>&1; then
+            if available "@quark-client/quark" && available "@quark-client/quark-${PLATFORM}"; then
               break
             fi
             if [ "$attempt" -eq "$ATTEMPTS" ]; then
-              echo "::error::@quark-client/quark@${VERSION} and/or quark-${PLATFORM} not visible on npm after $ATTEMPTS attempts"
+              echo "::error::@quark-client/quark@${VERSION} and/or quark-${PLATFORM} not downloadable from npm after $ATTEMPTS attempts"
               exit 1
             fi
             echo "Waiting for registry (attempt $attempt/$ATTEMPTS)..."
