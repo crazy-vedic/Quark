@@ -86,6 +86,36 @@ func (m Model) openViewerFind() (Model, tea.Cmd) {
 
 func (m Model) handleViewerKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.viewerFindOpen {
+		// Handle copy/cut for viewer find
+		if msg.Type == tea.KeyCtrlC {
+			text := copySelectionText(m.viewerFind.Value(), m.viewerFindSelection)
+			if text != "" {
+				return m, copyToClipboardCmd(text)
+			}
+			return m, nil
+		}
+		if msg.Type == tea.KeyCtrlX {
+			text := copySelectionText(m.viewerFind.Value(), m.viewerFindSelection)
+			newValue, newCursorPos := cutSelection(m.viewerFind.Value(), m.viewerFindSelection, m.viewerFind.Position())
+			m.viewerFind.SetValue(newValue)
+			m.viewerFind.SetCursor(newCursorPos)
+			m.viewerFindSelection.Clear(newCursorPos)
+			if text != "" {
+				return m, copyToClipboardCmd(text)
+			}
+			return m, nil
+		}
+
+		// Handle selection keys
+		handled, shouldUpdateComponent := handleSelectionKeyForInput(
+			msg, &m.viewerFindSelection, &m.viewerFind, m.viewerFind.Position())
+		if handled && !shouldUpdateComponent {
+			_, selEnd := m.viewerFindSelection.Range()
+			m.viewerFind.SetCursor(selEnd)
+			m.viewerFindFirstMatch()
+			return m, nil
+		}
+
 		switch msg.Type {
 		case tea.KeyEsc, tea.KeyTab, tea.KeyShiftTab:
 			m.viewerFindOpen = false
@@ -101,6 +131,10 @@ func (m Model) handleViewerKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		var cmd tea.Cmd
 		m.viewerFind, cmd = m.viewerFind.Update(msg)
+		// Clear selection after regular key handling if not a selection key
+		if !handled || shouldUpdateComponent {
+			m.viewerFindSelection.Clear(m.viewerFind.Position())
+		}
 		m.viewerFindFirstMatch()
 		return m, cmd
 	}

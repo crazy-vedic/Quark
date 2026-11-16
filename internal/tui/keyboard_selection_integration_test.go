@@ -289,7 +289,9 @@ func TestCtrlXWithoutSelection(t *testing.T) {
 		WithActiveField(tui.URLField).
 		WithURLValue("https://example.com")
 
-	// Don't select - just have cursor in the field
+	// Record initial cursor position (defaults to 0 at start of field)
+	initialCursor := m.URLCursorPosition()
+
 	// Press Ctrl+X without selection
 	m, cmd := callUpdateWithCmd(t, m, tea.KeyMsg{Type: tea.KeyCtrlX})
 
@@ -300,6 +302,12 @@ func TestCtrlXWithoutSelection(t *testing.T) {
 	assert.Equal(
 		t, "https://example.com", m.URLValue(),
 		"URL should be unchanged without selection",
+	)
+
+	// Cursor should not move (should still be at start of field)
+	assert.Equal(
+		t, initialCursor, m.URLCursorPosition(),
+		"Cursor position should not change with Ctrl+X when no selection active",
 	)
 }
 

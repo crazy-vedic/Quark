@@ -187,10 +187,10 @@ func copySelectionText(value string, sel textSelection) string {
 }
 
 // cutSelection removes selected text and returns the new value and cursor position.
-// Returns original value and cursor if no selection is active.
-func cutSelection(value string, sel textSelection) (string, int) {
+// Returns original value and cursor position if no selection is active.
+func cutSelection(value string, sel textSelection, currentCursorPos int) (string, int) {
 	if !sel.Active() {
-		return value, 0
+		return value, currentCursorPos
 	}
 	start, end := sel.Range()
 	newValue, newCursorPos := removeSelectedRange(value, start, end)
