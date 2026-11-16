@@ -228,12 +228,15 @@ func TestAreaSetCursorLargeBody(t *testing.T) {
 	value := strings.Join(lines, "\n")
 	ta := newArea(40, 10, value)
 	b := Area(ta)
+	start := time.Now()
 	// Offset of line 9000, column 2: 9000 lines of "line\n" (5 runes each).
 	target := 9000*5 + 2
 	b.SetCursor(target)
 	assert.Equal(t, target, b.Cursor())
 	b.SetCursor(12) // line 2, col 2: walk back up
 	assert.Equal(t, 12, b.Cursor())
+	assert.Less(t, time.Since(start), 5*time.Second,
+		"cursor moves must not walk the whole body per call")
 }
 
 // A 10,000-line body must move the cursor to either end without walking the
