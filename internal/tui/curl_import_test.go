@@ -92,6 +92,24 @@ func TestURLFieldNeverAutoImportsCurl(t *testing.T) {
 	require.Contains(t, m.statusErr, "Select a request first")
 }
 
+func TestIsCurlCommandRequiresCurlWord(t *testing.T) {
+	cases := []struct {
+		in   string
+		want bool
+	}{
+		{"curl https://x", true},
+		{"curl\t-X POST https://x", true},
+		{"  curl https://x", true},
+		{"curl", true},
+		{"curl.example.com", false},
+		{"curlish", false},
+		{"https://api.example.com", false},
+	}
+	for _, tc := range cases {
+		require.Equal(t, tc.want, isCurlCommand(tc.in), "isCurlCommand(%q)", tc.in)
+	}
+}
+
 func TestCompleteClipboardValueParsesExactIAMCommand(t *testing.T) {
 	m := New(Deps{Importer: curl.NewImporter()}).openCurlImport()
 	var ok bool
