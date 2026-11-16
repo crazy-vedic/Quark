@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# Reject newly added *_test.go files whose matching <name>.go is missing
+# in the same directory (e.g. model_coverage_test.go without model.go).
+# Exempt: shared helpers, integration suites, and anything under tests/.
+
+is_exempt() {
+    case "$1" in
+        tests/*|*/tests/*) return 0 ;;
+        helpers_test.go|*/helpers_test.go) return 0 ;;
+        integration_test.go|*/integration_test.go) return 0 ;;
+        *_integration_test.go) return 0 ;;
+    esac
+    return 1
+}
+
+status=0
+while IFS= read -r -d '' file; do
+    case "$file" in
+        *_test.go) ;;
+        *) continue ;;
+    esac
+    is_exempt "$file" && continue
+    base="${file%_test.go}.go"
+    if [ ! -f "$base" ] && ! git cat-file -e ":$base" 2>/dev/null; then
+        echo "pre-commit: refusing to commit new test file '$file': '$base' does not exist." >&2
+        status=1
+    fi
+done < <(git diff --cached --name-only --diff-filter=A -z)
+
+if [ "$status" -ne 0 ]; then
+    echo "pre-commit: rename the test file to match an existing source file, or add the source file." >&2
+fi
+exit $status

@@ -240,3 +240,8 @@ clean: ## Remove build artifacts and cache
 .PHONY: install
 install: build ## Install binary to GOPATH/bin
 	go install $(CMD_DIR)
+
+.PHONY: hooks
+hooks: ## Enable the tracked git hooks in .githooks
+	git config core.hooksPath .githooks
+	@echo "Git hooks enabled from .githooks"
