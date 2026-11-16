@@ -74,3 +74,26 @@ func TestRecordBinding_Unbind(t *testing.T) {
 	_, err = RecordBinding(newBinds, "sidebar_down", "j")
 	assert.NoError(t, err) // j is already sidebar_down, so no conflict.
 }
+
+func TestListEntries_IncludesTextSelectionActions(t *testing.T) {
+	entries := ListEntries(DefaultKeybindings())
+	want := map[string]string{
+		"select_char_left": "shift+left", "select_char_right": "shift+right",
+		"select_word_left": "alt+shift+left", "select_word_right": "alt+shift+right",
+		"select_line_start": "shift+home", "select_line_end": "shift+end",
+		"select_all": "ctrl+a", "copy": "ctrl+c", "cut": "ctrl+x",
+	}
+	for action, key := range want {
+		var found *Entry
+		for i := range entries {
+			if entries[i].Action == action {
+				found = &entries[i]
+				break
+			}
+		}
+		if assert.NotNil(t, found, "%s should be listed", action) {
+			assert.Equal(t, key, found.Key, action)
+			assert.Equal(t, "Text Selection", found.Group, action)
+		}
+	}
+}
