@@ -8,10 +8,11 @@ import (
 
 // Paste routing. Ctrl+V reads the clipboard asynchronously, so the text arrives
 // after the keypress. The text must land in the input that had focus when Ctrl+V
-// was pressed, and only for the most recent request. Each request takes a
-// ticket and records the input target. The result is applied only if both still
-// match, and it is re-dispatched as a bracketed paste key through the normal
-// routing. It never reaches the global shortcut path.
+// was pressed. Each request takes a ticket and records the input target. The
+// result is applied only if the input target is still the same, and it is
+// re-dispatched as a bracketed paste key through the normal routing. Results
+// from repeated presses in the same input apply in request order. It never
+// reaches the global shortcut path.
 
 // pasteTarget identifies the input that receives keys. It is computed from the
 // state the widgets already hold, so every focus move changes it: header key
@@ -156,8 +157,9 @@ func tagPasteMsg(msg tea.Msg, ticket uint64, target pasteTarget) tea.Msg {
 	return msg
 }
 
-// handlePasteResult applies a clipboard read. A result is dropped when a newer
-// paste request exists, or when the input that receives keys has changed. Read
+// handlePasteResult applies a clipboard read. Results from several Ctrl+V
+// presses in the same input are applied in the order they were requested. A
+// result is dropped only when the input that receives keys has changed. Read
 // errors are reported.
 func (m Model) handlePasteResult(msg textedit.PasteResultMsg) (tea.Model, tea.Cmd) {
 	if msg.Err != nil {
@@ -167,8 +169,8 @@ func (m Model) handlePasteResult(msg textedit.PasteResultMsg) (tea.Model, tea.Cm
 		}
 		return m.status("error", "Clipboard read failed: "+msg.Err.Error()), nil
 	}
-	if msg.Ticket == 0 || msg.Ticket != m.pasteTicket {
-		return m.status("warn", "Paste discarded: superseded by a newer paste"), nil
+	if msg.Ticket == 0 {
+		return m, nil
 	}
 	if target, ok := msg.Target.(pasteTarget); !ok || target != m.pasteTargetOf() {
 		return m.status("warn", "Paste discarded: focus changed"), nil
