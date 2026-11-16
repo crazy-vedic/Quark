@@ -60,3 +60,17 @@ func TestSearchSelectAllThenPasteReplaces(t *testing.T) {
 	m = callPaste(t, m, tea.KeyMsg{Type: tea.KeyCtrlV})
 	assert.Equal(t, "new", m.SearchInputValue())
 }
+
+func TestSearchDownWithSelectionGoesToResolver(t *testing.T) {
+	m := newSearchWithText("hello").WithSearchSelection(1, 3)
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyDown})
+	assert.True(t, m.SearchSelection().Active(), "Down is routed to the resolver, not the editor, so the selection is kept")
+}
+
+func TestSearchArrowWithoutTextChangeDoesNotRerunSearch(t *testing.T) {
+	m := newSearchWithText("hello")
+	require.Nil(t, m.SearchCancel())
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyLeft})
+	assert.Nil(t, m.SearchCancel(), "moving the cursor does not change the query, so no search is dispatched")
+	assert.Equal(t, "hello", m.SearchInputValue())
+}

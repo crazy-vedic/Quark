@@ -104,7 +104,7 @@ func TestDeps_AcceptsFakeImporter(t *testing.T) {
 // second search keystroke cancels the previous search's context. This requires
 // m.searchCancel to be set and exposed via the TUI test-support API.
 func TestModel_SearchCancel_CalledBeforeNewSearch(t *testing.T) {
-	m := newModel(defaultConfig()).WithMode(tui.SearchMode)
+	m := newModel(defaultConfig()).WithMode(tui.SearchMode).WithSearchEdit()
 
 	// Simulate a pre-existing search cancel func.
 	cancelled := false
@@ -123,7 +123,7 @@ func TestModel_SearchCancel_CalledBeforeNewSearch(t *testing.T) {
 // TestModel_SearchCancel_SetAfterDispatch verifies that after dispatching a
 // search, m.searchCancel is non-nil (a cancel func was stored).
 func TestModel_SearchCancel_SetAfterDispatch(t *testing.T) {
-	m := newModel(defaultConfig()).WithMode(tui.SearchMode)
+	m := newModel(defaultConfig()).WithMode(tui.SearchMode).WithSearchEdit()
 
 	updated := callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")})
 
