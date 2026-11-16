@@ -286,3 +286,15 @@ func TestAreaSetCursorOnTenThousandLineBody(t *testing.T) {
 	assert.Equal(t, total/2, b.Cursor())
 	assert.Less(t, time.Since(start), 5*time.Second)
 }
+
+// The textarea expands each tab to spaces, so the pasted text is longer than
+// the raw paste. The cursor must sit after the expanded text, not inside it.
+func TestPasteTabsPlacesCursorAfterExpandedText(t *testing.T) {
+	ta := newArea(40, 10, "ad")
+	b := Area(ta)
+	b.SetCursor(1)
+	h := newHarness("", 0)
+	h.ed.InsertText(&h.sel, b, "b\tc")
+	assert.Equal(t, "ab    cd", ta.Value())
+	assert.Equal(t, len([]rune("ab    c")), b.Cursor())
+}
