@@ -1052,8 +1052,18 @@ func (m Model) triggerCurlImport(raw string) (Model, tea.Cmd) {
 func (m Model) handleSearchKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	ed := m.newTextEditor()
 	b := textedit.Input(&m.searchInput)
-	if cmd, handled := ed.HandleKey(&m.searchSelection, b, msg); handled {
-		return m.searchQueryChanged(cmd)
+	// Up/Down belong to the result list, so the editor must not collapse a
+	// selection on them. Only a text change re-runs the search.
+	action, resolved := m.resolver.Resolve(1, 0, msg)
+	vertical := resolved && (action == keybindings.ActionNavigateUp || action == keybindings.ActionNavigateDown)
+	if !vertical {
+		before := m.searchInput.Value()
+		if cmd, handled := ed.HandleKey(&m.searchSelection, b, msg); handled {
+			if m.searchInput.Value() == before {
+				return m, cmd
+			}
+			return m.searchQueryChanged(cmd)
+		}
 	}
 	if m.textKeys().Copy.Match(msg.String()) {
 		// No selection: nothing to copy. Ctrl+C never quits the app.
@@ -1061,7 +1071,7 @@ func (m Model) handleSearchKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 
 	// Resolver lookup for overlay mode.
-	if action, ok := m.resolver.Resolve(1, 0, msg); ok {
+	if resolved {
 		switch action {
 		case "select":
 			if m.isCommandPalette() {
@@ -1123,6 +1133,10 @@ func (m Model) handleSearchKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.searchInput.Value(),
 			m.searchInput.Position(),
 		)
+	}
+	if m.searchInput.Value() == beforeValue {
+		// Cursor-only key: the query is unchanged, so keep the current results.
+		return m, inputCmd
 	}
 	return m.searchQueryChanged(inputCmd)
 }
