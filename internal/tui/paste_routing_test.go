@@ -110,3 +110,50 @@ func TestCtrlVInNormalModeIsNoOp(t *testing.T) {
 	assert.Nil(t, cmd)
 	assert.Equal(t, "", m2.URLValue())
 }
+
+// Sub-field focus: a paste requested in one input of an editor must not land in
+// a sibling input after Tab moves focus within that same editor.
+
+func TestPasteDroppedWhenHeaderFocusMovesToValue(t *testing.T) {
+	restore := tui.StubClipboardForTest(func() (string, error) { return "pasted", nil })
+	t.Cleanup(restore)
+
+	m := pasteFixture("").WithHeaderPairEdit("Zq-Probe", "v1")
+	m, cmd := callUpdateWithCmd(t, m, tea.KeyMsg{Type: tea.KeyCtrlV})
+	require.NotNil(t, cmd)
+	m, _ = callUpdateWithCmd(t, m, tea.KeyMsg{Type: tea.KeyTab})
+	require.Equal(t, "Zq-Probe", m.HeaderKeyValue(), "precondition: paste not applied yet")
+
+	m = feedPastes(t, m, cmd)
+	assert.Equal(t, "Zq-Probe", m.HeaderKeyValue())
+	assert.Equal(t, "v1", m.HeaderValueValue(), "value must not receive the key's paste")
+}
+
+func TestPasteInsertedWhenHeaderFocusUnchanged(t *testing.T) {
+	restore := tui.StubClipboardForTest(func() (string, error) { return "X", nil })
+	t.Cleanup(restore)
+
+	m := pasteFixture("").WithHeaderPairEdit("", "")
+	m = callPaste(t, m, tea.KeyMsg{Type: tea.KeyCtrlV})
+	assert.Equal(t, "X", m.HeaderKeyValue())
+}
+
+func TestPasteDroppedWhenAuthFieldChangesBeforeRead(t *testing.T) {
+	restore := tui.StubClipboardForTest(func() (string, error) { return "leaked", nil })
+	t.Cleanup(restore)
+
+	m := pasteFixture("").WithAuthFieldEdit("bearer", 1, "tok")
+	m, cmd := callUpdateWithCmd(t, m, tea.KeyMsg{Type: tea.KeyCtrlV})
+	require.NotNil(t, cmd)
+	// Enter ends the token edit, Down moves to the next row, Enter edits it.
+	m, _ = callUpdateWithCmd(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	m, _ = callUpdateWithCmd(t, m, tea.KeyMsg{Type: tea.KeyDown})
+	m, _ = callUpdateWithCmd(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	require.NotEqual(t, 1, m.AuthCursor(), "precondition: focus moved to another auth field")
+
+	m = feedPastes(t, m, cmd)
+	assert.NotContains(t, m.AuthTokenValue(), "leaked",
+		"token must not receive another field's paste")
+	assert.NotContains(t, m.AuthPasswordValue(), "leaked",
+		"the newly focused field must not receive it")
+}

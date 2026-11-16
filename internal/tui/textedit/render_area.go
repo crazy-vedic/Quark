@@ -28,7 +28,7 @@ func RenderArea(
 	if len(rows) == 0 {
 		return view
 	}
-	cur := AreaBackend{ta}.Cursor()
+	cur := AreaBackend{m: ta}.Cursor()
 	curRow := rowIndexAt(rows, cur)
 	lines := strings.Split(view, "\n")
 

@@ -228,15 +228,42 @@ func TestAreaSetCursorLargeBody(t *testing.T) {
 	value := strings.Join(lines, "\n")
 	ta := newArea(40, 10, value)
 	b := Area(ta)
-	start := time.Now()
 	// Offset of line 9000, column 2: 9000 lines of "line\n" (5 runes each).
 	target := 9000*5 + 2
 	b.SetCursor(target)
 	assert.Equal(t, target, b.Cursor())
 	b.SetCursor(12) // line 2, col 2: walk back up
 	assert.Equal(t, 12, b.Cursor())
-	assert.Less(t, time.Since(start), 5*time.Second,
-		"cursor moves must not walk the whole body per call")
+}
+
+// Moving the cursor across a 10,000-line body must take one row move per line
+// crossed. A quadratic walk would take far more moves.
+func TestAreaSetCursorCountsRowMoves(t *testing.T) {
+	lines := make([]string, 10000)
+	for i := range lines {
+		lines[i] = "line"
+	}
+	ta := newArea(40, 10, strings.Join(lines, "\n"))
+	moves := 0
+	b := AreaBackend{m: ta, step: func(delta int) {
+		moves++
+		if delta < 0 {
+			ta.CursorUp()
+		} else {
+			ta.CursorDown()
+		}
+	}}
+	b.SetCursor(9000*5 + 2)
+	assert.Equal(t, 9000*5+2, b.Cursor())
+	// At most one move per line crossed. A walk per call would take far more.
+	assert.LessOrEqual(t, moves, 9000, "moves must not exceed the lines crossed")
+	assert.Positive(t, moves)
+
+	moves = 0
+	b.SetCursor(12)
+	assert.Equal(t, 12, b.Cursor())
+	assert.LessOrEqual(t, moves, 9000, "moves back must not exceed the lines crossed")
+	assert.Positive(t, moves)
 }
 
 // A 10,000-line body must move the cursor to either end without walking the

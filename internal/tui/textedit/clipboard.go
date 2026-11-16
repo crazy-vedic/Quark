@@ -17,12 +17,12 @@ type Clipboard interface {
 // message: the application decides where the text goes, based on the focus
 // that was active when the paste was requested. Ticket and Target are set by
 // the application when it receives the paste request; the editor leaves them
-// zero.
+// zero. Target is opaque to the editor and compared by the application.
 type PasteResultMsg struct {
 	Text   string
 	Err    error
 	Ticket uint64
-	Target string
+	Target any
 }
 
 // PasteCmd runs read off the UI goroutine and delivers a PasteResultMsg. An

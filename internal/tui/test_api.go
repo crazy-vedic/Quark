@@ -590,18 +590,21 @@ func (m Model) ResponseHistoryRowClickPos(rowIndex int) (x, y int, ok bool) {
 	x = popupLeft + 3
 	return x, y, true
 }
-func (m Model) SearchInputValue() string             { return m.searchInput.Value() }
-func (m Model) ScheduleTimerSeq() int                { return m.scheduleTimerSeq }
-func (m Model) ScheduleInputValue() string           { return m.scheduleInput.Value() }
-func (m Model) ImportPreview() interface{}           { return m.importPreview }
-func (m Model) TmuxDetected() bool                   { return m.tmuxDetected }
-func (m Model) TmuxWarning() string                  { return m.tmuxWarning }
-func (m Model) ActiveField() requestField            { return m.activeField }
-func (m Model) ActiveRequest() *domain.Request       { return m.activeRequest }
-func (m Model) BodyValue() string                    { return m.bodyTextarea.Value() }
-func (m Model) HeaderPairs() []headerPair            { return m.headerPairs }
-func (m Model) HeaderEditing() bool                  { return m.headerEditing }
-func (m Model) AuthEditor() authEditor               { return m.authEditor }
+func (m Model) SearchInputValue() string       { return m.searchInput.Value() }
+func (m Model) ScheduleTimerSeq() int          { return m.scheduleTimerSeq }
+func (m Model) ScheduleInputValue() string     { return m.scheduleInput.Value() }
+func (m Model) ImportPreview() interface{}     { return m.importPreview }
+func (m Model) TmuxDetected() bool             { return m.tmuxDetected }
+func (m Model) TmuxWarning() string            { return m.tmuxWarning }
+func (m Model) ActiveField() requestField      { return m.activeField }
+func (m Model) ActiveRequest() *domain.Request { return m.activeRequest }
+func (m Model) BodyValue() string              { return m.bodyTextarea.Value() }
+func (m Model) HeaderPairs() []headerPair      { return m.headerPairs }
+func (m Model) HeaderEditing() bool            { return m.headerEditing }
+func (m Model) AuthEditor() authEditor         { return m.authEditor }
+
+// AuthCursor returns the index of the auth field that has focus.
+func (m Model) AuthCursor() int                      { return m.authEditor.cursor }
 func (m Model) Searched() bool                       { return m.searched }
 func (m Model) PromptMode() promptType               { return m.promptMode }
 func (m Model) HelpScrollOffset() int                { return m.helpScrollOffset }

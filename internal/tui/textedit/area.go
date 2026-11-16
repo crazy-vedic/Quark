@@ -7,12 +7,18 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-type AreaBackend struct{ m *textarea.Model }
+// AreaBackend adapts a textarea. step, when set, is called for every row move
+// in place of the textarea's own CursorUp and CursorDown. Tests use it to count
+// moves; production code leaves it nil.
+type AreaBackend struct {
+	m    *textarea.Model
+	step func(delta int)
+}
 
 // Area adapts a bubbles textarea. Offsets are absolute rune offsets into the
 // full text, not row offsets: the textarea reports positions per wrapped row,
 // so Cursor and SetCursor translate between the two.
-func Area(m *textarea.Model) AreaBackend { return AreaBackend{m} }
+func Area(m *textarea.Model) AreaBackend { return AreaBackend{m: m} }
 
 func (b AreaBackend) Text() string     { return b.m.Value() }
 func (b AreaBackend) SetText(s string) { b.m.SetValue(s) }
@@ -44,12 +50,25 @@ func (b AreaBackend) SetCursor(pos int) {
 	line, col := lineColAt(runes, pos)
 	limit := len(runes) + strings.Count(text, "\n") + 8
 	for i := 0; i < limit && b.m.Line() > line; i++ {
-		b.m.CursorUp()
+		b.move(-1)
 	}
 	for i := 0; i < limit && b.m.Line() < line; i++ {
-		b.m.CursorDown()
+		b.move(1)
 	}
 	b.m.SetCursor(col)
+}
+
+// move moves the textarea cursor one row up (delta < 0) or down.
+func (b AreaBackend) move(delta int) {
+	if b.step != nil {
+		b.step(delta)
+		return
+	}
+	if delta < 0 {
+		b.m.CursorUp()
+	} else {
+		b.m.CursorDown()
+	}
 }
 
 // MoveVertical moves one wrapped row and returns the new absolute cursor.

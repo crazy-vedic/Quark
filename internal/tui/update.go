@@ -63,7 +63,7 @@ func debugHeaderKeys(headers http.Header) string {
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if km, ok := msg.(tea.KeyMsg); ok && !km.Paste && m.textKeys().Paste.Match(km.String()) {
 		m.pasteTicket++
-		ticket, target := m.pasteTicket, m.pasteTarget()
+		ticket, target := m.pasteTicket, m.pasteTargetOf()
 		next, cmd := m.update(msg)
 		return next, tagPasteCmd(cmd, ticket, target)
 	}
