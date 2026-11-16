@@ -171,8 +171,8 @@ func TestMultiLinePasteNotCurlStillInsertsWithoutNewlines(t *testing.T) {
 	})
 	assert.Equal(t, tui.NormalMode, m.Mode(), "non-curl paste does not open the dialog")
 	assert.Equal(t, tui.URLField, m.ActiveField())
-	assert.NotContains(t, m.URLValue(), "\n", "pasted text has no newlines in the field")
-	assert.Equal(t, "https://a.example /b", m.URLValue(), "newline becomes a space, as before")
+	assert.Equal(t, "https://a.example/b", m.URLValue(),
+		"newlines are deleted from the pasted text")
 }
 
 func TestCurlMultiLinePasteKeepsURLFieldText(t *testing.T) {

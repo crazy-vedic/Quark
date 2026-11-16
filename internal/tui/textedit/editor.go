@@ -92,6 +92,13 @@ func (e Editor) HandleKey(sel *Selection, b Backend, msg tea.KeyMsg) (tea.Cmd, b
 		return cmd, true
 	}
 
+	if msg.Paste && msg.Type == tea.KeyRunes {
+		// Bracketed paste is sanitized here, so the widget never turns newlines
+		// into spaces.
+		e.insert(sel, b, sanitize(string(msg.Runes), multiLine(b)))
+		return nil, true
+	}
+
 	if editsText(msg, e.Keys, b) {
 		if sel.Active() {
 			// Typed or pasted text replaces the selection. It is inserted here
