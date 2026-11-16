@@ -399,12 +399,9 @@ func TestShiftClickBodyMultiline(t *testing.T) {
 	layout := m.currentLayout()
 	ll := m.requestPaneLineLayout(layout)
 	left := m.bodyTextareaTextLeft(layout)
-	t.Logf("value=%q line=%d width=%d", m.bodyTextarea.Value(), m.bodyTextarea.Line(), m.bodyTextarea.Width())
-	t.Logf("cursor=%d sel=%+v", textedit.Area(&m.bodyTextarea).Cursor(), m.bodySelection)
 
 	updated, _ := m.Update(shiftPress(left+5, ll.editorContentY+1))
 	m = requireModel(t, updated)
-	t.Logf("after: cursor=%d line=%d sel=%+v", textedit.Area(&m.bodyTextarea).Cursor(), m.bodyTextarea.Line(), m.bodySelection)
 	assert.True(t, m.bodySelection.Active())
 }
 

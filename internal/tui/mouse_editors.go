@@ -306,7 +306,9 @@ func (m Model) handleBodyTextareaClick(msg tea.MouseMsg) Model {
 	}
 	// Map the click through the visible window so scrolling and wrapped rows
 	// are handled; fall back to the unscrolled mapping if the window is unknown.
-	if pos, ok := textedit.AreaOffsetAt(m.bodyTextarea.View(), &m.bodyTextarea, bodyTextareaGutter, relY, relX); ok {
+	view := m.bodyTextarea.View()
+	pos, ok := textedit.AreaOffsetAt(view, &m.bodyTextarea, bodyTextareaGutter, relY, relX)
+	if ok {
 		backend.SetCursor(pos)
 	} else if !m.positionBodyCursorAtDisplayLine(relY, relX) {
 		return m
