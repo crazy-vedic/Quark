@@ -594,3 +594,18 @@ func TestResolver_CertificateBindings(t *testing.T) {
 	_, ok := r.Resolve(9, 0, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
 	assert.False(t, ok, "a customized binding replaces its default key")
 }
+
+func TestValidate_TextSelectionWithinModeConflict(t *testing.T) {
+	binds := DefaultKeybindings()
+	binds.Cut = binds.Copy
+	conflicts := Validate(binds)
+	assert.Contains(t, conflicts, "ctrl+c")
+	assert.ElementsMatch(t, []string{"copy", "cut"}, conflicts["ctrl+c"])
+}
+
+func TestRecordBinding_TextSelectionConflictRejected(t *testing.T) {
+	binds := DefaultKeybindings()
+	_, err := RecordBinding(binds, "select_all", binds.Copy)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "conflict")
+}

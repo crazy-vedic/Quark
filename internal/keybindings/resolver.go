@@ -120,6 +120,41 @@ type Keybindings struct {
 	ImportParse   string `toml:"import_parse"`
 	ImportCancel  string `toml:"import_cancel"`
 	ImportEdit    string `toml:"import_edit"`
+
+	// Text selection (available in text input fields)
+	SelectCharLeft  string `toml:"select_char_left"`
+	SelectCharRight string `toml:"select_char_right"`
+	SelectWordLeft  string `toml:"select_word_left"`
+	SelectWordRight string `toml:"select_word_right"`
+	SelectLineStart string `toml:"select_line_start"`
+	SelectLineEnd   string `toml:"select_line_end"`
+	SelectAll       string `toml:"select_all"`
+	Copy            string `toml:"copy"`
+	Cut             string `toml:"cut"`
+
+	// Text editing (plain movement, delete and paste in text fields)
+	CharLeft       string `toml:"char_left"`
+	CharRight      string `toml:"char_right"`
+	WordLeft       string `toml:"word_left"`
+	WordRight      string `toml:"word_right"`
+	LineStart      string `toml:"line_start"`
+	LineEnd        string `toml:"line_end"`
+	LineUp         string `toml:"line_up"`
+	LineDown       string `toml:"line_down"`
+	SelectLineUp   string `toml:"select_line_up"`
+	SelectLineDown string `toml:"select_line_down"`
+	DeleteWord     string `toml:"delete_word"`
+	Paste          string `toml:"paste"`
+
+	// Find and viewer keys
+	FindOpen    string `toml:"find_open"`
+	FindNext    string `toml:"find_next"`
+	FindPrev    string `toml:"find_prev"`
+	ViewerFind  string `toml:"viewer_find"`
+	ViewerCopy  string `toml:"viewer_copy"`
+	ViewerClose string `toml:"viewer_close"`
+	HistoryNext string `toml:"history_next"`
+	HistoryPrev string `toml:"history_prev"`
 }
 
 // Resolver maps Bubble Tea key strings to action names per mode.
@@ -509,6 +544,22 @@ func Validate(binds Keybindings) map[string][]string {
 			{binds.CertDelete, "cert_delete"}, {binds.CertClose, "cert_close"},
 			{binds.CertNextField, "cert_next_field"}, {binds.CertPrevField, "cert_prev_field"},
 			{binds.CertSave, "cert_save"}},
+		// Text selection: only active inside text fields, so it is checked
+		// within itself but not against the normal-mode keys above.
+		{
+			{binds.SelectCharLeft, "select_char_left"},
+			{binds.SelectCharRight, "select_char_right"},
+			{
+				binds.SelectWordLeft,
+				"select_word_left",
+			},
+			{binds.SelectWordRight, "select_word_right"},
+			{binds.SelectLineStart, "select_line_start"},
+			{binds.SelectLineEnd, "select_line_end"},
+			{binds.SelectAll, "select_all"},
+			{binds.Copy, "copy"},
+			{binds.Cut, "cut"},
+		},
 	}
 
 	conflicts := make(map[string][]string)

@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/crazy-vedic/quark/internal/domain"
+	"github.com/crazy-vedic/quark/internal/tui/textedit"
 )
 
 func newAuthTextInput() textinput.Model {
@@ -282,4 +283,22 @@ func marshalAuthConfig(cfg domain.AuthConfig) string {
 	//nolint:gosec // Request auth configs intentionally serialize password fields.
 	b, _ := json.Marshal(cfg)
 	return string(b)
+}
+
+// activeInput returns the selection and widget for a text row. Other rows
+// return nil.
+func (e *authEditor) activeInput(row authRowID) (*textedit.Selection, *textinput.Model) {
+	switch row {
+	case authRowToken:
+		return &e.tokenSelection, &e.tokenInput
+	case authRowUsername:
+		return &e.usernameSelection, &e.usernameInput
+	case authRowPassword:
+		return &e.passwordSelection, &e.passwordInput
+	case authRowAPIKeyName:
+		return &e.apiKeyNameSelection, &e.apiKeyNameInput
+	case authRowAPIKeyValue:
+		return &e.apiKeyValueSelection, &e.apiKeyValueInput
+	}
+	return nil, nil
 }

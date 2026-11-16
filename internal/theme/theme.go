@@ -27,6 +27,7 @@ type Palette struct {
 	Error        string `toml:"error"`
 	ActiveBorder string `toml:"active_border"`
 	Match        string `toml:"match"`
+	Selection    string `toml:"selection"`
 	GET          string `toml:"get"`
 	POST         string `toml:"post"`
 	PUT          string `toml:"put"`
@@ -44,12 +45,15 @@ type Theme struct {
 var validName = regexp.MustCompile(`^[a-z][a-z0-9_-]*$`)
 var validColor = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
 
-const lightName = "light"
+const (
+	lightName       = "light"
+	transparentName = "transparent"
+)
 
 var dark = Palette{
 	Foreground: "#c0caf5", Background: "#1a1b26", Muted: "#737aa2", Accent: "#7aa2f7",
 	Info: "#7dcfff", Success: "#9ece6a", Warning: "#e0af68",
-	Error: "#f7768e", ActiveBorder: "#ffffff", Match: "#e0af68",
+	Error: "#f7768e", ActiveBorder: "#ffffff", Match: "#e0af68", Selection: "#3d4b9f",
 	GET: "#9ece6a", POST: "#7aa2f7", PUT: "#e0af68", DELETE: "#f7768e",
 	Syntax: "monokai",
 }
@@ -57,13 +61,13 @@ var dark = Palette{
 var light = Palette{
 	Foreground: "#24292f", Background: "#f6f8fa", Muted: "#57606a", Accent: "#0550ae",
 	Info: "#0969da", Success: "#116329", Warning: "#9a6700",
-	Error: "#cf222e", ActiveBorder: "#24292f", Match: "#9a6700",
+	Error: "#cf222e", ActiveBorder: "#24292f", Match: "#9a6700", Selection: "#cce5ff",
 	GET: "#116329", POST: "#0550ae", PUT: "#9a6700", DELETE: "#cf222e",
 	Syntax: "github",
 }
 
 // Builtins lists selection names in a stable order.
-func Builtins() []string { return []string{"auto", "dark", lightName, "transparent"} }
+func Builtins() []string { return []string{"auto", "dark", lightName, transparentName} }
 
 // List returns built-in and valid local theme names. A malformed theme is
 // omitted here; Resolve reports its detailed error when selected.
@@ -125,11 +129,11 @@ func Resolve(configDir, name string, darkBackground bool) (Theme, error) {
 	}
 	base := dark
 	variant := "dark"
-	if (name == "auto" || name == "transparent") && !darkBackground || name == lightName {
+	if (name == "auto" || name == transparentName) && !darkBackground || name == lightName {
 		base, variant = light, lightName
 	}
 	if isBuiltin(name) {
-		if name == "auto" || name == "transparent" {
+		if name == "auto" || name == transparentName {
 			base.Background = ""
 		}
 		return Theme{Name: name, Variant: variant, Palette: base}, nil
@@ -178,6 +182,7 @@ func applyOverrides(dst *Palette, src Palette) error {
 		{"error", &dst.Error, src.Error},
 		{"active_border", &dst.ActiveBorder, src.ActiveBorder},
 		{"match", &dst.Match, src.Match},
+		{"selection", &dst.Selection, src.Selection},
 		{"get", &dst.GET, src.GET},
 		{
 			"post",
@@ -187,7 +192,7 @@ func applyOverrides(dst *Palette, src Palette) error {
 		{"put", &dst.PUT, src.PUT},
 		{"delete", &dst.DELETE, src.DELETE},
 	}
-	if src.Background == "transparent" {
+	if src.Background == transparentName {
 		dst.Background = ""
 	} else if src.Background != "" {
 		if !validColor.MatchString(src.Background) {

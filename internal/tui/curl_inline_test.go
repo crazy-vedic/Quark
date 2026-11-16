@@ -1,0 +1,302 @@
+package tui_test
+
+import (
+	"errors"
+	"testing"
+
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/crazy-vedic/quark/internal/curl"
+	"github.com/crazy-vedic/quark/internal/domain"
+	"github.com/crazy-vedic/quark/internal/tui"
+)
+
+const testCurl = `curl -X POST https://api.example.com/items -H 'Content-Type: application/json' -d '{"a":1}'`
+
+// newModelWithCurl is newModel with the real curl importer wired in.
+func newModelWithCurl() tui.Model {
+	return tui.New(tui.Deps{Config: defaultConfig(), Importer: curl.NewImporter()})
+}
+
+func existingRequest() *domain.Request {
+	return &domain.Request{
+		ID: "r1", Name: "keep me", Method: "GET", URL: "https://old.example", Body: "old body",
+	}
+}
+
+func TestCurlEnterOpensReplaceDialogAndConfirmReplaces(t *testing.T) {
+	req := existingRequest()
+	m := newModelWithCurl().
+		WithFocus(tui.RequestPane).
+		WithActiveRequest(req).
+		WithURLEdit().
+		WithURLValue(testCurl)
+
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	require.Equal(t, tui.ImportMode, m.Mode(), "Enter opens the replace dialog")
+	assert.Equal(t, "https://old.example", req.URL, "nothing changes until confirmed")
+
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	assert.Equal(t, tui.NormalMode, m.Mode())
+	assert.Equal(t, "POST", req.Method)
+	assert.Equal(t, "https://api.example.com/items", req.URL)
+	assert.Equal(t, `{"a":1}`, req.Body)
+	assert.Contains(t, req.Headers, "Content-Type")
+	assert.Equal(t, "keep me", req.Name, "name is not overwritten")
+}
+
+func TestCurlCancelLeavesRequestUnchanged(t *testing.T) {
+	req := existingRequest()
+	// Editing starts with the request's URL in the field, as it does in the app.
+	m := newModelWithCurl().
+		WithFocus(tui.RequestPane).
+		WithActiveRequest(req).
+		WithURLValue(req.URL).
+		WithURLEdit().
+		WithURLValue(testCurl)
+
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyEsc})
+	assert.Equal(t, tui.NormalMode, m.Mode())
+	assert.Equal(t, "https://old.example", req.URL)
+	assert.Equal(t, "GET", req.Method)
+	assert.Equal(t, "https://old.example", m.URLValue(), "URL field is restored")
+}
+
+func TestCurlPastedIntoURLOpensReplaceDialog(t *testing.T) {
+	req := existingRequest()
+	m := newModelWithCurl().
+		WithFocus(tui.RequestPane).
+		WithActiveRequest(req).
+		WithURLEdit().
+		WithURLValue("")
+
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(testCurl), Paste: true})
+	assert.Equal(t, tui.ImportMode, m.Mode(), "pasting a curl command opens the dialog")
+	assert.Equal(t, "https://old.example", req.URL, "paste alone does not replace the request")
+}
+
+func TestCurlPastedAtEndOfExistingURLOpensReplaceDialog(t *testing.T) {
+	req := existingRequest()
+	m := newModelWithCurl().
+		WithFocus(tui.RequestPane).
+		WithActiveRequest(req).
+		WithURLValue(req.URL).
+		WithURLEdit()
+
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(testCurl), Paste: true})
+	assert.Equal(t, tui.ImportMode, m.Mode(), "single-line curl paste opens the dialog")
+	assert.Equal(t, req.URL, m.URLValue(), "URL field is unchanged by the paste")
+}
+
+func TestCurlWithoutRequestShowsMessage(t *testing.T) {
+	m := newModelWithCurl().
+		WithFocus(tui.RequestPane).
+		WithURLEdit().
+		WithURLValue("curl https://example.com")
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	assert.Contains(t, m.StatusErr(), "Select a request first")
+	assert.Equal(t, tui.NormalMode, m.Mode())
+}
+
+func TestCurlParseErrorKeepsTextForEditing(t *testing.T) {
+	req := existingRequest()
+	m := newModelWithCurl().
+		WithFocus(tui.RequestPane).
+		WithActiveRequest(req).
+		WithURLEdit().
+		WithURLValue("curl -d 'unterminated")
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	assert.Equal(t, tui.URLField, m.ActiveField(), "stay in the field to fix the command")
+	assert.Equal(t, "https://old.example", req.URL)
+	assert.Contains(t, m.StatusErr(), "Could not parse curl")
+}
+
+func TestCurlReplaceRejectsClientCertificate(t *testing.T) {
+	req := existingRequest()
+	m := newModelWithCurl().
+		WithFocus(tui.RequestPane).
+		WithActiveRequest(req).
+		WithURLEdit().
+		WithURLValue("curl --cert client.pem https://secure.example")
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	require.Equal(t, tui.ImportMode, m.Mode())
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	assert.Equal(t, tui.ImportMode, m.Mode(), "dialog stays open")
+	assert.Equal(t, "https://old.example", req.URL, "certificate case does not replace")
+}
+
+const multiLineCurl = "curl -X POST https://api.example.com/items \\\n" +
+	"  -H 'Content-Type: application/json' \\\n" +
+	"  -d '{\n  \"a\": 1\n}'"
+
+func TestCurlMultiLinePasteOpensReplaceDialog(t *testing.T) {
+	req := existingRequest()
+	m := newModelWithCurl().
+		WithFocus(tui.RequestPane).
+		WithActiveRequest(req).
+		WithURLEdit().
+		WithURLValue("")
+
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(multiLineCurl), Paste: true})
+	require.Equal(t, tui.ImportMode, m.Mode(), "multi-line curl paste opens the dialog")
+	assert.Empty(t, m.URLValue(), "multi-line curl is not inserted into the URL field")
+
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	assert.Equal(t, tui.NormalMode, m.Mode())
+	assert.Equal(t, "POST", req.Method)
+	assert.Equal(t, "https://api.example.com/items", req.URL)
+	assert.Equal(t, "{\n  \"a\": 1\n}", req.Body)
+	assert.Contains(t, req.Headers, "Content-Type")
+	assert.Equal(t, "keep me", req.Name, "name is not overwritten")
+}
+
+func TestCurlMultiLineCtrlVOpensReplaceDialog(t *testing.T) {
+	restore := tui.StubClipboardForTest(func() (string, error) { return multiLineCurl, nil })
+	t.Cleanup(restore)
+
+	req := existingRequest()
+	m := newModelWithCurl().
+		WithFocus(tui.RequestPane).
+		WithActiveRequest(req).
+		WithURLEdit().
+		WithURLValue("")
+
+	m = callPaste(t, m, tea.KeyMsg{Type: tea.KeyCtrlV})
+	require.Equal(t, tui.ImportMode, m.Mode(), "Ctrl+V of a multi-line curl opens the dialog")
+	assert.Empty(t, m.URLValue())
+
+	callUpdate(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	assert.Equal(t, "POST", req.Method)
+	assert.Equal(t, "https://api.example.com/items", req.URL)
+}
+
+func TestMultiLinePasteNotCurlStillInsertsWithoutNewlines(t *testing.T) {
+	m := newModelWithCurl().
+		WithFocus(tui.RequestPane).
+		WithActiveRequest(existingRequest()).
+		WithURLEdit().
+		WithURLValue("")
+
+	m = callUpdate(t, m, tea.KeyMsg{
+		Type: tea.KeyRunes, Runes: []rune("https://a.example\n/b"), Paste: true,
+	})
+	assert.Equal(t, tui.NormalMode, m.Mode(), "non-curl paste does not open the dialog")
+	assert.Equal(t, tui.URLField, m.ActiveField())
+	assert.Equal(t, "https://a.example /b", m.URLValue(),
+		"inner newlines become a space in the single-line URL field")
+}
+
+func TestCurlMultiLinePasteKeepsURLFieldText(t *testing.T) {
+	req := existingRequest()
+	m := newModelWithCurl().
+		WithFocus(tui.RequestPane).
+		WithActiveRequest(req).
+		WithURLValue(req.URL).
+		WithURLEdit()
+
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(multiLineCurl), Paste: true})
+	require.Equal(t, tui.ImportMode, m.Mode())
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyEsc})
+	assert.Equal(t, req.URL, m.URLValue(), "URL field text is unchanged")
+}
+
+// Ctrl+V must not read the clipboard while Update runs. The read happens in
+// the returned command, so a slow clipboard cannot block the UI.
+func TestCtrlVReadsClipboardOnlyInCommand(t *testing.T) {
+	reads := 0
+	restore := tui.StubClipboardForTest(func() (string, error) {
+		reads++
+		return "PASTED", nil
+	})
+	t.Cleanup(restore)
+
+	m := newModelWithCurl().
+		WithFocus(tui.RequestPane).
+		WithActiveRequest(existingRequest()).
+		WithURLEdit().
+		WithURLValue("")
+
+	m2, cmd := callUpdateWithCmd(t, m, tea.KeyMsg{Type: tea.KeyCtrlV})
+	assert.Equal(t, 0, reads, "Update must not read the clipboard")
+	assert.Equal(t, "", m2.URLValue())
+	require.NotNil(t, cmd)
+
+	m3 := callPaste(t, m, tea.KeyMsg{Type: tea.KeyCtrlV})
+	assert.Equal(t, 1, reads)
+	assert.Equal(t, "PASTED", m3.URLValue())
+}
+
+// A failed clipboard read leaves the field alone.
+func TestCtrlVClipboardErrorLeavesFieldAlone(t *testing.T) {
+	restore := tui.StubClipboardForTest(func() (string, error) {
+		return "", errors.New("no clipboard")
+	})
+	t.Cleanup(restore)
+
+	m := newModelWithCurl().
+		WithFocus(tui.RequestPane).
+		WithActiveRequest(existingRequest()).
+		WithURLEdit().
+		WithURLValue("keep")
+
+	m2 := callPaste(t, m, tea.KeyMsg{Type: tea.KeyCtrlV})
+	assert.Equal(t, "keep", m2.URLValue())
+}
+
+func TestCurlReplaceClearsPreviousAuth(t *testing.T) {
+	req := existingRequest()
+	req.AuthType = domain.AuthTypeBearer
+	req.AuthConfig = `{"bearer":{"token":"old-token"}}`
+	m := newModelWithCurl().
+		WithFocus(tui.RequestPane).
+		WithActiveRequest(req).
+		WithURLEdit().
+		WithURLValue(testCurl)
+
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	require.Equal(t, tui.ImportMode, m.Mode())
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	require.Equal(t, tui.NormalMode, m.Mode())
+
+	assert.Equal(t, "https://api.example.com/items", req.URL, "replace applied")
+	assert.Empty(t, req.AuthType, "previous request's auth type must not apply to the curl request")
+	assert.Empty(
+		t,
+		req.AuthConfig,
+		"previous request's auth config must not apply to the curl request",
+	)
+}
+
+func TestCurlMultiLinePasteParseErrorKeepsTextRecoverable(t *testing.T) {
+	req := existingRequest()
+	broken := "curl -X POST https://api.example.com/items \\\n  -d '{\n  \"a\": 1"
+	m := newModelWithCurl().
+		WithFocus(tui.RequestPane).
+		WithActiveRequest(req).
+		WithURLEdit().
+		WithURLValue("")
+
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(broken), Paste: true})
+	require.Equal(t, tui.ImportMode, m.Mode(), "a failed paste opens the import dialog")
+	assert.Equal(t, broken, m.ImportInputValue(), "pasted text is kept for editing")
+	assert.Equal(t, "https://old.example", req.URL, "request is unchanged")
+}
+
+func TestCurlPastedWithNoFieldFocusedOpensReplaceDialog(t *testing.T) {
+	req := existingRequest()
+	m := newModelWithCurl().
+		WithFocus(tui.RequestPane).
+		WithActiveRequest(req)
+
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(testCurl), Paste: true})
+	assert.Equal(
+		t,
+		tui.ImportMode,
+		m.Mode(),
+		"a curl paste opens the dialog without a focused field",
+	)
+	assert.Equal(t, "https://old.example", req.URL, "paste alone does not replace the request")
+}

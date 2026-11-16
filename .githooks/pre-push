@@ -1,0 +1,16 @@
+#!/bin/bash
+# Pre-push hook: run lint checks before pushing
+
+echo "Running lint checks..."
+make lint
+
+if [ $? -ne 0 ]; then
+    echo ""
+    echo "❌ Lint checks failed. Push aborted."
+    echo "Please fix the linting errors and try again."
+    exit 1
+fi
+
+echo ""
+echo "✓ Lint checks passed."
+exit 0

@@ -3,14 +3,23 @@ package tui
 import (
 	"strings"
 
+	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+
+	"github.com/crazy-vedic/quark/internal/tui/textedit"
 )
 
 const (
 	textareaPromptGutter = 2 // default thick-border prompt + space
 	textareaLineNumberW  = 4 // line number column when ShowLineNumbers is true
+	// bodyTextareaGutter is the columns the body textarea draws before its text.
+	bodyTextareaGutter = textareaPromptGutter + textareaLineNumberW
+	// importTextareaGutter is the columns the import textarea draws before its
+	// text. It is built with the same textarea defaults as the body, so the
+	// gutter matches (checked in tests).
+	importTextareaGutter = textareaPromptGutter + textareaLineNumberW
 )
 
 type requestPaneLineLayout struct {
@@ -78,6 +87,45 @@ func (m Model) urlCursorPosFromClick(relX int, layout normalLayout) int {
 	return min(pos, len(value))
 }
 
+// bodyViewCache holds the body textarea's last rendered view. Rendering the
+// whole body is the expensive part of mapping a click to a text offset, and a
+// drag sends many clicks against an unchanged body, so the handler reuses the
+// frame Bubble Tea just drew. The pointer is shared by every copy of the Model.
+type bodyViewCache struct {
+	text string
+	view string
+}
+
+func (c *bodyViewCache) store(text, view string) {
+	if c != nil {
+		c.text, c.view = text, view
+	}
+}
+
+// lookup returns the cached view while it still matches the textarea's text,
+// and renders afresh otherwise (for example before the first frame is drawn).
+func (c *bodyViewCache) lookup(ta *textarea.Model, text string) string {
+	if c != nil && c.view != "" && c.text == text {
+		return c.view
+	}
+	return ta.View()
+}
+
+// clickSelect applies a click to sel. A shift+click on an input that is already
+// being edited extends from the existing anchor, or from oldPos when nothing is
+// selected; any other click collapses the selection onto newPos.
+func clickSelect(sel *textedit.Selection, extend bool, oldPos, newPos int) {
+	if !extend {
+		sel.Collapse(newPos)
+		return
+	}
+	anchor := oldPos
+	if sel.Active() {
+		anchor = sel.Anchor
+	}
+	sel.SelectRange(anchor, newPos)
+}
+
 func (m Model) handleURLLineClick(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	m.focus = requestPane
 	layout := m.currentLayout()
@@ -89,13 +137,31 @@ func (m Model) handleURLLineClick(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	}
 
 	var cmd tea.Cmd
+	// Shift+click keeps the anchor and moves only the cursor end.
+	extend := msg.Shift && m.activeField == urlField
+	oldPos := m.urlInput.Position()
 	if m.activeField != urlField {
 		m, cmd = m.beginURLEdit()
 	} else {
 		m.urlInput.Focus()
 	}
 
-	m.urlInput.SetCursor(m.urlCursorPosFromClick(relX, layout))
+	cursorPos := m.urlCursorPosFromClick(relX, layout)
+	m.urlInput.SetCursor(cursorPos)
+	if extend {
+		clickSelect(&m.urlSelection, true, oldPos, cursorPos)
+		return m, textinput.Blink
+	}
+	m.urlSelection.Collapse(cursorPos)
+
+	// Double-click selects word at cursor
+	if m.isDoubleTextClick(msg, "request-url") {
+		runes := stringToRunes(m.urlInput.Value())
+		start, end := wordBoundsAt(runes, cursorPos)
+		m.urlSelection.SelectRange(start, end)
+		m.urlInput.SetCursor(end)
+	}
+
 	if cmd == nil {
 		cmd = textinput.Blink
 	}
@@ -137,18 +203,24 @@ func (m Model) handleHeaderEditClick(msg tea.MouseMsg) (Model, tea.Cmd) {
 		if relX < 0 {
 			relX = 0
 		}
+		extend := msg.Shift && m.headerKeyInput.Focused()
+		oldPos := m.headerKeyInput.Position()
 		m.headerKeyInput.Focus()
 		m.headerValueInput.Blur()
 		m.headerKeyInput.SetCursor(displayColumnToByteOffset(m.headerKeyInput.Value(), relX))
+		clickSelect(&m.headerKeySelection, extend, oldPos, m.headerKeyInput.Position())
 		return m, textinput.Blink
 	case ll.headerValInputY:
 		relX := msg.X - content.left
 		if relX < 0 {
 			relX = 0
 		}
+		extend := msg.Shift && m.headerValueInput.Focused()
+		oldPos := m.headerValueInput.Position()
 		m.headerValueInput.Focus()
 		m.headerKeyInput.Blur()
 		m.headerValueInput.SetCursor(displayColumnToByteOffset(m.headerValueInput.Value(), relX))
+		clickSelect(&m.headerValueSelection, extend, oldPos, m.headerValueInput.Position())
 		return m, textinput.Blink
 	default:
 		return m, nil
@@ -170,6 +242,7 @@ func (m Model) handleAuthEditClick(msg tea.MouseMsg) (Model, tea.Cmd) {
 			continue
 		}
 
+		sameRow := m.authEditor.editing && m.authEditor.cursor == idx
 		m.authEditor.cursor = idx
 		if !authRowEditable(row) {
 			return m, nil
@@ -183,7 +256,11 @@ func (m Model) handleAuthEditClick(msg tea.MouseMsg) (Model, tea.Cmd) {
 
 		m.authEditor.beginEdit()
 		in := m.authEditor.inputForRow(row)
+		oldPos := in.Position()
 		in.SetCursor(displayColumnToByteOffset(in.Value(), relX))
+		if sel, _ := m.authEditor.activeInput(row); sel != nil {
+			clickSelect(sel, msg.Shift && sameRow, oldPos, in.Position())
+		}
 		m.authEditor.assignInput(row, in)
 		return m, textinput.Blink
 	}
@@ -247,9 +324,40 @@ func (m Model) handleBodyTextareaClick(msg tea.MouseMsg) Model {
 		return m
 	}
 
-	if !m.positionBodyCursorAtDisplayLine(relY, relX) {
+	backend := textedit.Area(&m.bodyTextarea)
+	// Value() rebuilds the whole body, so read it once and share it.
+	text := m.bodyTextarea.Value()
+	cursor := -1
+	curPos := func() int {
+		if cursor < 0 {
+			cursor = backend.Cursor()
+		}
+		return cursor
+	}
+	anchor := m.bodySelection.Anchor
+	if !m.bodySelection.Active() {
+		anchor = curPos()
+	}
+	// Map the click through the visible window so scrolling and wrapped rows
+	// are handled; fall back to the unscrolled mapping if the window is unknown.
+	view := m.bodyView.lookup(&m.bodyTextarea, text)
+	pos, ok := textedit.AreaOffsetAt(
+		view, &m.bodyTextarea, text, curPos(), bodyTextareaGutter, relY, relX,
+	)
+	switch {
+	case ok:
+		backend.SetCursor(pos)
+		cursor = pos
+	case m.positionBodyCursorAtDisplayLine(relY, relX):
+		cursor = backend.Cursor()
+	default:
 		return m
 	}
+	if msg.Shift {
+		m.bodySelection.SelectRange(anchor, cursor)
+		return m
+	}
+	m.newTextEditor().Sync(&m.bodySelection, backend)
 	return m
 }
 

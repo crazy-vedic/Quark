@@ -39,6 +39,10 @@ var groups = []struct {
 		"env_add", "env_delete", "env_edit",
 		"env_edit_confirm", "env_edit_switch_field",
 	}},
+	{"Text Selection", []string{
+		ActionSelectCharLeft, ActionSelectCharRight, ActionSelectWordLeft, ActionSelectWordRight,
+		ActionSelectLineStart, ActionSelectLineEnd, ActionSelectAll, ActionCopy, ActionCut,
+	}},
 	{
 		"Request",
 		[]string{

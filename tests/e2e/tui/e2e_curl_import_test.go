@@ -49,3 +49,30 @@ func TestE2E_CurlImportPersistsThroughModelAndSQLite(t *testing.T) {
 	m = callUpdate(t, m, tea.MouseMsg{X: 10, Y: 10, Action: tea.MouseActionPress, Button: tea.MouseButtonLeft})
 	require.Equal(t, before, m.View())
 }
+
+// Ctrl+V in the import dialog reads the clipboard asynchronously and inserts
+// the text at the cursor, both into an empty field and after existing text.
+func TestE2E_CurlImportCtrlVPastesIntoInputField(t *testing.T) {
+	const command = "curl -X GET https://example.com/pasted"
+	restore := tui.StubClipboardForTest(func() (string, error) { return command, nil })
+	t.Cleanup(restore)
+
+	collection := &domain.Collection{ID: "paste-col", Name: "Paste APIs"}
+	st := setupStore(t, collection)
+	m := newE2EModel(t, st, &mockExecutor{})
+	m = resize(t, m, 130, 42)
+	m = callUpdate(t, m, tui.CollectionsLoadedMsg([]*domain.Collection{collection}))
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'i'}})
+
+	paste := func(m tui.Model) tui.Model {
+		m, cmd := callUpdateWithCmd(t, m, tea.KeyMsg{Type: tea.KeyCtrlV})
+		require.NotNil(t, cmd, "Ctrl+V must start a clipboard read")
+		return callUpdate(t, m, runCmd(t, cmd))
+	}
+
+	m = paste(m)
+	require.Equal(t, command, m.ImportInputValue(), "paste into an empty import field")
+
+	m = paste(m)
+	require.Equal(t, command+command, m.ImportInputValue(), "paste into a non-empty import field inserts at the cursor")
+}

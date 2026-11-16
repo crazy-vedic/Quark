@@ -24,6 +24,7 @@ import (
 	"github.com/crazy-vedic/quark/internal/store"
 	"github.com/crazy-vedic/quark/internal/theme"
 	"github.com/crazy-vedic/quark/internal/timing"
+	"github.com/crazy-vedic/quark/internal/tui/textedit"
 	"github.com/crazy-vedic/quark/internal/updates"
 )
 
@@ -137,11 +138,6 @@ type searchResultsMsg struct{ hits []*search.SearchHit }
 type viewerClipboardMsg struct{ err error }
 type curlExportClipboardMsg struct{ err error }
 
-type curlClipboardMsg struct {
-	value string
-	err   error
-}
-
 type postmanImportResultMsg struct {
 	output string
 	err    error
@@ -223,6 +219,11 @@ type Model struct {
 	activeEnvStore  store.ActiveEnvironmentStore
 	scheduler       store.ScheduledRunStore
 	cfg             config.Config
+	lastMouseAt     time.Time                          // last mouse event; stray mouse-report pieces shortly after it are dropped
+	pasteTicket     uint64                             // last Ctrl+V request issued; 0 means none, and results with ticket 0 are ignored
+	pasteApplied    uint64                             // last ticket whose result was applied; results apply in ticket order
+	pasteHeld       map[uint64]textedit.PasteResultMsg // out-of-order results waiting for earlier tickets
+	editKeys        *textedit.Keymap                   // built from cfg by cacheTextKeys; nil falls back to building it
 	theme           theme.Theme
 	styles          styleSet
 	terminalDark    bool
@@ -307,6 +308,7 @@ type Model struct {
 
 	// --- Import modal ---
 	importPreview *curl.ImportResult
+	importReplace bool // dialog replaces the active request instead of creating one
 	importInput   textarea.Model
 	importError   string
 	importID      string
@@ -348,6 +350,16 @@ type Model struct {
 	headerKeyInput   textinput.Model
 	headerValueInput textinput.Model
 	authEditor       authEditor
+
+	// --- Text selection state (keyboard and mouse) ---
+	urlSelection         textedit.Selection // selection in URL input
+	bodySelection        textedit.Selection // selection in body textarea
+	bodyView             *bodyViewCache     // last rendered body view; shared by Model copies
+	headerKeySelection   textedit.Selection // selection in header key input
+	headerValueSelection textedit.Selection // selection in header value input
+	searchSelection      textedit.Selection // selection in search input
+	viewerFindSelection  textedit.Selection // selection in viewer find input
+	importInputSelection textedit.Selection // selection in import textarea
 
 	// --- Misc ---
 	tmuxDetected    bool
@@ -400,6 +412,12 @@ type authEditor struct {
 	passwordInput    textinput.Model
 	apiKeyNameInput  textinput.Model
 	apiKeyValueInput textinput.Model
+	// Selection state for each auth field
+	tokenSelection       textedit.Selection
+	usernameSelection    textedit.Selection
+	passwordSelection    textedit.Selection
+	apiKeyNameSelection  textedit.Selection
+	apiKeyValueSelection textedit.Selection
 }
 
 // Deps holds all TUI dependencies.
@@ -560,6 +578,7 @@ func New(deps Deps) Model {
 		scheduler:               deps.Scheduler,
 		activeEnv:               make(map[string]string),
 		now:                     now,
+		bodyView:                &bodyViewCache{},
 		scheduleInput:           scheduleInput,
 		clientCertHost:          clientCertHost,
 		clientCertFile:          clientCertFile,
@@ -582,6 +601,7 @@ func New(deps Deps) Model {
 		m.tmuxWarning = "GNU screen detected: some Ctrl+w bindings may be intercepted"
 	}
 
+	m.cacheTextKeys()
 	m.terminalDark = lipgloss.HasDarkBackground()
 	selected, err := theme.Resolve(deps.ConfigDir, deps.Config.UI.Theme, m.terminalDark)
 	if err != nil {
@@ -781,6 +801,12 @@ func (m Model) status(level, msg string) Model {
 		m.statusSuccess = ""
 	}
 	return m
+}
+
+// ctrlCNoSelection is the Ctrl+C result when there is nothing to copy. Ctrl+C
+// never quits, so the hint names the key that does.
+func (m Model) ctrlCNoSelection() Model {
+	return m.status("warn", "Press q to quit")
 }
 
 // unsavedRequestKey is the validation-error map key used for the request

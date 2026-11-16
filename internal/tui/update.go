@@ -7,11 +7,14 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
+	"github.com/atotto/clipboard"
 	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -26,9 +29,10 @@ import (
 	"github.com/crazy-vedic/quark/internal/store"
 	"github.com/crazy-vedic/quark/internal/theme"
 	"github.com/crazy-vedic/quark/internal/timing"
+	"github.com/crazy-vedic/quark/internal/tui/textedit"
 )
 
-func (m Model) debugCurl(format string, args ...interface{}) {
+func (m Model) debugCurl(format string, args ...any) {
 	if m.debugLog == nil {
 		return
 	}
@@ -54,11 +58,103 @@ func debugHeaderKeys(headers http.Header) string {
 	return strings.Join(keys, ",")
 }
 
+// mouseReportRe matches SGR mouse reports (ESC [ < b ; x ; y M) whose escape
+// byte was lost, so they arrive as plain text.
+var mouseReportRe = regexp.MustCompile(`^(\[?<\d+;\d+;\d+[Mm])+$`)
+
+// isMouseReportText reports whether km is a mouse report that Bubble Tea failed
+// to parse, which happens when a fast drag splits a report across reads. Typed
+// text arrives one rune per key, so a multi-rune match is never the user's.
+func isMouseReportText(km tea.KeyMsg) bool {
+	return km.Type == tea.KeyRunes && !km.Paste && len(km.Runes) > 5 &&
+		mouseReportRe.MatchString(string(km.Runes))
+}
+
+// mouseLeakWindow is how long after a mouse event a stray piece of a mouse
+// report is still treated as part of one.
+const mouseLeakWindow = 200 * time.Millisecond
+
+// mouseFragmentRunes are the characters an SGR mouse report is made of.
+const mouseFragmentRunes = "[<0123456789;Mm"
+
+// isLeakedMouseKey reports whether km is a piece of a mouse report that Bubble
+// Tea failed to parse. A whole report is recognised by its shape. A partial one
+// (a lone "[", "<32;4") is recognised by its characters, and only just after
+// mouse motion, so ordinary typing is never affected.
+func (m Model) isLeakedMouseKey(km tea.KeyMsg) bool {
+	if isMouseReportText(km) {
+		return true
+	}
+	if km.Paste || len(km.Runes) == 0 || m.lastMouseAt.IsZero() ||
+		m.now().Sub(m.lastMouseAt) > mouseLeakWindow {
+		return false
+	}
+	if km.Type != tea.KeyRunes {
+		return false
+	}
+	text := string(km.Runes)
+	// A bare digit or "M" is ordinary typing; require a character that only a
+	// mouse report contains.
+	return strings.Trim(text, mouseFragmentRunes) == "" && strings.ContainsAny(text, "[<;")
+}
+
+func (m Model) logMouse(mm tea.MouseMsg) {
+	if m.debugLog == nil {
+		return
+	}
+	fmt.Fprintf(m.debugLog, "[%s] mouse action=%v button=%v x=%d y=%d shift=%v alt=%v ctrl=%v\n",
+		time.Now().Format("15:04:05.000"), mm.Action, mm.Button, mm.X, mm.Y,
+		mm.Shift, mm.Alt, mm.Ctrl)
+}
+
+func (m Model) logDroppedKey(km tea.KeyMsg) {
+	if m.debugLog == nil {
+		return
+	}
+	fmt.Fprintf(m.debugLog, "[%s] dropped leaked mouse report key=%q runes=%q alt=%v\n",
+		time.Now().Format("15:04:05.000"), km.String(), string(km.Runes), km.Alt)
+}
+
 // Update implements tea.Model — routes every message to the correct handler.
 //
-//nolint:gocyclo // Bubble Tea keeps the top-level message dispatcher centralized.
+// Update routes a message. A paste request (Ctrl+V) takes a new ticket so that
+// results are applied in request order; see paste_routing.go.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if mm, ok := msg.(tea.MouseMsg); ok {
+		if mm.Action == tea.MouseActionMotion {
+			m.lastMouseAt = m.now()
+		}
+		m.logMouse(mm)
+	}
+	if km, ok := msg.(tea.KeyMsg); ok && m.isLeakedMouseKey(km) {
+		m.logDroppedKey(km)
+		return m, nil
+	}
+	if km, ok := msg.(tea.KeyMsg); ok && !km.Paste && m.textKeys().Paste.Match(km.String()) {
+		target := m.pasteTargetOf()
+		next, cmd := m.update(msg)
+		nm, ok := next.(Model)
+		if cmd == nil || !ok {
+			return next, cmd
+		}
+		nm.pasteTicket++
+		return nm, tagPasteCmd(cmd, nm.pasteTicket, target)
+	}
+	return m.update(msg)
+}
+
+//nolint:gocyclo // Bubble Tea keeps the top-level message dispatcher centralized.
+func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case textedit.PasteResultMsg:
+		return m.handlePasteResult(msg)
+	case clipboardMsg:
+		return m.status(
+			"success",
+			fmt.Sprintf("Copied %d characters", utf8.RuneCountInString(msg.text)),
+		), nil
+	case clipboardErrorMsg:
+		return m.status("error", "Clipboard: "+msg.err.Error()), nil
 	case themeWatchTickMsg:
 		if m.configDir == "" || m.ctx.Err() != nil {
 			return m, nil
@@ -102,19 +198,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
-	case curlClipboardMsg:
-		if m.mode != importMode || m.importPreview != nil {
-			return m, nil
-		}
-		if msg.err != nil {
-			m.importError = "Clipboard read failed: " + msg.err.Error()
-			return m, nil
-		}
-		m.importInput.SetValue(msg.value)
-		m.importInput.CursorEnd()
-		m.importError = ""
-		m.debugCurl("clipboard read bytes=%d", len(msg.value))
-		return m, nil
 	case postmanImportResultMsg:
 		m.postmanBusy = false
 		m.postmanOutput = strings.TrimSpace(msg.output)
@@ -281,6 +364,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyMsg:
+		// A terminal paste in normal mode has no field to receive it. Its text
+		// must not be read as shortcuts such as q, so it is dropped here.
+		if msg.Paste && m.activeField == noneField && m.mode == normalMode {
+			if isCurlCommand(string(msg.Runes)) {
+				return m.openCurlReplaceFromPaste(string(msg.Runes)), nil
+			}
+			return m.status("warn", "Paste ignored: no field is focused"), nil
+		}
 		if m.debugLog != nil {
 			if m.mode == importMode || m.mode == postmanImportMode {
 				// The import textarea can contain credentials, request bodies, and
@@ -323,14 +414,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		// Global shortcuts that work in all modes.
-		switch msg.Type {
-		case tea.KeyCtrlC:
-			return m, tea.Quit
-		case tea.KeyEsc:
-			if m.mode == normalMode {
-				m = m.handleEsc()
-				return m, nil
-			}
+		if msg.Type == tea.KeyEsc && m.mode == normalMode {
+			m = m.handleEsc()
+			return m, nil
 		}
 
 		// Mode-specific routing.
@@ -469,6 +555,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if m.activeField == bodyField {
 		var cmd tea.Cmd
 		m.bodyTextarea, cmd = m.bodyTextarea.Update(msg)
+		m.newTextEditor().Sync(&m.bodySelection, textedit.Area(&m.bodyTextarea))
 		return m, cmd
 	}
 	if m.activeField == authField {
@@ -550,12 +637,17 @@ func (m Model) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.activeField != noneField {
 		return m.handleRequestKey("", msg)
 	}
-	if m.focus == responsePane && isResponseHistoryKey(msg) {
-		if msg.Type == tea.KeyShiftDown || msg.Type == tea.KeyPgDown ||
-			msg.String() == "shift+pgdown" {
+
+	// Ctrl+C never quits the app. Use q to quit.
+	if m.textKeys().Copy.Match(msg.String()) {
+		return m.ctrlCNoSelection(), nil
+	}
+	if m.focus == responsePane {
+		if keys := m.textKeys(); keys.HistoryNext.Match(msg.String()) {
 			return m.handleResponseAction("history_next", timingSpan)
+		} else if keys.HistoryPrev.Match(msg.String()) {
+			return m.handleResponseAction("history_prev", timingSpan)
 		}
-		return m.handleResponseAction("history_prev", timingSpan)
 	}
 	if m.focus == requestPane && m.activeField == noneField && isVerticalScrollKey(msg) {
 		m.requestText.SetDebugLog(m.debugLog, "request")
@@ -608,24 +700,6 @@ func (m Model) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func isVerticalScrollKey(msg tea.KeyMsg) bool {
 	return msg.Type == tea.KeyUp || msg.Type == tea.KeyDown || msg.Type == tea.KeyPgUp ||
 		msg.Type == tea.KeyPgDown
-}
-
-func isResponseHistoryKey(msg tea.KeyMsg) bool {
-	switch msg.Type {
-	case tea.KeyShiftUp, tea.KeyShiftDown:
-		return true
-	case tea.KeyPgUp, tea.KeyPgDown:
-		// Bubble Tea does not expose a separate Shift+PageUp key type on
-		// every terminal. Accept the modified form when the terminal reports
-		// it through the Alt flag, while plain PageUp/PageDown still scroll.
-		return msg.Alt
-	}
-	switch msg.String() {
-	case "shift+pgup", "shift+pageup", "shift+pgdown", "shift+pagedown":
-		return true
-	default:
-		return false
-	}
 }
 
 // dispatchNormalAction routes a resolver action in normal mode.
@@ -949,21 +1023,36 @@ func (m Model) handleRequestKey(_ string, msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// Inline field routing — when active, all keys go to the field.
 	switch m.activeField {
 	case urlField:
+		// A pasted curl command (single- or multi-line) is handed to the
+		// parser instead of being inserted into the single-line field. The
+		// check runs on the pasted text, not the field, so an existing URL
+		// before the cursor does not hide it.
+		if text, ok := pastedText(msg); ok && isCurlCommand(text) {
+			return m.openCurlReplaceFromPaste(text), nil
+		}
+		ed := m.newTextEditor()
+		b := textedit.Input(&m.urlInput)
+		if cmd, handled := ed.HandleKey(&m.urlSelection, b, msg); handled {
+			return m, cmd
+		}
+		if m.textKeys().Copy.Match(msg.String()) {
+			// No selection: nothing to copy. Ctrl+C never quits the app.
+			return m.ctrlCNoSelection(), nil
+		}
 		if msg.Type == tea.KeyTab {
 			if suggestion := m.urlSuggestion(m.urlInput.Value()); suggestion != "" {
 				m.urlInput.SetValue(suggestion)
 				m.urlInput.SetCursor(len([]rune(suggestion)))
+				m.urlSelection.Collapse(len([]rune(suggestion)))
 				return m, nil
 			}
 		}
 		var cmd tea.Cmd
 		m.urlInput, cmd = m.urlInput.Update(msg)
+		ed.Sync(&m.urlSelection, b)
 		if msg.Type == tea.KeyEnter {
-			if strings.HasPrefix(strings.TrimSpace(m.urlInput.Value()), "curl") {
-				return m.status(
-					"error",
-					"This looks like curl; press I to open the curl importer",
-				), nil
+			if isCurlCommand(m.urlInput.Value()) {
+				return m.openCurlReplace(m.urlInput.Value()), nil
 			}
 			return m.finishURLEdit()
 		}
@@ -1031,8 +1120,29 @@ func (m Model) triggerCurlImport(raw string) (Model, tea.Cmd) {
 // --- Search modal ---
 
 func (m Model) handleSearchKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	ed := m.newTextEditor()
+	b := textedit.Input(&m.searchInput)
+	// Up/Down belong to the result list, so the editor must not collapse a
+	// selection on them. Only a text change re-runs the search.
+	action, resolved := m.resolver.Resolve(1, 0, msg)
+	vertical := resolved &&
+		(action == keybindings.ActionNavigateUp || action == keybindings.ActionNavigateDown)
+	if !vertical {
+		before := m.searchInput.Value()
+		if cmd, handled := ed.HandleKey(&m.searchSelection, b, msg); handled {
+			if m.searchInput.Value() == before {
+				return m, cmd
+			}
+			return m.searchQueryChanged(cmd)
+		}
+	}
+	if m.textKeys().Copy.Match(msg.String()) {
+		// No selection: nothing to copy. Ctrl+C never quits the app.
+		return m.ctrlCNoSelection(), nil
+	}
+
 	// Resolver lookup for overlay mode.
-	if action, ok := m.resolver.Resolve(1, 0, msg); ok {
+	if resolved {
 		switch action {
 		case "select":
 			if m.isCommandPalette() {
@@ -1082,6 +1192,7 @@ func (m Model) handleSearchKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	beforeCursor := m.searchInput.Position()
 	var inputCmd tea.Cmd
 	m.searchInput, inputCmd = m.searchInput.Update(msg)
+	ed.Sync(&m.searchSelection, b)
 	if m.debugLog != nil {
 		fmt.Fprintf(
 			m.debugLog,
@@ -1094,6 +1205,16 @@ func (m Model) handleSearchKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.searchInput.Position(),
 		)
 	}
+	if m.searchInput.Value() == beforeValue {
+		// Cursor-only key: the query is unchanged, so keep the current results.
+		return m, inputCmd
+	}
+	return m.searchQueryChanged(inputCmd)
+}
+
+// searchQueryChanged re-runs the search (or refreshes the command palette)
+// after the search input's text changed.
+func (m Model) searchQueryChanged(inputCmd tea.Cmd) (tea.Model, tea.Cmd) {
 	query := m.searchInput.Value()
 	if m.isCommandPaletteQuery(query) {
 		m.commands = m.filterCommandPalette(strings.TrimSpace(strings.TrimPrefix(query, ">")))
@@ -1127,6 +1248,7 @@ func (m Model) openHelp() Model {
 	m.helpSearch = false
 	m.searchInput.Blur()
 	m.searchInput.SetValue("")
+	m.searchSelection.Collapse(0)
 	m.searchInput.Placeholder = searchPlaceholder
 	return m
 }
@@ -1141,6 +1263,7 @@ func (m Model) closeHelp() Model {
 	m.helpSearch = false
 	m.searchInput.Blur()
 	m.searchInput.SetValue("")
+	m.searchSelection.Collapse(0)
 	m.searchInput.Placeholder = searchPlaceholder
 	return m
 }
@@ -1148,6 +1271,7 @@ func (m Model) closeHelp() Model {
 func (m Model) openSearch() (Model, tea.Cmd) {
 	m.mode = searchMode
 	m.searchInput.SetValue("")
+	m.searchSelection.Collapse(0)
 	m.searchInput.Placeholder = searchPlaceholder
 	m.searchInput.Focus()
 	m.searchResults = nil
@@ -1172,6 +1296,7 @@ func (m Model) closeSearch() Model {
 	m.mode = normalMode
 	m.searchInput.Blur()
 	m.searchInput.SetValue("")
+	m.searchSelection.Collapse(0)
 	m.searchInput.Placeholder = searchPlaceholder
 	m.searchResults = nil
 	m.commands = nil
@@ -1453,6 +1578,7 @@ func (m Model) openImport(preview *curl.ImportResult) (Model, tea.Cmd) {
 		len(preview.Body),
 	)
 	m.importPreview = preview
+	m.importReplace = false
 	m.importError = ""
 	m.importColID = m.activeCollectionID()
 	m.mode = importMode
@@ -1465,6 +1591,7 @@ func (m Model) openImport(preview *curl.ImportResult) (Model, tea.Cmd) {
 func (m Model) openCurlImport() Model {
 	m.mode = importMode
 	m.importPreview = nil
+	m.importReplace = false
 	m.importError = ""
 	m.importID = uuid.NewString()
 	m.importColID = m.activeCollectionID()
@@ -1483,6 +1610,7 @@ func (m Model) openCurlImport() Model {
 func (m Model) closeImport() Model {
 	m.mode = normalMode
 	m.importPreview = nil
+	m.importReplace = false
 	m.importError = ""
 	m.importID = ""
 	m.importInput.SetValue("")
@@ -1517,10 +1645,7 @@ const (
 )
 
 func (m Model) helpMaxLines() int {
-	boxHeight := m.height - helpModalMarginLines
-	if boxHeight < helpMinimumBoxHeight {
-		boxHeight = helpMinimumBoxHeight
-	}
+	boxHeight := max(m.height-helpModalMarginLines, helpMinimumBoxHeight)
 	// Reserve vertical budget for the title, instructions, footer, and modal chrome.
 	overhead := helpHeaderLines + helpInstructionLines + helpFooterLines + helpBorderAndPaddingLines
 	if m.helpEditState == helpRecording {
@@ -1529,10 +1654,7 @@ func (m Model) helpMaxLines() int {
 	if m.helpEditState == helpError {
 		overhead += helpErrorHintLines
 	}
-	maxLines := boxHeight - overhead
-	if maxLines < helpMinimumVisibleRows {
-		maxLines = helpMinimumVisibleRows
-	}
+	maxLines := max(boxHeight-overhead, helpMinimumVisibleRows)
 	return maxLines
 }
 
@@ -1591,6 +1713,13 @@ func filterKeybindingEntries(entries []keybindings.Entry, query string) []keybin
 
 // handleHelpSearchKey handles keys while the keybinding reference search is open.
 func (m Model) handleHelpSearchKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	ed := m.newTextEditor()
+	b := textedit.Input(&m.searchInput)
+	if cmd, handled := ed.HandleKey(&m.searchSelection, b, msg); handled {
+		m.helpCursor = 0
+		m.helpScrollOffset = 0
+		return m, cmd
+	}
 	if action, ok := m.resolver.Resolve(2, 0, msg); ok {
 		switch action {
 		case keybindings.ActionSearch:
@@ -1599,6 +1728,7 @@ func (m Model) handleHelpSearchKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.helpSearch = false
 			m.searchInput.Blur()
 			m.searchInput.SetValue("")
+			m.searchSelection.Collapse(0)
 			m.helpCursor = 0
 			m.helpScrollOffset = 0
 			return m, nil
@@ -1626,6 +1756,7 @@ func (m Model) handleHelpSearchKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 	var inputCmd tea.Cmd
 	m.searchInput, inputCmd = m.searchInput.Update(msg)
+	ed.Sync(&m.searchSelection, b)
 	m.helpCursor = 0
 	m.helpScrollOffset = 0
 	return m, inputCmd
@@ -1717,6 +1848,7 @@ func (m Model) handleHelpKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case keybindings.ActionSearch:
 			m.helpSearch = true
 			m.searchInput.SetValue("")
+			m.searchSelection.Collapse(0)
 			m.searchInput.Placeholder = "search keybindings (optional)..."
 			m.searchInput.Focus()
 			m.helpCursor = 0
@@ -1809,10 +1941,9 @@ func helpResetAllDiffs(current keybindings.Keybindings) []string {
 // --- Import modal ---
 
 func (m Model) handleImportKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	if m.importPreview == nil && msg.Type == tea.KeyCtrlV {
-		m.debugCurl("clipboard read requested")
-		return m, readCurlClipboardCmd()
-	}
+	// Ctrl+V falls through to the import input's editor below. It is read by
+	// the same ticketed clipboard path as every other field, and it inserts at
+	// the cursor, so existing import text is kept.
 	// Resolver lookup for overlay mode.
 	if action, ok := m.resolver.Resolve(3, 0, msg); ok && action != keybindings.ActionImportCurl {
 		switch action {
@@ -1823,6 +1954,9 @@ func (m Model) handleImportKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case keybindings.ActionConfirm:
 			if m.importPreview == nil {
 				break // Enter remains a newline in the multiline input stage.
+			}
+			if m.importReplace {
+				return m.confirmCurlReplace()
 			}
 			if m.importPreview.Certificate != nil && m.writer == nil {
 				m.importError = "Cannot save imported request: request storage is unavailable"
@@ -1894,7 +2028,7 @@ func (m Model) handleImportKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 
 	// Check for edit action when naming the imported request.
-	if m.importPreview != nil {
+	if m.importPreview != nil && !m.importReplace {
 		if action, ok := m.resolver.Resolve(3, 0, msg); ok &&
 			action == keybindings.ActionImportEdit {
 			m.importPreview = nil
@@ -1905,12 +2039,24 @@ func (m Model) handleImportKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	var cmd tea.Cmd
-	if m.importPreview == nil {
-		m.importInput, cmd = m.importInput.Update(msg)
-	} else {
+	if m.importPreview != nil {
+		var cmd tea.Cmd
 		m.importName, cmd = m.importName.Update(msg)
+		return m, cmd
 	}
+
+	ed := m.newTextEditor()
+	b := textedit.Area(&m.importInput)
+	if cmd, handled := ed.HandleKey(&m.importInputSelection, b, msg); handled {
+		return m, cmd
+	}
+	if m.textKeys().Copy.Match(msg.String()) {
+		// No selection: nothing to copy. Ctrl+C never quits the app.
+		return m.ctrlCNoSelection(), nil
+	}
+	var cmd tea.Cmd
+	m.importInput, cmd = m.importInput.Update(msg)
+	ed.Sync(&m.importInputSelection, b)
 	return m, cmd
 }
 
@@ -1963,6 +2109,7 @@ func (m Model) persistImportedCertificate(
 		return m, err
 	}
 	m.cfg = nextConfig
+	m.cacheTextKeys()
 	m.clientCerts = append([]config.ClientCertificate(nil), next...)
 	return m, nil
 }
@@ -2031,18 +2178,34 @@ func (m Model) handleHTTPErr(msg httpErrMsg) (tea.Model, tea.Cmd) {
 // --- Inline body / header field handlers ---
 
 func (m Model) handleBodyFieldKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	// Resolver lookup for body editor mode.
+	ed := m.newTextEditor()
+	b := textedit.Area(&m.bodyTextarea)
+
+	// Body actions come first: Enter saves and Ctrl+J inserts a newline. The
+	// editor would otherwise take Enter as a plain newline.
 	if action, ok := m.resolver.Resolve(4, 0, msg); ok {
 		switch action {
 		case "save":
-			return m.saveBody()
+			saved, cmd := m.saveBody()
+			m.newTextEditor().Sync(&saved.bodySelection, textedit.Area(&saved.bodyTextarea))
+			return saved, cmd
 		case "insert_newline":
-			m.bodyTextarea.InsertString("\n")
+			ed.InsertText(&m.bodySelection, b, "\n")
 			return m, nil
 		}
 	}
+
+	if cmd, handled := ed.HandleKey(&m.bodySelection, b, msg); handled {
+		return m, cmd
+	}
+	if m.textKeys().Copy.Match(msg.String()) {
+		// No selection: nothing to copy. Ctrl+C never quits the app.
+		return m.ctrlCNoSelection(), nil
+	}
+
 	var cmd tea.Cmd
 	m.bodyTextarea, cmd = m.bodyTextarea.Update(msg)
+	ed.Sync(&m.bodySelection, b)
 	return m, cmd
 }
 
@@ -2114,6 +2277,19 @@ func (m Model) handleAuthFieldKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleAuthFieldEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	sel, input := m.authEditor.activeInput(m.authEditor.currentRow())
+	if input == nil {
+		return m, nil
+	}
+	ed := m.newTextEditor()
+	b := textedit.Input(input)
+	if cmd, handled := ed.HandleKey(sel, b, msg); handled {
+		return m, cmd
+	}
+	if m.textKeys().Copy.Match(msg.String()) {
+		// No selection: nothing to copy. Ctrl+C never quits the app.
+		return m.ctrlCNoSelection(), nil
+	}
 	if msg.Type == tea.KeyTab {
 		return m, nil
 	}
@@ -2122,18 +2298,8 @@ func (m Model) handleAuthFieldEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	var cmd tea.Cmd
-	switch m.authEditor.currentRow() {
-	case authRowToken:
-		m.authEditor.tokenInput, cmd = m.authEditor.tokenInput.Update(msg)
-	case authRowUsername:
-		m.authEditor.usernameInput, cmd = m.authEditor.usernameInput.Update(msg)
-	case authRowPassword:
-		m.authEditor.passwordInput, cmd = m.authEditor.passwordInput.Update(msg)
-	case authRowAPIKeyName:
-		m.authEditor.apiKeyNameInput, cmd = m.authEditor.apiKeyNameInput.Update(msg)
-	case authRowAPIKeyValue:
-		m.authEditor.apiKeyValueInput, cmd = m.authEditor.apiKeyValueInput.Update(msg)
-	}
+	*input, cmd = input.Update(msg)
+	ed.Sync(sel, b)
 	return m, cmd
 }
 
@@ -2193,11 +2359,26 @@ func (m Model) handleHeadersFieldKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleHeaderFieldEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	sel, input := &m.headerValueSelection, &m.headerValueInput
+	if m.headerKeyInput.Focused() {
+		sel, input = &m.headerKeySelection, &m.headerKeyInput
+	}
+	ed := m.newTextEditor()
+	b := textedit.Input(input)
+	if cmd, handled := ed.HandleKey(sel, b, msg); handled {
+		return m, cmd
+	}
+	if m.textKeys().Copy.Match(msg.String()) {
+		// No selection: nothing to copy. Ctrl+C never quits the app.
+		return m.ctrlCNoSelection(), nil
+	}
+
 	if msg.Type == tea.KeyTab {
 		if m.headerKeyInput.Focused() {
 			if suggestion := headerNameSuggestion(m.headerKeyInput.Value()); suggestion != "" {
 				m.headerKeyInput.SetValue(suggestion)
 				m.headerKeyInput.SetCursor(len([]rune(suggestion)))
+				m.headerKeySelection.Collapse(len([]rune(suggestion)))
 				return m, nil
 			}
 			m.headerKeyInput.Blur()
@@ -2205,6 +2386,7 @@ func (m Model) handleHeaderFieldEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		} else if suggestion := headerValueSuggestion(m.headerKeyInput.Value(), m.headerValueInput.Value()); suggestion != "" {
 			m.headerValueInput.SetValue(suggestion)
 			m.headerValueInput.SetCursor(len([]rune(suggestion)))
+			m.headerValueSelection.Collapse(len([]rune(suggestion)))
 			return m, nil
 		} else {
 			m.headerValueInput.Blur()
@@ -2215,12 +2397,10 @@ func (m Model) handleHeaderFieldEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if msg.Type == tea.KeyEnter {
 		return m.finishHeaderPairEdit(), nil
 	}
+
 	var cmd tea.Cmd
-	if m.headerKeyInput.Focused() {
-		m.headerKeyInput, cmd = m.headerKeyInput.Update(msg)
-	} else {
-		m.headerValueInput, cmd = m.headerValueInput.Update(msg)
-	}
+	*input, cmd = input.Update(msg)
+	ed.Sync(sel, b)
 	return m, cmd
 }
 
@@ -2537,4 +2717,26 @@ func deleteRequestCmd(
 		}
 		return requestsLoadedMsg{collectionID: collectionID, requests: requests}
 	}
+}
+
+// copyToClipboardCmd copies text to clipboard and returns a command.
+// If clipboard write fails, returns an error message for notification.
+func copyToClipboardCmd(text string) tea.Cmd {
+	return func() tea.Msg {
+		err := clipboard.WriteAll(text)
+		if err != nil {
+			return clipboardErrorMsg{err: err}
+		}
+		return clipboardMsg{text: text}
+	}
+}
+
+// clipboardMsg signals a successful clipboard copy.
+type clipboardMsg struct {
+	text string
+}
+
+// clipboardErrorMsg signals clipboard operation failure
+type clipboardErrorMsg struct {
+	err error
 }

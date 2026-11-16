@@ -21,6 +21,7 @@ import (
 	"github.com/crazy-vedic/quark/internal/keybindings"
 	"github.com/crazy-vedic/quark/internal/search"
 	"github.com/crazy-vedic/quark/internal/store"
+	"github.com/crazy-vedic/quark/internal/tui/textedit"
 )
 
 func interactionModel() Model { return New(Deps{Config: config.Default("")}) }
@@ -656,7 +657,7 @@ func TestUpdateMessageDispatchBranches(t *testing.T) {
 	}
 	messages := []tea.Msg{
 		themeWatchTickMsg{},
-		curlClipboardMsg{err: errors.New("clipboard")},
+		textedit.PasteResultMsg{Err: errors.New("clipboard")},
 		postmanImportResultMsg{output: " imported ", err: errors.New("import failed")},
 		tea.WindowSizeMsg{Width: 80, Height: 24},
 		softWindowSizeMsg{Width: 90, Height: 30},
