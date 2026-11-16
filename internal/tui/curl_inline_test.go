@@ -292,6 +292,11 @@ func TestCurlPastedWithNoFieldFocusedOpensReplaceDialog(t *testing.T) {
 		WithActiveRequest(req)
 
 	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(testCurl), Paste: true})
-	assert.Equal(t, tui.ImportMode, m.Mode(), "a curl paste opens the dialog without a focused field")
+	assert.Equal(
+		t,
+		tui.ImportMode,
+		m.Mode(),
+		"a curl paste opens the dialog without a focused field",
+	)
 	assert.Equal(t, "https://old.example", req.URL, "paste alone does not replace the request")
 }
