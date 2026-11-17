@@ -46,9 +46,7 @@ func NewEnvCmd(st EnvStore) *cobra.Command {
 			if collectionID != "" {
 				col, err := resolveCollectionReference(cmd.Context(), st, collectionID)
 				if err != nil {
-					// Preserve the established env list behavior: an unknown
-					// collection is an empty collection section, not a command error.
-					return envListGlobals(cmd.Context(), st, cmd.OutOrStdout())
+					return fmt.Errorf("env list: resolve collection: %w", err)
 				}
 				collectionID = col.ID
 			}
