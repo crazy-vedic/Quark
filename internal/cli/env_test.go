@@ -203,7 +203,7 @@ func TestEnvSetGlobal(t *testing.T) {
 		},
 	}
 
-	err := envSetGlobal(context.Background(), s, "url", "http://localhost")
+	err := envSetGlobal(context.Background(), s, "url", "http://localhost", &bytes.Buffer{})
 	require.NoError(t, err)
 
 	global, err := s.GetGlobalEnvironment(context.Background())
@@ -218,21 +218,29 @@ func TestEnvSetAndDelete(t *testing.T) {
 		},
 	}
 
-	err := envSet(context.Background(), s, "col1", "default", "url", "http://localhost")
+	err := envSet(
+		context.Background(),
+		s,
+		"col1",
+		"default",
+		"url",
+		"http://localhost",
+		&bytes.Buffer{},
+	)
 	require.NoError(t, err)
 
 	env, err := s.GetEnvironmentByName(context.Background(), "col1", "default")
 	require.NoError(t, err)
 	assert.Equal(t, "http://localhost", env.Vars()["url"])
 
-	err = envDelete(context.Background(), s, "col1", "default")
+	err = envDelete(context.Background(), s, "col1", "default", &bytes.Buffer{})
 	assert.Error(t, err) // cannot delete default
 }
 
 func TestEnvCreate(t *testing.T) {
 	s := &envTestStore{envs: nil}
 
-	err := envCreate(context.Background(), s, "col1", "dev")
+	err := envCreate(context.Background(), s, "col1", "dev", &bytes.Buffer{})
 	require.NoError(t, err)
 
 	env, err := s.GetEnvironmentByName(context.Background(), "col1", "dev")
@@ -301,7 +309,13 @@ func TestEnvSetCmd_WritesToCommandOutputWithoutTheValue(t *testing.T) {
 		cmd.SetContext(ctx)
 		require.NoError(t, cmd.Execute())
 
-		assert.Contains(t, out.String(), "token", "%v: confirmation goes to the command writer", args)
+		assert.Contains(
+			t,
+			out.String(),
+			"token",
+			"%v: confirmation goes to the command writer",
+			args,
+		)
 		assert.NotContains(t, out.String(), "s3cr3t-value", "%v: value must not be echoed", args)
 	}
 }

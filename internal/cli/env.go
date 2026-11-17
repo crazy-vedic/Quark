@@ -69,7 +69,7 @@ func NewEnvCmd(st EnvStore) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("env create: resolve collection: %w", err)
 			}
-			return envCreate(cmd.Context(), st, col.ID, args[1])
+			return envCreate(cmd.Context(), st, col.ID, args[1], cmd.OutOrStdout())
 		},
 	}
 	if st != nil {
@@ -86,7 +86,7 @@ func NewEnvCmd(st EnvStore) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("env set: resolve collection: %w", err)
 			}
-			return envSet(cmd.Context(), st, col.ID, args[1], args[2], args[3])
+			return envSet(cmd.Context(), st, col.ID, args[1], args[2], args[3], cmd.OutOrStdout())
 		},
 	}
 	if st != nil {
@@ -102,7 +102,7 @@ func NewEnvCmd(st EnvStore) *cobra.Command {
 		Short: "Set a key-value pair in the global environment",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return envSetGlobal(cmd.Context(), st, args[0], args[1])
+			return envSetGlobal(cmd.Context(), st, args[0], args[1], cmd.OutOrStdout())
 		},
 	})
 
@@ -115,7 +115,7 @@ func NewEnvCmd(st EnvStore) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("env delete: resolve collection: %w", err)
 			}
-			return envDelete(cmd.Context(), st, col.ID, args[1])
+			return envDelete(cmd.Context(), st, col.ID, args[1], cmd.OutOrStdout())
 		},
 	}
 	if st != nil {
@@ -214,7 +214,12 @@ func envListGlobals(ctx context.Context, st EnvStore, w io.Writer) error {
 	return nil
 }
 
-func envCreate(ctx context.Context, st EnvStore, collectionID, name string) error {
+func envCreate(
+	ctx context.Context,
+	st EnvStore,
+	collectionID, name string,
+	w io.Writer,
+) error {
 	env := &domain.Environment{
 		ID:           uuid.New().String(),
 		CollectionID: collectionID,
@@ -225,11 +230,18 @@ func envCreate(ctx context.Context, st EnvStore, collectionID, name string) erro
 	if err := st.SaveEnvironment(ctx, env); err != nil {
 		return fmt.Errorf("create env: %w", err)
 	}
-	fmt.Printf("Environment %q created for collection %s\n", name, collectionID)
+	fmt.Fprintf(w, "Environment %q created for collection %s\n", name, collectionID)
 	return nil
 }
 
-func envSet(ctx context.Context, st EnvStore, collectionID, envName, key, value string) error {
+// envSet stores one variable. The confirmation names the key only: values
+// are usually secrets and this output ends up in terminal history and CI logs.
+func envSet(
+	ctx context.Context,
+	st EnvStore,
+	collectionID, envName, key, value string,
+	w io.Writer,
+) error {
 	env, err := st.GetEnvironmentByName(ctx, collectionID, envName)
 	if err != nil {
 		return fmt.Errorf("get env: %w", err)
@@ -243,11 +255,11 @@ func envSet(ctx context.Context, st EnvStore, collectionID, envName, key, value 
 	if err := st.SaveEnvironment(ctx, env); err != nil {
 		return fmt.Errorf("save env: %w", err)
 	}
-	fmt.Printf("Set %s = %s in %s/%s\n", key, value, collectionID, envName)
+	fmt.Fprintf(w, "Set %s in %s/%s\n", key, collectionID, envName)
 	return nil
 }
 
-func envSetGlobal(ctx context.Context, st EnvStore, key, value string) error {
+func envSetGlobal(ctx context.Context, st EnvStore, key, value string, w io.Writer) error {
 	env, err := st.GetGlobalEnvironment(ctx)
 	if err != nil {
 		return fmt.Errorf("get global env: %w", err)
@@ -261,11 +273,16 @@ func envSetGlobal(ctx context.Context, st EnvStore, key, value string) error {
 	if err := st.SaveEnvironment(ctx, env); err != nil {
 		return fmt.Errorf("save global env: %w", err)
 	}
-	fmt.Printf("Set %s = %s in global env\n", key, value)
+	fmt.Fprintf(w, "Set %s in global env\n", key)
 	return nil
 }
 
-func envDelete(ctx context.Context, st EnvStore, collectionID, envName string) error {
+func envDelete(
+	ctx context.Context,
+	st EnvStore,
+	collectionID, envName string,
+	w io.Writer,
+) error {
 	env, err := st.GetEnvironmentByName(ctx, collectionID, envName)
 	if err != nil {
 		return fmt.Errorf("get env: %w", err)
@@ -276,7 +293,7 @@ func envDelete(ctx context.Context, st EnvStore, collectionID, envName string) e
 	if err := st.DeleteEnvironment(ctx, env.ID); err != nil {
 		return fmt.Errorf("delete env: %w", err)
 	}
-	fmt.Printf("Deleted environment %q from collection %s\n", envName, collectionID)
+	fmt.Fprintf(w, "Deleted environment %q from collection %s\n", envName, collectionID)
 	return nil
 }
 
