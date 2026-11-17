@@ -177,9 +177,11 @@ func TestReloadRejectsDuplicateHosts(t *testing.T) {
 
 func TestReloadClosesIdleConnectionsOfReplacedRoutes(t *testing.T) {
 	var closed atomic.Int32
-	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
+	srv := httptest.NewUnstartedServer(
+		http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		}),
+	)
 	srv.Config.ConnState = func(_ net.Conn, state http.ConnState) {
 		if state == http.StateClosed {
 			closed.Add(1)
