@@ -62,8 +62,15 @@ func (m *Manager) Reload(cfg config.Config) error {
 		transports[host] = clone
 	}
 	m.mu.Lock()
+	previous := m.transports
 	m.transports = transports
 	m.mu.Unlock()
+	// Requests in flight on the old routes finish normally; only idle sockets close.
+	for _, rt := range previous {
+		if rt != nil {
+			rt.CloseIdleConnections()
+		}
+	}
 	return nil
 }
 
