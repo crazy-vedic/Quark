@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
 
@@ -103,7 +104,15 @@ func CanSelfUpdate(ch Channel, exe string) bool {
 	}
 
 	// Check if the path is in a system package directory (never self-update there).
-	// Note: /usr/local/bin is user-writable, so it's allowed for self-update.
+	if isSystemPathFor(resolved, runtime.GOOS) {
+		return false
+	}
+	return true
+}
+
+// isSystemPathFor reports whether resolved lies in a system package directory
+// on the given GOOS. Note: /usr/local/bin is user-writable, so it is allowed.
+func isSystemPathFor(resolved, goos string) bool {
 	systemPaths := []string{
 		"/usr/bin",
 		"/usr/local/Cellar",
@@ -111,30 +120,14 @@ func CanSelfUpdate(ch Channel, exe string) bool {
 		"/opt/homebrew/bin",
 		"C:\\Program Files",
 	}
-
 	for _, sys := range systemPaths {
-		// Check exact path or exact prefix with separator (not just string prefix)
+		// Exact path or exact prefix with separator (not just string prefix)
 		// This prevents false matches like "/usr/binfoo" matching "/usr/bin"
 		if resolved == sys || strings.HasPrefix(resolved, sys+"/") {
-			return false
+			return true
 		}
 	}
-
-	// Check if the directory is writable by the user.
-	dir := filepath.Dir(resolved)
-	return isWritable(dir)
-}
-
-// isWritable checks if the directory is writable by the current user.
-func isWritable(dir string) bool {
-	// Try creating a temporary file in the directory.
-	f, err := os.CreateTemp(dir, ".quark-check-*")
-	if err != nil {
-		return false
-	}
-	defer f.Close()
-	defer os.Remove(f.Name())
-	return true
+	return false
 }
 
 // commandExists checks if a command is available on PATH.
