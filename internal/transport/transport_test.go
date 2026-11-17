@@ -8,8 +8,12 @@ import (
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"math/big"
+	"net"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -169,4 +173,35 @@ func TestReloadRejectsDuplicateHosts(t *testing.T) {
 
 	_, err := New(cfg)
 	require.ErrorContains(t, err, "duplicate mTLS certificate host")
+}
+
+func TestReloadClosesIdleConnectionsOfReplacedRoutes(t *testing.T) {
+	var closed atomic.Int32
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	srv.Config.ConnState = func(_ net.Conn, state http.ConnState) {
+		if state == http.StateClosed {
+			closed.Add(1)
+		}
+	}
+	srv.Start()
+	t.Cleanup(srv.Close)
+
+	p12Path := writeTestPKCS12(t, "secret")
+	cfg := config.Default(t.TempDir())
+	cfg.HTTP.ClientCertificates = []config.ClientCertificate{{
+		Host: "127.0.0.1", File: p12Path, Password: "secret",
+	}}
+	m, err := New(cfg)
+	require.NoError(t, err)
+
+	// One request leaves an idle keep-alive connection in the configured route.
+	resp, err := (&http.Client{Transport: m}).Get(srv.URL)
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+
+	require.NoError(t, m.Reload(cfg))
+	require.Eventually(t, func() bool { return closed.Load() == 1 }, 2*time.Second,
+		10*time.Millisecond, "idle connection of the replaced route was not closed on Reload")
 }
