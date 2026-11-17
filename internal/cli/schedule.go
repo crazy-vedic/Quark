@@ -152,6 +152,11 @@ func newScheduleRunDueCmd(st ScheduleStore, e *exec.Executor, now func() time.Ti
 				if err == nil {
 					result, err = e.Execute(cmd.Context(), prepared)
 				}
+				if result != nil {
+					// run-due never shows the body. A large response is streamed
+					// to a temp file that only Cleanup removes.
+					_ = result.Cleanup()
+				}
 				if err != nil || (result != nil && result.StatusCode >= 500) {
 					if err == nil {
 						err = fmt.Errorf("HTTP %d", result.StatusCode)
