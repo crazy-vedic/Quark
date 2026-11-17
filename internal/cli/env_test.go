@@ -282,18 +282,20 @@ func TestEnvActive_RejectsGlobal(t *testing.T) {
 
 // A collection name that does not exist is a mistake, not an empty section.
 func TestEnvListCmd_UnknownCollectionIsAnError(t *testing.T) {
-	s := &envTestStore{
-		envs: []*domain.Environment{{ID: "g1", Name: "global", Data: `{}`}},
-		cols: []*domain.Collection{{ID: "col1", Name: "API"}},
-	}
-	cmd := NewEnvCmd(s)
+	ctx := context.Background()
+	st, err := store.New(filepath.Join(t.TempDir(), "quark.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = st.Close() })
+	require.NoError(t, st.SaveCollection(ctx, &domain.Collection{ID: "col1", Name: "API"}))
+
+	cmd := NewEnvCmd(st)
 	var out bytes.Buffer
 	cmd.SetOut(&out)
 	cmd.SetErr(&bytes.Buffer{})
 	cmd.SetArgs([]string{"list", "no-such-collection"})
-	cmd.SetContext(context.Background())
+	cmd.SetContext(ctx)
 
-	err := cmd.Execute()
+	err = cmd.Execute()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "no-such-collection")
 	assert.Empty(t, out.String(), "nothing should be listed for an unknown collection")
