@@ -121,7 +121,12 @@ func (e *Executor) Execute(ctx context.Context, req *domain.Request) (*ExecuteRe
 	}
 
 	// Apply per-request timeout on top of any deadline already in ctx.
-	timeoutCtx, cancel := context.WithTimeout(ctx, e.timeout)
+	// A zero or negative timeout means "no timeout": WithTimeout(ctx, 0)
+	// would be expired before the request is sent.
+	timeoutCtx, cancel := ctx, context.CancelFunc(func() {})
+	if e.timeout > 0 {
+		timeoutCtx, cancel = context.WithTimeout(ctx, e.timeout)
+	}
 	defer cancel()
 	httpReq = httpReq.WithContext(timeoutCtx)
 
