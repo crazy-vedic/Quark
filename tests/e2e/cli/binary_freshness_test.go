@@ -23,8 +23,7 @@ func repoRoot(t *testing.T) string {
 
 // newestSourceModTime returns the latest modification time of any Go source
 // or module file under root. Build output and VCS metadata are skipped.
-func newestSourceModTime(t *testing.T, root string) time.Time {
-	t.Helper()
+func newestSourceModTime(root string) (time.Time, error) {
 	var newest time.Time
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -52,8 +51,7 @@ func newestSourceModTime(t *testing.T, root string) time.Time {
 		}
 		return nil
 	})
-	require.NoError(t, err)
-	return newest
+	return newest, err
 }
 
 // The CLI e2e tests run the built binary, which `go test` does not rebuild.
@@ -61,7 +59,8 @@ func newestSourceModTime(t *testing.T, root string) time.Time {
 func TestCLI_BinaryIsNotOlderThanSource(t *testing.T) {
 	info, err := os.Stat(binaryPath)
 	require.NoError(t, err, "quark binary missing at %s", binaryPath)
-	newest := newestSourceModTime(t, repoRoot(t))
+	newest, err := newestSourceModTime(repoRoot(t))
+	require.NoError(t, err)
 	assert.False(t, newest.After(info.ModTime()),
 		"%s (built %s) is older than a source file (%s); the e2e tests would run stale code",
 		binaryPath, info.ModTime(), newest)
