@@ -13,6 +13,14 @@ import (
 	"github.com/crazy-vedic/quark/internal/keybindings"
 )
 
+// The README promises "No data leaves your machine". A default that contacts
+// GitHub (or runs a package manager) on every start contradicts that, so the
+// update check must be opt-in.
+func TestDefault_UpdateCheckIsOptIn(t *testing.T) {
+	cfg := config.Default(t.TempDir())
+	assert.False(t, cfg.Updates.Check, "the update check must be off by default")
+}
+
 func TestDefault_HasSensibleValues(t *testing.T) {
 	dir := t.TempDir()
 	cfg := config.Default(dir)
