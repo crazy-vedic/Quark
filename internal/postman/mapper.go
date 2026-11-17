@@ -115,6 +115,10 @@ func mapRequest(item Item, prefix string, sortOrder int) (*domain.Request, []str
 	// Extract headers as JSON object
 	headersMap := make(map[string]string)
 	for _, h := range req.Header {
+		if h.Disabled {
+			// Switched off in Postman: it is not sent there, so not here.
+			continue
+		}
 		if h.Key != "" && h.Value != "" {
 			headersMap[h.Key] = h.Value.String()
 		}
