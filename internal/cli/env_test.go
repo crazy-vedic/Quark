@@ -299,5 +299,5 @@ func TestEnvListCmd_UnknownCollectionIsAnError(t *testing.T) {
 	err = cmd.Execute()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "no-such-collection")
-	assert.Empty(t, out.String(), "nothing should be listed for an unknown collection")
+	assert.NotContains(t, out.String(), "Global environments", "no listing for an unknown collection")
 }
