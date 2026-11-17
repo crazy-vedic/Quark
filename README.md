@@ -4,7 +4,7 @@
 [![Go Version](https://img.shields.io/badge/go-1.26-blue)](https://golang.org)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-> **A local-first, keyboard-driven HTTP client.** No cloud. No accounts. No data leaves your machine.
+> **A local-first, keyboard-driven HTTP client.** No cloud. No accounts. No data leaves your machine unless you turn on the update check (`[updates] check = true`).
 
 Quark is a terminal-native TUI that keeps everything in a local SQLite database, with a scriptable CLI for automation and CI. You get the ergonomics of a GUI without the surveillance.
 

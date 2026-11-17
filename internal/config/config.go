@@ -124,7 +124,7 @@ func Default(configDir string) Config {
 			KeepLast:   10,
 		},
 		Updates: Updates{
-			Check:             true,
+			Check:             false, // opt-in: the README promises no data leaves the machine
 			CheckInterval:     duration{12 * time.Hour},
 			RetryAfterFailure: duration{1 * time.Hour},
 			Timeout:           duration{10 * time.Second},
