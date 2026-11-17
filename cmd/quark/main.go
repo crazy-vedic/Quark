@@ -8,7 +8,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"net/url"
 	"os"
 	"os/signal"
@@ -114,11 +113,11 @@ func runWithArgs(args []string) error {
 		if rt != nil {
 			return rt, nil
 		}
-		// Load user config (defaults if file absent or unreadable).
+		// A missing config file means defaults. A config that exists but does
+		// not parse is an error: continuing would hide the user's settings.
 		cfg, err := config.Load(configDir)
 		if err != nil {
-			slog.Warn("config: failed to load config.toml; using defaults", "err", err)
-			cfg = config.Default(configDir)
+			return nil, fmt.Errorf("load config: %w", err)
 		}
 		if selected := os.Getenv("QUARK_THEME"); selected != "" {
 			cfg.UI.Theme = selected
