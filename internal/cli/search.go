@@ -38,7 +38,12 @@ func NewSearchCmd(st SearchStore) *cobra.Command {
 				return fmt.Errorf("search: %w", err)
 			}
 			for _, f := range result.Failures {
-				fmt.Fprintf(cmd.ErrOrStderr(), "search: skipped %s: %v\n", names[f.CollectionID], f.Err)
+				fmt.Fprintf(
+					cmd.ErrOrStderr(),
+					"search: skipped %s: %v\n",
+					names[f.CollectionID],
+					f.Err,
+				)
 			}
 			if len(result.Hits) == 0 {
 				fmt.Fprintln(cmd.OutOrStdout(), "No requests found.")
