@@ -1003,3 +1003,50 @@ func TestHTTPResponseAndErrorStatePaths(t *testing.T) {
 		})
 	}
 }
+
+// countingEnvReader counts the store reads made through it.
+type countingEnvReader struct {
+	EnvironmentHierarchyReader
+	reads int
+}
+
+func (r *countingEnvReader) ListCollectionEnvironments(
+	ctx context.Context,
+	collectionID string,
+) ([]*domain.Environment, error) {
+	r.reads++
+	return r.EnvironmentHierarchyReader.ListCollectionEnvironments(ctx, collectionID)
+}
+
+func (r *countingEnvReader) GetEnvironment(
+	ctx context.Context,
+	id string,
+) (*domain.Environment, error) {
+	r.reads++
+	return r.EnvironmentHierarchyReader.GetEnvironment(ctx, id)
+}
+
+// Rendering must not query the database. The active environment name shown
+// in the status bar is looked up once and then served from the cache.
+func TestActiveEnvName_IsCachedAcrossRenders(t *testing.T) {
+	ctx := context.Background()
+	st, err := store.New(t.TempDir() + "/envname.db")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = st.Close() })
+	col := &domain.Collection{ID: "envname-col", Name: "API"}
+	require.NoError(t, st.SaveCollection(ctx, col))
+
+	reader := &countingEnvReader{EnvironmentHierarchyReader: st}
+	m := New(Deps{Config: config.Default(""), Ctx: ctx, Reader: st, EnvReader: reader})
+	m.collections = []*domain.Collection{col}
+	m.colCursor = 0
+
+	require.Equal(t, defaultEnvironmentName, m.activeEnvName())
+	afterFirst := reader.reads
+	require.Positive(t, afterFirst, "the first lookup reads the store")
+
+	for range 10 {
+		require.Equal(t, defaultEnvironmentName, m.activeEnvName())
+	}
+	require.Equal(t, afterFirst, reader.reads, "later renders must not read the store again")
+}
