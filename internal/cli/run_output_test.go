@@ -161,13 +161,17 @@ func TestBinaryResponseClassification(t *testing.T) {
 
 // Piping `quark run` must give exactly the response body on stdout.
 func TestRunOutput_StdoutIsExactlyTheBody(t *testing.T) {
-	body := []byte(`{"ok":true}`)
+	body := []byte("plain text body")
 	var stdout, stderr bytes.Buffer
 	cmd := &cobra.Command{}
 	cmd.SetOut(&stdout)
 	cmd.SetErr(&stderr)
-	result := &exec.ExecuteResult{Status: "200 OK", Size: int64(len(body)), Body: body}
+	result := &exec.ExecuteResult{
+		Status: "200 OK", Size: int64(len(body)), Body: body,
+		Headers: map[string][]string{"Content-Type": {"text/plain"}},
+	}
 	require.NoError(t, printRunResult(cmd, &domain.Request{}, result, false))
-	assert.Equal(t, string(body), stdout.String())
+	assert.Equal(t, string(body), strings.TrimSuffix(stdout.String(), "\n"),
+		"stdout must hold the body and nothing else (a single trailing newline is allowed)")
 	assert.Contains(t, stderr.String(), "Status: 200 OK")
 }

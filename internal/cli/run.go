@@ -29,6 +29,7 @@ type requestPathResolver interface {
 func NewRunCmd(st RunStore, e *exec.Executor) *cobra.Command {
 	var namedVars []string
 	var verbose bool
+	var fail bool
 
 	cmd := &cobra.Command{
 		Use:   "run <Collection/Request> [positional-args...]",
@@ -68,7 +69,7 @@ func NewRunCmd(st RunStore, e *exec.Executor) *cobra.Command {
 					if err != nil {
 						return fmt.Errorf("run: execute: %w", err)
 					}
-					return printRunResult(cmd, prepared, result, verbose)
+					return finishRun(cmd, prepared, result, verbose, fail)
 				}
 			}
 			parts := strings.SplitN(args[0], "/", 2)
@@ -137,10 +138,12 @@ func NewRunCmd(st RunStore, e *exec.Executor) *cobra.Command {
 				return fmt.Errorf("run: execute: %w", err)
 			}
 
-			return printRunResult(cmd, prepared, result, verbose)
+			return finishRun(cmd, prepared, result, verbose, fail)
 		},
 	}
 	cmd.ValidArgsFunction = CompleteRequestPaths(st.ListCollections, st.ListRequests)
+	cmd.Flags().BoolVar(&fail, "fail", false,
+		"Exit with an error when the response status is 400 or higher")
 	cmd.Flags().StringArrayVarP(
 		&namedVars,
 		"var",
@@ -174,4 +177,21 @@ func parseRunOverrides(
 		named[key] = value
 	}
 	return positionals, named, nil
+}
+
+// finishRun prints the result and, with --fail, turns an HTTP error status into
+// a command error so scripts and CI can detect it.
+func finishRun(
+	cmd *cobra.Command,
+	req *domain.Request,
+	result *exec.ExecuteResult,
+	verbose, fail bool,
+) error {
+	if err := printRunResult(cmd, req, result, verbose); err != nil {
+		return err
+	}
+	if fail && result.StatusCode >= 400 {
+		return fmt.Errorf("run: HTTP %s", result.Status)
+	}
+	return nil
 }

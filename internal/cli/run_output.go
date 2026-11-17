@@ -10,6 +10,7 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/spf13/cobra"
@@ -38,8 +39,9 @@ func printRunResult(
 		printRequestDetails(cmd.ErrOrStderr(), req)
 		printResponseDetails(cmd.ErrOrStderr(), result)
 	}
-	fmt.Fprintf(cmd.OutOrStdout(), "Status: %s\nSize:   %d bytes\nTime:   %v\n",
-		result.Status, result.Size, result.Duration.Round(1000000))
+	// The status block goes to stderr so stdout carries only the response body.
+	fmt.Fprintf(cmd.ErrOrStderr(), "Status: %s\nSize:   %d bytes\nTime:   %v\n",
+		result.Status, result.Size, result.Duration.Round(time.Millisecond))
 	if result.Size == 0 {
 		return nil
 	}
