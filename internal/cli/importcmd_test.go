@@ -8,10 +8,12 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/crazy-vedic/quark/internal/curl"
 	"github.com/crazy-vedic/quark/internal/domain"
+	"github.com/crazy-vedic/quark/internal/store"
 )
 
 type importRequestWriter struct{ saved *domain.Request }
@@ -115,4 +117,33 @@ func TestImportCurlSavesRequestBeforeCertificate(t *testing.T) {
 	)
 	require.Error(t, cmd.Execute())
 	require.False(t, saverCalled, "certificate must not be persisted when request save fails")
+}
+
+// --collection accepts an ID, a name or a nested path, like every other
+// command. Supplying only one of --collection and --name must fail; it must
+// not silently become a dry run.
+func TestImportCurl_CollectionByNameAndPartialFlagsAreErrors(t *testing.T) {
+	ctx := context.Background()
+	st, err := store.New(filepath.Join(t.TempDir(), "quark.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = st.Close() })
+	require.NoError(t, st.SaveCollection(ctx, &domain.Collection{ID: "col-1", Name: "API"}))
+
+	cmd := NewImportCmd(st, curl.NewImporter())
+	cmd.SetOut(new(bytes.Buffer))
+	cmd.SetArgs([]string{"curl", "--collection", "API", "--name", "Ping",
+		"curl https://example.test/ping"})
+	cmd.SetContext(ctx)
+	require.NoError(t, cmd.Execute())
+
+	reqs, err := st.ListRequests(ctx, "col-1")
+	require.NoError(t, err)
+	require.Len(t, reqs, 1, "--collection must accept a collection name")
+	assert.Equal(t, "Ping", reqs[0].Name)
+
+	partial := NewImportCmd(st, curl.NewImporter())
+	partial.SetOut(new(bytes.Buffer))
+	partial.SetArgs([]string{"curl", "--collection", "API", "curl https://example.test/x"})
+	partial.SetContext(ctx)
+	require.Error(t, partial.Execute(), "--collection without --name must not be a silent dry run")
 }
