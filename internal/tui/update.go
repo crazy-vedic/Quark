@@ -249,12 +249,27 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Collections (and their environments) may have changed underneath
 		// the cached status-bar env name, e.g. after an import.
 		m.envNameCache.invalidate()
+		// Remember the selection so a reload (add, rename, delete, import)
+		// does not throw the user back to the top of the sidebar.
+		previousID := m.activeCollectionID()
 		m.collections = orderCollectionsTree(msg.collections)
 		m.colCursor = 0
 		m.reqCursor = -1
 		// If we're in import mode with no collection set, use the first collection.
 		if m.mode == importMode && m.importColID == "" && len(m.collections) > 0 {
 			m.importColID = m.collections[0].ID
+		}
+		if previousID != "" {
+			for idx, col := range m.collections {
+				if col != nil && col.ID == previousID {
+					m.colCursor = idx
+					if m.reader == nil {
+						return m, nil
+					}
+					// Refresh its requests; leave its expanded state as it was.
+					return m, loadRequestsCmd(m.ctx, m.reader, previousID)
+				}
+			}
 		}
 		if m.cfg.UI.LastRequestID != "" && m.reader != nil {
 			return m, loadLastRequestCmd(m.ctx, m.reader, m.cfg.UI.LastRequestID)
