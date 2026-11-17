@@ -2171,7 +2171,7 @@ func (m Model) handleHTTPErr(msg httpErrMsg) (tea.Model, tea.Cmd) {
 		m = m.status("error", "Request timed out. Press [⌘+Enter] to retry.")
 		return m, historyCmd
 	}
-	m.err = fmt.Errorf("unexpected error: %w", msg.err)
+	m.err = fmt.Errorf("request failed: %w", msg.err)
 	return m, historyCmd
 }
 
