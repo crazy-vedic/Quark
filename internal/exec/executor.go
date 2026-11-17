@@ -190,18 +190,16 @@ func buildHTTPRequest(ctx context.Context, req *domain.Request) (*http.Request, 
 				"request_id", req.ID, "err", err)
 		} else {
 			for key, values := range parsedHeaders {
+				// Values are sent as written. A leading "@" is not a file reference.
 				for _, value := range values {
-					value, err := resolveHeaderFile(value)
-					if err != nil {
-						return nil, fmt.Errorf("exec: header %q: %w", key, err)
-					}
 					headers.Add(key, value)
 				}
 			}
 		}
 	}
 
-	body, err := requestBodyValue(req.Body, headers.Get("Content-Type"))
+	// A leading "@" in the body is text, not a file reference.
+	body, err := FormatRequestBody(req.Body, headers.Get("Content-Type"))
 	if err != nil {
 		return nil, err
 	}
@@ -229,26 +227,6 @@ func buildHTTPRequest(ctx context.Context, req *domain.Request) (*http.Request, 
 	}
 
 	return httpReq, nil
-}
-
-const maxRequestFileSize = 10 << 20
-
-// requestBodyReader expands the exact @path form used by the Body editor.
-// Keeping the reference in domain.Request means saved requests remain small
-// and continue to follow changes to the referenced file.
-func requestBodyValue(body, contentType string) (string, error) {
-	if body == "" {
-		return "", nil
-	}
-	if strings.HasPrefix(body, "@") && len(body) > 1 {
-		path := strings.TrimPrefix(body, "@")
-		data, err := readRequestFile(path)
-		if err != nil {
-			return "", fmt.Errorf("exec: read body file %q: %w", path, err)
-		}
-		body = string(data)
-	}
-	return FormatRequestBody(body, contentType)
 }
 
 // FormatRequestBody prepares body text according to its media type. JSON is
@@ -294,37 +272,6 @@ func validJSONTemplate(body string) bool {
 		}
 	}
 	return false
-}
-
-func resolveHeaderFile(value string) (string, error) {
-	if !strings.HasPrefix(value, "@") || len(value) == 1 {
-		return value, nil
-	}
-	data, err := readRequestFile(strings.TrimPrefix(value, "@"))
-	if err != nil {
-		return "", fmt.Errorf("read file %q: %w", strings.TrimPrefix(value, "@"), err)
-	}
-	return string(data), nil
-}
-
-func readRequestFile(path string) ([]byte, error) {
-	if strings.TrimSpace(path) == "" {
-		return nil, errors.New("file path is empty")
-	}
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-
-	data, err := io.ReadAll(io.LimitReader(f, maxRequestFileSize+1))
-	if err != nil {
-		return nil, err
-	}
-	if len(data) > maxRequestFileSize {
-		return nil, fmt.Errorf("file exceeds %d MiB limit", maxRequestFileSize/(1<<20))
-	}
-	return data, nil
 }
 
 // applySpecialRequestHeaders maps headers that net/http treats as Request
