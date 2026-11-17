@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -2222,14 +2223,17 @@ func (m Model) saveBody() (Model, tea.Cmd) {
 	if m.activeRequest == nil {
 		return m, nil
 	}
-	formatted, err := exec.FormatRequestBody(
-		m.bodyTextarea.Value(),
-		requestContentType(m.activeRequest),
-	)
-	if err != nil {
-		return m.status("error", err.Error()), nil
+	// Pretty-print a valid JSON body in the editor when json_on_save is set.
+	// Malformed JSON and {{placeholders}} are stored exactly as typed; they are
+	// only validated (if at all) when the request is sent.
+	body := m.bodyTextarea.Value()
+	if m.cfg.Format.JSONOnSave && isJSONContentType(requestContentType(m.activeRequest)) {
+		var pretty bytes.Buffer
+		if json.Indent(&pretty, []byte(body), "", "  ") == nil {
+			body = pretty.String()
+		}
 	}
-	m.bodyTextarea.SetValue(formatted)
+	m.bodyTextarea.SetValue(body)
 	m = m.finishBodyEdit()
 	return m, saveRequestCmd(m.ctx, m.writer, m.reader, m.activeRequest)
 }
@@ -2787,4 +2791,13 @@ type clipboardMsg struct {
 // clipboardErrorMsg signals clipboard operation failure
 type clipboardErrorMsg struct {
 	err error
+}
+
+const mediaTypeJSON = "application/json"
+
+// isJSONContentType reports whether a Content-Type value is JSON
+// (application/json, or any +json media type).
+func isJSONContentType(contentType string) bool {
+	mediaType := strings.ToLower(strings.TrimSpace(strings.Split(contentType, ";")[0]))
+	return mediaType == mediaTypeJSON || strings.HasSuffix(mediaType, "+json")
 }

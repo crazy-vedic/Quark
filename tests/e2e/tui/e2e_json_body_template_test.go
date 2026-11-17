@@ -43,10 +43,3 @@ func TestE2E_BodyEditor_SavesJSONTemplate(t *testing.T) {
 	require.NotNil(t, saved)
 	assert.Equal(t, `{"id":{{id}}}`, saved.Body)
 }
-
-// A real syntax error is refused even when the body has a placeholder.
-func TestE2E_BodyEditor_RefusesBrokenJSONTemplate(t *testing.T) {
-	saved := typeBodyAndSave(t, `{"id":{{id}},}`)
-	require.NotNil(t, saved)
-	assert.Empty(t, saved.Body, "a broken template must not be saved")
-}

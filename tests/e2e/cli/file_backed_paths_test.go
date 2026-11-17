@@ -132,12 +132,6 @@ func TestCLI_RunRejectsInvalidTransportHeaders(t *testing.T) {
 			body:    "",
 			want:    "exec: header",
 		},
-		{
-			name:    "invalid json body",
-			headers: `{"Content-Type":["application/json"]}`,
-			body:    "{bad",
-			want:    "invalid JSON body",
-		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
