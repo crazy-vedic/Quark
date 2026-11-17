@@ -84,9 +84,10 @@ func (s *Store) evictOldBackups() error {
 		return nil
 	}
 
-	// Sort ascending (oldest first) — lexicographic order matches chronological
-	// because the date prefix is ISO 8601.
-	sort.Strings(names)
+	// Sort ascending (oldest first): by ISO 8601 date, then by sequence
+	// number compared as a number. Plain text order would put "-1000" before
+	// "-999" and evict the newest backup.
+	sort.Slice(names, func(i, j int) bool { return backupNameLess(names[i], names[j]) })
 
 	// Evict the oldest (first in sorted order).
 	toDelete := names[:len(names)-s.backupKeep]
@@ -118,4 +119,31 @@ func copyFile(src, dst string) error {
 		return err
 	}
 	return out.Sync()
+}
+
+// backupNameLess orders backup filenames (quark.db.YYYY-MM-DD-N) from oldest
+// to newest. Names that do not match the pattern fall back to text order.
+func backupNameLess(a, b string) bool {
+	dateA, seqA, okA := splitBackupName(a)
+	dateB, seqB, okB := splitBackupName(b)
+	if !okA || !okB {
+		return a < b
+	}
+	if dateA != dateB {
+		return dateA < dateB
+	}
+	return seqA < seqB
+}
+
+func splitBackupName(name string) (date string, seq int, ok bool) {
+	rest := strings.TrimPrefix(name, backupPrefix)
+	i := strings.LastIndex(rest, "-")
+	if i < 0 {
+		return "", 0, false
+	}
+	seq, err := strconv.Atoi(rest[i+1:])
+	if err != nil {
+		return "", 0, false
+	}
+	return rest[:i], seq, true
 }
