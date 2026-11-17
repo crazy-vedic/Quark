@@ -102,11 +102,20 @@ func newCollectionRenameCmd(s CollectionStore) *cobra.Command {
 }
 
 func newCollectionDeleteCmd(s CollectionStore) *cobra.Command {
-	return &cobra.Command{
-		Use:   "delete <collection>",
-		Short: "Delete a collection and its requests",
-		Args:  cobra.ExactArgs(1),
+	var yes bool
+	cmd := &cobra.Command{
+		Use:   "delete <collection> --yes",
+		Short: "Delete a collection and everything in it",
+		Long: "Delete a collection with its nested collections, requests and environments. " +
+			"Requires --yes.",
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if !yes {
+				return fmt.Errorf(
+					"collection delete: refusing to delete %q without --yes; this also removes its nested collections, requests and environments",
+					args[0],
+				)
+			}
 			collection, err := resolveCollectionReference(cmd.Context(), s, args[0])
 			if err != nil {
 				return fmt.Errorf("collection delete: %w", err)
@@ -118,4 +127,6 @@ func newCollectionDeleteCmd(s CollectionStore) *cobra.Command {
 			return nil
 		},
 	}
+	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "Confirm the deletion")
+	return cmd
 }

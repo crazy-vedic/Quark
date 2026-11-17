@@ -488,9 +488,10 @@ func lazyCollectionCmd(rt func() (*runtime, error)) *cobra.Command {
 			return fmt.Errorf("rename subcommand not found")
 		},
 	})
-	cmd.AddCommand(&cobra.Command{
-		Use:   "delete <collection>",
-		Short: "Delete a collection and its requests",
+	var deleteYes bool
+	deleteCmd := &cobra.Command{
+		Use:   "delete <collection> --yes",
+		Short: "Delete a collection and everything in it",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			r, err := rt()
@@ -499,12 +500,17 @@ func lazyCollectionCmd(rt func() (*runtime, error)) *cobra.Command {
 			}
 			for _, c := range cli.NewCollectionCmd(r.st).Commands() {
 				if c.Name() == "delete" {
+					if err := c.Flags().Set("yes", strconv.FormatBool(deleteYes)); err != nil {
+						return err
+					}
 					return c.RunE(cmd, args)
 				}
 			}
 			return fmt.Errorf("delete subcommand not found")
 		},
-	})
+	}
+	deleteCmd.Flags().BoolVarP(&deleteYes, "yes", "y", false, "Confirm the deletion")
+	cmd.AddCommand(deleteCmd)
 	return cmd
 }
 
