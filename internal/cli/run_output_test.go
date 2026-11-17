@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/spf13/cobra"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/crazy-vedic/quark/internal/domain"
@@ -59,7 +60,13 @@ func TestPrintRunResultVerboseIncludesRequestAndResponseDetails(t *testing.T) {
 		Headers: map[string][]string{"Z-Last": {"z"}, "A-First": {"a"}},
 	}
 	require.NoError(t, printRunResult(cmd, req, result, true))
-	require.Contains(t, stdout.String(), "Status: 200 OK")
+	require.Contains(t, stderr.String(), "Status: 200 OK")
+	require.NotContains(
+		t,
+		stdout.String(),
+		"Status:",
+		"status belongs on stderr so stdout is the body",
+	)
 	require.Contains(t, stdout.String(), "\"ok\": true")
 	require.Contains(t, stderr.String(), "Request: POST https://example.test")
 	require.Contains(t, stderr.String(), "Request auth config: {\"token\":\"secret\"}")
@@ -102,7 +109,7 @@ func TestPrintRunResultHandlesEmptyJSONStreamAndReadError(t *testing.T) {
 			false,
 		),
 	)
-	require.Contains(t, stdout.String(), "Status: 204 No Content")
+	require.NotContains(t, stdout.String(), "Status:")
 	require.NotContains(t, stdout.String(), "{}")
 
 	path := filepath.Join(t.TempDir(), "response.json")
@@ -150,4 +157,17 @@ func TestBinaryResponseClassification(t *testing.T) {
 	require.True(t, binaryResponse([]byte("bytes"), "application/octet-stream"))
 	require.False(t, binaryResponse([]byte("plain"), "text/plain"))
 	require.False(t, binaryResponse([]byte("{}"), "application/json"))
+}
+
+// Piping `quark run` must give exactly the response body on stdout.
+func TestRunOutput_StdoutIsExactlyTheBody(t *testing.T) {
+	body := []byte(`{"ok":true}`)
+	var stdout, stderr bytes.Buffer
+	cmd := &cobra.Command{}
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
+	result := &exec.ExecuteResult{Status: "200 OK", Size: int64(len(body)), Body: body}
+	require.NoError(t, printRunResult(cmd, &domain.Request{}, result, false))
+	assert.Equal(t, string(body), stdout.String())
+	assert.Contains(t, stderr.String(), "Status: 200 OK")
 }
