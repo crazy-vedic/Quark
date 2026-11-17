@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -278,4 +279,29 @@ func TestEnvActive_RejectsGlobal(t *testing.T) {
 	err := envActive(context.Background(), s, "col1", "global", &bytes.Buffer{})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "global")
+}
+
+// env set must report through the command's writer and must not echo the
+// value: values are usually secrets and the output lands in CI logs.
+func TestEnvSetCmd_WritesToCommandOutputWithoutTheValue(t *testing.T) {
+	ctx := context.Background()
+	s, err := store.New(filepath.Join(t.TempDir(), "quark.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+	require.NoError(t, s.SaveCollection(ctx, &domain.Collection{ID: "col1", Name: "API"}))
+
+	for _, args := range [][]string{
+		{"set", "col1", "default", "token", "s3cr3t-value"},
+		{"set-global", "token", "s3cr3t-value"},
+	} {
+		cmd := NewEnvCmd(s)
+		var out bytes.Buffer
+		cmd.SetOut(&out)
+		cmd.SetArgs(args)
+		cmd.SetContext(ctx)
+		require.NoError(t, cmd.Execute())
+
+		assert.Contains(t, out.String(), "token", "%v: confirmation goes to the command writer", args)
+		assert.NotContains(t, out.String(), "s3cr3t-value", "%v: value must not be echoed", args)
+	}
 }
