@@ -151,6 +151,26 @@ func (s *fakeScheduler) SaveScheduledRun(_ context.Context, run *domain.Schedule
 	return nil
 }
 
+// ClaimScheduledRun mirrors the store: only a pending run can be claimed.
+func (s *fakeScheduler) ClaimScheduledRun(ctx context.Context, id string) (bool, error) {
+	for _, run := range s.runs {
+		if run.ID != id {
+			continue
+		}
+		if run.Status != domain.ScheduledRunPending && run.Status != "" {
+			return false, nil
+		}
+		claimed := *run
+		claimed.Status = domain.ScheduledRunRunning
+		claimed.LastError = ""
+		if err := s.SaveScheduledRun(ctx, &claimed); err != nil {
+			return false, err
+		}
+		return true, nil
+	}
+	return false, nil
+}
+
 func (s *fakeScheduler) DeleteScheduledRun(_ context.Context, _ string) error {
 	return nil
 }
