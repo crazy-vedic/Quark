@@ -243,46 +243,57 @@ func TestExecutor_SpecialHeadersProduceExpectedWireRequest(t *testing.T) {
 	}
 }
 
-func TestExecutor_FormatsJSONBodyByContentType(t *testing.T) {
+func TestExecutor_SendsJSONBodyVerbatim(t *testing.T) {
 	var received string
 	transport := roundTripperFunc(func(r *http.Request) (*http.Response, error) {
 		body, err := io.ReadAll(r.Body)
 		require.NoError(t, err)
 		received = string(body)
 		return &http.Response{
-			StatusCode: 200,
-			Status:     "200 OK",
+			StatusCode: http.StatusOK,
 			Header:     make(http.Header),
 			Body:       io.NopCloser(strings.NewReader("ok")),
 			Request:    r,
 		}, nil
 	})
 
+	// The bytes sent must be the stored bytes: re-indenting changes the body
+	// under HMAC signatures and Content-Length expectations.
+	const stored = `{"name":"quark","items":[1,2]}`
 	_, err := newTestExecutor(transport).Execute(context.Background(), &domain.Request{
 		Method:  http.MethodPost,
 		URL:     "https://example.test/json",
-		Body:    `{"name":"quark","items":[1,2]}`,
+		Body:    stored,
 		Headers: `{"Content-Type":"application/json; charset=utf-8"}`,
 	})
 	require.NoError(t, err)
-	assert.Equal(t, "{\n  \"name\": \"quark\",\n  \"items\": [\n    1,\n    2\n  ]\n}", received)
+	assert.Equal(t, stored, received)
 }
 
-func TestExecutor_RejectsInvalidJSONBodyByContentType(t *testing.T) {
-	called := false
-	transport := roundTripperFunc(func(*http.Request) (*http.Response, error) {
-		called = true
-		return nil, errors.New("transport must not be called")
+// Malformed JSON is sent as written. Testing an API's handling of bad payloads
+// needs exactly that, and the server is the one that rejects it.
+func TestExecutor_SendsInvalidJSONBodyVerbatim(t *testing.T) {
+	var received string
+	transport := roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+		body, err := io.ReadAll(r.Body)
+		require.NoError(t, err)
+		received = string(body)
+		return &http.Response{
+			StatusCode: http.StatusBadRequest,
+			Header:     make(http.Header),
+			Body:       io.NopCloser(strings.NewReader("bad json")),
+			Request:    r,
+		}, nil
 	})
-	_, err := newTestExecutor(transport).Execute(context.Background(), &domain.Request{
+	result, err := newTestExecutor(transport).Execute(context.Background(), &domain.Request{
 		Method:  http.MethodPost,
 		URL:     "https://example.test/json",
 		Body:    `{"invalid":`,
 		Headers: `{"Content-Type":"application/json"}`,
 	})
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "invalid JSON body")
-	assert.False(t, called)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusBadRequest, result.StatusCode)
+	assert.Equal(t, `{"invalid":`, received)
 }
 
 func TestExecutor_RejectsMissingBodyFile(t *testing.T) {

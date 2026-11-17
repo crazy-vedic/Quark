@@ -105,7 +105,7 @@ func TestSaveBodyFormatsJSONBeforePersisting(t *testing.T) {
 	)
 }
 
-func TestSaveBodyRejectsInvalidJSONWithoutSaving(t *testing.T) {
+func TestSaveBodyStoresInvalidJSONAsWritten(t *testing.T) {
 	m := New(Deps{Config: config.Default(t.TempDir())})
 	m.activeRequest = &domain.Request{
 		ID:      "request-1",
@@ -117,8 +117,8 @@ func TestSaveBodyRejectsInvalidJSONWithoutSaving(t *testing.T) {
 
 	updated, cmd := m.saveBody()
 	m = updated
-	require.Nil(t, cmd)
-	require.Contains(t, m.statusErr, "invalid JSON body")
+	require.NotNil(t, cmd, "malformed JSON is stored as written, so save must proceed")
+	require.Empty(t, m.statusErr)
 	require.Equal(t, `{"invalid":`, m.bodyTextarea.Value())
 }
 
