@@ -29,6 +29,12 @@ func NewSelfUpdater(repo string, currentPath string, currentVersion string) *Sel
 	}
 }
 
+// SetBaseURL overrides the host release assets are downloaded from. The
+// default is https://github.com; tests point it at a local server.
+func (su *SelfUpdater) SetBaseURL(baseURL string) {
+	su.gh.baseURL = strings.TrimRight(baseURL, "/")
+}
+
 // CheckUpdate checks if an update is available without downloading.
 func (su *SelfUpdater) CheckUpdate(ctx context.Context) (bool, string, error) {
 	return su.gh.IsUpdateAvailable(ctx, su.currentVersion)
@@ -108,8 +114,8 @@ func (su *SelfUpdater) downloadBinary(
 	ctx context.Context,
 	version, binaryName string,
 ) (string, error) {
-	downloadURL := fmt.Sprintf("https://github.com/%s/releases/download/%s/%s",
-		su.gh.repo, version, binaryName)
+	downloadURL := fmt.Sprintf("%s/%s/releases/download/%s/%s",
+		su.gh.baseURL, su.gh.repo, version, binaryName)
 
 	req, err := http.NewRequestWithContext(ctx, "GET", downloadURL, nil)
 	if err != nil {
