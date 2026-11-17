@@ -8,6 +8,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"math/big"
+	"net/http"
 	"os"
 	"path/filepath"
 	"testing"
@@ -169,4 +170,32 @@ func TestReloadRejectsDuplicateHosts(t *testing.T) {
 
 	_, err := New(cfg)
 	require.ErrorContains(t, err, "duplicate mTLS certificate host")
+}
+
+// The base transport must keep net/http's defaults: proxy from the
+// environment and bounded dial and TLS handshake times. A bare
+// &http.Transport{} has none of them, so Quark ignored HTTP(S)_PROXY and
+// could hang on connect.
+func TestNewKeepsProxyAndConnectionDefaults(t *testing.T) {
+	cfg := config.Default(t.TempDir())
+	cfg.HTTP.ClientCertificates = []config.ClientCertificate{{
+		Host: "mtls.example.com", File: writeTestPKCS12(t, "secret"), Password: "secret",
+	}}
+
+	m, err := New(cfg)
+	require.NoError(t, err)
+
+	for name, tr := range map[string]*http.Transport{
+		"base": m.base,
+		"mTLS": m.transports["mtls.example.com"],
+	} {
+		require.NotNil(t, tr.Proxy, "%s: HTTP(S)_PROXY must be honoured", name)
+		require.NotNil(t, tr.DialContext, "%s: dial timeout must be set", name)
+		require.Positive(t, tr.TLSHandshakeTimeout, "%s: TLS handshake timeout", name)
+		require.Positive(t, tr.IdleConnTimeout, "%s: idle connection timeout", name)
+		require.Equal(t, cfg.Timeout(), tr.ResponseHeaderTimeout, name)
+	}
+	require.True(t, m.base.ForceAttemptHTTP2, "HTTP/2 stays enabled for ordinary hosts")
+	require.False(t, m.transports["mtls.example.com"].ForceAttemptHTTP2,
+		"client-certificate hosts stay on HTTP/1.1 (renegotiation)")
 }
