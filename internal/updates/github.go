@@ -7,17 +7,36 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 )
+
+// defaultGitHubBaseURL is the host that serves release pages and assets.
+const defaultGitHubBaseURL = "https://github.com"
+
+// defaultHTTPTimeout bounds each update request, including reading the body.
+const defaultHTTPTimeout = 2 * time.Minute
 
 // GitHubSource checks for updates from GitHub Releases.
 // This is used for the binary channel only.
 type GitHubSource struct {
-	repo string // "owner/repo"
+	repo    string // "owner/repo"
+	baseURL string
+	timeout time.Duration
 }
 
 // NewGitHubSource creates a new GitHub release source.
 func NewGitHubSource(repo string) *GitHubSource {
-	return &GitHubSource{repo: repo}
+	return &GitHubSource{repo: repo, baseURL: defaultGitHubBaseURL, timeout: defaultHTTPTimeout}
+}
+
+// SetBaseURL points the source at another host. Tests use it to reach an httptest server.
+func (s *GitHubSource) SetBaseURL(baseURL string) {
+	s.baseURL = baseURL
+}
+
+// SetHTTPTimeout changes the per-request timeout. Tests use it to keep hang tests fast.
+func (s *GitHubSource) SetHTTPTimeout(d time.Duration) {
+	s.timeout = d
 }
 
 // LatestVersion gets the latest release version from GitHub Releases.
@@ -30,7 +49,7 @@ func (s *GitHubSource) LatestVersion(ctx context.Context) (string, error) {
 		},
 	}
 
-	redirectURL := fmt.Sprintf("https://github.com/%s/releases/latest", s.repo)
+	redirectURL := fmt.Sprintf("%s/%s/releases/latest", s.baseURL, s.repo)
 	req, err := http.NewRequestWithContext(ctx, "GET", redirectURL, nil)
 	if err != nil {
 		return "", fmt.Errorf("failed to create request: %w", err)
@@ -107,8 +126,8 @@ func (s *GitHubSource) FetchChecksumFile(
 	version string,
 ) (string, error) {
 	const checksumFile = "SHA256SUMS"
-	const urlTemplate = "https://github.com/%s/releases/download/%s/%s"
-	checksumURL := fmt.Sprintf(urlTemplate, s.repo, version, checksumFile)
+	const urlTemplate = "%s/%s/releases/download/%s/%s"
+	checksumURL := fmt.Sprintf(urlTemplate, s.baseURL, s.repo, version, checksumFile)
 
 	req, err := http.NewRequestWithContext(ctx, "GET", checksumURL, nil)
 	if err != nil {

@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 )
 
 // SelfUpdater handles binary self-update operations.
@@ -91,6 +92,16 @@ func (su *SelfUpdater) Update(ctx context.Context, targetVersion string) (string
 	return targetVersion, nil
 }
 
+// SetBaseURL points the updater's GitHub source at another host. Tests use it.
+func (su *SelfUpdater) SetBaseURL(baseURL string) {
+	su.gh.SetBaseURL(baseURL)
+}
+
+// SetHTTPTimeout changes the per-request timeout. Tests use it.
+func (su *SelfUpdater) SetHTTPTimeout(d time.Duration) {
+	su.gh.SetHTTPTimeout(d)
+}
+
 // getBinaryName constructs the binary filename for the current platform.
 func (su *SelfUpdater) getBinaryName() string {
 	goos := runtime.GOOS
@@ -108,8 +119,8 @@ func (su *SelfUpdater) downloadBinary(
 	ctx context.Context,
 	version, binaryName string,
 ) (string, error) {
-	downloadURL := fmt.Sprintf("https://github.com/%s/releases/download/%s/%s",
-		su.gh.repo, version, binaryName)
+	downloadURL := fmt.Sprintf("%s/%s/releases/download/%s/%s",
+		su.gh.baseURL, su.gh.repo, version, binaryName)
 
 	req, err := http.NewRequestWithContext(ctx, "GET", downloadURL, nil)
 	if err != nil {
