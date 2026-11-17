@@ -4,6 +4,7 @@ package highlight
 
 import (
 	"bytes"
+	"unicode/utf8"
 
 	"github.com/alecthomas/chroma/v2/formatters"
 	"github.com/alecthomas/chroma/v2/lexers"
@@ -121,8 +122,27 @@ func safeStrip(s string) string {
 			}
 			continue
 		}
-		result.WriteByte(s[i])
-		i++
+		c := s[i]
+		if c < utf8.RuneSelf {
+			// C0 controls (except tab and newline) and DEL can move the cursor,
+			// rewrite the line or ring the bell.
+			if (c < 0x20 && c != '\t' && c != '\n') || c == 0x7f {
+				i++
+				continue
+			}
+			result.WriteByte(c)
+			i++
+			continue
+		}
+		// Decode runes: bytes 0x80-0x9f are also continuation bytes of ordinary
+		// characters (for example U+2192), so only whole runes can be C1 controls.
+		r, size := utf8.DecodeRuneInString(s[i:])
+		if r >= 0x80 && r <= 0x9f {
+			i += size
+			continue
+		}
+		result.WriteString(s[i : i+size])
+		i += size
 	}
 	return result.String()
 }
