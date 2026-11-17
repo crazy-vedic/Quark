@@ -1046,7 +1046,7 @@ func (m Model) formatResponseTextContent(parent ...*timing.Span) string {
 				return stripANSI(string(r.Body))
 			}
 			if r.TempPath != "" {
-				return m.styles.mutedStyle.Render(fmt.Sprintf("[streamed â†’ %s]", r.TempPath))
+				return m.styles.mutedStyle.Render(fmt.Sprintf("[streamed → %s]", r.TempPath))
 			}
 		}
 	}
