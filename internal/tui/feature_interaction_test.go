@@ -10,6 +10,7 @@ import (
 
 	"github.com/crazy-vedic/quark/internal/config"
 	"github.com/crazy-vedic/quark/internal/domain"
+	"github.com/crazy-vedic/quark/internal/exec"
 )
 
 func TestRequestURLTabAcceptsLoadedURLSuggestion(t *testing.T) {
@@ -24,6 +25,18 @@ func TestRequestURLTabAcceptsLoadedURLSuggestion(t *testing.T) {
 	m = requireModel(t, updated)
 
 	require.Equal(t, "https://api.example.com/users", m.urlInput.Value())
+}
+
+// The Raw tab label for a streamed response is user-visible text. It must
+// contain a real arrow, not the mis-encoded bytes of one.
+func TestRawTabStreamedLabelIsValidText(t *testing.T) {
+	m := New(Deps{Config: config.Default(t.TempDir())})
+	m.response = &exec.ExecuteResult{StatusCode: 200, TempPath: "/tmp/quark-response-1.tmp"}
+	m.responseTab = rawTab
+
+	got := stripANSI(m.formatResponseTextContent())
+	require.Contains(t, got, "[streamed → /tmp/quark-response-1.tmp]")
+	require.NotContains(t, got, "â")
 }
 
 func TestHeaderEditTabCompletesNameAndValue(t *testing.T) {
