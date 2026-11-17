@@ -552,9 +552,10 @@ func lazyRunCmd(rt func() (*runtime, error)) *cobra.Command {
 	var namedVars []string
 	var verbose bool
 	cmd := &cobra.Command{
-		Use:   "run <Collection/Request>",
+		Use:   "run <Collection/Request> [positional-args...]",
 		Short: "Execute a saved request",
-		Args:  cobra.ExactArgs(1),
+		// Extra arguments are positional values for {{1}}, {{2}}, ...
+		Args: cobra.MinimumNArgs(1),
 	}
 	cmd.Flags().StringArrayVarP(
 		&namedVars,
