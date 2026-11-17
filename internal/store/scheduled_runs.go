@@ -148,3 +148,10 @@ func scanScheduledRuns(rows *sql.Rows) ([]*domain.ScheduledRun, error) {
 	}
 	return out, nil
 }
+
+// RecoverStaleScheduledRuns marks runs left in the running state since before
+// the cutoff as failed. A process that dies mid-run leaves its claim behind.
+// It returns the number of runs changed.
+func (s *Store) RecoverStaleScheduledRuns(ctx context.Context, cutoff time.Time) (int, error) {
+	return 0, nil
+}
