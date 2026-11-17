@@ -1006,3 +1006,18 @@ func TestExecutor_MultiplePostHooks_AllFire(t *testing.T) {
 	assert.True(t, h1.called, "first post hook must fire")
 	assert.True(t, h2.called, "second post hook must fire even when first returns error")
 }
+
+// timeout = "0s" in config must mean "no timeout", not "already expired".
+func TestExecutor_ZeroTimeoutDoesNotExpireImmediately(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("ok"))
+	}))
+	defer srv.Close()
+
+	for _, timeout := range []time.Duration{0, -time.Second} {
+		e := exec.New(http.DefaultTransport, exec.WithTimeout(timeout))
+		result, err := e.Execute(context.Background(), newTestRequest(http.MethodGet, srv.URL, ""))
+		require.NoError(t, err, "timeout %s", timeout)
+		assert.Equal(t, http.StatusOK, result.StatusCode)
+	}
+}
