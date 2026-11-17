@@ -48,6 +48,20 @@ func TestHeaderEditTabCompletesNameAndValue(t *testing.T) {
 	require.Equal(t, "application/json", m.headerValueInput.Value())
 }
 
+// Opening the header editor on headers it cannot parse would show an empty
+// list, and saving that list would overwrite the stored headers with {}.
+func TestBeginHeadersEdit_RefusesUnparseableHeaders(t *testing.T) {
+	const stored = `{"Authorization": "Bearer abc"` // truncated JSON
+	m := New(Deps{Config: config.Default(t.TempDir())})
+	m.activeRequest = &domain.Request{ID: "request-1", Headers: stored}
+
+	m = m.beginHeadersEdit()
+
+	require.NotEqual(t, headersField, m.activeField, "editor must not open")
+	require.Contains(t, m.statusErr, "headers")
+	require.Equal(t, stored, m.activeRequest.Headers, "stored headers must be untouched")
+}
+
 func TestSaveBodyFormatsJSONBeforePersisting(t *testing.T) {
 	m := New(Deps{Config: config.Default(t.TempDir())})
 	m.activeRequest = &domain.Request{
