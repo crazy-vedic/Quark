@@ -1068,3 +1068,23 @@ func TestFormatRequestBodyChecksJSONTemplates(t *testing.T) {
 		assert.Equal(t, `a={{a}}&b`, got)
 	})
 }
+
+// The reported duration must cover the body download, not only the wait for
+// response headers.
+func TestExecutor_DurationIncludesBodyDownload(t *testing.T) {
+	const bodyDelay = 200 * time.Millisecond
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_ = http.NewResponseController(w).Flush() // headers arrive now
+		time.Sleep(bodyDelay)
+		_, _ = w.Write([]byte("slow body"))
+	}))
+	defer srv.Close()
+
+	result, err := exec.New(http.DefaultTransport).
+		Execute(context.Background(), newTestRequest(http.MethodGet, srv.URL, ""))
+	require.NoError(t, err)
+	assert.Equal(t, "slow body", string(result.Body))
+	assert.GreaterOrEqual(t, result.Duration, bodyDelay,
+		"duration must include the time spent reading the body")
+}
