@@ -19,9 +19,16 @@ import (
 // that contains certificate options.
 type CurlCertificateSaver func(context.Context, *curl.CertificateSpec, string) error
 
+// CurlImportStore is what 'import curl' needs: it saves requests and resolves
+// the --collection reference (ID, name or nested path).
+type CurlImportStore interface {
+	store.RequestWriter
+	store.CollectionLister
+}
+
 // NewImportCmd returns the 'quark import' subcommand tree.
 func NewImportCmd(
-	w store.RequestWriter,
+	w CurlImportStore,
 	im *curl.Importer,
 	certificateSavers ...CurlCertificateSaver,
 ) *cobra.Command {
@@ -38,7 +45,7 @@ func NewImportCmd(
 }
 
 func newImportCurlCmd(
-	w store.RequestWriter,
+	w CurlImportStore,
 	im *curl.Importer,
 	certificateSavers ...CurlCertificateSaver,
 ) *cobra.Command {
@@ -69,13 +76,21 @@ func newImportCurlCmd(
 					result.Certificate.Type, result.Certificate.File)
 			}
 
-			if collectionID == "" || name == "" {
+			if collectionID == "" && name == "" {
 				fmt.Fprintln(cmd.OutOrStdout(), "\n(Dry run: use --collection and --name to save)")
 				return nil
+			}
+			if collectionID == "" || name == "" {
+				return fmt.Errorf("import curl: --collection and --name must be given together")
 			}
 			if w == nil {
 				return fmt.Errorf("import curl: request storage is unavailable")
 			}
+			col, err := resolveCollectionReference(cmd.Context(), w, collectionID)
+			if err != nil {
+				return fmt.Errorf("import curl: resolve collection: %w", err)
+			}
+			collectionID = col.ID
 			headersJSON, err := json.Marshal(result.Headers)
 			if err != nil {
 				return fmt.Errorf("import curl: encode headers: %w", err)
@@ -112,7 +127,8 @@ func newImportCurlCmd(
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&collectionID, "collection", "", "Target collection ID")
+	cmd.Flags().
+		StringVar(&collectionID, "collection", "", "Target collection: ID, name or nested path")
 	cmd.Flags().StringVar(&name, "name", "", "Request name")
 	return cmd
 }

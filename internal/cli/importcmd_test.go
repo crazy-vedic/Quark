@@ -25,7 +25,21 @@ func (w *importRequestWriter) SaveRequest(_ context.Context, request *domain.Req
 
 func (w *importRequestWriter) DeleteRequest(context.Context, string) error { return nil }
 
+// ListCollections makes the collection IDs the tests use resolvable.
+func (w *importRequestWriter) ListCollections(context.Context) ([]*domain.Collection, error) {
+	return []*domain.Collection{
+		{ID: "collection-1", Name: "collection-1"},
+		{ID: "c", Name: "c"},
+	}, nil
+}
+
 type failingImportRequestWriter struct{ deleted string }
+
+func (w *failingImportRequestWriter) ListCollections(
+	context.Context,
+) ([]*domain.Collection, error) {
+	return []*domain.Collection{{ID: "collection-1", Name: "collection-1"}}, nil
+}
 
 func (w *failingImportRequestWriter) SaveRequest(context.Context, *domain.Request) error {
 	return errors.New("save failed")
