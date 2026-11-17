@@ -157,3 +157,26 @@ func testCertificatePEM(t *testing.T) []byte {
 	require.NoError(t, err)
 	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})
 }
+
+// `quark --config <dir> cert ...` must read and write <dir>, not ~/.quark.
+func TestCLI_ClientCertificatesHonourConfigFlag(t *testing.T) {
+	home := t.TempDir()
+	configDir := filepath.Join(t.TempDir(), "custom-config")
+	caPath := filepath.Join(home, "root.pem")
+	require.NoError(t, os.WriteFile(caPath, testCertificatePEM(t), 0600))
+
+	_, stderr, code := runQuarkWithHome(
+		t, home, "--config", configDir, "cert", "set", "api.example", "--ca-file", caPath,
+	)
+	require.Equal(t, 0, code, "%s", stderr)
+
+	cfg, err := config.Load(configDir)
+	require.NoError(t, err)
+	require.Len(t, cfg.HTTP.ClientCertificates, 1, "certificate must be saved under --config")
+	_, err = os.Stat(filepath.Join(home, ".quark", "config.toml"))
+	assert.True(t, os.IsNotExist(err), "nothing may be written to the default config dir")
+
+	out, stderr, code := runQuarkWithHome(t, home, "--config", configDir, "cert", "list")
+	require.Equal(t, 0, code, "%s", stderr)
+	assert.Contains(t, out, "api.example")
+}
