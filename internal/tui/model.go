@@ -886,7 +886,7 @@ func searchAllCmd(
 		if err != nil {
 			return errLoadMsg{err: fmt.Errorf("search: %w", err)}
 		}
-		return searchResultsMsg{hits: result.Hits}
+		return searchResultsMsg{hits: result.Hits, failures: result.Failures}
 	}
 }
 
