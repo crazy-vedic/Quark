@@ -1088,3 +1088,23 @@ func TestExecutor_DurationIncludesBodyDownload(t *testing.T) {
 	assert.GreaterOrEqual(t, result.Duration, bodyDelay,
 		"duration must include the time spent reading the body")
 }
+
+// Unparseable stored headers must stop the request. Sending it without any
+// headers silently drops Authorization and friends.
+func TestExecutor_MalformedHeadersAbortRequest(t *testing.T) {
+	called := false
+	transport := roundTripperFunc(func(*http.Request) (*http.Response, error) {
+		called = true
+		return nil, errors.New("transport must not be called")
+	})
+
+	_, err := newTestExecutor(transport).Execute(context.Background(), &domain.Request{
+		ID:      "bad-headers",
+		Method:  http.MethodGet,
+		URL:     "https://example.test",
+		Headers: `{"Authorization": "Bearer abc"`, // truncated JSON
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "headers")
+	assert.False(t, called, "request must not be sent without its headers")
+}
