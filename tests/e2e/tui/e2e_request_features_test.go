@@ -57,7 +57,7 @@ func TestE2E_StartupRestoresRequestAndHistory(t *testing.T) {
 	assert.Equal(t, 200, m.Executions()[0].StatusCode)
 }
 
-func TestE2E_TUIFileBodyHeaderAndJSONReachHTTPServer(t *testing.T) {
+func TestE2E_TUIAtPrefixedBodyAndHeaderSentAsText(t *testing.T) {
 	payloadPath := filepath.Join(t.TempDir(), "payload.json")
 	headerPath := filepath.Join(t.TempDir(), "token.txt")
 	require.NoError(t, os.WriteFile(payloadPath, []byte(`{"name":"quark","items":[1,2]}`), 0o600))
@@ -107,7 +107,8 @@ func TestE2E_TUIFileBodyHeaderAndJSONReachHTTPServer(t *testing.T) {
 	assert.False(t, m.Loading())
 	assert.Equal(t, 200, m.Response().StatusCode)
 	assert.Equal(t, "e2e.example", receivedHost)
-	assert.Equal(t, "from-file", receivedToken)
-	assert.Equal(t, "{\n  \"name\": \"quark\",\n  \"items\": [\n    1,\n    2\n  ]\n}", receivedBody)
+	// "@path" values are text in the stored request and are sent as written.
+	assert.Equal(t, "@"+headerPath, receivedToken)
+	assert.Equal(t, "@"+payloadPath, receivedBody)
 	assert.Empty(t, receivedTransfer)
 }

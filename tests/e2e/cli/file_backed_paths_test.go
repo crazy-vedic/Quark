@@ -60,7 +60,7 @@ func newCapturingServer(t *testing.T) (*httptest.Server, *capturedRequest) {
 	return srv, got
 }
 
-func TestCLI_RunSendsFileBackedHeaderAndBodyWithTransportHeaders(t *testing.T) {
+func TestCLI_RunSendsAtPrefixedValuesLiterally(t *testing.T) {
 	home, colID := setupHomeWithCollection(t)
 	dir := t.TempDir()
 	traceFile := filepath.Join(dir, "trace.txt")
@@ -74,7 +74,7 @@ func TestCLI_RunSendsFileBackedHeaderAndBodyWithTransportHeaders(t *testing.T) {
 		Method:  http.MethodPost,
 		URL:     srv.URL + "/echo",
 		Headers: `{"Host":["api.internal.test"],"X-Trace":["@` + e2e.EscapePathForJSON(traceFile) + `"],"Transfer-Encoding":["chunked"],"Connection":["close"],"Content-Type":["application/json"]}`,
-		Body:    "@" + e2e.EscapePathForJSON(bodyFile),
+		Body:    "@" + bodyFile,
 	})
 
 	out, errOut, code := runQuarkWithHome(t, home, "run", "API/Transport")
@@ -83,9 +83,10 @@ func TestCLI_RunSendsFileBackedHeaderAndBodyWithTransportHeaders(t *testing.T) {
 	got.mu.Lock()
 	defer got.mu.Unlock()
 	assert.Equal(t, "api.internal.test", got.host)
-	assert.Equal(t, "trace-123", got.trace)
+	// "@" values are text: they reach the server exactly as stored.
+	assert.Equal(t, "@"+traceFile, got.trace)
 	assert.Equal(t, []string{"chunked"}, got.transfer)
-	assert.JSONEq(t, `{"a":1}`, got.body)
+	assert.Equal(t, "@"+bodyFile, got.body)
 }
 
 func TestCLI_RunContentLengthHeaderIsApplied(t *testing.T) {
@@ -127,12 +128,6 @@ func TestCLI_RunRejectsInvalidTransportHeaders(t *testing.T) {
 			want:    "unsupported Transfer-Encoding",
 		},
 		{
-			name:    "missing header file",
-			headers: `{"X-Trace":["@/does/not/exist"]}`,
-			body:    "",
-			want:    "exec: header",
-		},
-		{
 			name:    "invalid json body",
 			headers: `{"Content-Type":["application/json"]}`,
 			body:    "{bad",
@@ -158,19 +153,23 @@ func TestCLI_RunRejectsInvalidTransportHeaders(t *testing.T) {
 	}
 }
 
-func TestCLI_RunMissingBodyFileFails(t *testing.T) {
+// A body that names a missing file is sent as text, not treated as a file.
+func TestCLI_RunSendsMissingPathBodyLiterally(t *testing.T) {
 	home, colID := setupHomeWithCollection(t)
-	srv, _ := newCapturingServer(t)
+	srv, got := newCapturingServer(t)
+	missing := "@" + filepath.Join(t.TempDir(), "absent.json")
 	seedRequest(t, home, colID, &domain.Request{
-		Name:   "MissingBody",
+		Name:   "LiteralAt",
 		Method: http.MethodPost,
 		URL:    srv.URL,
-		Body:   "@" + filepath.Join(t.TempDir(), "absent.json"),
+		Body:   missing,
 	})
 
-	out, errOut, code := runQuarkWithHome(t, home, "run", "API/MissingBody")
-	require.NotEqual(t, 0, code)
-	assert.Contains(t, out+errOut, "read body file")
+	out, errOut, code := runQuarkWithHome(t, home, "run", "API/LiteralAt")
+	require.Equal(t, 0, code, "stdout: %s\nstderr: %s", out, errOut)
+	got.mu.Lock()
+	defer got.mu.Unlock()
+	assert.Equal(t, missing, got.body)
 }
 
 func TestCLI_ImportCurlReadsDataFileBody(t *testing.T) {

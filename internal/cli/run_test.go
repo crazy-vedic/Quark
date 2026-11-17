@@ -272,8 +272,9 @@ func TestNewRunCmd_ResolvesFileBackedValuesAndFormatsJSON(t *testing.T) {
 	cmd.SetArgs([]string{"API/upload"})
 	cmd.SetContext(context.Background())
 	require.NoError(t, cmd.Execute())
-	require.Equal(t, "{\n  \"name\": \"quark\"\n}", transport.lastBody)
-	require.Equal(t, "file-token", transport.lastHeaders.Get("X-Token"))
+	// "@" values are literal text; they are not read from disk when sent.
+	require.Equal(t, "@"+bodyPath, transport.lastBody)
+	require.Equal(t, "@"+headerPath, transport.lastHeaders.Get("X-Token"))
 }
 
 func TestNewRunCmd_FallbackUsesEnvWhenPositionalMissing(t *testing.T) {

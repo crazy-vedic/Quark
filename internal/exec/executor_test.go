@@ -156,9 +156,11 @@ func TestExecutor_ExpandsBodyAndHeaderFiles(t *testing.T) {
 	}
 	_, err := newTestExecutor(transport).Execute(context.Background(), req)
 	require.NoError(t, err)
-	assert.Equal(t, `{"from":"file"}`, receivedBody)
-	assert.Equal(t, "file-token", receivedHeader)
-	assert.Equal(t, "@"+bodyPath, req.Body, "file references must remain in the saved request")
+	// A leading "@" is ordinary text. It must be sent as written, never read
+	// from the local disk at send time.
+	assert.Equal(t, "@"+bodyPath, receivedBody)
+	assert.Equal(t, "@"+headerPath, receivedHeader)
+	assert.Equal(t, "@"+bodyPath, req.Body)
 }
 
 func TestExecutor_AppliesSpecialRequestHeaders(t *testing.T) {
@@ -285,13 +287,20 @@ func TestExecutor_RejectsInvalidJSONBodyByContentType(t *testing.T) {
 	assert.False(t, called)
 }
 
-func TestExecutor_RejectsMissingBodyFile(t *testing.T) {
-	_, err := newTestExecutor(roundTripperFunc(func(*http.Request) (*http.Response, error) {
-		t.Fatal("transport must not be called")
-		return nil, nil
+// A body that looks like a file path but names no file is still just text.
+func TestExecutor_SendsPathLikeBodyLiterally(t *testing.T) {
+	var received string
+	_, err := newTestExecutor(roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+		body, readErr := io.ReadAll(r.Body)
+		require.NoError(t, readErr)
+		received = string(body)
+		return &http.Response{
+			StatusCode: 200, Status: "200 OK", Header: make(http.Header),
+			Body: io.NopCloser(strings.NewReader("ok")), Request: r,
+		}, nil
 	})).Execute(context.Background(), newTestRequest(http.MethodPost, "https://example.test", "@/missing/file"))
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "read body file")
+	require.NoError(t, err)
+	assert.Equal(t, "@/missing/file", received)
 }
 
 func TestExecutor_RepeatedAndLegacyHeadersSent(t *testing.T) {
