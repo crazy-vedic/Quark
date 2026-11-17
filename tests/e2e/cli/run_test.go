@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -230,4 +231,16 @@ func TestRunBinary_AcceptsPositionalArguments(t *testing.T) {
 	_, stderr, code := runQuarkWithHome(t, home, "run", "API/Item", "first", "second")
 	require.Equal(t, 0, code, "%s", stderr)
 	assert.Equal(t, "/items/first/second", gotPath)
+}
+
+// A runtime failure must be reported once, without the usage text.
+func TestRunBinary_RuntimeErrorPrintedOnceWithoutUsage(t *testing.T) {
+	home, _ := setupHomeWithCollection(t)
+
+	_, stderr, code := runQuarkWithHome(t, home, "run", "NoSuchCollection/NoSuchRequest")
+	require.NotEqual(t, 0, code)
+	assert.NotContains(t, stderr, "Usage:", "usage is noise for a runtime error")
+	lines := strings.Split(strings.TrimSpace(stderr), "\n")
+	assert.Len(t, lines, 1, "error must be printed exactly once, got:\n%s", stderr)
+	assert.True(t, strings.HasPrefix(stderr, "quark: "), "got: %s", stderr)
 }
