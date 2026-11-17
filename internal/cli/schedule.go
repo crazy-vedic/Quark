@@ -179,12 +179,7 @@ func newScheduleRunDueCmd(st ScheduleStore, e *exec.Executor, now func() time.Ti
 	}
 }
 
-func shortScheduleID(id string) string {
-	if len(id) <= 8 {
-		return id
-	}
-	return id[:8]
-}
+func shortScheduleID(id string) string { return shortID(id) }
 
 func markScheduledRunFailed(
 	ctx context.Context,

@@ -108,7 +108,7 @@ func newImportCurlCmd(
 					return fmt.Errorf("import curl: save mTLS configuration: %w", err)
 				}
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "Saved as %q (%s)\n", name, req.ID[:8])
+			fmt.Fprintf(cmd.OutOrStdout(), "Saved as %q (%s)\n", name, shortID(req.ID))
 			return nil
 		},
 	}
