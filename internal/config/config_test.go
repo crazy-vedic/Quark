@@ -3,6 +3,7 @@ package config_test
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -140,6 +141,42 @@ func TestLoad_MigratesLegacyCurlImportBinding(t *testing.T) {
 }
 
 // Issue 1: saving keybindings must never overwrite a config file it could not parse.
+// config.toml can hold certificate passwords. Whichever saver creates it, the
+// file must be owner-only.
+func TestSavers_CreateConfigOwnerOnly(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX permission bits")
+	}
+	savers := map[string]func(dir string) error{
+		"SaveKeybindings": func(dir string) error {
+			return config.SaveKeybindings(dir, keybindings.DefaultKeybindings())
+		},
+		"SaveLastRequestID": func(dir string) error {
+			return config.SaveLastRequestID(dir, "req-1")
+		},
+		"SaveTheme": func(dir string) error {
+			return config.SaveTheme(dir, "dark")
+		},
+		"SaveClientCertificates": func(dir string) error {
+			return config.SaveClientCertificates(dir, []config.ClientCertificate{
+				{Host: "api.example", File: "/tmp/c.p12", Password: "secret"},
+			})
+		},
+	}
+	for name, save := range savers {
+		dir := t.TempDir()
+		require.NoError(t, save(dir), name)
+
+		info, err := os.Stat(filepath.Join(dir, "config.toml"))
+		require.NoError(t, err, name)
+		assert.Equal(t, os.FileMode(0o600), info.Mode().Perm(), "%s must create config.toml 0600", name)
+
+		entries, err := os.ReadDir(dir)
+		require.NoError(t, err, name)
+		assert.Len(t, entries, 1, "%s must not leave temp files behind", name)
+	}
+}
+
 func TestProof_SaveKeybindings_InvalidConfigIsNotOverwritten(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.toml")
