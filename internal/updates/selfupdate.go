@@ -127,7 +127,7 @@ func (su *SelfUpdater) downloadBinary(
 		return "", err
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := (&http.Client{Timeout: su.gh.timeout}).Do(req)
 	if err != nil {
 		return "", err
 	}

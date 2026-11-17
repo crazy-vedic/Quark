@@ -43,6 +43,7 @@ func (s *GitHubSource) SetHTTPTimeout(d time.Duration) {
 // Uses redirects, not the REST API, to avoid rate limiting.
 func (s *GitHubSource) LatestVersion(ctx context.Context) (string, error) {
 	client := &http.Client{
+		Timeout: s.timeout,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			// Don't follow redirects automatically — we'll parse the Location header manually.
 			return http.ErrUseLastResponse
@@ -134,7 +135,7 @@ func (s *GitHubSource) FetchChecksumFile(
 		return "", fmt.Errorf("failed to create request: %w", err)
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := (&http.Client{Timeout: s.timeout}).Do(req)
 	if err != nil {
 		return "", fmt.Errorf("failed to fetch SHA256SUMS: %w", err)
 	}
