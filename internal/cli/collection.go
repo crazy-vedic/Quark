@@ -86,15 +86,14 @@ func newCollectionRenameCmd(s CollectionStore) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("collection rename: %w", err)
 			}
-			collection.Name = args[1]
-			if err := s.SaveCollection(cmd.Context(), collection); err != nil {
+			if err := s.RenameCollection(cmd.Context(), collection.ID, args[1]); err != nil {
 				return fmt.Errorf("collection rename: %w", err)
 			}
 			fmt.Fprintf(
 				cmd.OutOrStdout(),
 				"Renamed collection %q to %q\n",
 				args[0],
-				collection.Name,
+				args[1],
 			)
 			return nil
 		},
