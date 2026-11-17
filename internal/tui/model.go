@@ -375,10 +375,12 @@ type Model struct {
 	configDir          string
 	certificateManager CertificateManager
 	// --- Environment state ---
-	activeEnv      map[string]string // collectionID → envID
-	cachedEnvName  string            // cached name for the active env of the current collection
-	cachedEnvColID string            // collection ID the cached name is valid for
-	envEditor      envEditor         // env editor modal state
+	activeEnv map[string]string // collectionID → envID
+	// envNameCache holds the active env name shown in the status bar. It is a
+	// pointer so that activeEnvName, which runs on a copy of the Model during
+	// View, can fill it: fields written through a value receiver are lost.
+	envNameCache *envNameCache
+	envEditor    envEditor // env editor modal state
 
 	// resolver maps keys to actions. Immutable after construction; replaced on rebinding.
 	resolver *keybindings.Resolver
@@ -573,6 +575,7 @@ func New(deps Deps) Model {
 		forceDim:                deps.ForceDim,
 		resolver:                resolverOrDefault(deps.Resolver, deps.Config),
 		envReader:               deps.EnvReader,
+		envNameCache:            &envNameCache{},
 		envWriter:               deps.EnvWriter,
 		activeEnvStore:          deps.ActiveEnvStore,
 		scheduler:               deps.Scheduler,
