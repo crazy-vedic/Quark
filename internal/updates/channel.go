@@ -118,12 +118,18 @@ func isSystemPathFor(resolved, goos string) bool {
 		"/usr/local/Cellar",
 		"/opt/homebrew",
 		"/opt/homebrew/bin",
-		"C:\\Program Files",
+	}
+	path := resolved
+	sep := "/"
+	if goos == "windows" {
+		// Windows paths use backslashes and are case-insensitive.
+		path = strings.ToLower(strings.ReplaceAll(resolved, `\`, "/"))
+		systemPaths = []string{"c:/program files"}
 	}
 	for _, sys := range systemPaths {
 		// Exact path or exact prefix with separator (not just string prefix)
 		// This prevents false matches like "/usr/binfoo" matching "/usr/bin"
-		if resolved == sys || strings.HasPrefix(resolved, sys+"/") {
+		if path == sys || strings.HasPrefix(path, sys+sep) {
 			return true
 		}
 	}
