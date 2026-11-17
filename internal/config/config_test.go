@@ -169,7 +169,13 @@ func TestSavers_CreateConfigOwnerOnly(t *testing.T) {
 
 		info, err := os.Stat(filepath.Join(dir, "config.toml"))
 		require.NoError(t, err, name)
-		assert.Equal(t, os.FileMode(0o600), info.Mode().Perm(), "%s must create config.toml 0600", name)
+		assert.Equal(
+			t,
+			os.FileMode(0o600),
+			info.Mode().Perm(),
+			"%s must create config.toml 0600",
+			name,
+		)
 
 		entries, err := os.ReadDir(dir)
 		require.NoError(t, err, name)
