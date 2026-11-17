@@ -145,6 +145,12 @@ func (s *Store) SaveRequest(ctx context.Context, req *domain.Request) error {
 		req.Enabled,
 	)
 	if err != nil {
+		if isSQLiteUnique(err) {
+			return fmt.Errorf(
+				"store: save request: a request named %q already exists in this collection: %w",
+				req.Name, ErrDuplicate,
+			)
+		}
 		return fmt.Errorf("store: save request %q: %w", req.ID, err)
 	}
 
