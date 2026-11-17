@@ -35,6 +35,32 @@ func TestMapper_ContentTypeFromBodyLanguage(t *testing.T) {
 	assert.Contains(t, result.Requests[0].Headers, `application/json`)
 }
 
+// A header the user switched off in Postman ("disabled": true) must not be
+// imported as an active header.
+func TestMapper_SkipsDisabledHeaders(t *testing.T) {
+	collection := `{
+		"info": {"name": "Test", "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"},
+		"item": [{
+			"name": "Headers",
+			"request": {
+				"method": "GET",
+				"url": "https://example.com/api",
+				"header": [
+					{"key": "X-Active", "value": "yes"},
+					{"key": "X-Debug-Token", "value": "old-secret", "disabled": true}
+				]
+			}
+		}]
+	}`
+
+	result, err := NewImporter().Parse(strings.NewReader(collection))
+	assert.NoError(t, err)
+	assert.Len(t, result.Requests, 1)
+	assert.Contains(t, result.Requests[0].Headers, "X-Active")
+	assert.NotContains(t, result.Requests[0].Headers, "X-Debug-Token")
+	assert.NotContains(t, result.Requests[0].Headers, "old-secret")
+}
+
 func TestMapper_URLProtocolExtracted(t *testing.T) {
 	json := `{
 		"info": {"name": "Test", "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"},
