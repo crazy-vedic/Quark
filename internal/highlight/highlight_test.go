@@ -123,3 +123,12 @@ func TestJSON_LargeJSON(t *testing.T) {
 	assert.Contains(t, result, "item0")
 	assert.Contains(t, result, "id")
 }
+
+// Carriage returns, backspace and bell can rewrite or hide text in a terminal,
+// and C1 controls (U+0080..U+009F, e.g. the CSI introducer) act like escapes.
+// They must be removed. Tab, newline and colour codes must survive.
+func TestSafeStrip_RemovesBareControlsAndC1(t *testing.T) {
+	in := "line1\r\nline2\b\a\x7f\u009b end\t\x1b[31mred\x1b[0m→ ok"
+	want := "line1\nline2 end\t\x1b[31mred\x1b[0m→ ok"
+	require.Equal(t, want, SafeStrip(in))
+}
