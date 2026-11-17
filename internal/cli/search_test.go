@@ -105,6 +105,23 @@ func (s searchErrorStore) ListRequests(ctx context.Context, id string) ([]*domai
 	return s.fakeRunStore.ListRequests(ctx, id)
 }
 
+func TestNewSearchCmd_WarnsOnStderrForSkippedCollection(t *testing.T) {
+	st := &searchErrorStore{
+		fakeRunStore: &fakeRunStore{collections: []*domain.Collection{{ID: "c", Name: "Broken"}}},
+		requestErr:   errors.New("read failed"),
+	}
+	cmd := NewSearchCmd(st)
+	var out, errOut bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&errOut)
+	cmd.SetArgs([]string{"absent"})
+	cmd.SetContext(context.Background())
+
+	require.NoError(t, cmd.Execute())
+	assert.Contains(t, errOut.String(), "Broken")
+	assert.Contains(t, errOut.String(), "read failed")
+}
+
 func TestNewSearchCmd_ErrorAndEmptyResults(t *testing.T) {
 	for _, tt := range []struct {
 		name string
