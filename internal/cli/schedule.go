@@ -17,6 +17,14 @@ import (
 
 const scheduleRunDueCmd = "run-due"
 
+// staleRunAge is how long a run may stay "running" before it is treated as
+// interrupted. It is longer than any normal request timeout.
+const staleRunAge = 15 * time.Minute
+
+type staleRunRecoverer interface {
+	RecoverStaleScheduledRuns(ctx context.Context, cutoff time.Time) (int, error)
+}
+
 type ScheduleStore interface {
 	SearchStore
 	ScheduleEnvironmentStore
@@ -116,6 +124,18 @@ func newScheduleRunDueCmd(st ScheduleStore, e *exec.Executor, now func() time.Ti
 		Use:   scheduleRunDueCmd,
 		Short: "Execute all pending scheduled runs due now",
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			// A run still "running" long after its request could have finished
+			// belongs to a process that died. Mark it failed so it is visible.
+			if recoverer, ok := st.(staleRunRecoverer); ok {
+				n, err := recoverer.RecoverStaleScheduledRuns(
+					cmd.Context(), now().Add(-staleRunAge))
+				if err != nil {
+					return fmt.Errorf("schedule run-due: recover: %w", err)
+				}
+				if n > 0 {
+					fmt.Fprintf(cmd.OutOrStdout(), "recovered %d interrupted run(s)\n", n)
+				}
+			}
 			runs, err := st.ListDueScheduledRuns(cmd.Context(), now())
 			if err != nil {
 				return fmt.Errorf("schedule run-due: %w", err)
