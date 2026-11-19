@@ -108,7 +108,7 @@ func TestE2E_TUIAtPrefixedBodyAndHeaderSentAsText(t *testing.T) {
 	assert.Equal(t, 200, m.Response().StatusCode)
 	assert.Equal(t, "e2e.example", receivedHost)
 	// "@path" values are text in the stored request and are sent as written.
-	assert.Equal(t, "@"+headerPath, receivedToken)
-	assert.Equal(t, "@"+payloadPath, receivedBody)
+	assert.Equal(t, "@"+e2e.EscapePathForJSON(headerPath), receivedToken)
+	assert.Equal(t, "@"+e2e.EscapePathForJSON(payloadPath), receivedBody)
 	assert.Empty(t, receivedTransfer)
 }
