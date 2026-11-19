@@ -34,7 +34,9 @@ func runQuarkOnTerminal(t *testing.T, home string, args ...string) string {
 	}
 	cmd := exec.Command(scriptPath, "-qec", command, "/dev/null")
 	cmd.Dir = home
-	cmd.Env = append(os.Environ(), "HOME="+home, "USERPROFILE="+home, "NO_COLOR=1")
+	// TERM=dumb stops the CLI waiting about 5s for the pty to answer a
+	// terminal colour query. Output is still written to a real terminal.
+	cmd.Env = append(os.Environ(), "HOME="+home, "USERPROFILE="+home, "TERM=dumb")
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &out
