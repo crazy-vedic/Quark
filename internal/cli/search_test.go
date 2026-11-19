@@ -117,7 +117,9 @@ func TestNewSearchCmd_WarnsOnStderrForSkippedCollection(t *testing.T) {
 	cmd.SetArgs([]string{"absent"})
 	cmd.SetContext(context.Background())
 
-	require.NoError(t, cmd.Execute())
+	err := cmd.Execute()
+	require.ErrorContains(t, err, "1 collection(s) could not be searched")
+	assert.Contains(t, out.String(), "No requests found.")
 	assert.Contains(t, errOut.String(), "Broken")
 	assert.Contains(t, errOut.String(), "read failed")
 }
@@ -130,12 +132,12 @@ func TestNewSearchCmd_ErrorAndEmptyResults(t *testing.T) {
 	}{
 		{"list failure", &searchErrorStore{fakeRunStore: &fakeRunStore{}, collectionErr: errors.New("list failed")}, "search: list collections"},
 		{
-			"request read failure is skipped",
+			"request read failure fails the search",
 			&searchErrorStore{
 				fakeRunStore: &fakeRunStore{collections: []*domain.Collection{{ID: "c", Name: "C"}}},
 				requestErr:   errors.New("read failed"),
 			},
-			"No requests found.",
+			"could not be searched",
 		},
 		{"no matches", &searchErrorStore{fakeRunStore: &fakeRunStore{}}, "No requests found."},
 	} {
@@ -146,7 +148,7 @@ func TestNewSearchCmd_ErrorAndEmptyResults(t *testing.T) {
 			cmd.SetArgs([]string{"absent"})
 			cmd.SetContext(context.Background())
 			err := cmd.Execute()
-			if tt.name == "no matches" || tt.name == "request read failure is skipped" {
+			if tt.name == "no matches" {
 				require.NoError(t, err)
 				require.Contains(t, out.String(), tt.want)
 			} else {
