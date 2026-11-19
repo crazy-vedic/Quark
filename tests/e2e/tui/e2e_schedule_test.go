@@ -207,3 +207,44 @@ func executeScheduleFollowUpCmd(t *testing.T, m tui.Model, cmd tea.Cmd) tui.Mode
 		return callUpdate(t, m, msg)
 	}
 }
+
+// A process that dies mid-run leaves its run in "running". Recovery marks only
+// runs stuck since before the cutoff as failed and leaves everything else alone.
+func TestE2E_ScheduledRunsStuckRunningAreRecovered(t *testing.T) {
+	ctx := context.Background()
+	col := &domain.Collection{ID: "col-recover", Name: "Payments"}
+	st := setupStore(t, col)
+	seedRequests(t, st, col.ID, &domain.Request{
+		ID: "req-recover", CollectionID: col.ID, Name: "List", Method: "GET", URL: "http://example.invalid",
+	})
+	for _, run := range []*domain.ScheduledRun{
+		{ID: "stuck", RequestID: "req-recover", RunAt: time.Now(), Status: domain.ScheduledRunRunning},
+		{ID: "waiting", RequestID: "req-recover", RunAt: time.Now(), Status: domain.ScheduledRunPending},
+	} {
+		require.NoError(t, st.SaveScheduledRun(ctx, run))
+	}
+
+	// A cutoff in the past: the run only just started, so it is not stale yet.
+	n, err := st.RecoverStaleScheduledRuns(ctx, time.Now().Add(-time.Hour))
+	require.NoError(t, err)
+	assert.Zero(t, n)
+
+	// A cutoff in the future: the running run is older than it.
+	n, err = st.RecoverStaleScheduledRuns(ctx, time.Now().Add(time.Hour))
+	require.NoError(t, err)
+	assert.Equal(t, 1, n)
+
+	stuck, err := st.GetScheduledRun(ctx, "stuck")
+	require.NoError(t, err)
+	assert.Equal(t, domain.ScheduledRunFailed, stuck.Status)
+	assert.Contains(t, stuck.LastError, "interrupted while running")
+
+	waiting, err := st.GetScheduledRun(ctx, "waiting")
+	require.NoError(t, err)
+	assert.Equal(t, domain.ScheduledRunPending, waiting.Status)
+
+	// Recovery is idempotent: nothing is left in the running state.
+	n, err = st.RecoverStaleScheduledRuns(ctx, time.Now().Add(time.Hour))
+	require.NoError(t, err)
+	assert.Zero(t, n)
+}
