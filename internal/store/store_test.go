@@ -59,6 +59,26 @@ func TestStore_WALMode(t *testing.T) {
 	assert.Equal(t, "wal", mode)
 }
 
+// A database written by a newer Quark may have a schema this binary does not
+// understand. Opening it must fail clearly instead of running against it.
+func TestNew_RefusesDatabaseFromNewerVersion(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "newer.db")
+	s, err := store.New(path)
+	require.NoError(t, err)
+	_, err = s.DB().ExecContext(context.Background(),
+		`INSERT INTO schema_versions (version) VALUES (9999)`)
+	require.NoError(t, err)
+	require.NoError(t, s.Close())
+
+	reopened, err := store.New(path)
+	if reopened != nil {
+		_ = reopened.Close()
+	}
+	require.Error(t, err, "a schema newer than this binary must be rejected")
+	assert.Contains(t, err.Error(), "9999")
+	assert.Contains(t, err.Error(), "newer")
+}
+
 func TestStore_BusyTimeout(t *testing.T) {
 	s := newTestStore(t)
 
