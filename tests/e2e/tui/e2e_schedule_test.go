@@ -121,10 +121,11 @@ func TestE2E_ScheduledStartupTimerUsesWallClock(t *testing.T) {
 
 	req.URL = srv.URL + "/timer"
 	seedRequests(t, st, col.ID, req)
+	runAt := time.Now().Add(80 * time.Millisecond)
 	require.NoError(t, st.SaveScheduledRun(ctx, &domain.ScheduledRun{
 		ID:        "run-wall-clock",
 		RequestID: req.ID,
-		RunAt:     time.Now().Add(80 * time.Millisecond),
+		RunAt:     runAt,
 		Status:    domain.ScheduledRunPending,
 	}))
 
@@ -170,9 +171,10 @@ func TestE2E_ScheduledStartupTimerUsesWallClock(t *testing.T) {
 		model, ok = updated.(tui.Model)
 		require.True(t, ok)
 	}
-	elapsed := time.Since(started)
-	assert.GreaterOrEqual(t, elapsed, 40*time.Millisecond)
-	assert.Less(t, elapsed, 2*time.Second)
+	// The timer must not fire before RunAt. Measure against RunAt, not the time
+	// since startup: slow runners spend part of the 80ms delay in test setup.
+	assert.False(t, time.Now().Before(runAt), "timer fired before RunAt")
+	assert.Less(t, time.Since(started), 2*time.Second)
 
 	require.NotNil(t, executeCmd)
 	resultMsg := runCmd(t, executeCmd)
