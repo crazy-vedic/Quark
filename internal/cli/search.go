@@ -47,7 +47,6 @@ func NewSearchCmd(st SearchStore) *cobra.Command {
 			}
 			if len(result.Hits) == 0 {
 				fmt.Fprintln(cmd.OutOrStdout(), "No requests found.")
-				return nil
 			}
 			for _, hit := range result.Hits {
 				req := hit.Request
@@ -60,6 +59,10 @@ func NewSearchCmd(st SearchStore) *cobra.Command {
 					req.Method,
 					req.URL,
 				)
+			}
+			// Results were printed above; the non-zero exit tells scripts they are partial.
+			if n := len(result.Failures); n > 0 {
+				return fmt.Errorf("search: %d collection(s) could not be searched", n)
 			}
 			return nil
 		},
