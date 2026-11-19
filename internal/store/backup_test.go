@@ -33,6 +33,37 @@ func TestStore_BackupCreatedOnSave(t *testing.T) {
 	assert.NotEmpty(t, entries, "backup file must be created after save")
 }
 
+// A backup is only useful if it can be restored. The file written right after
+// a save must open as a database and contain that save, even though the live
+// database is in WAL mode (where recent commits sit in the -wal file).
+func TestStore_BackupContainsTheWriteThatTriggeredIt(t *testing.T) {
+	backupDir := t.TempDir()
+	s, err := store.New(
+		filepath.Join(t.TempDir(), "test.db"),
+		store.WithBackup(backupDir),
+	)
+	require.NoError(t, err)
+	defer s.Close()
+
+	ctx := context.Background()
+	c := &domain.Collection{ID: uuid.New().String(), Name: "MustBeInBackup"}
+	require.NoError(t, s.SaveCollection(ctx, c))
+
+	entries, err := os.ReadDir(backupDir)
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+
+	// Restore: open the backup file on its own (it has no -wal file).
+	restoredPath := filepath.Join(backupDir, entries[0].Name())
+
+	restored, err := store.New(restoredPath)
+	require.NoError(t, err)
+	defer restored.Close()
+	got, err := restored.GetCollection(ctx, c.ID)
+	require.NoError(t, err, "the backup must contain the collection that was just saved")
+	assert.Equal(t, "MustBeInBackup", got.Name)
+}
+
 func TestStore_BackupRetainsLast10(t *testing.T) {
 	backupDir := t.TempDir()
 	s, err := store.New(
