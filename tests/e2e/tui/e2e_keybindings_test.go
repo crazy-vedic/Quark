@@ -64,8 +64,11 @@ func TestE2E_ClientCertificateModalUsesConfiguredBindings(t *testing.T) {
 	press('z')
 	assertViewContains(t, m, "[a] add")
 	assertViewContains(t, m, "[q] close")
-	addCertificate("api.one.example", filepath.Join(dir, "one.pem"))
-	addCertificate("api.two.example", filepath.Join(dir, "two.pem"))
+	// Use bare file names: the form is typed key by key, and a temp-dir path can
+	// contain the rebound close key ("q"), which would cancel the form mid-entry
+	// (macOS temp dirs contain random characters).
+	addCertificate("api.one.example", "one.pem")
+	addCertificate("api.two.example", "two.pem")
 
 	press('p')
 	assertViewContains(t, m, "▸ api.one.example")
