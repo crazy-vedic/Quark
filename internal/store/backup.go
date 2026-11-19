@@ -117,5 +117,23 @@ func (s *Store) snapshotTo(dst string) error {
 		_ = os.Remove(dst)
 		return err
 	}
+	// The previous io.Copy path fsynced the destination; keep that guarantee.
+	if err := syncFile(dst); err != nil {
+		_ = os.Remove(dst)
+		return err
+	}
 	return nil
+}
+
+// syncFile flushes the file at path to stable storage.
+func syncFile(path string) error {
+	f, err := os.OpenFile(path, os.O_RDWR, 0)
+	if err != nil {
+		return err
+	}
+	if err := f.Sync(); err != nil {
+		_ = f.Close()
+		return err
+	}
+	return f.Close()
 }
