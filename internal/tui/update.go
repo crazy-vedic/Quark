@@ -2426,6 +2426,29 @@ func (m Model) saveHeaders() (Model, tea.Cmd) {
 	return m, saveRequestCmd(m.ctx, m.writer, m.reader, m.activeRequest)
 }
 
+// headersJSONValid reports whether raw is empty or a JSON object whose values
+// are strings or string arrays, i.e. something parseHeadersJSON can represent.
+func headersJSONValid(raw string) bool {
+	if strings.TrimSpace(raw) == "" {
+		return true
+	}
+	var encoded map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(raw), &encoded); err != nil {
+		return false
+	}
+	for _, valueJSON := range encoded {
+		var values []string
+		if json.Unmarshal(valueJSON, &values) == nil {
+			continue
+		}
+		var value string
+		if json.Unmarshal(valueJSON, &value) != nil {
+			return false
+		}
+	}
+	return true
+}
+
 // parseHeadersJSON parses a JSON object string into a slice of headerPair.
 // Returns empty slice on invalid JSON or empty input.
 func parseHeadersJSON(raw string) []headerPair {
