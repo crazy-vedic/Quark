@@ -62,6 +62,29 @@ func TestBeginHeadersEdit_RefusesUnparseableHeaders(t *testing.T) {
 	require.Equal(t, stored, m.activeRequest.Headers, "stored headers must be untouched")
 }
 
+func TestHeadersJSONValid(t *testing.T) {
+	cases := []struct {
+		name string
+		raw  string
+		want bool
+	}{
+		{name: "empty", raw: "", want: true},
+		{name: "blank", raw: "   ", want: true},
+		{name: "empty object", raw: `{}`, want: true},
+		{name: "string value", raw: `{"Accept":"application/json"}`, want: true},
+		{name: "string array value", raw: `{"X-Multi":["a","b"]}`, want: true},
+		{name: "truncated", raw: `{"Authorization":"Bearer abc"`, want: false},
+		{name: "top-level array", raw: `["a","b"]`, want: false},
+		{name: "number value", raw: `{"X-Count":3}`, want: false},
+		{name: "nested object value", raw: `{"X-Nested":{"a":"b"}}`, want: false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, headersJSONValid(tc.raw))
+		})
+	}
+}
+
 func TestSaveBodyFormatsJSONBeforePersisting(t *testing.T) {
 	m := New(Deps{Config: config.Default(t.TempDir())})
 	m.activeRequest = &domain.Request{
