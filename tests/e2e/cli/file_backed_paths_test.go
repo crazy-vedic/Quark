@@ -84,7 +84,7 @@ func TestCLI_RunSendsAtPrefixedValuesLiterally(t *testing.T) {
 	defer got.mu.Unlock()
 	assert.Equal(t, "api.internal.test", got.host)
 	// "@" values are text: they reach the server exactly as stored.
-	assert.Equal(t, "@"+traceFile, got.trace)
+	assert.Equal(t, "@"+e2e.EscapePathForJSON(traceFile), got.trace)
 	assert.Equal(t, []string{"chunked"}, got.transfer)
 	assert.Equal(t, "@"+bodyFile, got.body)
 }
