@@ -4,6 +4,8 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
+
+	"github.com/crazy-vedic/quark/internal/curl"
 )
 
 // NewRequestCmd returns the 'quark request' subcommand tree.
@@ -13,7 +15,34 @@ func NewRequestCmd(r SearchStore) *cobra.Command {
 		Short: "Manage requests",
 	}
 	cmd.AddCommand(newRequestListCmd(r))
+	cmd.AddCommand(newRequestExportCurlCmd(r))
 	return cmd
+}
+
+func newRequestExportCurlCmd(r SearchStore) *cobra.Command {
+	return &cobra.Command{
+		Use:   "export-curl <Collection/Request>",
+		Short: "Print a saved request as a curl command",
+		Long: "Print a saved request as a curl command, the same one the TUI copies.\n" +
+			"The request is exported as stored: {{variables}} are not substituted.",
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			resolver, ok := r.(requestPathResolver)
+			if !ok {
+				return fmt.Errorf("request export-curl: store cannot resolve request paths")
+			}
+			req, err := resolver.ResolveRequestPath(cmd.Context(), args[0])
+			if err != nil {
+				return fmt.Errorf("request export-curl: resolve request: %w", err)
+			}
+			command, err := curl.ExportRequest(req)
+			if err != nil {
+				return fmt.Errorf("request export-curl: %w", err)
+			}
+			fmt.Fprintln(cmd.OutOrStdout(), command)
+			return nil
+		},
+	}
 }
 
 func newRequestListCmd(r SearchStore) *cobra.Command {

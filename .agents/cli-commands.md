@@ -12,6 +12,7 @@ quark tui                      # Launch TUI explicitly
 quark collection list
 quark collection create <name>
 quark request list [--collection <id>]
+quark request export-curl <Collection/Request>
 quark run <Collection/Request>
 quark search <query>
 quark schedule add <Collection/Request> --at <time>
@@ -59,6 +60,16 @@ quark run <Collection/Request>
 ```
 
 Executes a saved request by path (collection name / request name). Uses `exec.Executor.Execute`. Prints status, headers, body (or temp file path for large bodies).
+
+### `quark request export-curl`
+
+**Source:** `internal/cli/request.go`
+
+```
+quark request export-curl <Collection/Request>
+```
+
+Prints the saved request as a single curl command (the same one the TUI copies with its export-curl key). The request is exported as stored: `{{variables}}` are not substituted. Headers saved as arrays emit one `-H` per value. Fails with a clear message if the headers JSON is malformed or a value is not a string or string array.
 
 Shell completion via `CompleteRequestPaths`.
 

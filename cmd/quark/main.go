@@ -545,6 +545,46 @@ func lazyRequestCmd(rt func() (*runtime, error)) *cobra.Command {
 		},
 	))
 	cmd.AddCommand(listCmd)
+	cmd.AddCommand(lazyRequestExportCurlCmd(rt))
+	return cmd
+}
+
+func lazyRequestExportCurlCmd(rt func() (*runtime, error)) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "export-curl <Collection/Request>",
+		Short: "Print a saved request as a curl command",
+		Long: "Print a saved request as a curl command, the same one the TUI copies.\n" +
+			"The request is exported as stored: {{variables}} are not substituted.",
+		Args: cobra.ExactArgs(1),
+	}
+	cmd.RunE = func(cmd *cobra.Command, args []string) error {
+		r, err := rt()
+		if err != nil {
+			return err
+		}
+		for _, c := range cli.NewRequestCmd(r.st).Commands() {
+			if c.Name() == "export-curl" {
+				return c.RunE(cmd, args)
+			}
+		}
+		return fmt.Errorf("export-curl subcommand not found")
+	}
+	cmd.ValidArgsFunction = cli.CompleteRequestPaths(
+		func(ctx context.Context) ([]*domain.Collection, error) {
+			r, err := rt()
+			if err != nil {
+				return nil, err
+			}
+			return r.st.ListCollections(ctx)
+		},
+		func(ctx context.Context, collectionID string) ([]*domain.Request, error) {
+			r, err := rt()
+			if err != nil {
+				return nil, err
+			}
+			return r.st.ListRequests(ctx, collectionID)
+		},
+	)
 	return cmd
 }
 
