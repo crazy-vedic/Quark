@@ -929,7 +929,10 @@ func lazyKeybindingsCmd() *cobra.Command {
 }
 
 func lazyClientCertCmd() *cobra.Command {
-	return cli.NewClientCertificatesCmd(configDir, func(cfg config.Config) error {
+	// Pass a getter, not the value: this runs while the command tree is built,
+	// before --config has been parsed.
+	getConfigDir := func() string { return configDir }
+	return cli.NewClientCertificatesCmd(getConfigDir, func(cfg config.Config) error {
 		_, err := transport.New(cfg)
 		return err
 	})
