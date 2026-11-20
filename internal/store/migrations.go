@@ -218,6 +218,23 @@ func (s *Store) migrate() error {
 		return err
 	}
 
+	// A version above every migration this binary knows means the database
+	// was written by a newer Quark. Its schema may differ in ways this code
+	// cannot handle, so refuse rather than read or write it.
+	latestKnown := 0
+	for _, m := range migrations {
+		if m.version > latestKnown {
+			latestKnown = m.version
+		}
+	}
+	if currentVersion > latestKnown {
+		return fmt.Errorf(
+			"store: database schema v%d is newer than this version of quark supports (v%d); "+
+				"upgrade quark to open it",
+			currentVersion, latestKnown,
+		)
+	}
+
 	// Apply pending migrations.
 	for _, m := range migrations {
 		if m.version > currentVersion {

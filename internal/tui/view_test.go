@@ -1,6 +1,7 @@
 package tui_test
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -22,6 +23,16 @@ import (
 	"github.com/crazy-vedic/quark/internal/tui"
 	"github.com/crazy-vedic/quark/internal/tuitest"
 )
+
+func TestSearchResults_ReportsSkippedCollections(t *testing.T) {
+	m := newModel(defaultConfig()).
+		WithMode(tui.SearchMode).
+		WithSearchInputValue("notif")
+	m = callUpdate(t, m, tui.SearchResultsMsgWithFailures(nil, []search.CollectionFailure{
+		{CollectionID: "c-1", Err: errors.New("database is locked")},
+	}))
+	assert.Contains(t, m.StatusErr(), "1 collection")
+}
 
 func TestView_SearchModal_LongResultsStayWithinViewportAndKeepTitleVisible(t *testing.T) {
 	m := newModel(defaultConfig()).

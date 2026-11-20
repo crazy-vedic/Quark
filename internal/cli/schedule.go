@@ -17,6 +17,14 @@ import (
 
 const scheduleRunDueCmd = "run-due"
 
+// staleRunAge is how long a run may stay "running" before it is treated as
+// interrupted. It is longer than any normal request timeout.
+const staleRunAge = 15 * time.Minute
+
+type staleRunRecoverer interface {
+	RecoverStaleScheduledRuns(ctx context.Context, cutoff time.Time) (int, error)
+}
+
 type ScheduleStore interface {
 	SearchStore
 	ScheduleEnvironmentStore
@@ -57,7 +65,7 @@ func newScheduleAddCmd(st ScheduleStore, now func() time.Time) *cobra.Command {
 			if strings.TrimSpace(when) == "" {
 				return fmt.Errorf("schedule add: --at is required")
 			}
-			req, _, err := findRequestByPath(cmd.Context(), st, args[0])
+			req, err := resolveScheduleRequest(cmd.Context(), st, args[0])
 			if err != nil {
 				return fmt.Errorf("schedule add: %w", err)
 			}
@@ -116,6 +124,18 @@ func newScheduleRunDueCmd(st ScheduleStore, e *exec.Executor, now func() time.Ti
 		Use:   scheduleRunDueCmd,
 		Short: "Execute all pending scheduled runs due now",
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			// A run still "running" long after its request could have finished
+			// belongs to a process that died. Mark it failed so it is visible.
+			if recoverer, ok := st.(staleRunRecoverer); ok {
+				n, err := recoverer.RecoverStaleScheduledRuns(
+					cmd.Context(), now().Add(-staleRunAge))
+				if err != nil {
+					return fmt.Errorf("schedule run-due: recover: %w", err)
+				}
+				if n > 0 {
+					fmt.Fprintf(cmd.OutOrStdout(), "recovered %d interrupted run(s)\n", n)
+				}
+			}
 			runs, err := st.ListDueScheduledRuns(cmd.Context(), now())
 			if err != nil {
 				return fmt.Errorf("schedule run-due: %w", err)
@@ -124,6 +144,7 @@ func newScheduleRunDueCmd(st ScheduleStore, e *exec.Executor, now func() time.Ti
 				fmt.Fprintln(cmd.OutOrStdout(), "No due scheduled runs.")
 				return nil
 			}
+			failed := 0
 			for _, run := range runs {
 				run.Status = domain.ScheduledRunRunning
 				run.LastError = ""
@@ -133,6 +154,7 @@ func newScheduleRunDueCmd(st ScheduleStore, e *exec.Executor, now func() time.Ti
 				if err != nil {
 					_ = markScheduledRunFailed(cmd.Context(), st, run, err)
 					fmt.Fprintf(cmd.OutOrStdout(), "failed %s: %v\n", shortScheduleID(run.ID), err)
+					failed++
 					continue
 				}
 				var prepared *domain.Request
@@ -158,6 +180,7 @@ func newScheduleRunDueCmd(st ScheduleStore, e *exec.Executor, now func() time.Ti
 					}
 					_ = markScheduledRunFailed(cmd.Context(), st, run, err)
 					fmt.Fprintf(cmd.OutOrStdout(), "failed %s: %v\n", shortScheduleID(run.ID), err)
+					failed++
 					continue
 				}
 				run.Status = domain.ScheduledRunCompleted
@@ -165,6 +188,7 @@ func newScheduleRunDueCmd(st ScheduleStore, e *exec.Executor, now func() time.Ti
 				if err := st.SaveScheduledRun(cmd.Context(), run); err != nil {
 					fmt.Fprintf(cmd.OutOrStdout(), "failed to mark %s completed: %v\n",
 						shortScheduleID(run.ID), err)
+					failed++
 					continue
 				}
 				fmt.Fprintf(
@@ -173,6 +197,10 @@ func newScheduleRunDueCmd(st ScheduleStore, e *exec.Executor, now func() time.Ti
 					shortScheduleID(run.ID),
 					run.RequestID,
 				)
+			}
+			if failed > 0 {
+				// Non-zero exit so cron jobs and CI can see the failure.
+				return fmt.Errorf("schedule run-due: %d run(s) failed", failed)
 			}
 			return nil
 		},
@@ -195,6 +223,20 @@ func markScheduledRunFailed(
 	run.Status = domain.ScheduledRunFailed
 	run.LastError = runErr.Error()
 	return scheduler.SaveScheduledRun(ctx, run)
+}
+
+// resolveScheduleRequest resolves a request path the way `quark run` does:
+// full nested paths with ambiguity errors when the store supports it.
+func resolveScheduleRequest(
+	ctx context.Context,
+	st ScheduleStore,
+	path string,
+) (*domain.Request, error) {
+	if resolver, ok := st.(requestPathResolver); ok {
+		return resolver.ResolveRequestPath(ctx, path)
+	}
+	req, _, err := findRequestByPath(ctx, st, path)
+	return req, err
 }
 
 func findRequestByPath(

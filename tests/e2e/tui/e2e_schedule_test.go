@@ -121,10 +121,11 @@ func TestE2E_ScheduledStartupTimerUsesWallClock(t *testing.T) {
 
 	req.URL = srv.URL + "/timer"
 	seedRequests(t, st, col.ID, req)
+	runAt := time.Now().Add(80 * time.Millisecond)
 	require.NoError(t, st.SaveScheduledRun(ctx, &domain.ScheduledRun{
 		ID:        "run-wall-clock",
 		RequestID: req.ID,
-		RunAt:     time.Now().Add(80 * time.Millisecond),
+		RunAt:     runAt,
 		Status:    domain.ScheduledRunPending,
 	}))
 
@@ -170,9 +171,10 @@ func TestE2E_ScheduledStartupTimerUsesWallClock(t *testing.T) {
 		model, ok = updated.(tui.Model)
 		require.True(t, ok)
 	}
-	elapsed := time.Since(started)
-	assert.GreaterOrEqual(t, elapsed, 40*time.Millisecond)
-	assert.Less(t, elapsed, 2*time.Second)
+	// The timer must not fire before RunAt. Measure against RunAt, not the time
+	// since startup: slow runners spend part of the 80ms delay in test setup.
+	assert.False(t, time.Now().Before(runAt), "timer fired before RunAt")
+	assert.Less(t, time.Since(started), 2*time.Second)
 
 	require.NotNil(t, executeCmd)
 	resultMsg := runCmd(t, executeCmd)
@@ -206,4 +208,45 @@ func executeScheduleFollowUpCmd(t *testing.T, m tui.Model, cmd tea.Cmd) tui.Mode
 	default:
 		return callUpdate(t, m, msg)
 	}
+}
+
+// A process that dies mid-run leaves its run in "running". Recovery marks only
+// runs stuck since before the cutoff as failed and leaves everything else alone.
+func TestE2E_ScheduledRunsStuckRunningAreRecovered(t *testing.T) {
+	ctx := context.Background()
+	col := &domain.Collection{ID: "col-recover", Name: "Payments"}
+	st := setupStore(t, col)
+	seedRequests(t, st, col.ID, &domain.Request{
+		ID: "req-recover", CollectionID: col.ID, Name: "List", Method: "GET", URL: "http://example.invalid",
+	})
+	for _, run := range []*domain.ScheduledRun{
+		{ID: "stuck", RequestID: "req-recover", RunAt: time.Now(), Status: domain.ScheduledRunRunning},
+		{ID: "waiting", RequestID: "req-recover", RunAt: time.Now(), Status: domain.ScheduledRunPending},
+	} {
+		require.NoError(t, st.SaveScheduledRun(ctx, run))
+	}
+
+	// A cutoff in the past: the run only just started, so it is not stale yet.
+	n, err := st.RecoverStaleScheduledRuns(ctx, time.Now().Add(-time.Hour))
+	require.NoError(t, err)
+	assert.Zero(t, n)
+
+	// A cutoff in the future: the running run is older than it.
+	n, err = st.RecoverStaleScheduledRuns(ctx, time.Now().Add(time.Hour))
+	require.NoError(t, err)
+	assert.Equal(t, 1, n)
+
+	stuck, err := st.GetScheduledRun(ctx, "stuck")
+	require.NoError(t, err)
+	assert.Equal(t, domain.ScheduledRunFailed, stuck.Status)
+	assert.Contains(t, stuck.LastError, "interrupted while running")
+
+	waiting, err := st.GetScheduledRun(ctx, "waiting")
+	require.NoError(t, err)
+	assert.Equal(t, domain.ScheduledRunPending, waiting.Status)
+
+	// Recovery is idempotent: nothing is left in the running state.
+	n, err = st.RecoverStaleScheduledRuns(ctx, time.Now().Add(time.Hour))
+	require.NoError(t, err)
+	assert.Zero(t, n)
 }
