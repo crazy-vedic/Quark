@@ -984,7 +984,7 @@ func TestHTTPResponseAndErrorStatePaths(t *testing.T) {
 		{"matching invalid URL", m.activeRequest, "active", exec.ErrInvalidURL, ""},
 		{"cancelled", m.activeRequest, "active", exec.ErrRequestCancelled, ""},
 		{"timeout", m.activeRequest, "active", exec.ErrTimeout, "Request timed out"},
-		{"unexpected", m.activeRequest, "active", errors.New("network"), "unexpected error"},
+		{"network failure", m.activeRequest, "active", errors.New("network"), "request failed: network"},
 		{"missing request", nil, "active", exec.ErrInvalidURL, ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
