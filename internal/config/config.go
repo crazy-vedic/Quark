@@ -155,7 +155,9 @@ func Load(configDir string) (Config, error) {
 		if errors.Is(err, fs.ErrNotExist) {
 			return cfg, nil
 		}
-		return cfg, err
+		// Name the file: the TOML error alone ("line 2: ...") does not say
+		// which file is broken.
+		return cfg, fmt.Errorf("%s: %w", path, err)
 	}
 
 	// Merge only fields that the user explicitly set in their config.toml.

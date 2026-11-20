@@ -95,7 +95,12 @@ func runWithArgs(args []string) error {
 
 	logger := cli.NewDebugLogger(nil)
 
+	// main() prints the returned error once; cobra must not print it too.
+	root.SilenceErrors = true
 	root.PersistentPreRun = func(cmd *cobra.Command, args []string) {
+		// Reaching here means flags and arguments parsed. Any later failure is
+		// a runtime error, for which the usage text is noise.
+		cmd.SilenceUsage = true
 		if debugMode && debugLog == nil {
 			debugLog = debugLogFactory()
 			logger.SetFile(debugLog)

@@ -304,3 +304,15 @@ func TestThemeScreenReaderTracksNestedResets(t *testing.T) {
 	require.Equal(t, "#010203", s.rows[0][2].fg)
 	require.True(t, s.rows[0][2].reverse)
 }
+
+// The TUI reads config.toml for the saved theme. A file that does not parse
+// must be refused with the file's name, not a bare TOML position.
+func TestE2E_MalformedConfigErrorNamesTheFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.toml")
+	require.NoError(t, os.WriteFile(path, []byte("[ui\ntheme = \n"), 0o600))
+
+	_, err := config.Load(dir)
+	require.Error(t, err)
+	require.ErrorContains(t, err, path)
+}
