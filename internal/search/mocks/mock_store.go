@@ -5,9 +5,10 @@ import (
 	"context"
 	"reflect"
 
+	"go.uber.org/mock/gomock"
+
 	"github.com/crazy-vedic/quark/internal/domain"
 	"github.com/crazy-vedic/quark/internal/store"
-	"go.uber.org/mock/gomock"
 )
 
 // Compile-time check that MockRequestReader satisfies the interface it fakes.
@@ -53,7 +54,10 @@ func (mr *MockRequestReaderMockRecorder) GetRequest(ctx, id any) *gomock.Call {
 }
 
 // ListRequests mocks base method.
-func (m *MockRequestReader) ListRequests(ctx context.Context, collectionID string) ([]*domain.Request, error) {
+func (m *MockRequestReader) ListRequests(
+	ctx context.Context,
+	collectionID string,
+) ([]*domain.Request, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListRequests", ctx, collectionID)
 	ret0, _ := ret[0].([]*domain.Request)

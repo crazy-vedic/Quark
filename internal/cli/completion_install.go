@@ -358,7 +358,8 @@ func appendOrUpdateBlock(targetFile, marker, block string) (bool, error) {
 	if !strings.HasSuffix(updated, "\n") {
 		updated += "\n"
 	}
-	if err := atomicfile.WriteFile(targetFile, []byte(updated), rcFileMode(targetFile)); err != nil {
+	mode := rcFileMode(targetFile)
+	if err := atomicfile.WriteFile(targetFile, []byte(updated), mode); err != nil {
 		return false, fmt.Errorf("write %s: %w", targetFile, err)
 	}
 	return false, nil
