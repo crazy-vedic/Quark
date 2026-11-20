@@ -5,8 +5,12 @@
 // helpers here write a temp file in the same directory, sync it, set its mode
 // and rename it over the target, so readers see the old file or the new one.
 //
-// internal/atomicfile/atomicfile_test.go fails the build if any other non-test
-// package modifies files directly.
+// Two checks keep it that way. TestNoFileWritesBypassAtomicfile (in this
+// package) fails if any other non-test Go code references a file-writing API
+// directly, outside a short allowlist. The Linux e2e tests
+// tests/e2e/cli/atomic_writes_linux_test.go and
+// tests/e2e/tui/e2e_atomic_writes_linux_test.go run the real commands under
+// inotify and fail if any file is written in place instead of being replaced.
 package atomicfile
 
 import (

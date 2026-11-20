@@ -81,41 +81,135 @@ func TestWriteFile_FollowsSymlink(t *testing.T) {
 	assert.Equal(t, "new", string(got))
 }
 
-// forbidden are the calls that modify files without going through atomicfile.
-// os.OpenFile is flagged whatever its flags: reads use os.Open.
-var forbidden = map[string]bool{
-	"os.WriteFile":     true,
-	"os.Create":        true,
-	"os.OpenFile":      true,
-	"os.CreateTemp":    true,
-	"os.Rename":        true,
-	"os.Truncate":      true,
-	"os.Chmod":         true,
-	"ioutil.WriteFile": true,
-	"ioutil.TempFile":  true,
+// forbidden maps an import path to the identifiers in it that create, write,
+// truncate, rename, link or re-permission files. Any reference counts, not
+// just a call: `w := os.WriteFile; w(...)` is caught too. Reads (os.Open,
+// os.ReadFile) and removal are not listed.
+var forbidden = map[string]map[string]bool{
+	"os": set(
+		"WriteFile", "Create", "OpenFile", "CreateTemp", "Rename", "Truncate",
+		"Chmod", "Chown", "Lchown", "Chtimes", "Link", "Symlink", "CopyFS",
+		"NewFile", "OpenRoot", "OpenInRoot",
+	),
+	"io/ioutil":                set("WriteFile", "TempFile"),
+	"syscall":                  lowLevel,
+	"golang.org/x/sys/unix":    lowLevel,
+	"golang.org/x/sys/windows": lowLevel,
+}
+
+var lowLevel = set(
+	"Open", "Openat", "Openat2", "Creat", "Write", "Pwrite", "Writev", "Pwritev",
+	"Rename", "Renameat", "Renameat2", "Truncate", "Ftruncate", "Link", "Linkat",
+	"Symlink", "Symlinkat", "Chmod", "Fchmod", "Fchmodat", "CreateFile",
+	"MoveFile", "MoveFileEx", "WriteFile",
+)
+
+func set(names ...string) map[string]bool {
+	m := make(map[string]bool, len(names))
+	for _, n := range names {
+		m[n] = true
+	}
+	return m
 }
 
 // allowed lists the direct uses that cannot be an atomic whole-file replace.
-// Key: "<slash path>:<function>:<call>". Each needs a reason; add sparingly.
+// Key: "<slash path>:<enclosing func>:<import path>.<name>". Each needs a
+// reason; add sparingly. Entries that no longer match fail the test.
 var allowed = map[string]string{
-	"cmd/quark/main.go:openDebugLogAt:os.Rename":           "archives the previous append-only debug log",
-	"cmd/quark/main.go:openDebugLogAt:os.OpenFile":         "append-only debug log, written continuously for the whole session",
-	"internal/store/backup.go:snapshotTo:os.OpenFile":      "pre-creates the 0600 destination VACUUM INTO writes into; it is removed on failure",
-	"internal/store/backup.go:syncFile:os.OpenFile":        "fsync of the file VACUUM INTO produced; no content written",
-	"internal/exec/executor.go:readResponse:os.CreateTemp": "scratch file for an oversized response body, not a replacement of a user file",
+	"cmd/quark/main.go:openDebugLogAt:os.Rename":   "archives the previous append-only debug log",
+	"cmd/quark/main.go:openDebugLogAt:os.OpenFile": "append-only debug log, written for the whole session",
+	"internal/store/backup.go:snapshotTo:os.OpenFile": "pre-creates the 0600 file VACUUM INTO " +
+		"writes; removed on failure",
+	"internal/store/backup.go:syncFile:os.OpenFile": "fsync of the file VACUUM INTO produced; " +
+		"writes nothing",
+	"internal/exec/executor.go:readResponse:os.CreateTemp": "scratch file for an oversized " +
+		"response body, not a user file",
 	"internal/exec/executor.go:readResponse:os.Chmod":      "restricts that scratch file to 0600",
 	"internal/updates/channel.go:isWritable:os.CreateTemp": "probe: is the directory writable",
-	"internal/updates/selfupdate.go:Update:os.Rename":      "Windows only: parks the backup as .old for lazy cleanup; moves a file, writes no content",
-	"internal/updates/selfupdate.go:replace:os.Rename":     "installs the staged binary; rename is the atomic step (Windows needs rename-aside)",
+	"internal/updates/selfupdate.go:Update:os.Rename": "Windows only: parks the backup as " +
+		".old; moves a file, writes no content",
+	"internal/updates/selfupdate.go:replace:os.Rename": "installs the staged binary; the " +
+		"rename is the atomic step (Windows needs rename-aside)",
+	"tests/e2e/writewatch/watch_linux.go:Start:os.NewFile": "wraps the inotify fd the " +
+		"e2e write watcher reads; not a regular file",
 }
 
-// TestNoFileWritesBypassAtomicfile fails when non-test code outside this
-// package modifies files directly. Use atomicfile.Write / WriteFile, or, if
-// it truly cannot be a whole-file replace, add an entry to allowed with a reason.
+// finding is one forbidden reference: key is the allowlist key, pos where.
+type finding struct {
+	key string
+	pos token.Position
+	msg string
+}
+
+// scanFile reports every forbidden reference in file. Imports are resolved by
+// path, so renaming the import (xos "os") does not hide a call, and a dot
+// import of a watched package is itself a finding.
+func scanFile(fset *token.FileSet, rel string, file *ast.File) []finding {
+	local := map[string]string{} // local name -> import path
+	var out []finding
+	for _, imp := range file.Imports {
+		path := strings.Trim(imp.Path.Value, `"`)
+		if _, watched := forbidden[path]; !watched {
+			continue
+		}
+		name := filepath.Base(path)
+		if imp.Name != nil {
+			name = imp.Name.Name
+		}
+		if name == "." {
+			out = append(out, finding{
+				key: rel + ":<import>:" + path + ".",
+				pos: fset.Position(imp.Pos()),
+				msg: "dot import of " + path + " hides file writes from this check",
+			})
+			continue
+		}
+		local[name] = path
+	}
+
+	visit := func(root ast.Node, fn string) {
+		ast.Inspect(root, func(n ast.Node) bool {
+			sel, ok := n.(*ast.SelectorExpr)
+			if !ok {
+				return true
+			}
+			id, ok := sel.X.(*ast.Ident)
+			if !ok || id.Obj != nil { // id.Obj != nil: a local variable, not a package
+				return true
+			}
+			path, ok := local[id.Name]
+			if !ok || !forbidden[path][sel.Sel.Name] {
+				return true
+			}
+			ref := path + "." + sel.Sel.Name
+			out = append(out, finding{
+				key: rel + ":" + fn + ":" + ref,
+				pos: fset.Position(sel.Pos()),
+				msg: ref + " modifies files directly; use atomicfile",
+			})
+			return true
+		})
+	}
+	for _, decl := range file.Decls {
+		if fd, ok := decl.(*ast.FuncDecl); ok {
+			visit(fd, fd.Name.Name)
+		} else {
+			visit(decl, "<package>")
+		}
+	}
+	return out
+}
+
+// TestNoFileWritesBypassAtomicfile fails when Go code outside this package
+// modifies files directly. It covers every non-test .go file in the module,
+// whatever its build tags or GOOS. Use atomicfile.Write / WriteFile, or, if it
+// truly cannot be a whole-file replace, add an entry to allowed with a reason.
+// The runtime counterpart is tests/e2e/cli/atomic_writes_linux_test.go.
 func TestNoFileWritesBypassAtomicfile(t *testing.T) {
 	root := filepath.Join("..", "..")
 	used := map[string]bool{}
 	fset := token.NewFileSet()
+	scanned := 0
 
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -124,8 +218,9 @@ func TestNoFileWritesBypassAtomicfile(t *testing.T) {
 		rel, _ := filepath.Rel(root, path)
 		rel = filepath.ToSlash(rel)
 		if d.IsDir() {
-			if rel == ".git" || rel == ".claude" || rel == "node_modules" ||
-				rel == "internal/atomicfile" {
+			switch {
+			case rel == ".git", rel == ".claude", rel == "internal/atomicfile",
+				d.Name() == "node_modules", d.Name() == "testdata", d.Name() == "vendor":
 				return filepath.SkipDir
 			}
 			return nil
@@ -133,43 +228,90 @@ func TestNoFileWritesBypassAtomicfile(t *testing.T) {
 		if !strings.HasSuffix(rel, ".go") || strings.HasSuffix(rel, "_test.go") {
 			return nil
 		}
+		// Mode 0 parses every file regardless of build constraints.
 		file, perr := parser.ParseFile(fset, path, nil, 0)
 		require.NoError(t, perr, rel)
-		for _, decl := range file.Decls {
-			fn, ok := decl.(*ast.FuncDecl)
-			if !ok {
+		scanned++
+		for _, f := range scanFile(fset, rel, file) {
+			if _, ok := allowed[f.key]; ok {
+				used[f.key] = true
 				continue
 			}
-			ast.Inspect(fn, func(n ast.Node) bool {
-				call, ok := n.(*ast.CallExpr)
-				if !ok {
-					return true
-				}
-				sel, ok := call.Fun.(*ast.SelectorExpr)
-				if !ok {
-					return true
-				}
-				pkg, ok := sel.X.(*ast.Ident)
-				if !ok || !forbidden[pkg.Name+"."+sel.Sel.Name] {
-					return true
-				}
-				key := rel + ":" + fn.Name.Name + ":" + pkg.Name + "." + sel.Sel.Name
-				if _, ok := allowed[key]; ok {
-					used[key] = true
-					return true
-				}
-				t.Errorf("%s: %s modifies a file directly; use atomicfile",
-					fset.Position(call.Pos()), pkg.Name+"."+sel.Sel.Name)
-				return true
-			})
+			t.Errorf("%s: %s", f.pos, f.msg)
 		}
 		return nil
 	})
 	require.NoError(t, err)
+	require.Greater(t, scanned, 50, "the walk must reach the module's sources")
 
 	for key := range allowed {
 		if !used[key] {
 			t.Errorf("stale allowlist entry %q: remove it", key)
 		}
+	}
+}
+
+// The guard is only as good as scanFile. Each bypass shape must be caught.
+func TestScanFile_CatchesBypasses(t *testing.T) {
+	cases := map[string]struct {
+		src  string
+		want []string
+	}{
+		"plain call": {
+			`package p; import "os"; func f() { os.WriteFile("x", nil, 0) }`,
+			[]string{"p.go:f:os.WriteFile"},
+		},
+		"aliased import": {
+			`package p; import xos "os"; func f() { xos.Create("x") }`,
+			[]string{"p.go:f:os.Create"},
+		},
+		"function value": {
+			`package p; import "os"; func f() { w := os.WriteFile; _ = w }`,
+			[]string{"p.go:f:os.WriteFile"},
+		},
+		"package-level value": {
+			`package p; import "os"; var w = os.Rename`,
+			[]string{"p.go:<package>:os.Rename"},
+		},
+		"dot import": {
+			`package p; import . "os"; func f() { WriteFile("x", nil, 0) }`,
+			[]string{"p.go:<import>:os."},
+		},
+		"syscall": {
+			`package p; import "syscall"; func f() { syscall.Open("x", 0, 0) }`,
+			[]string{"p.go:f:syscall.Open"},
+		},
+		"x/sys/unix": {
+			`package p; import "golang.org/x/sys/unix"; func f() { unix.Renameat(0, "", 0, "") }`,
+			[]string{"p.go:f:golang.org/x/sys/unix.Renameat"},
+		},
+		"ioutil": {
+			`package p; import "io/ioutil"; func f() { ioutil.WriteFile("x", nil, 0) }`,
+			[]string{"p.go:f:io/ioutil.WriteFile"},
+		},
+		"os.Root": {
+			`package p; import "os"; func f() { r, _ := os.OpenRoot("."); r.Create("x") }`,
+			[]string{"p.go:f:os.OpenRoot"},
+		},
+		"reads are fine": {
+			`package p; import "os"; func f() { os.ReadFile("x"); os.Open("x"); os.Remove("x") }`,
+			nil,
+		},
+		"local variable named os is not the package": {
+			`package p; func f() { var os struct{ WriteFile int }; _ = os.WriteFile }`,
+			nil,
+		},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			fset := token.NewFileSet()
+			file, err := parser.ParseFile(fset, "p.go", tc.src, 0)
+			require.NoError(t, err)
+			var got []string
+			for _, f := range scanFile(fset, "p.go", file) {
+				got = append(got, f.key)
+			}
+			assert.Equal(t, tc.want, got)
+		})
 	}
 }
