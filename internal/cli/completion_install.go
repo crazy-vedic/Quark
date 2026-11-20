@@ -11,6 +11,8 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+
+	"github.com/crazy-vedic/quark/internal/atomicfile"
 )
 
 const (
@@ -93,8 +95,7 @@ func installShellCompletion(root *cobra.Command, shell string, status io.Writer)
 	if err := writeCompletionScript(root, shell, &script, false); err != nil {
 		return err
 	}
-	//nolint:gosec // G306: shell completion scripts must be world-readable
-	if err := os.WriteFile(paths.completionFile, script.Bytes(), 0o644); err != nil {
+	if err := atomicfile.WriteFile(paths.completionFile, script.Bytes(), 0o644); err != nil {
 		return fmt.Errorf("write completion script: %w", err)
 	}
 
@@ -327,8 +328,8 @@ func appendOrUpdateBlock(targetFile, marker, block string) (bool, error) {
 		}
 		builder.WriteString(block)
 		builder.WriteByte('\n')
-		//nolint:gosec // G306: shell rc/profile files are user-owned and must remain readable
-		if err := os.WriteFile(targetFile, []byte(builder.String()), 0o644); err != nil {
+		mode := rcFileMode(targetFile)
+		if err := atomicfile.WriteFile(targetFile, []byte(builder.String()), mode); err != nil {
 			return false, fmt.Errorf("write %s: %w", targetFile, err)
 		}
 		return true, nil
@@ -357,9 +358,18 @@ func appendOrUpdateBlock(targetFile, marker, block string) (bool, error) {
 	if !strings.HasSuffix(updated, "\n") {
 		updated += "\n"
 	}
-	//nolint:gosec // G306: shell rc/profile files are user-owned and must remain readable
-	if err := os.WriteFile(targetFile, []byte(updated), 0o644); err != nil {
+	mode := rcFileMode(targetFile)
+	if err := atomicfile.WriteFile(targetFile, []byte(updated), mode); err != nil {
 		return false, fmt.Errorf("write %s: %w", targetFile, err)
 	}
 	return false, nil
+}
+
+// rcFileMode keeps the mode of an existing shell rc/profile file, so editing
+// it never loosens or tightens permissions; a new file is 0644.
+func rcFileMode(path string) os.FileMode {
+	if info, err := os.Stat(path); err == nil {
+		return info.Mode().Perm()
+	}
+	return 0o644
 }
