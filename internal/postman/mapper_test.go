@@ -35,6 +35,67 @@ func TestMapper_ContentTypeFromBodyLanguage(t *testing.T) {
 	assert.Contains(t, result.Requests[0].Headers, `application/json`)
 }
 
+const disabledHeaderCollection = `{
+	"info": {"name": "Test", "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"},
+	"item": [{
+		"name": "Headers",
+		"request": {
+			"method": "GET",
+			"url": "https://example.com/api",
+			"header": [
+				{"key": "X-Active", "value": "yes"},
+				{"key": "X-Debug-Token", "value": "old-secret", "disabled": true},
+				{"key": "X-Off-And-Empty", "value": "", "disabled": true}
+			]
+		}
+	}]
+}`
+
+// A header the user switched off in Postman ("disabled": true) is not imported
+// by default, and a warning names it without printing its value.
+func TestMapper_SkipsDisabledHeaders(t *testing.T) {
+	result, err := NewImporter().Parse(strings.NewReader(disabledHeaderCollection))
+	assert.NoError(t, err)
+	assert.Len(t, result.Requests, 1)
+	assert.Contains(t, result.Requests[0].Headers, "X-Active")
+	assert.NotContains(t, result.Requests[0].Headers, "X-Debug-Token")
+	assert.NotContains(t, result.Requests[0].Headers, "old-secret")
+
+	assert.Equal(t, []string{
+		`request "Headers": header "X-Debug-Token" is disabled in Postman and was not imported ` +
+			`(use --include-disabled to import it as an active header)`,
+	}, result.Warnings)
+}
+
+// WithDisabledHeaders imports them as active and warns that it did.
+func TestMapper_WithDisabledHeadersImportsThemAndWarns(t *testing.T) {
+	im := NewImporter(WithDisabledHeaders())
+	result, err := im.Parse(strings.NewReader(disabledHeaderCollection))
+	assert.NoError(t, err)
+	assert.Len(t, result.Requests, 1)
+	assert.Contains(t, result.Requests[0].Headers, `"X-Debug-Token":"old-secret"`)
+
+	assert.Equal(t, []string{
+		`request "Headers": header "X-Debug-Token" is disabled in Postman but was imported as an ` +
+			`active header because --include-disabled was given`,
+	}, result.Warnings)
+}
+
+// With no disabled headers there is nothing to warn about, with or without the option.
+func TestMapper_NoDisabledHeadersNoWarning(t *testing.T) {
+	collection := `{
+		"info": {"name": "Test", "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"},
+		"item": [{"name": "H", "request": {"method": "GET", "url": "https://example.com",
+			"header": [{"key": "X-A", "value": "1"}, {"key": "X-B", "value": "2", "disabled": false}]}}]
+	}`
+	for _, im := range []*Importer{NewImporter(), NewImporter(WithDisabledHeaders())} {
+		result, err := im.Parse(strings.NewReader(collection))
+		assert.NoError(t, err)
+		assert.Empty(t, result.Warnings)
+		assert.Contains(t, result.Requests[0].Headers, "X-B")
+	}
+}
+
 func TestMapper_URLProtocolExtracted(t *testing.T) {
 	json := `{
 		"info": {"name": "Test", "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"},

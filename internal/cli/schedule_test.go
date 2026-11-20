@@ -5,6 +5,7 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"path/filepath"
 	"sort"
 	"testing"
 	"time"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/crazy-vedic/quark/internal/domain"
 	"github.com/crazy-vedic/quark/internal/exec"
+	"github.com/crazy-vedic/quark/internal/store"
 )
 
 type fakeScheduleStore struct {
@@ -118,6 +120,37 @@ func TestNewScheduleCmd_AddPersistsDelayedRun(t *testing.T) {
 	assert.Contains(t, out.String(), "Scheduled Payments/List")
 }
 
+// schedule add must resolve the same paths as `quark run`, including requests
+// inside nested collections.
+func TestNewScheduleCmd_AddResolvesNestedCollectionPath(t *testing.T) {
+	ctx := context.Background()
+	now := time.Date(2026, 6, 25, 15, 0, 0, 0, time.UTC)
+	st, err := store.New(filepath.Join(t.TempDir(), "quark.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = st.Close() })
+
+	require.NoError(t, st.SaveCollection(ctx, &domain.Collection{ID: "parent", Name: "Parent"}))
+	require.NoError(t, st.SaveCollection(ctx, &domain.Collection{
+		ID: "child", Name: "Child", ParentID: "parent",
+	}))
+	require.NoError(t, st.SaveRequest(ctx, &domain.Request{
+		ID: "nested-req", CollectionID: "child", Name: "Ping",
+		Method: http.MethodGet, URL: "https://example.test/ping",
+	}))
+
+	cmd := NewScheduleCmd(st, exec.New(http.DefaultTransport), func() time.Time { return now })
+	cmd.SetOut(new(bytes.Buffer))
+	cmd.SetErr(new(bytes.Buffer))
+	cmd.SetArgs([]string{"add", "Parent/Child/Ping", "--at", "10m"})
+	cmd.SetContext(ctx)
+	require.NoError(t, cmd.Execute())
+
+	runs, err := st.ListScheduledRuns(ctx)
+	require.NoError(t, err)
+	require.Len(t, runs, 1)
+	assert.Equal(t, "nested-req", runs[0].RequestID)
+}
+
 func TestNewScheduleCmd_RunDueExecutesAndMarksCompleted(t *testing.T) {
 	now := time.Date(2026, 6, 25, 15, 0, 0, 0, time.UTC)
 	st := newFakeScheduleStore()
@@ -183,7 +216,7 @@ func TestNewScheduleCmd_RunDue_ContinuesAfterSaveFailure(t *testing.T) {
 	cmd.SetContext(context.Background())
 
 	err := cmd.Execute()
-	require.NoError(t, err)
+	require.Error(t, err, "a failed run must make run-due exit non-zero")
 	assert.Contains(t, out.String(), "failed run-1")
 	assert.Equal(t, domain.ScheduledRunCompleted, st.runs["run-2"].Status)
 	assert.Contains(t, out.String(), "ran run-2")
@@ -237,7 +270,7 @@ func TestProof_RunDue_HTTP500IsNotMarkedCompleted(t *testing.T) {
 	cmd.SetOut(new(bytes.Buffer))
 	cmd.SetArgs([]string{"run-due"})
 	cmd.SetContext(context.Background())
-	require.NoError(t, cmd.Execute())
+	require.Error(t, cmd.Execute(), "an HTTP 500 is a failed run and must exit non-zero")
 
 	assert.NotEqual(t, domain.ScheduledRunCompleted, st.runs["run-1"].Status,
 		"a 500 response must not be recorded as a completed run")

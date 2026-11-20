@@ -111,6 +111,7 @@ quark                         # Launch TUI
 quark collection create "API" # Create collection
 quark import curl "curl -X POST https://api.example.com/orders" --collection <id> --name "Create Order"
 quark run "API/Create Order"  # Execute saved request
+quark request export-curl "API/Create Order"  # Print it as a curl command
 quark collection list         # List all collections
 ```
 
@@ -343,6 +344,13 @@ quark import-postman ./MyCollection.postman_collection.json --collection-name "P
 **Control duplicate handling**
 ```bash
 quark import-postman ./postman-export/ --on-duplicate merge
+```
+
+**Headers switched off in Postman**
+
+Quark has no per-header on/off switch, so headers that are disabled in Postman are left out of the import and listed as warnings (header name only). Add `--include-disabled` to import them as active headers instead; the import still warns for each one.
+```bash
+quark import-postman ./MyCollection.postman_collection.json --include-disabled
 ```
 
 Supported duplicate actions:

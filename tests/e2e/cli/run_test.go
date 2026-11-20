@@ -8,6 +8,7 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"testing"
 
@@ -201,4 +202,32 @@ func TestRunCommand_UsesStructuredAuth(t *testing.T) {
 	err = cmd.Execute()
 	require.NoError(t, err)
 	assert.Equal(t, "Bearer secret-token", transport.lastHeaders.Get("Authorization"))
+}
+
+// The real binary must accept positional arguments after the request path and
+// expose them as {{1}}, {{2}}. This goes through the cobra wrapper in main.go,
+// which the tests above bypass.
+func TestRunBinary_AcceptsPositionalArguments(t *testing.T) {
+	var gotPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		_, _ = io.WriteString(w, "ok")
+	}))
+	t.Cleanup(srv.Close)
+
+	home := t.TempDir()
+	st, err := store.New(createQuarkDBPath(t, home), store.WithCacheSize(100))
+	require.NoError(t, err)
+	ctx := context.Background()
+	col := &domain.Collection{ID: uuid.New().String(), Name: "API"}
+	require.NoError(t, st.SaveCollection(ctx, col))
+	require.NoError(t, st.SaveRequest(ctx, &domain.Request{
+		ID: uuid.New().String(), CollectionID: col.ID, Name: "Item",
+		Method: http.MethodGet, URL: srv.URL + "/items/{{1}}/{{2}}",
+	}))
+	require.NoError(t, st.Close())
+
+	_, stderr, code := runQuarkWithHome(t, home, "run", "API/Item", "first", "second")
+	require.Equal(t, 0, code, "%s", stderr)
+	assert.Equal(t, "/items/first/second", gotPath)
 }

@@ -126,3 +126,48 @@ func seedScheduledRunRequest(t *testing.T, s *store.Store) *domain.Request {
 	require.NoError(t, s.SaveRequest(ctx, req))
 	return req
 }
+
+// A run claimed by a process that then died stays "running" forever. Runs that
+// have been running since before the cutoff must be recovered as failed, and
+// recent ones left alone.
+func TestStore_RecoverStaleScheduledRuns(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	req := seedScheduledRunRequest(t, s)
+
+	for _, run := range []struct {
+		id     string
+		status string
+	}{
+		{"stale", domain.ScheduledRunRunning},
+		{"fresh", domain.ScheduledRunRunning},
+		{"pending", domain.ScheduledRunPending},
+	} {
+		require.NoError(t, s.SaveScheduledRun(ctx, &domain.ScheduledRun{
+			ID: run.id, RequestID: req.ID, RunAt: time.Now().Add(-time.Hour),
+			Status: run.status,
+		}))
+	}
+	// Make "stale" look like it was claimed two hours ago.
+	_, err := s.DB().ExecContext(ctx,
+		`UPDATE scheduled_runs SET updated_at = ? WHERE id = ?`,
+		time.Now().Add(-2*time.Hour).UTC().Format("2006-01-02 15:04:05"), "stale")
+	require.NoError(t, err)
+
+	n, err := s.RecoverStaleScheduledRuns(ctx, time.Now().Add(-time.Hour))
+	require.NoError(t, err)
+	assert.Equal(t, 1, n)
+
+	stale, err := s.GetScheduledRun(ctx, "stale")
+	require.NoError(t, err)
+	assert.Equal(t, domain.ScheduledRunFailed, stale.Status)
+	assert.NotEmpty(t, stale.LastError, "the recovery must say why")
+
+	fresh, err := s.GetScheduledRun(ctx, "fresh")
+	require.NoError(t, err)
+	assert.Equal(t, domain.ScheduledRunRunning, fresh.Status)
+
+	pending, err := s.GetScheduledRun(ctx, "pending")
+	require.NoError(t, err)
+	assert.Equal(t, domain.ScheduledRunPending, pending.Status)
+}

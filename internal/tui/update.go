@@ -338,6 +338,12 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.searchCursor = 0
 		m.searchScroll = 0
 		m.searched = true // BUG-008: mark that at least one search has completed
+		if n := len(msg.failures); n > 0 {
+			m.statusErr = fmt.Sprintf(
+				"search skipped %d collection(s); results may be incomplete",
+				n,
+			)
+		}
 		return m, nil
 
 	case viewerClipboardMsg:
@@ -2171,7 +2177,7 @@ func (m Model) handleHTTPErr(msg httpErrMsg) (tea.Model, tea.Cmd) {
 		m = m.status("error", "Request timed out. Press [⌘+Enter] to retry.")
 		return m, historyCmd
 	}
-	m.err = fmt.Errorf("unexpected error: %w", msg.err)
+	m.err = fmt.Errorf("request failed: %w", msg.err)
 	return m, historyCmd
 }
 
@@ -2426,6 +2432,29 @@ func (m Model) saveHeaders() (Model, tea.Cmd) {
 	return m, saveRequestCmd(m.ctx, m.writer, m.reader, m.activeRequest)
 }
 
+// headersJSONValid reports whether raw is empty or a JSON object whose values
+// are strings or string arrays, i.e. something parseHeadersJSON can represent.
+func headersJSONValid(raw string) bool {
+	if strings.TrimSpace(raw) == "" {
+		return true
+	}
+	var encoded map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(raw), &encoded); err != nil {
+		return false
+	}
+	for _, valueJSON := range encoded {
+		var values []string
+		if json.Unmarshal(valueJSON, &values) == nil {
+			continue
+		}
+		var value string
+		if json.Unmarshal(valueJSON, &value) != nil {
+			return false
+		}
+	}
+	return true
+}
+
 // parseHeadersJSON parses a JSON object string into a slice of headerPair.
 // Returns empty slice on invalid JSON or empty input.
 func parseHeadersJSON(raw string) []headerPair {
@@ -2569,8 +2598,9 @@ func (m Model) handleCollectionPromptKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					m = m.status("error", "Collection writer not available")
 					return m, nil
 				}
-				c := &domain.Collection{ID: m.promptTargetID, Name: val}
-				return m, wrapPromptSuccess(saveCollectionCmd(m.ctx, m.colWriter, c))
+				return m, wrapPromptSuccess(
+					renameCollectionCmd(m.ctx, m.colWriter, m.promptTargetID, val),
+				)
 
 			case promptDeleteConfirm:
 				if val != deleteToken {
@@ -2681,6 +2711,21 @@ func saveCollectionCmd(
 ) tea.Cmd {
 	return func() tea.Msg {
 		if err := w.SaveCollection(ctx, c); err != nil {
+			return collectionSavedErrMsg{err: err}
+		}
+		return collectionSavedMsg{}
+	}
+}
+
+// renameCollectionCmd wraps a RenameCollection call in a tea.Cmd. It must not
+// go through SaveCollection: that upsert rewrites parent and description.
+func renameCollectionCmd(
+	ctx context.Context,
+	w store.CollectionWriter,
+	id, name string,
+) tea.Cmd {
+	return func() tea.Msg {
+		if err := w.RenameCollection(ctx, id, name); err != nil {
 			return collectionSavedErrMsg{err: err}
 		}
 		return collectionSavedMsg{}

@@ -42,6 +42,11 @@ func (t *Transaction) SaveCollection(ctx context.Context, c *domain.Collection) 
 	return nil
 }
 
+// RenameCollection renames a collection within the transaction.
+func (t *Transaction) RenameCollection(ctx context.Context, id, name string) error {
+	return renameCollection(ctx, t.tx, id, name)
+}
+
 // DeleteCollection deletes a collection within the transaction.
 func (t *Transaction) DeleteCollection(ctx context.Context, id string) error {
 	_, err := t.tx.ExecContext(ctx, `DELETE FROM collections WHERE id = ?`, id)

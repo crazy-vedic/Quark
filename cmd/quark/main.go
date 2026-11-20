@@ -8,7 +8,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"net/url"
 	"os"
 	"os/signal"
@@ -114,11 +113,11 @@ func runWithArgs(args []string) error {
 		if rt != nil {
 			return rt, nil
 		}
-		// Load user config (defaults if file absent or unreadable).
+		// A missing config file means defaults. A config that exists but does
+		// not parse is an error: continuing would hide the user's settings.
 		cfg, err := config.Load(configDir)
 		if err != nil {
-			slog.Warn("config: failed to load config.toml; using defaults", "err", err)
-			cfg = config.Default(configDir)
+			return nil, fmt.Errorf("load config: %w", err)
 		}
 		if selected := os.Getenv("QUARK_THEME"); selected != "" {
 			cfg.UI.Theme = selected
@@ -488,9 +487,10 @@ func lazyCollectionCmd(rt func() (*runtime, error)) *cobra.Command {
 			return fmt.Errorf("rename subcommand not found")
 		},
 	})
-	cmd.AddCommand(&cobra.Command{
-		Use:   "delete <collection>",
-		Short: "Delete a collection and its requests",
+	var deleteYes bool
+	deleteCmd := &cobra.Command{
+		Use:   "delete <collection> --yes",
+		Short: "Delete a collection and everything in it",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			r, err := rt()
@@ -499,12 +499,17 @@ func lazyCollectionCmd(rt func() (*runtime, error)) *cobra.Command {
 			}
 			for _, c := range cli.NewCollectionCmd(r.st).Commands() {
 				if c.Name() == "delete" {
+					if err := c.Flags().Set("yes", strconv.FormatBool(deleteYes)); err != nil {
+						return err
+					}
 					return c.RunE(cmd, args)
 				}
 			}
 			return fmt.Errorf("delete subcommand not found")
 		},
-	})
+	}
+	deleteCmd.Flags().BoolVarP(&deleteYes, "yes", "y", false, "Confirm the deletion")
+	cmd.AddCommand(deleteCmd)
 	return cmd
 }
 
@@ -545,6 +550,47 @@ func lazyRequestCmd(rt func() (*runtime, error)) *cobra.Command {
 		},
 	))
 	cmd.AddCommand(listCmd)
+	cmd.AddCommand(lazyRequestExportCurlCmd(rt))
+	return cmd
+}
+
+func lazyRequestExportCurlCmd(rt func() (*runtime, error)) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "export-curl <Collection/Request>",
+		Short: "Print a saved request as a curl command",
+		Long: "Print a saved request as a curl command, the same one the TUI copies.\n" +
+			"{{variables}} are filled in from the collection's active environment and Global,\n" +
+			"as 'quark run' does; a variable with no value is an error.",
+		Args: cobra.ExactArgs(1),
+	}
+	cmd.RunE = func(cmd *cobra.Command, args []string) error {
+		r, err := rt()
+		if err != nil {
+			return err
+		}
+		for _, c := range cli.NewRequestCmd(r.st).Commands() {
+			if c.Name() == "export-curl" {
+				return c.RunE(cmd, args)
+			}
+		}
+		return fmt.Errorf("export-curl subcommand not found")
+	}
+	cmd.ValidArgsFunction = cli.CompleteRequestPaths(
+		func(ctx context.Context) ([]*domain.Collection, error) {
+			r, err := rt()
+			if err != nil {
+				return nil, err
+			}
+			return r.st.ListCollections(ctx)
+		},
+		func(ctx context.Context, collectionID string) ([]*domain.Request, error) {
+			r, err := rt()
+			if err != nil {
+				return nil, err
+			}
+			return r.st.ListRequests(ctx, collectionID)
+		},
+	)
 	return cmd
 }
 
@@ -552,9 +598,10 @@ func lazyRunCmd(rt func() (*runtime, error)) *cobra.Command {
 	var namedVars []string
 	var verbose bool
 	cmd := &cobra.Command{
-		Use:   "run <Collection/Request>",
+		Use:   "run <Collection/Request> [positional-args...]",
 		Short: "Execute a saved request",
-		Args:  cobra.ExactArgs(1),
+		// Extra arguments are positional values for {{1}}, {{2}}, ...
+		Args: cobra.MinimumNArgs(1),
 	}
 	cmd.Flags().StringArrayVarP(
 		&namedVars,
@@ -730,6 +777,7 @@ func lazyImportCmd(rt func() (*runtime, error)) *cobra.Command {
 
 func lazyImportPostmanCmd(rt func() (*runtime, error)) *cobra.Command {
 	var collectionName, onDuplicate string
+	var includeDisabled bool
 	cmd := &cobra.Command{
 		Use:   "import-postman <collection.json|directory>",
 		Short: "Import a Postman Collection v2.1 JSON file or a bulk export directory",
@@ -744,11 +792,15 @@ func lazyImportPostmanCmd(rt func() (*runtime, error)) *cobra.Command {
 			inner.SetIn(cmd.InOrStdin())
 			inner.SetOut(cmd.OutOrStdout())
 			inner.SetErr(cmd.ErrOrStderr())
-			inner.SetArgs([]string{
+			innerArgs := []string{
 				args[0],
 				"--collection-name", collectionName,
 				"--on-duplicate", onDuplicate,
-			})
+			}
+			if includeDisabled {
+				innerArgs = append(innerArgs, "--include-disabled")
+			}
+			inner.SetArgs(innerArgs)
 			return inner.Execute()
 		},
 	}
@@ -764,6 +816,12 @@ func lazyImportPostmanCmd(rt func() (*runtime, error)) *cobra.Command {
 		"on-duplicate",
 		"duplicate",
 		"Action when collection name already exists: replace, duplicate, merge, or skip",
+	)
+	cmd.Flags().BoolVar(
+		&includeDisabled,
+		"include-disabled",
+		false,
+		"Import headers that are switched off in Postman as active headers (by default they are left out and listed as warnings)",
 	)
 	return cmd
 }
@@ -872,7 +930,10 @@ func lazyKeybindingsCmd() *cobra.Command {
 }
 
 func lazyClientCertCmd() *cobra.Command {
-	return cli.NewClientCertificatesCmd(configDir, func(cfg config.Config) error {
+	// Pass a getter, not the value: this runs while the command tree is built,
+	// before --config has been parsed.
+	getConfigDir := func() string { return configDir }
+	return cli.NewClientCertificatesCmd(getConfigDir, func(cfg config.Config) error {
 		_, err := transport.New(cfg)
 		return err
 	})

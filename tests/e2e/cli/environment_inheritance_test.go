@@ -520,11 +520,11 @@ func TestE2E_CLIBinary_ScheduledNestedInheritanceAndFailurePersistence(t *testin
 	require.NoError(t, st.Close())
 
 	stdout, stderr, code = runQuarkWithHome(t, home, "schedule", "run-due")
-	require.Equal(
+	require.NotEqual(
 		t,
 		0,
 		code,
-		"individual scheduled failures are persisted: stdout=%s stderr=%s",
+		"a failed scheduled run must make run-due exit non-zero: stdout=%s stderr=%s",
 		stdout,
 		stderr,
 	)

@@ -1,7 +1,6 @@
 package curl
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/url"
 	"sort"
@@ -23,11 +22,9 @@ func ExportRequest(req *domain.Request) (string, error) {
 		method = "GET"
 	}
 	requestURL := req.URL
-	var headers map[string]string
-	if strings.TrimSpace(req.Headers) != "" {
-		if err := json.Unmarshal([]byte(req.Headers), &headers); err != nil {
-			return "", fmt.Errorf("parse request headers: %w", err)
-		}
+	headers, err := domain.ParseHeaders(req.Headers)
+	if err != nil {
+		return "", fmt.Errorf("parse request headers: %w", err)
 	}
 	args := []string{"curl", "-X", shellQuote(method)}
 	keys := make([]string, 0, len(headers))
@@ -36,7 +33,9 @@ func ExportRequest(req *domain.Request) (string, error) {
 	}
 	sort.Strings(keys)
 	for _, key := range keys {
-		args = append(args, "-H", shellQuote(key+": "+headers[key]))
+		for _, value := range headers[key] {
+			args = append(args, "-H", shellQuote(key+": "+value))
+		}
 	}
 	if strings.TrimSpace(req.AuthType) != "" {
 		cfg, err := domain.ParseAuthConfig(req.AuthConfig)

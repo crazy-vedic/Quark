@@ -59,6 +59,26 @@ func TestStore_WALMode(t *testing.T) {
 	assert.Equal(t, "wal", mode)
 }
 
+// A database written by a newer Quark may have a schema this binary does not
+// understand. Opening it must fail clearly instead of running against it.
+func TestNew_RefusesDatabaseFromNewerVersion(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "newer.db")
+	s, err := store.New(path)
+	require.NoError(t, err)
+	_, err = s.DB().ExecContext(context.Background(),
+		`INSERT INTO schema_versions (version) VALUES (9999)`)
+	require.NoError(t, err)
+	require.NoError(t, s.Close())
+
+	reopened, err := store.New(path)
+	if reopened != nil {
+		_ = reopened.Close()
+	}
+	require.Error(t, err, "a schema newer than this binary must be rejected")
+	assert.Contains(t, err.Error(), "9999")
+	assert.Contains(t, err.Error(), "newer")
+}
+
 func TestStore_BusyTimeout(t *testing.T) {
 	s := newTestStore(t)
 
@@ -416,4 +436,24 @@ func TestStore_CompileTimeInterfaceChecks(t *testing.T) {
 	// These are compile-time checks in store.go. If they broke, this file
 	// would not compile. This test documents that they exist.
 	t.Log("compile-time interface checks are in internal/store/store.go")
+}
+
+// Saving an existing request with a different collection must move it. The
+// upsert used to keep the old collection_id, so the request could not move.
+func TestSaveRequest_CanMoveToAnotherCollection(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	require.NoError(t, s.SaveCollection(ctx, &domain.Collection{ID: "from-col", Name: "From"}))
+	require.NoError(t, s.SaveCollection(ctx, &domain.Collection{ID: "to-col", Name: "To"}))
+	req := &domain.Request{
+		ID: "movable", CollectionID: "from-col", Name: "Ping", Method: "GET", URL: "https://a.test",
+	}
+	require.NoError(t, s.SaveRequest(ctx, req))
+
+	req.CollectionID = "to-col"
+	require.NoError(t, s.SaveRequest(ctx, req))
+
+	got, err := s.GetRequest(ctx, "movable")
+	require.NoError(t, err)
+	assert.Equal(t, "to-col", got.CollectionID)
 }
