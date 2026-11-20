@@ -124,8 +124,7 @@ var allowed = map[string]string{
 		"writes nothing",
 	"internal/exec/executor.go:readResponse:os.CreateTemp": "scratch file for an oversized " +
 		"response body, not a user file",
-	"internal/exec/executor.go:readResponse:os.Chmod":      "restricts that scratch file to 0600",
-	"internal/updates/channel.go:isWritable:os.CreateTemp": "probe: is the directory writable",
+	"internal/exec/executor.go:readResponse:os.Chmod": "restricts that scratch file to 0600",
 	"internal/updates/selfupdate.go:Update:os.Rename": "Windows only: parks the backup as " +
 		".old; moves a file, writes no content",
 	"internal/updates/selfupdate.go:replace:os.Rename": "installs the staged binary; the " +
