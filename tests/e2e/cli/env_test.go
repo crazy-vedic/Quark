@@ -32,12 +32,11 @@ func TestCLI_Env_List(t *testing.T) {
 func TestCLI_Env_List_InvalidCollection(t *testing.T) {
 	home, _ := setupHomeWithCollection(t)
 
-	// Invalid collection just returns an empty list (no error).
-	out, _, code := runQuarkWithHome(t, home, "env", "list", "not-a-col")
-	assert.Equal(t, 0, code, "env list with invalid collection returns empty list")
-	assert.Contains(t, out, "global")
-	assert.NotContains(t, out, "dev")
-	assert.NotContains(t, out, "default")
+	// An unknown collection is an error, not an empty listing.
+	out, stderr, code := runQuarkWithHome(t, home, "env", "list", "not-a-col")
+	assert.NotEqual(t, 0, code, "env list with an unknown collection must fail")
+	assert.Contains(t, stderr, "not-a-col")
+	assert.NotContains(t, out, "global")
 }
 
 func TestCLI_Env_List_NoArgs(t *testing.T) {
