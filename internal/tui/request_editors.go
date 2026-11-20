@@ -60,6 +60,12 @@ func (m Model) beginHeadersEdit() Model {
 	if m.activeRequest == nil {
 		return m.status("error", "Select a request first")
 	}
+	if !headersJSONValid(m.activeRequest.Headers) {
+		// parseHeadersJSON would return nothing, the editor would look empty,
+		// and saving it would replace the stored headers with {}.
+		return m.status("error",
+			"This request's stored headers are not valid JSON; refusing to edit and overwrite them")
+	}
 	m.headerPairs = parseHeadersJSON(m.activeRequest.Headers)
 	m.headerCursor = 0
 	m.headerEditing = false

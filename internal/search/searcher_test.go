@@ -112,6 +112,28 @@ func TestSearcher_SearchAll_MergesHitsAcrossCollections(t *testing.T) {
 	assert.Equal(t, "r2", result.Hits[0].Request.ID)
 }
 
+func TestSearcher_SearchAll_ReportsFailedCollection(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mock := mocks.NewMockRequestReader(ctrl)
+	mock.EXPECT().
+		ListRequests(gomock.Any(), "col-1").
+		Return([]*domain.Request{
+			{ID: "r1", Name: "Create Invoice", Method: "POST", URL: "http://api/invoices"},
+		}, nil)
+	mock.EXPECT().
+		ListRequests(gomock.Any(), "col-2").
+		Return(nil, fmt.Errorf("database is locked"))
+
+	s := search.New(mock)
+
+	result, err := s.SearchAll(context.Background(), "invoice", []string{"col-1", "col-2"})
+	require.NoError(t, err)
+	require.Len(t, result.Hits, 1, "hits from the healthy collection are still returned")
+	require.Len(t, result.Failures, 1, "the failed collection must be reported, not dropped")
+	assert.Equal(t, "col-2", result.Failures[0].CollectionID)
+	assert.ErrorContains(t, result.Failures[0].Err, "database is locked")
+}
+
 func TestSearcher_SearchAll_ContextCanceled_DoesNotError(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mock := mocks.NewMockRequestReader(ctrl)

@@ -84,6 +84,7 @@ func (s *Searcher) SearchAll(
 ) (*SearchResult, error) {
 	start := time.Now()
 	var allHits []*SearchHit
+	var failures []CollectionFailure
 
 	for _, colID := range collectionIDs {
 		result, err := s.Search(ctx, colID, query)
@@ -95,7 +96,7 @@ func (s *Searcher) SearchAll(
 					Duration: time.Since(start),
 				}, nil
 			}
-			// Log and continue — SearchAll returns partial results on per-collection failures.
+			// Log and continue. The caller gets partial hits plus the failure list.
 			slog.Warn(
 				"search: skipping collection due to error",
 				"collection_id",
@@ -103,6 +104,7 @@ func (s *Searcher) SearchAll(
 				"err",
 				err,
 			)
+			failures = append(failures, CollectionFailure{CollectionID: colID, Err: err})
 			continue
 		}
 		allHits = append(allHits, result.Hits...)
@@ -122,6 +124,7 @@ func (s *Searcher) SearchAll(
 	return &SearchResult{
 		Hits:     allHits,
 		Duration: time.Since(start),
+		Failures: failures,
 	}, nil
 }
 
