@@ -1088,3 +1088,27 @@ func TestExecutor_DurationIncludesBodyDownload(t *testing.T) {
 	assert.GreaterOrEqual(t, result.Duration, bodyDelay,
 		"duration must include the time spent reading the body")
 }
+
+// Adding an API key to the query must not reorder or re-encode the
+// parameters the user wrote.
+func TestExecutor_RequestAuth_APIKeyQueryKeepsExistingQuery(t *testing.T) {
+	var rawQuery string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rawQuery = r.URL.RawQuery
+		w.WriteHeader(200)
+	}))
+	defer srv.Close()
+
+	transport := &http.Transport{}
+	defer transport.CloseIdleConnections()
+
+	_, err := newTestExecutor(transport).Execute(context.Background(), &domain.Request{
+		ID:         "test-req",
+		Method:     "GET",
+		URL:        srv.URL + "/?z=1&a=2&filter=a%20b,c",
+		AuthType:   domain.AuthTypeAPIKey,
+		AuthConfig: `{"in":"query","name":"api key","value":"s&cret"}`,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "z=1&a=2&filter=a%20b,c&api+key=s%26cret", rawQuery)
+}

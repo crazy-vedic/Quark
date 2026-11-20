@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"net/http"
+	"net/url"
 
 	"github.com/crazy-vedic/quark/internal/domain"
 )
@@ -46,8 +47,19 @@ func applyRequestAuth(httpReq *http.Request, req *domain.Request) error {
 			return nil
 		case domain.AuthAPIKeyInQuery:
 			q := httpReq.URL.Query()
-			q.Set(cfg.Name, cfg.Value)
-			httpReq.URL.RawQuery = q.Encode()
+			if q.Has(cfg.Name) {
+				// The URL already carries this parameter: replace its value.
+				q.Set(cfg.Name, cfg.Value)
+				httpReq.URL.RawQuery = q.Encode()
+				return nil
+			}
+			// Append only the key, leaving the query the user wrote untouched
+			// (Encode would sort and re-encode every parameter).
+			pair := url.QueryEscape(cfg.Name) + "=" + url.QueryEscape(cfg.Value)
+			if httpReq.URL.RawQuery != "" {
+				pair = httpReq.URL.RawQuery + "&" + pair
+			}
+			httpReq.URL.RawQuery = pair
 			return nil
 		default:
 			return fmt.Errorf("invalid auth config: unsupported api key location %q", cfg.In)
