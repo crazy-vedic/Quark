@@ -129,6 +129,7 @@ func TestRunEntrypointAndLazyCommands(t *testing.T) {
 	postmanCollection := `{"info":{"name":"Postman Import","schema":"https://schema.getpostman.com/json/collection/v2.1.0/collection.json"},"item":[]}`
 	require.NoError(t, os.WriteFile(postman, []byte(postmanCollection), 0o600))
 	require.NoError(t, executeCommand(t, lazyImportPostmanCmd(rtf), postman))
+	require.NoError(t, executeCommand(t, lazyImportPostmanCmd(rtf), postman, "--include-disabled"))
 
 	completionCmd := lazyRunCmd(rtf)
 	completionCmd.SetContext(context.Background())

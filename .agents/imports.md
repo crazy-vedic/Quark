@@ -56,7 +56,8 @@ TUI import mode accepts pasted cURL via `CurlImporter.Parse` interface. Same par
 ```
 quark import-postman <collection.json|directory> \
   [--collection-name <name>] \
-  [--on-duplicate replace|duplicate|merge|skip]
+  [--on-duplicate replace|duplicate|merge|skip] \
+  [--include-disabled]
 ```
 
 Implemented in `internal/cli/import_postman.go`, parsing in `internal/postman/`.

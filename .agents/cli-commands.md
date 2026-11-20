@@ -18,7 +18,7 @@ quark schedule add <Collection/Request> --at <time>
 quark schedule list
 quark schedule run-due
 quark import curl <curl-command> [--collection <id>] [--name <name>]
-quark import-postman <file|dir> [--collection-name <name>] [--on-duplicate <action>]
+quark import-postman <file|dir> [--collection-name <name>] [--on-duplicate <action>] [--include-disabled]
 quark env list [<collection-id>]
 quark env create <collection-id> <name>
 quark env set <collection-id> <env-name> <key> <value>
@@ -125,6 +125,7 @@ Imports Postman Collection v2.1 JSON or a bulk export directory (collections + e
 |---|---|---|
 | `--collection-name`, `-n` | (from file) | Override imported collection name |
 | `--on-duplicate` | `duplicate` | Action when name exists: `replace`, `duplicate`, `merge`, `skip` |
+| `--include-disabled` | off | Import headers switched off in Postman as active headers. By default they are left out; either way each one is listed as a warning (name only, never the value) |
 
 Interactive prompts may appear for duplicate handling when run in a TTY. Uses transactions for atomic imports.
 

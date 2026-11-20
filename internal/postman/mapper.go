@@ -19,6 +19,10 @@ import (
 // It preserves nested folders as request groups. Requests retain their own
 // Postman item names; the CLI decides how groups map to stored collections.
 func ImportCollection(c *Collection) *ImportResult {
+	return importCollection(c, false)
+}
+
+func importCollection(c *Collection, includeDisabledHeaders bool) *ImportResult {
 	result := &ImportResult{
 		CollectionName:      c.Info.Name,
 		CollectionVariables: make(map[string]string),
@@ -64,7 +68,7 @@ func ImportCollection(c *Collection) *ImportResult {
 	walk = func(items []Item, prefix string) {
 		for _, item := range items {
 			if item.Request != nil {
-				req, warnings := mapRequest(item, "", idx)
+				req, warnings := mapRequest(item, "", idx, includeDisabledHeaders)
 				if req != nil {
 					result.Requests = append(result.Requests, req)
 					getGroup(prefix).Requests = append(getGroup(prefix).Requests, req)
@@ -92,7 +96,12 @@ func ImportCollection(c *Collection) *ImportResult {
 	return result
 }
 
-func mapRequest(item Item, prefix string, sortOrder int) (*domain.Request, []string) {
+func mapRequest(
+	item Item,
+	prefix string,
+	sortOrder int,
+	includeDisabledHeaders bool,
+) (*domain.Request, []string) {
 	if item.Request == nil {
 		return nil, nil
 	}
@@ -113,19 +122,33 @@ func mapRequest(item Item, prefix string, sortOrder int) (*domain.Request, []str
 	}
 
 	// Extract headers as JSON object
+	// A header switched off in Postman is not sent there. Quark has no
+	// per-header switch, so it is left out unless the caller asked for it, and
+	// either way a warning names it (never its value, which may be a secret).
 	headersMap := make(map[string]string)
+	var warnings []string
 	for _, h := range req.Header {
-		if h.Disabled {
-			// Switched off in Postman: it is not sent there, so not here.
+		if h.Key == "" || h.Value == "" {
 			continue
 		}
-		if h.Key != "" && h.Value != "" {
-			headersMap[h.Key] = h.Value.String()
+		if h.Disabled {
+			if !includeDisabledHeaders {
+				warnings = append(warnings, fmt.Sprintf(
+					"request %q: header %q is disabled in Postman and was not imported "+
+						"(use --include-disabled to import it as an active header)",
+					name, h.Key))
+				continue
+			}
+			warnings = append(warnings, fmt.Sprintf(
+				"request %q: header %q is disabled in Postman but was imported as an active "+
+					"header because --include-disabled was given",
+				name, h.Key))
 		}
+		headersMap[h.Key] = h.Value.String()
 	}
 
 	// Extract authentication as headers
-	warnings := mapAuth(req.Auth, headersMap)
+	warnings = append(warnings, mapAuth(req.Auth, headersMap)...)
 
 	// Body
 	body := ""
