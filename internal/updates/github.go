@@ -7,33 +7,50 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 )
+
+// defaultGitHubBaseURL is the host that serves release pages and assets.
+const defaultGitHubBaseURL = "https://github.com"
+
+// defaultHTTPTimeout bounds each update request, including reading the body.
+const defaultHTTPTimeout = 2 * time.Minute
 
 // GitHubSource checks for updates from GitHub Releases.
 // This is used for the binary channel only.
 type GitHubSource struct {
 	repo    string // "owner/repo"
 	baseURL string // release host, "https://github.com" unless overridden
+	timeout time.Duration
 }
-
-const defaultGitHubBaseURL = "https://github.com"
 
 // NewGitHubSource creates a new GitHub release source.
 func NewGitHubSource(repo string) *GitHubSource {
-	return &GitHubSource{repo: repo, baseURL: defaultGitHubBaseURL}
+	return &GitHubSource{repo: repo, baseURL: defaultGitHubBaseURL, timeout: defaultHTTPTimeout}
+}
+
+// SetBaseURL points the source at another host. Tests use it to reach an httptest server.
+func (s *GitHubSource) SetBaseURL(baseURL string) {
+	s.baseURL = baseURL
+}
+
+// SetHTTPTimeout changes the per-request timeout. Tests use it to keep hang tests fast.
+func (s *GitHubSource) SetHTTPTimeout(d time.Duration) {
+	s.timeout = d
 }
 
 // LatestVersion gets the latest release version from GitHub Releases.
 // Uses redirects, not the REST API, to avoid rate limiting.
 func (s *GitHubSource) LatestVersion(ctx context.Context) (string, error) {
 	client := &http.Client{
+		Timeout: s.timeout,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			// Don't follow redirects automatically — we'll parse the Location header manually.
 			return http.ErrUseLastResponse
 		},
 	}
 
-	redirectURL := fmt.Sprintf("https://github.com/%s/releases/latest", s.repo)
+	redirectURL := fmt.Sprintf("%s/%s/releases/latest", s.baseURL, s.repo)
 	req, err := http.NewRequestWithContext(ctx, "GET", redirectURL, nil)
 	if err != nil {
 		return "", fmt.Errorf("failed to create request: %w", err)
@@ -118,7 +135,7 @@ func (s *GitHubSource) FetchChecksumFile(
 		return "", fmt.Errorf("failed to create request: %w", err)
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := (&http.Client{Timeout: s.timeout}).Do(req)
 	if err != nil {
 		return "", fmt.Errorf("failed to fetch SHA256SUMS: %w", err)
 	}

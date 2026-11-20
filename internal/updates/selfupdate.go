@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/crazy-vedic/quark/internal/atomicfile"
 )
@@ -99,6 +100,11 @@ func (su *SelfUpdater) Update(ctx context.Context, targetVersion string) (string
 	return targetVersion, nil
 }
 
+// SetHTTPTimeout changes the per-request timeout. Tests use it.
+func (su *SelfUpdater) SetHTTPTimeout(d time.Duration) {
+	su.gh.SetHTTPTimeout(d)
+}
+
 // getBinaryName constructs the binary filename for the current platform.
 func (su *SelfUpdater) getBinaryName() string {
 	goos := runtime.GOOS
@@ -124,7 +130,7 @@ func (su *SelfUpdater) downloadBinary(
 		return "", err
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := (&http.Client{Timeout: su.gh.timeout}).Do(req)
 	if err != nil {
 		return "", err
 	}

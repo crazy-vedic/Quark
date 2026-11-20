@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -64,6 +65,22 @@ func TestSelfUpdater_WithSymlink(t *testing.T) {
 
 	updater := updates.NewSelfUpdater("owner/repo", symlinkPath, "1.0.0")
 	assert.NotNil(t, updater)
+}
+
+func TestSelfUpdater_Update_HungDownloadTimesOut(t *testing.T) {
+	server := hungServer(t)
+	exe := filepath.Join(t.TempDir(), "quark")
+	require.NoError(t, os.WriteFile(exe, []byte("fake"), 0o600))
+
+	updater := updates.NewSelfUpdater("owner/repo", exe, "1.0.0")
+	updater.SetBaseURL(server.URL)
+	updater.SetHTTPTimeout(100 * time.Millisecond)
+
+	err := requireReturnsWithin(t, 5*time.Second, func() error {
+		_, err := updater.Update(context.Background(), "v2.0.0")
+		return err
+	})
+	require.Error(t, err)
 }
 
 // TestSelfUpdater_UpdateInstallsExecutableBinary runs a whole self-update
