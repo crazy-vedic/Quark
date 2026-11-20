@@ -212,7 +212,7 @@ func TestDefaultRootCommandInitializesRuntimeAndLaunchesTUI(t *testing.T) {
 	require.ErrorContains(
 		t,
 		runWithArgs([]string{"--config", configFile, "collection", "list"}),
-		"create config dir",
+		"load config",
 	)
 }
 
