@@ -196,6 +196,42 @@ func TestNewScheduleCmd_RunDueExecutesAndMarksCompleted(t *testing.T) {
 	assert.Contains(t, out.String(), "ran run-1")
 }
 
+// A response larger than the in-memory limit is streamed to a temp file.
+// run-due does not show the body, so it must remove that file.
+func TestNewScheduleCmd_RunDueRemovesStreamedResponseFile(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("TMPDIR", tmp) // os.TempDir on Unix
+	t.Setenv("TMP", tmp)    // os.TempDir on Windows
+	t.Setenv("TEMP", tmp)
+
+	now := time.Date(2026, 6, 25, 15, 0, 0, 0, time.UTC)
+	st := newFakeScheduleStore()
+	st.runs["run-1"] = &domain.ScheduledRun{
+		ID: "run-1", RequestID: "req-1", RunAt: now.Add(-time.Minute),
+		Status: domain.ScheduledRunPending,
+	}
+	transport := &recordingRoundTripper{
+		response: &http.Response{
+			StatusCode: 200,
+			Status:     "200 OK",
+			Header:     http.Header{},
+			Body:       io.NopCloser(bytes.NewBufferString("a body larger than the limit")),
+		},
+	}
+	executor := exec.New(transport, exec.WithMaxResponseSize(4))
+
+	cmd := NewScheduleCmd(st, executor, func() time.Time { return now })
+	cmd.SetOut(new(bytes.Buffer))
+	cmd.SetArgs([]string{"run-due"})
+	cmd.SetContext(context.Background())
+	require.NoError(t, cmd.Execute())
+	require.Equal(t, domain.ScheduledRunCompleted, st.runs["run-1"].Status)
+
+	leftovers, err := filepath.Glob(filepath.Join(tmp, "quark-response-*"))
+	require.NoError(t, err)
+	assert.Empty(t, leftovers, "run-due must clean up streamed response files")
+}
+
 func TestNewScheduleCmd_RunDue_ContinuesAfterSaveFailure(t *testing.T) {
 	now := time.Date(2026, 6, 25, 15, 0, 0, 0, time.UTC)
 	st := newFakeScheduleStore()
