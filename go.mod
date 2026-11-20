@@ -18,7 +18,7 @@ require (
 	go.uber.org/mock v0.6.0
 	modernc.org/sqlite v1.51.0
 	mvdan.cc/sh/v3 v3.13.1
-	software.sslmate.com/src/go-pkcs12 v0.7.3
+	software.sslmate.com/src/go-pkcs12 v0.7.4
 )
 
 require github.com/Masterminds/semver/v3 v3.5.0
