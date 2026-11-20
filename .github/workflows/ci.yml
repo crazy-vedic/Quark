@@ -349,6 +349,28 @@ jobs:
           retention-days: 1
 
   # ---------------------------------------------------------------------------
+  # Vulnerability scan. Fails when code reaches a known vulnerability in the Go
+  # standard library or a dependency (govulncheck only reports reachable ones).
+  # ---------------------------------------------------------------------------
+  govulncheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version: '1.26'
+          check-latest: true
+          cache: true
+
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
+
+      - name: Scan for reachable vulnerabilities
+        run: govulncheck ./...
+
+  # ---------------------------------------------------------------------------
   # Stage 2: Test — all suites run in parallel, each downloads the binary
   # Skip if tree SHA was already tested (push to master only)
   # ---------------------------------------------------------------------------

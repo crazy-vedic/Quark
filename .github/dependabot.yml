@@ -1,0 +1,15 @@
+# Opens weekly pull requests for outdated Go modules and GitHub Actions.
+# govulncheck (ci.yml) fails on known vulnerabilities; Dependabot keeps the gap small.
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
