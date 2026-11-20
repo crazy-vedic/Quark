@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -30,6 +31,16 @@ func (s *collectionCommandStore) SaveCollection(
 	}
 	s.collections = append(s.collections, collection)
 	return nil
+}
+
+func (s *collectionCommandStore) RenameCollection(_ context.Context, id, name string) error {
+	for _, current := range s.collections {
+		if current.ID == id {
+			current.Name = name
+			return nil
+		}
+	}
+	return errors.New("collection not found")
 }
 
 func (s *collectionCommandStore) DeleteCollection(_ context.Context, id string) error {

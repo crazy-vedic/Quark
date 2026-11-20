@@ -12,12 +12,15 @@ import (
 // GitHubSource checks for updates from GitHub Releases.
 // This is used for the binary channel only.
 type GitHubSource struct {
-	repo string // "owner/repo"
+	repo    string // "owner/repo"
+	baseURL string // release host, "https://github.com" unless overridden
 }
+
+const defaultGitHubBaseURL = "https://github.com"
 
 // NewGitHubSource creates a new GitHub release source.
 func NewGitHubSource(repo string) *GitHubSource {
-	return &GitHubSource{repo: repo}
+	return &GitHubSource{repo: repo, baseURL: defaultGitHubBaseURL}
 }
 
 // LatestVersion gets the latest release version from GitHub Releases.
@@ -107,8 +110,8 @@ func (s *GitHubSource) FetchChecksumFile(
 	version string,
 ) (string, error) {
 	const checksumFile = "SHA256SUMS"
-	const urlTemplate = "https://github.com/%s/releases/download/%s/%s"
-	checksumURL := fmt.Sprintf(urlTemplate, s.repo, version, checksumFile)
+	checksumURL := fmt.Sprintf("%s/%s/releases/download/%s/%s",
+		s.baseURL, s.repo, version, checksumFile)
 
 	req, err := http.NewRequestWithContext(ctx, "GET", checksumURL, nil)
 	if err != nil {

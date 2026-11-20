@@ -1,6 +1,8 @@
 package curl_test
 
 import (
+	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -137,4 +139,41 @@ func TestExportRequest(t *testing.T) {
 			require.Equal(t, tc.want, got)
 		})
 	}
+}
+
+// The TUI header editor and both importers store headers as
+// {"Name": ["value", ...]}. Export must accept that shape and emit one -H per
+// value.
+func TestExportRequest_ArrayValuedHeaders(t *testing.T) {
+	t.Parallel()
+
+	got, err := curl.ExportRequest(&domain.Request{
+		Method:  "GET",
+		URL:     "https://example.test",
+		Headers: `{"Accept":["application/json"],"X-Tag":["a","b"],"X-Plain":"c"}`,
+	})
+	require.NoError(t, err)
+	require.Equal(t,
+		"curl -X 'GET' -H 'Accept: application/json' -H 'X-Plain: c' "+
+			"-H 'X-Tag: a' -H 'X-Tag: b' 'https://example.test'",
+		got,
+	)
+}
+
+// A request imported from curl must export again.
+func TestExportRequest_RoundTripsImportedHeaders(t *testing.T) {
+	t.Parallel()
+
+	imported, err := curl.NewImporter().Parse(
+		strings.NewReader(`curl -H 'Accept: application/json' https://example.test`),
+	)
+	require.NoError(t, err)
+	headers, err := json.Marshal(imported.Headers)
+	require.NoError(t, err)
+
+	got, err := curl.ExportRequest(&domain.Request{
+		Method: imported.Method, URL: imported.URL, Headers: string(headers),
+	})
+	require.NoError(t, err)
+	require.Equal(t, "curl -X 'GET' -H 'Accept: application/json' 'https://example.test'", got)
 }

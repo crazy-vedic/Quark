@@ -35,6 +35,25 @@ func TestImporter_MinimalCollection(t *testing.T) {
 	assert.Equal(t, postman.Safe, result.Security)
 }
 
+// An "@" in a query value (an e-mail address) is not a credential. Only
+// userinfo in the authority part (https://user:pass@host) is.
+func TestImporter_SecurityScoreOnlyFlagsURLUserinfo(t *testing.T) {
+	score := func(rawURL string) postman.SecurityLevel {
+		collection := `{
+			"info": {"name": "T", "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"},
+			"item": [{"name": "R", "request": {"method": "GET", "url": "` + rawURL + `"}}]
+		}`
+		result, err := postman.NewImporter().Parse(strings.NewReader(collection))
+		require.NoError(t, err)
+		return result.Security
+	}
+
+	assert.Equal(t, postman.Safe, score("https://example.com/users?email=a@b.com"))
+	assert.Equal(t, postman.Safe, score("{{base_url}}/users/a@b.com?at=10:30"))
+	assert.Equal(t, postman.Dangerous, score("https://user:pass@example.com/users"))
+	assert.Equal(t, postman.Dangerous, score("user:pass@example.com/users"))
+}
+
 func TestImporter_NestedFolders(t *testing.T) {
 	json := `{
 		"info": {"name": "API", "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"},

@@ -142,13 +142,28 @@ func TestRunEntrypointAndLazyCommands(t *testing.T) {
 	searchCmd.SetContext(context.Background())
 	err = searchCmd.RunE(searchCmd, []string{"x"})
 	require.ErrorContains(t, err, "runtime")
-	requestCmd := lazyRequestCmd(func() (*runtime, error) { return nil, errors.New("runtime") }).Commands()[0]
+	failingRuntime := func() (*runtime, error) { return nil, errors.New("runtime") }
+	requestCmd, _, err := lazyRequestCmd(failingRuntime).Find([]string{"list"})
+	require.NoError(t, err)
 	requestCmd.SetContext(context.Background())
 	completion, found := requestCmd.GetFlagCompletionFunc("collection")
 	require.True(t, found)
 	completions, directive := completion(requestCmd, nil, "")
 	require.Nil(t, completions)
 	require.NotZero(t, directive)
+
+	exportCmd, _, err := lazyRequestCmd(failingRuntime).Find([]string{"export-curl"})
+	require.NoError(t, err)
+	exportCmd.SetContext(context.Background())
+	require.ErrorContains(t, exportCmd.RunE(exportCmd, []string{"Main/Health"}), "runtime")
+	completions, _ = exportCmd.ValidArgsFunction(exportCmd, nil, "Main/")
+	require.Empty(t, completions, "a failing runtime offers no completions")
+
+	exportCmd = lazyRequestCmd(rtf).Commands()[0]
+	require.Equal(t, "export-curl", exportCmd.Name())
+	exportCmd.SetContext(context.Background())
+	completions, _ = exportCmd.ValidArgsFunction(exportCmd, nil, "Main/")
+	require.NotNil(t, completions)
 }
 
 func TestDefaultRootCommandInitializesRuntimeAndLaunchesTUI(t *testing.T) {
@@ -197,7 +212,7 @@ func TestDefaultRootCommandInitializesRuntimeAndLaunchesTUI(t *testing.T) {
 	require.ErrorContains(
 		t,
 		runWithArgs([]string{"--config", configFile, "collection", "list"}),
-		"create config dir",
+		"load config",
 	)
 }
 
