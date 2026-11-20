@@ -67,7 +67,8 @@ func TestCLI_RunPrintsBodyAndVerboseDetails(t *testing.T) {
 
 	stdout, stderr, code := runQuarkWithHome(t, home, "run", "API/Create", "--verbose")
 	require.Equal(t, 0, code, "stdout: %s\nstderr: %s", stdout, stderr)
-	assert.Contains(t, stdout, "Status: 201 Created")
+	assert.Contains(t, stderr, "Status: 201 Created")
+	assert.NotContains(t, stdout, "Status:")
 	assert.Contains(t, stdout, `"created": true`)
 	assert.Contains(t, stderr, "Request: POST "+server.URL)
 	assert.Contains(t, stderr, "Request headers:")
@@ -101,12 +102,13 @@ func TestCLI_RunHandlesEmptyAndStreamedResponseBodies(t *testing.T) {
 
 	stdout, stderr, code := runQuarkWithHome(t, home, "run", "API/Empty")
 	require.Equal(t, 0, code, "%s", stderr)
-	assert.Contains(t, stdout, "Status: 204 No Content")
+	assert.Contains(t, stderr, "Status: 204 No Content")
 	assert.NotContains(t, stdout, "{}")
 
 	stdout, stderr, code = runQuarkWithHome(t, home, "run", "API/Large")
 	require.Equal(t, 0, code, "%s", stderr)
-	assert.Contains(t, stdout, "Status: 200 OK")
+	assert.Contains(t, stderr, "Status: 200 OK")
+	assert.NotContains(t, stdout, "Status:")
 	assert.GreaterOrEqual(t, len(stdout), largeBodyBytes)
 	assert.True(t, strings.HasSuffix(stdout, largeBody))
 }

@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -229,7 +230,8 @@ func TestNewRunCmd_ExecutesWithPositionalsNamedVarsAndEnvFallback(t *testing.T) 
 	assert.Equal(t, "https://example.test/pos-123", transport.lastURL)
 	assert.Equal(t, `{"merchant_id":"pos-123","name":"cli-name"}`, transport.lastBody)
 	assert.Equal(t, "Bearer cli-token", transport.lastHeaders.Get("Authorization"))
-	assert.Contains(t, out.String(), "Status: 200 OK")
+	assert.Contains(t, verboseOut.String(), "Status: 200 OK")
+	assert.NotContains(t, out.String(), "Status:")
 	assert.Contains(t, out.String(), `"ok": true`)
 	assert.Contains(t, verboseOut.String(), "Request body (43 bytes)")
 	assert.Contains(t, verboseOut.String(), "Request headers:")
@@ -394,4 +396,43 @@ func TestNewRunCmd_ExecutesStructuredAuth(t *testing.T) {
 	err := cmd.Execute()
 	require.NoError(t, err)
 	assert.Equal(t, "secret", transport.lastHeaders.Get("X-API-Key"))
+}
+
+// With --fail, an HTTP error status must make the command exit non-zero so
+// scripts and CI can detect it. Without --fail the response is still a success.
+func TestRunCommand_FailFlagExitsNonZeroOnHTTPError(t *testing.T) {
+	newCmd := func(args ...string) (*cobra.Command, *bytes.Buffer) {
+		st := &fakeRunStore{
+			collections: []*domain.Collection{{ID: "col-1", Name: "API"}},
+			requests: map[string][]*domain.Request{"col-1": {{
+				ID: "req-1", CollectionID: "col-1", Name: "Item", Method: "GET",
+				URL: "https://example.test/item",
+			}}},
+			globalEnv: &domain.Environment{ID: "global", Name: "Global", Data: "{}"},
+		}
+		transport := &recordingRoundTripper{response: &http.Response{
+			StatusCode: 500, Status: "500 Internal Server Error", Header: http.Header{},
+			Body: io.NopCloser(bytes.NewBufferString("boom")),
+		}}
+		cmd := NewRunCmd(st, exec.New(transport))
+		var out bytes.Buffer
+		cmd.SetOut(&out)
+		cmd.SetErr(new(bytes.Buffer))
+		cmd.SetArgs(append([]string{"API/Item"}, args...))
+		cmd.SetContext(context.Background())
+		return cmd, &out
+	}
+
+	cmd, _ := newCmd()
+	require.NoError(t, cmd.Execute(), "without --fail an HTTP 500 is a successful run")
+
+	cmd, _ = newCmd("--fail")
+	err := cmd.Execute()
+	require.Error(t, err, "--fail must return an error for HTTP 500")
+	require.ErrorContains(
+		t,
+		err,
+		"500",
+		"the error must come from the HTTP status, not flag parsing",
+	)
 }

@@ -597,6 +597,7 @@ func lazyRequestExportCurlCmd(rt func() (*runtime, error)) *cobra.Command {
 func lazyRunCmd(rt func() (*runtime, error)) *cobra.Command {
 	var namedVars []string
 	var verbose bool
+	var fail bool
 	cmd := &cobra.Command{
 		Use:   "run <Collection/Request> [positional-args...]",
 		Short: "Execute a saved request",
@@ -610,6 +611,8 @@ func lazyRunCmd(rt func() (*runtime, error)) *cobra.Command {
 		nil,
 		"Override a request variable as key=value; overrides collection/global envs",
 	)
+	cmd.Flags().BoolVar(&fail, "fail", false,
+		"Exit with an error when the response status is 400 or higher")
 	cmd.Flags().BoolVar(&verbose, "verbose", false,
 		"Print request and response headers and request details (may include credentials)")
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
@@ -619,6 +622,9 @@ func lazyRunCmd(rt func() (*runtime, error)) *cobra.Command {
 		}
 		inner := cli.NewRunCmd(r.st, r.executor)
 		if err := inner.Flags().Set("verbose", strconv.FormatBool(verbose)); err != nil {
+			return err
+		}
+		if err := inner.Flags().Set("fail", strconv.FormatBool(fail)); err != nil {
 			return err
 		}
 		for _, assignment := range namedVars {
