@@ -46,7 +46,7 @@ func (s *Store) ListDueScheduledRuns(
 		 WHERE status = ? AND run_at <= ?
 		 ORDER BY run_at ASC, id ASC`,
 		domain.ScheduledRunPending,
-		now,
+		now.UTC(),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("store: list due scheduled runs: %w", err)
@@ -90,7 +90,8 @@ func (s *Store) SaveScheduledRun(ctx context.Context, run *domain.ScheduledRun) 
 		   updated_at=CURRENT_TIMESTAMP`,
 		run.ID,
 		run.RequestID,
-		run.RunAt,
+		// Always UTC: run_at is compared and ordered as text.
+		run.RunAt.UTC(),
 		status,
 		run.LastError,
 	)
