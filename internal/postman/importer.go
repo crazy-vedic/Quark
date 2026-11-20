@@ -119,8 +119,7 @@ func scoreRequestSecurity(req *domain.Request) SecurityLevel {
 	}
 
 	// Check URL for credentials (e.g., https://user:pass@host.com)
-	if strings.Contains(req.URL, "@") && strings.Contains(req.URL, ":") {
-		// Might have user:pass@host
+	if urlHasUserinfo(req.URL) {
 		return Dangerous
 	}
 
@@ -131,6 +130,20 @@ func scoreRequestSecurity(req *domain.Request) SecurityLevel {
 	}
 
 	return Safe
+}
+
+// urlHasUserinfo reports whether the authority part of rawURL carries
+// userinfo (user@host or user:pass@host). It works on the raw text because
+// imported URLs may contain {{placeholders}} that net/url cannot parse.
+func urlHasUserinfo(rawURL string) bool {
+	authority := rawURL
+	if i := strings.Index(authority, "://"); i >= 0 {
+		authority = authority[i+len("://"):]
+	}
+	if i := strings.IndexAny(authority, "/?#"); i >= 0 {
+		authority = authority[:i]
+	}
+	return strings.Contains(authority, "@")
 }
 
 func isCredentialHeader(key string) bool {
