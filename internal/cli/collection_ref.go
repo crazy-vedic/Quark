@@ -56,3 +56,13 @@ func resolveCollectionReference(
 	}
 	return nil, fmt.Errorf("collection %q not found", reference)
 }
+
+// shortID returns the first eight characters of an ID for display, or the
+// whole ID when it is shorter. IDs are usually UUIDs but imported or seeded
+// rows can have any length.
+func shortID(id string) string {
+	if len(id) <= 8 {
+		return id
+	}
+	return id[:8]
+}

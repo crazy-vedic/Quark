@@ -70,7 +70,7 @@ func newCollectionCreateCmd(s store.CollectionWriter) *cobra.Command {
 			if err := s.SaveCollection(cmd.Context(), c); err != nil {
 				return fmt.Errorf("collection create: %w", err)
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "Created collection %q (%s)\n", c.Name, c.ID[:8])
+			fmt.Fprintf(cmd.OutOrStdout(), "Created collection %q (%s)\n", c.Name, shortID(c.ID))
 			return nil
 		},
 	}

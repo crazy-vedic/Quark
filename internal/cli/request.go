@@ -82,7 +82,7 @@ func newRequestListCmd(r SearchStore) *cobra.Command {
 			}
 			for _, req := range reqs {
 				fmt.Fprintf(cmd.OutOrStdout(), "  %s  %-6s  %s\n",
-					req.ID[:8], req.Method, req.Name)
+					shortID(req.ID), req.Method, req.Name)
 			}
 			return nil
 		},
