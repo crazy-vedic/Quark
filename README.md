@@ -111,6 +111,7 @@ quark                         # Launch TUI
 quark collection create "API" # Create collection
 quark import curl "curl -X POST https://api.example.com/orders" --collection <id> --name "Create Order"
 quark run "API/Create Order"  # Execute saved request
+quark request export-curl "API/Create Order"  # Print it as a curl command
 quark collection list         # List all collections
 ```
 
