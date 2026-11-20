@@ -147,6 +147,9 @@ func (e *Executor) Execute(ctx context.Context, req *domain.Request) (*ExecuteRe
 		record(req, nil, err)
 		return nil, err
 	}
+	// client.Do returns when the headers arrive; the body is read above.
+	// Report the whole exchange, not just the time to first byte.
+	result.Duration = time.Since(start)
 
 	// 4. Post-response hook chain. Errors are warnings — next hook still fires.
 	for _, h := range e.postResponseHooks {
