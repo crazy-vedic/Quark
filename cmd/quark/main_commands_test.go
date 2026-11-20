@@ -87,7 +87,7 @@ func TestRunEntrypointAndLazyCommands(t *testing.T) {
 	}
 	require.NoError(t, st.SaveRequest(context.Background(), req))
 	rtf := func() (*runtime, error) { return rt, nil }
-	for _, args := range [][]string{{"create", "Temp"}, {"rename", "Temp", "Temp2"}, {"list"}, {"delete", "Temp2"}} {
+	for _, args := range [][]string{{"create", "Temp"}, {"rename", "Temp", "Temp2"}, {"list"}, {"delete", "Temp2", "--yes"}} {
 		require.NoError(t, executeCommand(t, lazyCollectionCmd(rtf), args...))
 	}
 	require.NoError(t, executeCommand(t, lazyRequestCmd(rtf), "list", "--collection", "Main"))

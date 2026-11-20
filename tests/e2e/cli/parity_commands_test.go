@@ -38,7 +38,7 @@ func TestCLI_CollectionRenameAndDelete(t *testing.T) {
 	require.Equal(t, 0, code, "%s", stderr)
 	assert.Contains(t, out, "Renamed API")
 
-	out, stderr, code = runQuarkWithHome(t, home, "collection", "delete", "Renamed API")
+	out, stderr, code = runQuarkWithHome(t, home, "collection", "delete", "Renamed API", "--yes")
 	require.Equal(t, 0, code, "%s", stderr)
 	assert.Contains(t, out, `Deleted collection "Renamed API"`)
 	out, stderr, code = runQuarkWithHome(t, home, "collection", "list")
