@@ -2592,8 +2592,9 @@ func (m Model) handleCollectionPromptKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					m = m.status("error", "Collection writer not available")
 					return m, nil
 				}
-				c := &domain.Collection{ID: m.promptTargetID, Name: val}
-				return m, wrapPromptSuccess(saveCollectionCmd(m.ctx, m.colWriter, c))
+				return m, wrapPromptSuccess(
+					renameCollectionCmd(m.ctx, m.colWriter, m.promptTargetID, val),
+				)
 
 			case promptDeleteConfirm:
 				if val != deleteToken {
@@ -2704,6 +2705,21 @@ func saveCollectionCmd(
 ) tea.Cmd {
 	return func() tea.Msg {
 		if err := w.SaveCollection(ctx, c); err != nil {
+			return collectionSavedErrMsg{err: err}
+		}
+		return collectionSavedMsg{}
+	}
+}
+
+// renameCollectionCmd wraps a RenameCollection call in a tea.Cmd. It must not
+// go through SaveCollection: that upsert rewrites parent and description.
+func renameCollectionCmd(
+	ctx context.Context,
+	w store.CollectionWriter,
+	id, name string,
+) tea.Cmd {
+	return func() tea.Msg {
+		if err := w.RenameCollection(ctx, id, name); err != nil {
 			return collectionSavedErrMsg{err: err}
 		}
 		return collectionSavedMsg{}
