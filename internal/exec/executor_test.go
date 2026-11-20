@@ -1007,19 +1007,26 @@ func TestExecutor_MultiplePostHooks_AllFire(t *testing.T) {
 	assert.True(t, h2.called, "second post hook must fire even when first returns error")
 }
 
-// A body with {{placeholders}} is a template: it is checked for JSON shape with
-// stand-ins for the placeholders and kept exactly as the user wrote it.
+// A body with {{placeholders}} is a template. If it is already valid JSON it is
+// indented like any other body; if it is only valid once the placeholders are
+// filled in, it is checked with stand-ins and kept exactly as the user wrote it.
 func TestFormatRequestBodyChecksJSONTemplates(t *testing.T) {
 	const ct = "application/json"
-	accepted := map[string]string{
+
+	t.Run("valid JSON containing braces is indented as before", func(t *testing.T) {
+		got, err := exec.FormatRequestBody(`{"name":"user-{{id}}"}`, ct)
+		require.NoError(t, err)
+		assert.Equal(t, "{\n  \"name\": \"user-{{id}}\"\n}", got)
+	})
+
+	kept := map[string]string{
 		"unquoted value":   `{"id": {{id}}, "tags": {{tags}}}`,
-		"inside a string":  `{"name":"user-{{id}}"}`,
-		"whole string":     `{"name":"{{name}}"}`,
 		"as an object key": `{ {{key}}: 1 }`,
 		"fallback syntax":  `{"id": {{1|id}}}`,
+		"mixed":            `{"id": {{id}}, "name": "user-{{n}}"}`,
 	}
-	for name, body := range accepted {
-		t.Run("accepts "+name, func(t *testing.T) {
+	for name, body := range kept {
+		t.Run("keeps "+name, func(t *testing.T) {
 			got, err := exec.FormatRequestBody(body, ct)
 			require.NoError(t, err)
 			assert.Equal(t, body, got, "a template is not reformatted")
@@ -1031,6 +1038,7 @@ func TestFormatRequestBodyChecksJSONTemplates(t *testing.T) {
 		"unclosed":       `{"id": {{id}}`,
 		"missing colon":  `{"id" {{id}}}`,
 		"not JSON":       `hello {{name}}`,
+		"no placeholder": `{"id": 1,}`,
 	}
 	for name, body := range rejected {
 		t.Run("rejects "+name, func(t *testing.T) {
