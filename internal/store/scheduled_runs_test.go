@@ -197,3 +197,42 @@ func TestStore_RecoverStaleScheduledRuns(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, domain.ScheduledRunPending, pending.Status)
 }
+
+// Due detection must compare instants, not the text of zoned timestamps.
+func TestStore_ListDueScheduledRuns_ComparesInstantsAcrossZones(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	req := seedScheduledRunRequest(t, s)
+	india := time.FixedZone("IST", 5*3600+30*60)
+
+	// Scheduled for 10:00 UTC.
+	run := &domain.ScheduledRun{
+		ID:        uuid.New().String(),
+		RequestID: req.ID,
+		RunAt:     time.Date(2026, 11, 17, 10, 0, 0, 0, time.UTC),
+	}
+	require.NoError(t, s.SaveScheduledRun(ctx, run))
+
+	// 12:00 +05:30 is 06:30 UTC: three and a half hours before the run.
+	early := time.Date(2026, 11, 17, 12, 0, 0, 0, india)
+	due, err := s.ListDueScheduledRuns(ctx, early)
+	require.NoError(t, err)
+	assert.Empty(t, due, "run must not be due before its instant")
+
+	// 16:00 +05:30 is 10:30 UTC: after the run.
+	late := time.Date(2026, 11, 17, 16, 0, 0, 0, india)
+	due, err = s.ListDueScheduledRuns(ctx, late)
+	require.NoError(t, err)
+	require.Len(t, due, 1)
+
+	// A run saved with a zone offset must be ordered by instant as well.
+	zoned := &domain.ScheduledRun{
+		ID:        uuid.New().String(),
+		RequestID: req.ID,
+		RunAt:     time.Date(2026, 11, 17, 14, 0, 0, 0, india), // 08:30 UTC
+	}
+	require.NoError(t, s.SaveScheduledRun(ctx, zoned))
+	next, err := s.NextPendingScheduledRun(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, zoned.ID, next.ID, "08:30 UTC run comes before the 10:00 UTC run")
+}
