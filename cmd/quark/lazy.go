@@ -188,7 +188,10 @@ func lazyRequestCmd(rt func() (*runtime, error)) *cobra.Command {
 }
 
 func lazyRunCmd(rt func() (*runtime, error)) *cobra.Command {
-	return lazyCommand(rt, func(r *runtime) *cobra.Command { return cli.NewRunCmd(r.st, r.executor) })
+	return lazyCommand(
+		rt,
+		func(r *runtime) *cobra.Command { return cli.NewRunCmd(r.st, r.executor) },
+	)
 }
 
 func lazySearchCmd(rt func() (*runtime, error)) *cobra.Command {

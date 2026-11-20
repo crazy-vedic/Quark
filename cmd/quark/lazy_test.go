@@ -103,7 +103,10 @@ func fakeTree(onRun func(string, []string)) func(*runtime) *cobra.Command {
 			Use:  "go <target>",
 			Args: cobra.ExactArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
-				onRun(fmt.Sprintf("name=%s count=%d loud=%v tags=%v", name, count, loud, tags), args)
+				onRun(
+					fmt.Sprintf("name=%s count=%d loud=%v tags=%v", name, count, loud, tags),
+					args,
+				)
 				return nil
 			},
 			ValidArgsFunction: func(*cobra.Command, []string, string) ([]cobra.Completion, cobra.ShellCompDirective) {
@@ -114,9 +117,12 @@ func fakeTree(onRun func(string, []string)) func(*runtime) *cobra.Command {
 		leaf.Flags().IntVar(&count, "count", 1, "a count")
 		leaf.Flags().BoolVar(&loud, "loud", false, "be loud")
 		leaf.Flags().StringArrayVarP(&tags, "tag", "t", nil, "repeatable")
-		_ = leaf.RegisterFlagCompletionFunc("name", func(*cobra.Command, []string, string) ([]cobra.Completion, cobra.ShellCompDirective) {
-			return []cobra.Completion{"alice", "bob"}, cobra.ShellCompDirectiveNoFileComp
-		})
+		_ = leaf.RegisterFlagCompletionFunc(
+			"name",
+			func(*cobra.Command, []string, string) ([]cobra.Completion, cobra.ShellCompDirective) {
+				return []cobra.Completion{"alice", "bob"}, cobra.ShellCompDirectiveNoFileComp
+			},
+		)
 		root.AddCommand(leaf)
 		return root
 	}
@@ -129,7 +135,21 @@ func TestLazyCommandCopiesEveryFlagKindToTheRealCommand(t *testing.T) {
 		func() (*runtime, error) { return &runtime{}, nil },
 		fakeTree(func(flags string, args []string) { got, gotArgs = flags, args }),
 	)
-	cmd.SetArgs([]string{"go", "target", "-n", "carol", "--count", "7", "--loud", "-t", "a,b", "--tag", "c"})
+	cmd.SetArgs(
+		[]string{
+			"go",
+			"target",
+			"-n",
+			"carol",
+			"--count",
+			"7",
+			"--loud",
+			"-t",
+			"a,b",
+			"--tag",
+			"c",
+		},
+	)
 	cmd.SetContext(context.Background())
 	require.NoError(t, cmd.Execute())
 
@@ -195,7 +215,12 @@ func TestLazyCommandReportsAMissingRealSubcommand(t *testing.T) {
 			builds++
 			root := &cobra.Command{Use: "thing"}
 			if builds == 1 { // the shape has a child, the real tree does not
-				root.AddCommand(&cobra.Command{Use: "gone", RunE: func(*cobra.Command, []string) error { return nil }})
+				root.AddCommand(
+					&cobra.Command{
+						Use:  "gone",
+						RunE: func(*cobra.Command, []string) error { return nil },
+					},
+				)
 			}
 			return root
 		},
