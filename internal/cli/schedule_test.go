@@ -183,7 +183,7 @@ func TestNewScheduleCmd_RunDue_ContinuesAfterSaveFailure(t *testing.T) {
 	cmd.SetContext(context.Background())
 
 	err := cmd.Execute()
-	require.NoError(t, err)
+	require.Error(t, err, "a failed run must make run-due exit non-zero")
 	assert.Contains(t, out.String(), "failed run-1")
 	assert.Equal(t, domain.ScheduledRunCompleted, st.runs["run-2"].Status)
 	assert.Contains(t, out.String(), "ran run-2")
@@ -237,7 +237,7 @@ func TestProof_RunDue_HTTP500IsNotMarkedCompleted(t *testing.T) {
 	cmd.SetOut(new(bytes.Buffer))
 	cmd.SetArgs([]string{"run-due"})
 	cmd.SetContext(context.Background())
-	require.NoError(t, cmd.Execute())
+	require.Error(t, cmd.Execute(), "an HTTP 500 is a failed run and must exit non-zero")
 
 	assert.NotEqual(t, domain.ScheduledRunCompleted, st.runs["run-1"].Status,
 		"a 500 response must not be recorded as a completed run")

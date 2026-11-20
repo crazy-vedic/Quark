@@ -144,6 +144,7 @@ func newScheduleRunDueCmd(st ScheduleStore, e *exec.Executor, now func() time.Ti
 				fmt.Fprintln(cmd.OutOrStdout(), "No due scheduled runs.")
 				return nil
 			}
+			failed := 0
 			for _, run := range runs {
 				run.Status = domain.ScheduledRunRunning
 				run.LastError = ""
@@ -153,6 +154,7 @@ func newScheduleRunDueCmd(st ScheduleStore, e *exec.Executor, now func() time.Ti
 				if err != nil {
 					_ = markScheduledRunFailed(cmd.Context(), st, run, err)
 					fmt.Fprintf(cmd.OutOrStdout(), "failed %s: %v\n", shortScheduleID(run.ID), err)
+					failed++
 					continue
 				}
 				var prepared *domain.Request
@@ -178,6 +180,7 @@ func newScheduleRunDueCmd(st ScheduleStore, e *exec.Executor, now func() time.Ti
 					}
 					_ = markScheduledRunFailed(cmd.Context(), st, run, err)
 					fmt.Fprintf(cmd.OutOrStdout(), "failed %s: %v\n", shortScheduleID(run.ID), err)
+					failed++
 					continue
 				}
 				run.Status = domain.ScheduledRunCompleted
@@ -185,6 +188,7 @@ func newScheduleRunDueCmd(st ScheduleStore, e *exec.Executor, now func() time.Ti
 				if err := st.SaveScheduledRun(cmd.Context(), run); err != nil {
 					fmt.Fprintf(cmd.OutOrStdout(), "failed to mark %s completed: %v\n",
 						shortScheduleID(run.ID), err)
+					failed++
 					continue
 				}
 				fmt.Fprintf(
@@ -193,6 +197,10 @@ func newScheduleRunDueCmd(st ScheduleStore, e *exec.Executor, now func() time.Ti
 					shortScheduleID(run.ID),
 					run.RequestID,
 				)
+			}
+			if failed > 0 {
+				// Non-zero exit so cron jobs and CI can see the failure.
+				return fmt.Errorf("schedule run-due: %d run(s) failed", failed)
 			}
 			return nil
 		},
