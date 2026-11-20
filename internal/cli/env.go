@@ -232,9 +232,11 @@ func envSet(ctx context.Context, st EnvStore, collectionID, envName, key, value 
 	if err != nil {
 		return fmt.Errorf("get env: %w", err)
 	}
-	vars := env.Vars()
-	if vars == nil {
-		vars = make(map[string]string)
+	// Strict decode on this write path: the lenient Vars() returns nil for
+	// corrupt data, which would replace every stored variable with this one.
+	vars, err := env.DecodeVars()
+	if err != nil {
+		return fmt.Errorf("env %q has unreadable data, not overwriting it: %w", envName, err)
 	}
 	vars[key] = value
 	env.SetVars(vars)
@@ -250,9 +252,9 @@ func envSetGlobal(ctx context.Context, st EnvStore, key, value string) error {
 	if err != nil {
 		return fmt.Errorf("get global env: %w", err)
 	}
-	vars := env.Vars()
-	if vars == nil {
-		vars = make(map[string]string)
+	vars, err := env.DecodeVars()
+	if err != nil {
+		return fmt.Errorf("global env has unreadable data, not overwriting it: %w", err)
 	}
 	vars[key] = value
 	env.SetVars(vars)

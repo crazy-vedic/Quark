@@ -68,6 +68,7 @@ func TestImportSingleFile_NestedFoldersDoesNotBlockStoreConnection(t *testing.T)
 		"",
 		"duplicate",
 		&globalAction,
+		postman.NewImporter(),
 		NewDebugLogger(nil),
 	)
 	require.NoError(t, err)
@@ -445,6 +446,7 @@ func TestImportSingleFile_MergeCollectionVariablesPreservesLocalValues(t *testin
 		"",
 		"merge",
 		&action,
+		postman.NewImporter(),
 		NewDebugLogger(nil),
 	)
 	require.NoError(t, err)
@@ -507,6 +509,7 @@ func TestImportBulk_StandaloneEnvironmentsRemainSelectableAndAggregateErrors(t *
 		"",
 		"duplicate",
 		new(duplicateAction),
+		postman.NewImporter(),
 		NewDebugLogger(nil),
 	)
 	require.NoError(t, err)
@@ -678,7 +681,7 @@ func TestImportBulkManifestAndEmptyDirectoryPaths(t *testing.T) {
 	missingCollection := t.TempDir()
 	_, _, err = importBulk(
 		ctx, &cobra.Command{}, st, missingCollection, "", "duplicate",
-		new(duplicateAction), logger,
+		new(duplicateAction), postman.NewImporter(), logger,
 	)
 	require.ErrorContains(t, err, "missing collection/")
 
@@ -686,7 +689,7 @@ func TestImportBulkManifestAndEmptyDirectoryPaths(t *testing.T) {
 	require.NoError(t, os.MkdirAll(filepath.Join(emptyCollection, "collection"), 0o700))
 	_, _, err = importBulk(
 		ctx, &cobra.Command{}, st, emptyCollection, "", "duplicate",
-		new(duplicateAction), logger,
+		new(duplicateAction), postman.NewImporter(), logger,
 	)
 	require.ErrorContains(t, err, "no collection files")
 
@@ -699,7 +702,7 @@ func TestImportBulkManifestAndEmptyDirectoryPaths(t *testing.T) {
 	require.NoError(t, os.WriteFile(validCollection, []byte(manifestJSON), 0o600))
 	stats, _, err := importBulk(
 		ctx, &cobra.Command{}, st, fallback, "", "duplicate",
-		new(duplicateAction), logger,
+		new(duplicateAction), postman.NewImporter(), logger,
 	)
 	require.NoError(t, err)
 	require.Len(t, stats, 1)
@@ -715,7 +718,7 @@ func TestImportBulkManifestAndEmptyDirectoryPaths(t *testing.T) {
 	require.NoError(t, os.WriteFile(safeCollection, []byte(safeData), 0o600))
 	stats, _, err = importBulk(
 		ctx, &cobra.Command{}, st, manifest, "", "duplicate",
-		new(duplicateAction), logger,
+		new(duplicateAction), postman.NewImporter(), logger,
 	)
 	require.NoError(t, err)
 	require.Len(t, stats, 1)

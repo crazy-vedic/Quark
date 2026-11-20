@@ -133,7 +133,10 @@ type lastRequestLoadedMsg struct {
 type errLoadMsg struct{ err error }
 
 // searchResultsMsg carries search hits.
-type searchResultsMsg struct{ hits []*search.SearchHit }
+type searchResultsMsg struct {
+	hits     []*search.SearchHit
+	failures []search.CollectionFailure
+}
 
 type viewerClipboardMsg struct{ err error }
 type curlExportClipboardMsg struct{ err error }
@@ -883,7 +886,7 @@ func searchAllCmd(
 		if err != nil {
 			return errLoadMsg{err: fmt.Errorf("search: %w", err)}
 		}
-		return searchResultsMsg{hits: result.Hits}
+		return searchResultsMsg{hits: result.Hits, failures: result.Failures}
 	}
 }
 

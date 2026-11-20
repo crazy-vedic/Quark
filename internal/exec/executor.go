@@ -260,9 +260,32 @@ func FormatRequestBody(body, contentType string) (string, error) {
 	}
 	var formatted bytes.Buffer
 	if err := json.Indent(&formatted, []byte(body), "", "  "); err != nil {
-		return "", fmt.Errorf("invalid JSON body: %w", err)
+		return keepJSONTemplate(body, err)
 	}
 	return formatted.String(), nil
+}
+
+// keepJSONTemplate decides what to do with a body that json.Indent rejected.
+// A body with {{placeholders}} is a template: it is only valid JSON once the
+// placeholders are filled in, so it is kept as written if it could be valid.
+// Anything else is the invalid JSON it appears to be.
+func keepJSONTemplate(body string, indentErr error) (string, error) {
+	if placeholderRE.MatchString(body) && validJSONTemplate(body) {
+		return body, nil
+	}
+	return "", fmt.Errorf("invalid JSON body: %w", indentErr)
+}
+
+// validJSONTemplate reports whether body is valid JSON for some values of its
+// {{placeholders}}. A placeholder can stand for a value (`null`), for text
+// inside a string (`x`), or for a quoted key (`"x"`), so any stand-in may pass.
+func validJSONTemplate(body string) bool {
+	for _, standIn := range []string{"null", "x", `"x"`} {
+		if json.Valid([]byte(placeholderRE.ReplaceAllString(body, standIn))) {
+			return true
+		}
+	}
+	return false
 }
 
 func resolveHeaderFile(value string) (string, error) {
