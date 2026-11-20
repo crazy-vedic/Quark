@@ -437,3 +437,23 @@ func TestStore_CompileTimeInterfaceChecks(t *testing.T) {
 	// would not compile. This test documents that they exist.
 	t.Log("compile-time interface checks are in internal/store/store.go")
 }
+
+// Saving an existing request with a different collection must move it. The
+// upsert used to keep the old collection_id, so the request could not move.
+func TestSaveRequest_CanMoveToAnotherCollection(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	require.NoError(t, s.SaveCollection(ctx, &domain.Collection{ID: "from-col", Name: "From"}))
+	require.NoError(t, s.SaveCollection(ctx, &domain.Collection{ID: "to-col", Name: "To"}))
+	req := &domain.Request{
+		ID: "movable", CollectionID: "from-col", Name: "Ping", Method: "GET", URL: "https://a.test",
+	}
+	require.NoError(t, s.SaveRequest(ctx, req))
+
+	req.CollectionID = "to-col"
+	require.NoError(t, s.SaveRequest(ctx, req))
+
+	got, err := s.GetRequest(ctx, "movable")
+	require.NoError(t, err)
+	assert.Equal(t, "to-col", got.CollectionID)
+}
