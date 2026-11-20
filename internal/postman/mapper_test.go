@@ -69,7 +69,8 @@ func TestMapper_SkipsDisabledHeaders(t *testing.T) {
 
 // WithDisabledHeaders imports them as active and warns that it did.
 func TestMapper_WithDisabledHeadersImportsThemAndWarns(t *testing.T) {
-	result, err := NewImporter(WithDisabledHeaders()).Parse(strings.NewReader(disabledHeaderCollection))
+	im := NewImporter(WithDisabledHeaders())
+	result, err := im.Parse(strings.NewReader(disabledHeaderCollection))
 	assert.NoError(t, err)
 	assert.Len(t, result.Requests, 1)
 	assert.Contains(t, result.Requests[0].Headers, `"X-Debug-Token":"old-secret"`)
