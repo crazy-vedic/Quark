@@ -1103,12 +1103,17 @@ func executeDueScheduledRunsCmd(
 				result.failed = append(result.failed, scheduledRunFailure{name: name, err: err})
 				continue
 			}
-			run.Status = domain.ScheduledRunRunning
-			run.LastError = ""
-			if err := scheduler.SaveScheduledRun(ctx, run); err != nil {
+			claimed, err := scheduler.ClaimScheduledRun(ctx, run.ID)
+			if err != nil {
 				result.failed = append(result.failed, scheduledRunFailure{name: name, err: err})
 				continue
 			}
+			if !claimed {
+				// Another quark process (for example cron run-due) took it.
+				continue
+			}
+			run.Status = domain.ScheduledRunRunning
+			run.LastError = ""
 			execReq, err := interpolateScheduledRequest(
 				ctx,
 				envReader,

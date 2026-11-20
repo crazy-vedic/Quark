@@ -146,9 +146,17 @@ func newScheduleRunDueCmd(st ScheduleStore, e *exec.Executor, now func() time.Ti
 			}
 			failed := 0
 			for _, run := range runs {
+				claimed, err := st.ClaimScheduledRun(cmd.Context(), run.ID)
+				if err != nil {
+					fmt.Fprintf(cmd.OutOrStdout(), "failed %s: %v\n", shortScheduleID(run.ID), err)
+					continue
+				}
+				if !claimed {
+					// Another quark process (cron run-due or an open TUI) took it.
+					continue
+				}
 				run.Status = domain.ScheduledRunRunning
 				run.LastError = ""
-				_ = st.SaveScheduledRun(cmd.Context(), run)
 
 				req, err := st.GetRequest(cmd.Context(), run.RequestID)
 				if err != nil {

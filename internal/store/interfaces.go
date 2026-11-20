@@ -128,6 +128,10 @@ type ScheduledRunReader interface {
 // ScheduledRunWriter mutates delayed request executions.
 type ScheduledRunWriter interface {
 	SaveScheduledRun(ctx context.Context, run *domain.ScheduledRun) error
+	// ClaimScheduledRun atomically moves a pending run to running. It
+	// returns false when the run is no longer pending, which means another
+	// process took it; the caller must then skip the run.
+	ClaimScheduledRun(ctx context.Context, id string) (bool, error)
 	DeleteScheduledRun(ctx context.Context, id string) error
 }
 

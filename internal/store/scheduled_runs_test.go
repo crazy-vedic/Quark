@@ -127,6 +127,32 @@ func seedScheduledRunRequest(t *testing.T, s *store.Store) *domain.Request {
 	return req
 }
 
+func TestStore_ClaimScheduledRun_OnlyOneClaimWins(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	req := seedScheduledRunRequest(t, s)
+	run := &domain.ScheduledRun{
+		ID: uuid.New().String(), RequestID: req.ID, RunAt: time.Now().Add(-time.Minute),
+	}
+	require.NoError(t, s.SaveScheduledRun(ctx, run))
+
+	first, err := s.ClaimScheduledRun(ctx, run.ID)
+	require.NoError(t, err)
+	assert.True(t, first)
+
+	second, err := s.ClaimScheduledRun(ctx, run.ID)
+	require.NoError(t, err)
+	assert.False(t, second, "a running run cannot be claimed again")
+
+	got, err := s.GetScheduledRun(ctx, run.ID)
+	require.NoError(t, err)
+	assert.Equal(t, domain.ScheduledRunRunning, got.Status)
+
+	missing, err := s.ClaimScheduledRun(ctx, "no-such-run")
+	require.NoError(t, err)
+	assert.False(t, missing)
+}
+
 // A run claimed by a process that then died stays "running" forever. Runs that
 // have been running since before the cutoff must be recovered as failed, and
 // recent ones left alone.

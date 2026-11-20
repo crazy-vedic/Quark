@@ -100,6 +100,26 @@ func (s *Store) SaveScheduledRun(ctx context.Context, run *domain.ScheduledRun) 
 	return nil
 }
 
+// ClaimScheduledRun atomically moves a pending run to running and reports
+// whether this caller won the claim. Executors must claim a run before
+// sending its request so that overlapping processes never send it twice.
+func (s *Store) ClaimScheduledRun(ctx context.Context, id string) (bool, error) {
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE scheduled_runs
+		 SET status = ?, last_error = '', updated_at=CURRENT_TIMESTAMP
+		 WHERE id = ? AND status = ?`,
+		domain.ScheduledRunRunning, id, domain.ScheduledRunPending,
+	)
+	if err != nil {
+		return false, fmt.Errorf("store: claim scheduled run %q: %w", id, err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("store: claim scheduled run %q: rows affected: %w", id, err)
+	}
+	return n == 1, nil
+}
+
 func (s *Store) DeleteScheduledRun(ctx context.Context, id string) error {
 	res, err := s.db.ExecContext(ctx, `DELETE FROM scheduled_runs WHERE id = ?`, id)
 	if err != nil {

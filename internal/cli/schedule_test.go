@@ -41,6 +41,19 @@ func (s *fakeScheduleStore) SaveScheduledRun(_ context.Context, run *domain.Sche
 	return nil
 }
 
+// ClaimScheduledRun mirrors the store: only a pending run can be claimed.
+func (s *fakeScheduleStore) ClaimScheduledRun(_ context.Context, id string) (bool, error) {
+	run, ok := s.runs[id]
+	if !ok || run.Status != domain.ScheduledRunPending {
+		return false, nil
+	}
+	claimed := *run
+	claimed.Status = domain.ScheduledRunRunning
+	claimed.LastError = ""
+	s.runs[id] = &claimed
+	return true, nil
+}
+
 func (s *fakeScheduleStore) GetScheduledRun(
 	_ context.Context,
 	id string,
@@ -360,4 +373,63 @@ func TestProof_RunDue_SaveFailureDoesNotAbortBatch(t *testing.T) {
 
 	assert.Equal(t, 2, transport.calls,
 		"run-2 must still be attempted when run-1's status save fails")
+}
+
+// racingScheduleStore simulates a second process: after run-due has listed
+// the due runs, the other process marks them running before this one acts.
+type racingScheduleStore struct{ *store.Store }
+
+func (s racingScheduleStore) ListDueScheduledRuns(
+	ctx context.Context,
+	now time.Time,
+) ([]*domain.ScheduledRun, error) {
+	runs, err := s.Store.ListDueScheduledRuns(ctx, now)
+	if err != nil {
+		return nil, err
+	}
+	for _, run := range runs {
+		other := *run
+		other.Status = domain.ScheduledRunRunning
+		if err := s.SaveScheduledRun(ctx, &other); err != nil {
+			return nil, err
+		}
+	}
+	return runs, nil
+}
+
+// A run that another process claimed between "list due" and "mark running"
+// must not be executed a second time.
+func TestRunDue_SkipsRunClaimedByAnotherProcess(t *testing.T) {
+	ctx := context.Background()
+	now := time.Date(2026, 6, 25, 15, 0, 0, 0, time.UTC)
+	st, err := store.New(filepath.Join(t.TempDir(), "quark.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = st.Close() })
+
+	col := &domain.Collection{ID: "col-1", Name: "Payments"}
+	require.NoError(t, st.SaveCollection(ctx, col))
+	require.NoError(t, st.SaveRequest(ctx, &domain.Request{
+		ID: "req-1", CollectionID: col.ID, Name: "List",
+		Method: http.MethodGet, URL: "https://example.test/list",
+	}))
+	require.NoError(t, st.SaveScheduledRun(ctx, &domain.ScheduledRun{
+		ID: "run-1", RequestID: "req-1", RunAt: now.Add(-time.Minute),
+	}))
+
+	transport := &recordingRoundTripper{response: &http.Response{
+		StatusCode: 200, Status: "200 OK", Header: http.Header{},
+		Body: io.NopCloser(bytes.NewBufferString("ok")),
+	}}
+	cmd := NewScheduleCmd(
+		racingScheduleStore{st}, exec.New(transport), func() time.Time { return now },
+	)
+	cmd.SetOut(new(bytes.Buffer))
+	cmd.SetArgs([]string{"run-due"})
+	cmd.SetContext(ctx)
+	require.NoError(t, cmd.Execute())
+
+	assert.Empty(t, transport.lastURL, "a run claimed elsewhere must not be sent again")
+	got, err := st.GetScheduledRun(ctx, "run-1")
+	require.NoError(t, err)
+	assert.Equal(t, domain.ScheduledRunRunning, got.Status, "the other process still owns the run")
 }
