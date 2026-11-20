@@ -69,7 +69,7 @@ Executes a saved request by path (collection name / request name). Uses `exec.Ex
 quark request export-curl <Collection/Request>
 ```
 
-Prints the saved request as a single curl command (the same one the TUI copies with its export-curl key). The request is exported as stored: `{{variables}}` are not substituted. Headers saved as arrays emit one `-H` per value. Fails with a clear message if the headers JSON is malformed or a value is not a string or string array.
+Prints the saved request as a single curl command (the same one the TUI copies with its export-curl key). `{{variables}}` are filled in from the collection's active environment and Global, as `quark run` does; a variable with no value is an error. Headers saved as arrays emit one `-H` per value. Fails with a clear message if the headers JSON is malformed or a value is not a string or string array.
 
 Shell completion via `CompleteRequestPaths`.
 

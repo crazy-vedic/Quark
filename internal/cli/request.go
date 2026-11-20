@@ -6,6 +6,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/crazy-vedic/quark/internal/curl"
+	"github.com/crazy-vedic/quark/internal/exec"
 )
 
 // NewRequestCmd returns the 'quark request' subcommand tree.
@@ -24,7 +25,8 @@ func newRequestExportCurlCmd(r SearchStore) *cobra.Command {
 		Use:   "export-curl <Collection/Request>",
 		Short: "Print a saved request as a curl command",
 		Long: "Print a saved request as a curl command, the same one the TUI copies.\n" +
-			"The request is exported as stored: {{variables}} are not substituted.",
+			"{{variables}} are filled in from the collection's active environment and Global,\n" +
+			"as 'quark run' does; a variable with no value is an error.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			resolver, ok := r.(requestPathResolver)
@@ -35,7 +37,19 @@ func newRequestExportCurlCmd(r SearchStore) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("request export-curl: resolve request: %w", err)
 			}
-			command, err := curl.ExportRequest(req)
+			envs, ok := r.(exec.EnvResolver)
+			if !ok {
+				return fmt.Errorf("request export-curl: store cannot resolve environments")
+			}
+			colEnv, globalEnv, err := exec.ResolveEnvVars(cmd.Context(), envs, req.CollectionID)
+			if err != nil {
+				return fmt.Errorf("request export-curl: resolve environments: %w", err)
+			}
+			prepared, err := exec.InterpolateRequest(req, colEnv, globalEnv)
+			if err != nil {
+				return fmt.Errorf("request export-curl: interpolate: %w", err)
+			}
+			command, err := curl.ExportRequest(prepared)
 			if err != nil {
 				return fmt.Errorf("request export-curl: %w", err)
 			}

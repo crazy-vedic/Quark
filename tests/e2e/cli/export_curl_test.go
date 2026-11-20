@@ -3,13 +3,16 @@
 package cli
 
 import (
+	"context"
 	"net/http"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/crazy-vedic/quark/internal/domain"
+	"github.com/crazy-vedic/quark/internal/store"
 )
 
 // Saved headers come in two shapes: a string, or an array of strings for a
@@ -45,18 +48,59 @@ func TestCLI_RequestExportCurlWithNoHeaders(t *testing.T) {
 	assert.Equal(t, "curl -X 'GET' 'https://api.example.test/bare'\n", out)
 }
 
-// The request is exported as stored, so variables are left for curl's user to fill in.
-func TestCLI_RequestExportCurlLeavesVariablesUnresolved(t *testing.T) {
+// setEnvVars writes vars into the collection's default environment, makes it
+// active, and writes globals into Global.
+func setEnvVars(t *testing.T, home, colID string, vars, globals map[string]string) {
+	t.Helper()
+	ctx := context.Background()
+	st, err := store.New(filepath.Join(home, ".quark", "quark.db"), store.WithCacheSize(100))
+	require.NoError(t, err)
+	defer st.Close()
+
+	env, err := st.CreateDefaultEnvironment(ctx, colID)
+	require.NoError(t, err)
+	env.SetVars(vars)
+	require.NoError(t, st.SaveEnvironment(ctx, env))
+	require.NoError(t, st.SetActiveEnvironment(ctx, colID, env.ID))
+
+	global, err := st.GetGlobalEnvironment(ctx)
+	require.NoError(t, err)
+	global.SetVars(globals)
+	require.NoError(t, st.SaveEnvironment(ctx, global))
+}
+
+// Variables are filled in from the active environment, then Global, like `run`.
+func TestCLI_RequestExportCurlResolvesVariablesFromActiveEnvironment(t *testing.T) {
 	home, colID := setupHomeWithCollection(t)
+	setEnvVars(t, home, colID,
+		map[string]string{"base_url": "https://api.example.test", "token": "env-token"},
+		map[string]string{"tenant": "global-tenant", "token": "global-token"})
 	seedRequest(t, home, colID, &domain.Request{
-		Name: "Templated", Method: http.MethodGet, URL: "{{base_url}}/users",
-		Headers: `{"X-Token":["{{token}}"]}`,
+		Name: "Templated", Method: http.MethodPost, URL: "{{base_url}}/{{tenant}}/users",
+		Headers: `{"X-Token":["{{token}}"]}`, Body: `{"owner":"{{tenant}}"}`,
 	})
 
 	out, errOut, code := runQuarkWithHome(t, home, "request", "export-curl", "API/Templated")
 	require.Equal(t, 0, code, "export failed: %s %s", out, errOut)
-	assert.Contains(t, out, "{{base_url}}/users")
-	assert.Contains(t, out, "X-Token: {{token}}")
+	assert.Contains(t, out, "'https://api.example.test/global-tenant/users'")
+	assert.Contains(t, out, "-H 'X-Token: env-token'", "the collection environment beats Global")
+	assert.Contains(t, out, `{"owner":"global-tenant"}`)
+	assert.NotContains(t, out, "{{")
+}
+
+// A variable nothing defines fails the export instead of printing a command
+// that would send the literal placeholder.
+func TestCLI_RequestExportCurlRefusesUndefinedVariable(t *testing.T) {
+	home, colID := setupHomeWithCollection(t)
+	setEnvVars(t, home, colID, map[string]string{"base_url": "https://api.example.test"}, nil)
+	seedRequest(t, home, colID, &domain.Request{
+		Name: "Missing", Method: http.MethodGet, URL: "{{base_url}}/{{nope}}",
+	})
+
+	out, errOut, code := runQuarkWithHome(t, home, "request", "export-curl", "API/Missing")
+	assert.NotEqual(t, 0, code)
+	assert.Contains(t, out+errOut, "nope")
+	assert.NotContains(t, out, "curl -X")
 }
 
 func TestCLI_RequestExportCurlRefusesBadInput(t *testing.T) {

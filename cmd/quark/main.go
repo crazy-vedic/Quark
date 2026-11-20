@@ -554,7 +554,8 @@ func lazyRequestExportCurlCmd(rt func() (*runtime, error)) *cobra.Command {
 		Use:   "export-curl <Collection/Request>",
 		Short: "Print a saved request as a curl command",
 		Long: "Print a saved request as a curl command, the same one the TUI copies.\n" +
-			"The request is exported as stored: {{variables}} are not substituted.",
+			"{{variables}} are filled in from the collection's active environment and Global,\n" +
+			"as 'quark run' does; a variable with no value is an error.",
 		Args: cobra.ExactArgs(1),
 	}
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
