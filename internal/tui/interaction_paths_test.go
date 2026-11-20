@@ -1082,3 +1082,37 @@ func TestCollectionPromptRename_KeepsParentAndDescription(t *testing.T) {
 	require.Equal(t, parent.ID, got.ParentID, "rename must not move the collection")
 	require.Equal(t, "nested notes", got.Description, "rename must not clear the description")
 }
+
+// Reloading the collection list (after add, rename, delete or import) must
+// keep the sidebar on the collection the user had selected.
+func TestCollectionsReload_KeepsSelectedCollection(t *testing.T) {
+	cols := func(names ...string) []*domain.Collection {
+		out := make([]*domain.Collection, 0, len(names))
+		for _, name := range names {
+			out = append(out, &domain.Collection{ID: "id-" + name, Name: name})
+		}
+		return out
+	}
+
+	m := New(Deps{Config: config.Default("")})
+	updated, _ := m.Update(collectionsLoadedMsg{collections: cols("alpha", "beta", "gamma")})
+	m = updatedCertificateModel(t, updated)
+	for idx, col := range m.collections {
+		if col.ID == "id-gamma" {
+			m.colCursor = idx
+		}
+	}
+	require.Equal(t, "id-gamma", m.activeCollectionID())
+
+	// A new collection appears; "gamma" is still there.
+	updated, _ = m.Update(collectionsLoadedMsg{
+		collections: cols("aardvark", "alpha", "beta", "gamma"),
+	})
+	m = updatedCertificateModel(t, updated)
+	require.Equal(t, "id-gamma", m.activeCollectionID(), "selection must survive the reload")
+
+	// The selected collection is deleted: fall back to a valid row.
+	updated, _ = m.Update(collectionsLoadedMsg{collections: cols("alpha", "beta")})
+	m = updatedCertificateModel(t, updated)
+	require.NotEmpty(t, m.activeCollectionID())
+}
