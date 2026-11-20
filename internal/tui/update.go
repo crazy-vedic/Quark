@@ -338,6 +338,12 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.searchCursor = 0
 		m.searchScroll = 0
 		m.searched = true // BUG-008: mark that at least one search has completed
+		if n := len(msg.failures); n > 0 {
+			m.statusErr = fmt.Sprintf(
+				"search skipped %d collection(s); results may be incomplete",
+				n,
+			)
+		}
 		return m, nil
 
 	case viewerClipboardMsg:
