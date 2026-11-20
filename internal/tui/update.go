@@ -246,6 +246,9 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleMouse(msg)
 
 	case collectionsLoadedMsg:
+		// Collections (and their environments) may have changed underneath
+		// the cached status-bar env name, e.g. after an import.
+		m.envNameCache.invalidate()
 		m.collections = orderCollectionsTree(msg.collections)
 		m.colCursor = 0
 		m.reqCursor = -1
@@ -471,7 +474,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m = m.stashEnvDraft()
 		}
 		// Invalidate cached env name — saved env may be the active one.
-		m.cachedEnvColID = ""
+		m.envNameCache.invalidate()
 		return m, nil
 	case envSaveErrMsg:
 		m.envEditor.saveErr = fmt.Sprintf("Save failed: %v", msg.err)
@@ -487,10 +490,10 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.activeEnv[msg.collectionID] = msg.envID
 		}
 		// Invalidate cached env name on active-env change.
-		m.cachedEnvColID = ""
+		m.envNameCache.invalidate()
 		return m, nil
 	case activeEnvSaveErrMsg:
-		m.cachedEnvColID = ""
+		m.envNameCache.invalidate()
 		m = m.status("error", fmt.Sprintf("Save active environment: %v", msg.err))
 		return m, nil
 	case promptCompletedMsg:

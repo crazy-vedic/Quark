@@ -624,8 +624,7 @@ func (m Model) cycleEnv(direction int) (Model, tea.Cmd) {
 		}
 	} else {
 		m.activeEnv[colID] = newEnv.ID
-		m.cachedEnvColID = ""
-		m.cachedEnvName = newEnv.Name
+		m.envNameCache.invalidate()
 	}
 	return m, cmd
 }
@@ -641,8 +640,8 @@ func (m Model) activeEnvName() string {
 	}
 
 	// Return cached value if still valid.
-	if m.cachedEnvColID == colID {
-		return m.cachedEnvName
+	if name, ok := m.envNameCache.get(colID); ok {
+		return name
 	}
 
 	activeID := m.activeEnv[colID]
@@ -652,19 +651,16 @@ func (m Model) activeEnvName() string {
 		defer cancel()
 		envs, err := m.envReader.ListCollectionEnvironments(ctx, colID)
 		if err != nil || len(envs) == 0 {
-			m.cachedEnvName = ""
-			m.cachedEnvColID = colID
+			m.envNameCache.set(colID, "")
 			return ""
 		}
 		for _, e := range envs {
 			if e.Name == defaultEnvironmentName {
-				m.cachedEnvName = defaultEnvironmentName
-				m.cachedEnvColID = colID
+				m.envNameCache.set(colID, defaultEnvironmentName)
 				return defaultEnvironmentName
 			}
 		}
-		m.cachedEnvName = envs[0].Name
-		m.cachedEnvColID = colID
+		m.envNameCache.set(colID, envs[0].Name)
 		return envs[0].Name
 	}
 
@@ -672,12 +668,10 @@ func (m Model) activeEnvName() string {
 	defer cancel()
 	env, err := m.envReader.GetEnvironment(ctx, activeID)
 	if err != nil {
-		m.cachedEnvName = ""
-		m.cachedEnvColID = colID
+		m.envNameCache.set(colID, "")
 		return ""
 	}
-	m.cachedEnvName = env.Name
-	m.cachedEnvColID = colID
+	m.envNameCache.set(colID, env.Name)
 	return env.Name
 }
 
@@ -826,4 +820,33 @@ func dispatchWithEnvCmd(
 		}
 		return httpResponseMsg{requestID: req.ID, result: result}
 	}
+}
+
+// envNameCache remembers the active environment name for one collection.
+// All methods accept a nil receiver so a zero Model still works (uncached).
+type envNameCache struct {
+	colID string
+	name  string
+	valid bool
+}
+
+func (c *envNameCache) get(colID string) (string, bool) {
+	if c == nil || !c.valid || c.colID != colID {
+		return "", false
+	}
+	return c.name, true
+}
+
+func (c *envNameCache) set(colID, name string) {
+	if c == nil {
+		return
+	}
+	c.colID, c.name, c.valid = colID, name, true
+}
+
+func (c *envNameCache) invalidate() {
+	if c == nil {
+		return
+	}
+	c.valid = false
 }
