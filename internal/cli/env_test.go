@@ -319,3 +319,39 @@ func TestEnvSetCmd_WritesToCommandOutputWithoutTheValue(t *testing.T) {
 		assert.NotContains(t, out.String(), "s3cr3t-value", "%v: value must not be echoed", args)
 	}
 }
+
+// If an environment's stored data is corrupt, env set must refuse to write.
+// Treating it as empty would replace every existing variable with the one
+// new key.
+func TestEnvSetCmd_RefusesToOverwriteCorruptEnvironment(t *testing.T) {
+	ctx := context.Background()
+	s, err := store.New(filepath.Join(t.TempDir(), "quark.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+	require.NoError(t, s.SaveCollection(ctx, &domain.Collection{ID: "col1", Name: "API"}))
+
+	// Simulate damage on disk: a truncated JSON object that still holds data.
+	const corrupt = `{"api_key":"keep-me","url":"https://`
+	_, err = s.DB().ExecContext(ctx, `UPDATE environments SET data = ?`, corrupt)
+	require.NoError(t, err)
+
+	for _, args := range [][]string{
+		{"set", "col1", "default", "new", "value"},
+		{"set-global", "new", "value"},
+	} {
+		cmd := NewEnvCmd(s)
+		cmd.SetOut(&bytes.Buffer{})
+		cmd.SetErr(&bytes.Buffer{})
+		cmd.SetArgs(args)
+		cmd.SetContext(ctx)
+		require.Error(t, cmd.Execute(), "%v must fail on corrupt data", args)
+	}
+
+	var remaining int
+	require.NoError(t, s.DB().QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM environments WHERE data = ?`, corrupt).Scan(&remaining))
+	var total int
+	require.NoError(t, s.DB().QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM environments`).Scan(&total))
+	assert.Equal(t, total, remaining, "corrupt data must be left for the user to repair")
+}

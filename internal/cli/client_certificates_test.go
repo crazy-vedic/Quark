@@ -28,7 +28,7 @@ func executeCertificateCommand(
 	args ...string,
 ) (string, error) {
 	t.Helper()
-	cmd := NewClientCertificatesCmd(configDir, reload)
+	cmd := NewClientCertificatesCmd(func() string { return configDir }, reload)
 	var out bytes.Buffer
 	cmd.SetOut(&out)
 	cmd.SetErr(&out)
@@ -115,5 +115,5 @@ func TestClientCertificateRejectsInvalidInputAndFailedReload(t *testing.T) {
 	require.ErrorContains(t, err, "no client certificate configured")
 
 	// The command remains constructible from a nil-reload CLI context.
-	require.IsType(t, &cobra.Command{}, NewClientCertificatesCmd(dir, nil))
+	require.IsType(t, &cobra.Command{}, NewClientCertificatesCmd(func() string { return dir }, nil))
 }

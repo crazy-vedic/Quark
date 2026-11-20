@@ -119,9 +119,10 @@ type URLVariable struct {
 
 // Header represents an HTTP header.
 type Header struct {
-	Key   string      `json:"key"`
-	Value scalarValue `json:"value"`
-	Type  string      `json:"type,omitempty"` // usually "text"
+	Key      string      `json:"key"`
+	Value    scalarValue `json:"value"`
+	Type     string      `json:"type,omitempty"` // usually "text"
+	Disabled bool        `json:"disabled,omitempty"`
 }
 
 // Body represents the request body.

@@ -121,6 +121,7 @@ func (s *Store) SaveRequest(ctx context.Context, req *domain.Request) error {
 		`INSERT INTO requests (id, collection_id, name, method, url, headers, auth_type, auth_config, body, sort_order, enabled)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(id) DO UPDATE SET
+		   collection_id=excluded.collection_id,
 		   name=excluded.name,
 		   method=excluded.method,
 		   url=excluded.url,
