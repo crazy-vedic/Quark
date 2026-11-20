@@ -974,6 +974,31 @@ func TestE2E_BodyEditor_Cancel(t *testing.T) {
 
 // --- E2E: Header editor ---
 
+func TestE2E_HeaderEditor_RefusesUnparseableHeaders(t *testing.T) {
+	col := &domain.Collection{ID: "col-1", Name: "API"}
+	st := setupStore(t, col)
+	const stored = `{"Authorization":"Bearer abc"` // truncated JSON
+	req := &domain.Request{
+		ID: "req-1", Name: "Broken", Method: "GET", URL: "https://example.com/items",
+		Headers: stored,
+	}
+	seedRequests(t, st, col.ID, req)
+
+	m := newE2EModel(t, st, &mockExecutor{})
+	m = callUpdate(t, m, tea.WindowSizeMsg{Width: 100, Height: 30})
+	m = callUpdate(t, m, tui.CollectionsLoadedMsg([]*domain.Collection{col}))
+	m = callUpdate(t, m, tui.RequestsLoadedMsg(col.ID, []*domain.Request{req}))
+	m = m.WithActiveRequest(req)
+	m = m.WithFocus(tui.RequestPane)
+
+	// 'h' must refuse to open the editor, so saving cannot overwrite the headers.
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'h'}})
+	assert.NotEqual(t, tui.HeadersField, m.ActiveField(), "editor must not open")
+	assert.Contains(t, m.StatusErr(), "not valid JSON", "user must be told why")
+	require.NotNil(t, m.ActiveRequest())
+	assert.Equal(t, stored, m.ActiveRequest().Headers, "stored headers must be untouched")
+}
+
 func TestE2E_HeaderEditor_Save(t *testing.T) {
 	col := &domain.Collection{ID: "col-1", Name: "API"}
 	st := setupStore(t, col)

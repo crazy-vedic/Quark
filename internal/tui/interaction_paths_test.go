@@ -984,7 +984,7 @@ func TestHTTPResponseAndErrorStatePaths(t *testing.T) {
 		{"matching invalid URL", m.activeRequest, "active", exec.ErrInvalidURL, ""},
 		{"cancelled", m.activeRequest, "active", exec.ErrRequestCancelled, ""},
 		{"timeout", m.activeRequest, "active", exec.ErrTimeout, "Request timed out"},
-		{"unexpected", m.activeRequest, "active", errors.New("network"), "unexpected error"},
+		{"network failure", m.activeRequest, "active", errors.New("network"), "request failed: network"},
 		{"missing request", nil, "active", exec.ErrInvalidURL, ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -1049,4 +1049,36 @@ func TestActiveEnvName_IsCachedAcrossRenders(t *testing.T) {
 		require.Equal(t, defaultEnvironmentName, m.activeEnvName())
 	}
 	require.Equal(t, afterFirst, reader.reads, "later renders must not read the store again")
+}
+
+// Renaming a nested collection must change only its name. The rename used to
+// save a bare {ID, Name} collection, which moved it to the root and wiped its
+// description.
+func TestCollectionPromptRename_KeepsParentAndDescription(t *testing.T) {
+	ctx := context.Background()
+	st, err := store.New(t.TempDir() + "/rename.db")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = st.Close() })
+
+	parent := &domain.Collection{ID: "rename-parent", Name: "Parent"}
+	require.NoError(t, st.SaveCollection(ctx, parent))
+	child := &domain.Collection{
+		ID: "rename-child", Name: "Child", Description: "nested notes", ParentID: parent.ID,
+	}
+	require.NoError(t, st.SaveCollection(ctx, child))
+
+	m := New(Deps{
+		Config: config.Default(""), Ctx: ctx, Reader: st,
+		Writer: st, ColWriter: st, EnvWriter: st,
+	})
+	m.mode, m.promptMode, m.promptTargetID = collectionPromptMode, promptRename, child.ID
+	m.promptInput.SetValue("Renamed")
+	_, cmd := m.handleCollectionPromptKey(tea.KeyMsg{Type: tea.KeyEnter})
+	require.IsType(t, promptCompletedMsg{}, cmd())
+
+	got, err := st.GetCollection(ctx, child.ID)
+	require.NoError(t, err)
+	require.Equal(t, "Renamed", got.Name)
+	require.Equal(t, parent.ID, got.ParentID, "rename must not move the collection")
+	require.Equal(t, "nested notes", got.Description, "rename must not clear the description")
 }

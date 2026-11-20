@@ -10,7 +10,12 @@ import (
 )
 
 // NewClientCertificatesCmd manages host-scoped TLS client certificates.
-func NewClientCertificatesCmd(configDir string, reload func(config.Config) error) *cobra.Command {
+// configDir is a function so the directory is resolved when a subcommand runs,
+// after the root --config flag has been parsed.
+func NewClientCertificatesCmd(
+	configDir func() string,
+	reload func(config.Config) error,
+) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "cert",
 		Short: "Manage host-scoped TLS client certificates",
@@ -20,7 +25,7 @@ func NewClientCertificatesCmd(configDir string, reload func(config.Config) error
 		Short: "List configured client certificates",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			cfg, err := config.Load(configDir)
+			cfg, err := config.Load(configDir())
 			if err != nil {
 				return fmt.Errorf("cert list: load config: %w", err)
 			}
@@ -75,7 +80,7 @@ func NewClientCertificatesCmd(configDir string, reload func(config.Config) error
 				return fmt.Errorf("cert set: --key-file requires --file")
 			}
 
-			cfg, err := config.Load(configDir)
+			cfg, err := config.Load(configDir())
 			if err != nil {
 				return fmt.Errorf("cert set: load config: %w", err)
 			}
@@ -102,7 +107,7 @@ func NewClientCertificatesCmd(configDir string, reload func(config.Config) error
 					return fmt.Errorf("cert set: validate certificate: %w", err)
 				}
 			}
-			if err := config.SaveClientCertificates(configDir, next); err != nil {
+			if err := config.SaveClientCertificates(configDir(), next); err != nil {
 				if reload != nil {
 					_ = reload(previous)
 				}
@@ -135,7 +140,7 @@ func NewClientCertificatesCmd(configDir string, reload func(config.Config) error
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			host := strings.ToLower(strings.TrimSpace(args[0]))
-			cfg, err := config.Load(configDir)
+			cfg, err := config.Load(configDir())
 			if err != nil {
 				return fmt.Errorf("cert delete: load config: %w", err)
 			}
@@ -158,7 +163,7 @@ func NewClientCertificatesCmd(configDir string, reload func(config.Config) error
 					return fmt.Errorf("cert delete: reload transport: %w", err)
 				}
 			}
-			if err := config.SaveClientCertificates(configDir, next); err != nil {
+			if err := config.SaveClientCertificates(configDir(), next); err != nil {
 				if reload != nil {
 					_ = reload(previous)
 				}

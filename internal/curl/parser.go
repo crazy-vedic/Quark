@@ -50,6 +50,11 @@ type optionDefinition struct {
 	warning  string
 }
 
+const (
+	warnHTTPVersionIgnored = "HTTP version selection is not imported"
+	warnTLSVersionIgnored  = "minimum TLS version is not imported"
+)
+
 var supportedOptions = map[string]optionDefinition{
 	"-H":               {kind: optionHeader, hasValue: true},
 	"--header":         {kind: optionHeader, hasValue: true},
@@ -214,6 +219,130 @@ var supportedOptions = map[string]optionDefinition{
 		kind:     optionIgnore,
 		hasValue: true,
 		warning:  "cookie-jar persistence is not imported",
+	},
+
+	// Flags that only change curl's own output or connection handling.
+	// Nothing to import, so they are skipped with a warning.
+	"-i": {
+		kind:    optionIgnore,
+		warning: "response headers are always shown in Quark; --include is ignored",
+	},
+	"--include": {
+		kind:    optionIgnore,
+		warning: "response headers are always shown in Quark; --include is ignored",
+	},
+	"-N": {
+		kind:    optionIgnore,
+		warning: "output buffering does not apply; --no-buffer is ignored",
+	},
+	"--no-buffer": {
+		kind:    optionIgnore,
+		warning: "output buffering does not apply; --no-buffer is ignored",
+	},
+	"-g": {
+		kind:    optionIgnore,
+		warning: "URL globbing is never applied; --globoff is ignored",
+	},
+	"--globoff": {
+		kind:    optionIgnore,
+		warning: "URL globbing is never applied; --globoff is ignored",
+	},
+	"-#": {
+		kind:    optionIgnore,
+		warning: "progress display is ignored",
+	},
+	"--progress-bar": {
+		kind:    optionIgnore,
+		warning: "progress display is ignored",
+	},
+	"--no-progress-meter": {
+		kind:    optionIgnore,
+		warning: "progress display is ignored",
+	},
+	"-4": {
+		kind:    optionIgnore,
+		warning: "IP version selection is not imported",
+	},
+	"--ipv4": {
+		kind:    optionIgnore,
+		warning: "IP version selection is not imported",
+	},
+	"-6": {
+		kind:    optionIgnore,
+		warning: "IP version selection is not imported",
+	},
+	"--ipv6": {
+		kind:    optionIgnore,
+		warning: "IP version selection is not imported",
+	},
+	"--http1.0": {
+		kind:    optionIgnore,
+		warning: warnHTTPVersionIgnored,
+	},
+	"--http1.1": {
+		kind:    optionIgnore,
+		warning: warnHTTPVersionIgnored,
+	},
+	"--http2": {
+		kind:    optionIgnore,
+		warning: warnHTTPVersionIgnored,
+	},
+	"--http2-prior-knowledge": {
+		kind:    optionIgnore,
+		warning: warnHTTPVersionIgnored,
+	},
+	"--http3": {
+		kind:    optionIgnore,
+		warning: warnHTTPVersionIgnored,
+	},
+	"--tlsv1": {
+		kind:    optionIgnore,
+		warning: warnTLSVersionIgnored,
+	},
+	"--tlsv1.0": {
+		kind:    optionIgnore,
+		warning: warnTLSVersionIgnored,
+	},
+	"--tlsv1.1": {
+		kind:    optionIgnore,
+		warning: warnTLSVersionIgnored,
+	},
+	"--tlsv1.2": {
+		kind:    optionIgnore,
+		warning: warnTLSVersionIgnored,
+	},
+	"--tlsv1.3": {
+		kind:    optionIgnore,
+		warning: warnTLSVersionIgnored,
+	},
+	"--path-as-is": {
+		kind:    optionIgnore,
+		warning: "path normalisation control is not imported",
+	},
+	"-w": {
+		kind:     optionIgnore,
+		hasValue: true,
+		warning:  "curl output formatting is ignored",
+	},
+	"--write-out": {
+		kind:     optionIgnore,
+		hasValue: true,
+		warning:  "curl output formatting is ignored",
+	},
+	"-D": {
+		kind:     optionIgnore,
+		hasValue: true,
+		warning:  "writing response headers to a file is not imported",
+	},
+	"--dump-header": {
+		kind:     optionIgnore,
+		hasValue: true,
+		warning:  "writing response headers to a file is not imported",
+	},
+	"--max-redirs": {
+		kind:     optionIgnore,
+		hasValue: true,
+		warning:  "redirect limit is not imported; Quark's configured redirect policy applies",
 	},
 }
 

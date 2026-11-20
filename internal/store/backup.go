@@ -1,8 +1,8 @@
 package store
 
 import (
+	"context"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -31,8 +31,8 @@ func (s *Store) backup() error {
 	}
 
 	dst := filepath.Join(s.backupPath, name)
-	if err := copyFile(s.dbPath, dst); err != nil {
-		return fmt.Errorf("backup: copy to %q: %w", dst, err)
+	if err := s.snapshotTo(dst); err != nil {
+		return fmt.Errorf("backup: snapshot to %q: %w", dst, err)
 	}
 
 	return s.evictOldBackups()
@@ -84,9 +84,10 @@ func (s *Store) evictOldBackups() error {
 		return nil
 	}
 
-	// Sort ascending (oldest first) — lexicographic order matches chronological
-	// because the date prefix is ISO 8601.
-	sort.Strings(names)
+	// Sort ascending (oldest first): by ISO 8601 date, then by sequence
+	// number compared as a number. Plain text order would put "-1000" before
+	// "-999" and evict the newest backup.
+	sort.Slice(names, func(i, j int) bool { return backupNameLess(names[i], names[j]) })
 
 	// Evict the oldest (first in sorted order).
 	toDelete := names[:len(names)-s.backupKeep]
@@ -99,23 +100,68 @@ func (s *Store) evictOldBackups() error {
 	return nil
 }
 
-// copyFile copies src to dst using io.Copy.
-func copyFile(src, dst string) error {
-	in, err := os.Open(src)
+// snapshotTo writes a consistent copy of the database to dst with
+// VACUUM INTO. Copying the main file is not enough: in WAL mode recent
+// commits live in the -wal file, so a plain copy can be stale or torn.
+func (s *Store) snapshotTo(dst string) error {
+	// Create the file first so it is owner-only from the start: backups hold
+	// the full DB including stored credentials. VACUUM INTO accepts an
+	// existing empty file.
+	f, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
 		return err
 	}
-	defer in.Close()
+	if err := f.Close(); err != nil {
+		return err
+	}
+	if _, err := s.db.ExecContext(context.Background(), `VACUUM INTO ?`, dst); err != nil {
+		_ = os.Remove(dst)
+		return err
+	}
+	// The previous io.Copy path fsynced the destination; keep that guarantee.
+	if err := syncFile(dst); err != nil {
+		_ = os.Remove(dst)
+		return err
+	}
+	return nil
+}
 
-	// 0600: backup files contain the full DB including stored credentials.
-	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
+// syncFile flushes the file at path to stable storage.
+func syncFile(path string) error {
+	f, err := os.OpenFile(path, os.O_RDWR, 0)
 	if err != nil {
 		return err
 	}
-	defer out.Close()
-
-	if _, err := io.Copy(out, in); err != nil {
+	if err := f.Sync(); err != nil {
+		_ = f.Close()
 		return err
 	}
-	return out.Sync()
+	return f.Close()
+}
+
+// backupNameLess orders backup filenames (quark.db.YYYY-MM-DD-N) from oldest
+// to newest. Names that do not match the pattern fall back to text order.
+func backupNameLess(a, b string) bool {
+	dateA, seqA, okA := splitBackupName(a)
+	dateB, seqB, okB := splitBackupName(b)
+	if !okA || !okB {
+		return a < b
+	}
+	if dateA != dateB {
+		return dateA < dateB
+	}
+	return seqA < seqB
+}
+
+func splitBackupName(name string) (date string, seq int, ok bool) {
+	rest := strings.TrimPrefix(name, backupPrefix)
+	i := strings.LastIndex(rest, "-")
+	if i < 0 {
+		return "", 0, false
+	}
+	seq, err := strconv.Atoi(rest[i+1:])
+	if err != nil {
+		return "", 0, false
+	}
+	return rest[:i], seq, true
 }
