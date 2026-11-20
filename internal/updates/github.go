@@ -20,7 +20,7 @@ const defaultHTTPTimeout = 2 * time.Minute
 // This is used for the binary channel only.
 type GitHubSource struct {
 	repo    string // "owner/repo"
-	baseURL string
+	baseURL string // release host, "https://github.com" unless overridden
 	timeout time.Duration
 }
 
@@ -127,8 +127,8 @@ func (s *GitHubSource) FetchChecksumFile(
 	version string,
 ) (string, error) {
 	const checksumFile = "SHA256SUMS"
-	const urlTemplate = "%s/%s/releases/download/%s/%s"
-	checksumURL := fmt.Sprintf(urlTemplate, s.baseURL, s.repo, version, checksumFile)
+	checksumURL := fmt.Sprintf("%s/%s/releases/download/%s/%s",
+		s.baseURL, s.repo, version, checksumFile)
 
 	req, err := http.NewRequestWithContext(ctx, "GET", checksumURL, nil)
 	if err != nil {

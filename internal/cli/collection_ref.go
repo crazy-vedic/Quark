@@ -19,6 +19,10 @@ type collectionFullPathResolver interface {
 
 // resolveCollectionReference accepts a full ID, a unique ID prefix, a name,
 // or (when supported by the store) a nested path such as API/Users.
+// minIDPrefixLength is the shortest ID prefix that may select a collection.
+// Shorter prefixes are too likely to match by accident.
+const minIDPrefixLength = 8
+
 func resolveCollectionReference(
 	ctx context.Context,
 	lister store.CollectionLister,
@@ -39,7 +43,8 @@ func resolveCollectionReference(
 	}
 	var matches []*domain.Collection
 	for _, col := range cols {
-		if col.ID == reference || col.Name == reference || strings.HasPrefix(col.ID, reference) {
+		if col.ID == reference || col.Name == reference ||
+			(len(reference) >= minIDPrefixLength && strings.HasPrefix(col.ID, reference)) {
 			matches = append(matches, col)
 		}
 	}

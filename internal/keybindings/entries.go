@@ -3,6 +3,8 @@ package keybindings
 import (
 	"fmt"
 	"reflect"
+	"sort"
+	"strings"
 )
 
 // Entry is a single configurable keybinding for display/editing.
@@ -169,10 +171,27 @@ func RecordBinding(binds Keybindings, action, key string) (Keybindings, error) {
 	return clone, nil
 }
 
+// formatConflicts describes each conflicting key as a sentence, with keys and
+// actions in a stable order and no repeats, e.g.
+// "j is bound to quit and sidebar_down; k is bound to ...".
 func formatConflicts(c map[string][]string) string {
-	var parts []string
-	for key, actions := range c {
-		parts = append(parts, fmt.Sprintf("%s is bound to %s", key, actions))
+	keys := make([]string, 0, len(c))
+	for key := range c {
+		keys = append(keys, key)
 	}
-	return fmt.Sprintf("%v", parts)
+	sort.Strings(keys)
+	parts := make([]string, 0, len(keys))
+	for _, key := range keys {
+		seen := make(map[string]bool, len(c[key]))
+		var actions []string
+		for _, action := range c[key] {
+			if !seen[action] {
+				seen[action] = true
+				actions = append(actions, action)
+			}
+		}
+		sort.Strings(actions)
+		parts = append(parts, fmt.Sprintf("%s is bound to %s", key, strings.Join(actions, " and ")))
+	}
+	return strings.Join(parts, "; ")
 }

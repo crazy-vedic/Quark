@@ -58,6 +58,11 @@ func TestRecordBinding(t *testing.T) {
 	_, err = RecordBinding(binds, "quit", "j")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "conflict")
+	// The message is shown to the user: it must read as a sentence, not as
+	// Go's slice or map syntax.
+	assert.Contains(t, err.Error(), "j is bound to")
+	assert.NotContains(t, err.Error(), "[")
+	assert.NotContains(t, err.Error(), "map")
 
 	// Original bindings should be unchanged.
 	assert.Equal(t, "Q", binds.Quit)

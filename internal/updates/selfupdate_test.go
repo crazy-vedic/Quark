@@ -2,8 +2,13 @@ package updates_test
 
 import (
 	"context"
+	"crypto/sha256"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -76,4 +81,53 @@ func TestSelfUpdater_Update_HungDownloadTimesOut(t *testing.T) {
 		return err
 	})
 	require.Error(t, err)
+}
+
+// TestSelfUpdater_UpdateInstallsExecutableBinary runs a whole self-update
+// against a local release server. The downloaded file must end up executable,
+// otherwise the post-install check fails and the update is rolled back.
+func TestSelfUpdater_UpdateInstallsExecutableBinary(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("uses a POSIX shell script as the fake binary")
+	}
+
+	const repo = "owner/repo"
+	const version = "v2.0.0"
+	binaryName := fmt.Sprintf("quark-%s-%s", runtime.GOOS, runtime.GOARCH)
+	newBinary := []byte("#!/bin/sh\necho quark v2.0.0\n")
+	sums := fmt.Sprintf("%x  %s\n", sha256.Sum256(newBinary), binaryName)
+
+	mux := http.NewServeMux()
+	base := "/" + repo + "/releases/download/" + version + "/"
+	mux.HandleFunc(base+binaryName, func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(newBinary)
+	})
+	mux.HandleFunc(base+"SHA256SUMS", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(sums))
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	binDir := t.TempDir()
+	exe := filepath.Join(binDir, "quark")
+	oldBinary := []byte("#!/bin/sh\necho quark v1.0.0\n")
+	require.NoError(t, os.WriteFile(exe, oldBinary, 0o755)) //nolint:gosec // fake executable
+
+	updater := updates.NewSelfUpdater(repo, exe, "v1.0.0")
+	updater.SetBaseURL(srv.URL)
+
+	got, err := updater.Update(context.Background(), version)
+	require.NoError(t, err)
+	assert.Equal(t, version, got)
+
+	installed, err := os.ReadFile(exe)
+	require.NoError(t, err)
+	assert.Equal(t, string(newBinary), string(installed))
+
+	info, err := os.Stat(exe)
+	require.NoError(t, err)
+	assert.NotZero(t, info.Mode().Perm()&0o111, "installed binary must be executable")
+
+	_, err = os.Stat(filepath.Join(binDir, "tmp"))
+	assert.True(t, os.IsNotExist(err), "update must not leave a tmp directory beside the binary")
 }
