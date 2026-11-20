@@ -65,7 +65,7 @@ func newScheduleAddCmd(st ScheduleStore, now func() time.Time) *cobra.Command {
 			if strings.TrimSpace(when) == "" {
 				return fmt.Errorf("schedule add: --at is required")
 			}
-			req, _, err := findRequestByPath(cmd.Context(), st, args[0])
+			req, err := resolveScheduleRequest(cmd.Context(), st, args[0])
 			if err != nil {
 				return fmt.Errorf("schedule add: %w", err)
 			}
@@ -223,6 +223,20 @@ func markScheduledRunFailed(
 	run.Status = domain.ScheduledRunFailed
 	run.LastError = runErr.Error()
 	return scheduler.SaveScheduledRun(ctx, run)
+}
+
+// resolveScheduleRequest resolves a request path the way `quark run` does:
+// full nested paths with ambiguity errors when the store supports it.
+func resolveScheduleRequest(
+	ctx context.Context,
+	st ScheduleStore,
+	path string,
+) (*domain.Request, error) {
+	if resolver, ok := st.(requestPathResolver); ok {
+		return resolver.ResolveRequestPath(ctx, path)
+	}
+	req, _, err := findRequestByPath(ctx, st, path)
+	return req, err
 }
 
 func findRequestByPath(
