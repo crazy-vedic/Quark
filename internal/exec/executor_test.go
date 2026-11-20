@@ -1006,3 +1006,42 @@ func TestExecutor_MultiplePostHooks_AllFire(t *testing.T) {
 	assert.True(t, h1.called, "first post hook must fire")
 	assert.True(t, h2.called, "second post hook must fire even when first returns error")
 }
+
+// A body with {{placeholders}} is a template: it is checked for JSON shape with
+// stand-ins for the placeholders and kept exactly as the user wrote it.
+func TestFormatRequestBodyChecksJSONTemplates(t *testing.T) {
+	const ct = "application/json"
+	accepted := map[string]string{
+		"unquoted value":   `{"id": {{id}}, "tags": {{tags}}}`,
+		"inside a string":  `{"name":"user-{{id}}"}`,
+		"whole string":     `{"name":"{{name}}"}`,
+		"as an object key": `{ {{key}}: 1 }`,
+		"fallback syntax":  `{"id": {{1|id}}}`,
+	}
+	for name, body := range accepted {
+		t.Run("accepts "+name, func(t *testing.T) {
+			got, err := exec.FormatRequestBody(body, ct)
+			require.NoError(t, err)
+			assert.Equal(t, body, got, "a template is not reformatted")
+		})
+	}
+
+	rejected := map[string]string{
+		"trailing comma": `{"id": {{id}},}`,
+		"unclosed":       `{"id": {{id}}`,
+		"missing colon":  `{"id" {{id}}}`,
+		"not JSON":       `hello {{name}}`,
+	}
+	for name, body := range rejected {
+		t.Run("rejects "+name, func(t *testing.T) {
+			_, err := exec.FormatRequestBody(body, ct)
+			require.ErrorContains(t, err, "invalid JSON body")
+		})
+	}
+
+	t.Run("other media types are untouched", func(t *testing.T) {
+		got, err := exec.FormatRequestBody(`a={{a}}&b`, "application/x-www-form-urlencoded")
+		require.NoError(t, err)
+		assert.Equal(t, `a={{a}}&b`, got)
+	})
+}

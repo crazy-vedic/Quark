@@ -2213,16 +2213,14 @@ func (m Model) saveBody() (Model, tea.Cmd) {
 	if m.activeRequest == nil {
 		return m, nil
 	}
-	body := m.bodyTextarea.Value()
-	// A body with {{placeholders}} is a template: it only has to be valid
-	// JSON after interpolation, which the executor checks at send time.
-	if !strings.Contains(body, "{{") {
-		formatted, err := exec.FormatRequestBody(body, requestContentType(m.activeRequest))
-		if err != nil {
-			return m.status("error", err.Error()), nil
-		}
-		m.bodyTextarea.SetValue(formatted)
+	formatted, err := exec.FormatRequestBody(
+		m.bodyTextarea.Value(),
+		requestContentType(m.activeRequest),
+	)
+	if err != nil {
+		return m.status("error", err.Error()), nil
 	}
+	m.bodyTextarea.SetValue(formatted)
 	m = m.finishBodyEdit()
 	return m, saveRequestCmd(m.ctx, m.writer, m.reader, m.activeRequest)
 }
@@ -2426,6 +2424,29 @@ func (m Model) saveHeaders() (Model, tea.Cmd) {
 	m.activeField = noneField
 	m = m.status("success", "Headers updated")
 	return m, saveRequestCmd(m.ctx, m.writer, m.reader, m.activeRequest)
+}
+
+// headersJSONValid reports whether raw is empty or a JSON object whose values
+// are strings or string arrays, i.e. something parseHeadersJSON can represent.
+func headersJSONValid(raw string) bool {
+	if strings.TrimSpace(raw) == "" {
+		return true
+	}
+	var encoded map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(raw), &encoded); err != nil {
+		return false
+	}
+	for _, valueJSON := range encoded {
+		var values []string
+		if json.Unmarshal(valueJSON, &values) == nil {
+			continue
+		}
+		var value string
+		if json.Unmarshal(valueJSON, &value) != nil {
+			return false
+		}
+	}
+	return true
 }
 
 // parseHeadersJSON parses a JSON object string into a slice of headerPair.

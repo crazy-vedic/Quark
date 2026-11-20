@@ -104,6 +104,23 @@ func TestSaveBodyAcceptsJSONWithPlaceholders(t *testing.T) {
 	require.Equal(t, `{"id": {{id}}, "tags": {{tags}}}`, m.activeRequest.Body)
 }
 
+// A template with a real syntax error is still refused, not just waved through.
+func TestSaveBodyRejectsBrokenJSONWithPlaceholders(t *testing.T) {
+	m := New(Deps{Config: config.Default(t.TempDir())})
+	m.activeRequest = &domain.Request{
+		ID:      "request-1",
+		Headers: `{"Content-Type":"application/json"}`,
+	}
+	m.bodyTextarea = textarea.New()
+	m.bodyTextarea.SetValue(`{"id": {{id}},}`)
+	m.activeField = bodyField
+
+	updated, cmd := m.saveBody()
+	require.Nil(t, cmd, "a broken template must not be saved")
+	require.NotEmpty(t, updated.statusErr)
+	require.Empty(t, updated.activeRequest.Body)
+}
+
 func TestSaveBodyPreservesFileReference(t *testing.T) {
 	m := New(Deps{Config: config.Default(t.TempDir())})
 	m.activeRequest = &domain.Request{

@@ -258,11 +258,34 @@ func FormatRequestBody(body, contentType string) (string, error) {
 	if mediaType != "application/json" && !strings.HasSuffix(mediaType, "+json") {
 		return body, nil
 	}
+	if placeholderRE.MatchString(body) {
+		// A template is only valid JSON once its {{placeholders}} are filled in,
+		// so check its shape with stand-ins and keep the text as written.
+		if err := validateJSONTemplate(body); err != nil {
+			return "", err
+		}
+		return body, nil
+	}
 	var formatted bytes.Buffer
 	if err := json.Indent(&formatted, []byte(body), "", "  "); err != nil {
 		return "", fmt.Errorf("invalid JSON body: %w", err)
 	}
 	return formatted.String(), nil
+}
+
+// validateJSONTemplate checks that body is valid JSON for some values of its
+// {{placeholders}}. A placeholder can stand for a value (`null`) or, inside a
+// string or as an object key, for text (`"x"`), so either stand-in may pass.
+func validateJSONTemplate(body string) error {
+	asValue := placeholderRE.ReplaceAllString(body, "null")
+	asText := placeholderRE.ReplaceAllString(body, "x")
+	asQuoted := placeholderRE.ReplaceAllString(body, `"x"`)
+	if json.Valid([]byte(asValue)) || json.Valid([]byte(asText)) || json.Valid([]byte(asQuoted)) {
+		return nil
+	}
+	var probe any
+	err := json.Unmarshal([]byte(asValue), &probe)
+	return fmt.Errorf("invalid JSON body: %w", err)
 }
 
 func resolveHeaderFile(value string) (string, error) {
