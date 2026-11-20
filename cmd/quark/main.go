@@ -770,6 +770,7 @@ func lazyImportCmd(rt func() (*runtime, error)) *cobra.Command {
 
 func lazyImportPostmanCmd(rt func() (*runtime, error)) *cobra.Command {
 	var collectionName, onDuplicate string
+	var includeDisabled bool
 	cmd := &cobra.Command{
 		Use:   "import-postman <collection.json|directory>",
 		Short: "Import a Postman Collection v2.1 JSON file or a bulk export directory",
@@ -784,11 +785,15 @@ func lazyImportPostmanCmd(rt func() (*runtime, error)) *cobra.Command {
 			inner.SetIn(cmd.InOrStdin())
 			inner.SetOut(cmd.OutOrStdout())
 			inner.SetErr(cmd.ErrOrStderr())
-			inner.SetArgs([]string{
+			innerArgs := []string{
 				args[0],
 				"--collection-name", collectionName,
 				"--on-duplicate", onDuplicate,
-			})
+			}
+			if includeDisabled {
+				innerArgs = append(innerArgs, "--include-disabled")
+			}
+			inner.SetArgs(innerArgs)
 			return inner.Execute()
 		},
 	}
@@ -804,6 +809,12 @@ func lazyImportPostmanCmd(rt func() (*runtime, error)) *cobra.Command {
 		"on-duplicate",
 		"duplicate",
 		"Action when collection name already exists: replace, duplicate, merge, or skip",
+	)
+	cmd.Flags().BoolVar(
+		&includeDisabled,
+		"include-disabled",
+		false,
+		"Import headers that are switched off in Postman as active headers (by default they are left out and listed as warnings)",
 	)
 	return cmd
 }

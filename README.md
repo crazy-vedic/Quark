@@ -346,6 +346,13 @@ quark import-postman ./MyCollection.postman_collection.json --collection-name "P
 quark import-postman ./postman-export/ --on-duplicate merge
 ```
 
+**Headers switched off in Postman**
+
+Quark has no per-header on/off switch, so headers that are disabled in Postman are left out of the import and listed as warnings (header name only). Add `--include-disabled` to import them as active headers instead; the import still warns for each one.
+```bash
+quark import-postman ./MyCollection.postman_collection.json --include-disabled
+```
+
 Supported duplicate actions:
 
 - `duplicate` — keep both, with a new unique collection name
