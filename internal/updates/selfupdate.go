@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+
+	"github.com/crazy-vedic/quark/internal/atomicfile"
 )
 
 // SelfUpdater handles binary self-update operations.
@@ -132,34 +134,25 @@ func (su *SelfUpdater) downloadBinary(
 		return "", fmt.Errorf("download failed with status %d", resp.StatusCode)
 	}
 
-	// Prefer a temp file beside the binary so the final rename stays on one
-	// filesystem; fall back to the system temp dir when that is not writable.
-	tmp, err := os.CreateTemp(filepath.Dir(su.currentPath), ".quark-update-*.tmp")
+	// Stage beside the binary so the final rename stays on one filesystem;
+	// fall back to the system temp dir when that is not writable. The staged
+	// file replaces the running binary, so it gets the execute bits of the
+	// binary it replaces.
+	mode := su.installMode()
+	stage := func(dir string) (string, error) {
+		path := filepath.Join(dir, fmt.Sprintf(".quark-update-%d.bin", os.Getpid()))
+		err := atomicfile.Write(path, mode, func(w io.Writer) error {
+			_, err := io.Copy(w, resp.Body)
+			return err
+		})
+		return path, err
+	}
+	tmpPath, err := stage(filepath.Dir(su.currentPath))
 	if err != nil {
-		tmp, err = os.CreateTemp("", "quark-update-*.tmp")
-		if err != nil {
+		if tmpPath, err = stage(os.TempDir()); err != nil {
 			return "", err
 		}
 	}
-	tmpPath := tmp.Name()
-
-	if _, err := io.Copy(tmp, resp.Body); err != nil {
-		tmp.Close()
-		os.Remove(tmpPath)
-		return "", err
-	}
-	if err := tmp.Close(); err != nil {
-		os.Remove(tmpPath)
-		return "", err
-	}
-
-	// os.CreateTemp creates the file 0600. The file replaces the running
-	// binary, so it needs the execute bits of the binary it replaces.
-	if err := os.Chmod(tmpPath, su.installMode()); err != nil {
-		os.Remove(tmpPath)
-		return "", err
-	}
-
 	return tmpPath, nil
 }
 
@@ -227,28 +220,24 @@ func (su *SelfUpdater) parseChecksumLine(checksumData, filename string) string {
 
 // backup creates a backup of the current binary.
 func (su *SelfUpdater) backup(src, dst string) error {
+	return copyFileAtomic(src, dst)
+}
+
+// copyFileAtomic copies src to dst with src's mode, replacing dst atomically.
+func copyFileAtomic(src, dst string) error {
 	srcFile, err := os.Open(src)
 	if err != nil {
 		return err
 	}
 	defer srcFile.Close()
-
-	dstFile, err := os.Create(dst)
+	info, err := srcFile.Stat()
 	if err != nil {
 		return err
 	}
-	defer dstFile.Close()
-
-	if _, err := io.Copy(dstFile, srcFile); err != nil {
+	return atomicfile.Write(dst, info.Mode().Perm(), func(w io.Writer) error {
+		_, err := io.Copy(w, srcFile)
 		return err
-	}
-
-	// Preserve executable permissions
-	info, err := os.Stat(src)
-	if err != nil {
-		return err
-	}
-	return os.Chmod(dst, info.Mode())
+	})
 }
 
 // replace moves the new binary into place.
@@ -281,28 +270,7 @@ func (su *SelfUpdater) replace(src, dst string) error {
 
 // restore rolls back to the backup binary.
 func (su *SelfUpdater) restore(backupPath, dst string) error {
-	backupFile, err := os.Open(backupPath)
-	if err != nil {
-		return err
-	}
-	defer backupFile.Close()
-
-	dstFile, err := os.Create(dst)
-	if err != nil {
-		return err
-	}
-	defer dstFile.Close()
-
-	if _, err := io.Copy(dstFile, backupFile); err != nil {
-		return err
-	}
-
-	// Restore executable permissions
-	info, err := os.Stat(backupPath)
-	if err != nil {
-		return err
-	}
-	return os.Chmod(dst, info.Mode())
+	return copyFileAtomic(backupPath, dst)
 }
 
 // verifyPostInstall runs the new binary to verify it works.

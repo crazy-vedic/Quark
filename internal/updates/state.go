@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/crazy-vedic/quark/internal/atomicfile"
 )
 
 // ReleaseState tracks the last known update status and timing.
@@ -47,28 +49,7 @@ func SaveReleaseState(configDir string, state ReleaseState) error {
 		return err
 	}
 
-	// Write to a temporary file first to avoid corrupting on failure
-	tmp, err := os.CreateTemp(configDir, ".release-state-*.tmp")
-	if err != nil {
-		return err
-	}
-	defer os.Remove(tmp.Name())
-
-	if err := tmp.Chmod(0o600); err != nil {
-		tmp.Close()
-		return err
-	}
-
-	if _, err := tmp.Write(data); err != nil {
-		tmp.Close()
-		return err
-	}
-
-	if err := tmp.Close(); err != nil {
-		return err
-	}
-
-	return os.Rename(tmp.Name(), path)
+	return atomicfile.WriteFile(path, data, 0o600)
 }
 
 // ShouldCheck returns true if the next check should be attempted.

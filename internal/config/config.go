@@ -5,6 +5,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/BurntSushi/toml"
 
+	"github.com/crazy-vedic/quark/internal/atomicfile"
 	"github.com/crazy-vedic/quark/internal/keybindings"
 )
 
@@ -238,17 +240,9 @@ func SaveLastRequestID(configDir, requestID string) error {
 		return err
 	}
 	path := filepath.Join(configDir, "config.toml")
-	var raw []byte
-	if info, err := os.Stat(path); err == nil && !info.IsDir() {
-		raw, _ = os.ReadFile(path)
-	}
-	var doc map[string]any
-	if len(raw) > 0 {
-		if _, err := toml.Decode(string(raw), &doc); err != nil {
-			return fmt.Errorf("decode config.toml: %w", err)
-		}
-	} else {
-		doc = make(map[string]any)
+	doc, err := readConfigDoc(path)
+	if err != nil {
+		return err
 	}
 	uiDoc, ok := doc["ui"].(map[string]any)
 	if !ok {
@@ -260,12 +254,7 @@ func SaveLastRequestID(configDir, requestID string) error {
 		uiDoc["last_request_id"] = requestID
 	}
 	doc["ui"] = uiDoc
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	return toml.NewEncoder(f).Encode(doc)
+	return writeConfigDoc(configDir, doc)
 }
 
 // mergeKeybindings copies non-empty fields from src into dst.
@@ -288,22 +277,11 @@ func SaveKeybindings(configDir string, binds keybindings.Keybindings) error {
 	}
 	path := filepath.Join(configDir, "config.toml")
 
-	// Read existing file as raw bytes.
-	var raw []byte
-	if info, err := os.Stat(path); err == nil && !info.IsDir() {
-		raw, _ = os.ReadFile(path)
-	}
-
 	// Decode into a generic map so we preserve the exact structure of
-	// all other sections.
-	var doc map[string]any
-	if len(raw) > 0 {
-		if _, err := toml.Decode(string(raw), &doc); err != nil {
-			// Refuse to overwrite invalid config.
-			return fmt.Errorf("decode config.toml: %w", err)
-		}
-	} else {
-		doc = make(map[string]any)
+	// all other sections. An unreadable or invalid config is not overwritten.
+	doc, err := readConfigDoc(path)
+	if err != nil {
+		return err
 	}
 
 	// Build the keybindings map from the struct via reflection.
@@ -319,12 +297,7 @@ func SaveKeybindings(configDir string, binds keybindings.Keybindings) error {
 	}
 	doc["keybindings"] = bindsMap
 
-	f, err := os.Create(path)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	return toml.NewEncoder(f).Encode(doc)
+	return writeConfigDoc(configDir, doc)
 }
 
 // SaveTheme updates only [ui].theme. It refuses malformed existing config and
@@ -335,15 +308,9 @@ func SaveTheme(configDir, name string) error {
 		return err
 	}
 	path := filepath.Join(configDir, "config.toml")
-	doc := make(map[string]any)
-	raw, err := os.ReadFile(path)
-	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+	doc, err := readConfigDoc(path)
+	if err != nil {
 		return err
-	}
-	if len(raw) > 0 {
-		if _, err := toml.Decode(string(raw), &doc); err != nil {
-			return fmt.Errorf("decode config.toml: %w", err)
-		}
 	}
 	ui, ok := doc["ui"].(map[string]any)
 	if !ok {
@@ -352,27 +319,38 @@ func SaveTheme(configDir, name string) error {
 	ui["theme"] = name
 	doc["ui"] = ui
 
-	tmp, err := os.CreateTemp(configDir, ".config-theme-*.tmp")
+	return writeConfigDoc(configDir, doc)
+}
+
+// readConfigDoc loads config.toml as a generic document so a saver can change
+// one section and keep the rest. A missing file is an empty document. Any
+// other read error and any parse error is returned: carrying on with an empty
+// document would overwrite the user's settings with a single section.
+func readConfigDoc(path string) (map[string]any, error) {
+	doc := make(map[string]any)
+	raw, err := os.ReadFile(path)
 	if err != nil {
-		return err
+		if errors.Is(err, fs.ErrNotExist) {
+			return doc, nil
+		}
+		return nil, fmt.Errorf("read config.toml: %w", err)
 	}
-	defer os.Remove(tmp.Name())
-	if err := tmp.Chmod(0o600); err != nil {
-		tmp.Close()
-		return err
+	if len(raw) == 0 {
+		return doc, nil
 	}
-	if err := toml.NewEncoder(tmp).Encode(doc); err != nil {
-		tmp.Close()
-		return err
+	if _, err := toml.Decode(string(raw), &doc); err != nil {
+		return nil, fmt.Errorf("decode config.toml: %w", err)
 	}
-	if err := tmp.Sync(); err != nil {
-		tmp.Close()
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		return err
-	}
-	return os.Rename(tmp.Name(), path)
+	return doc, nil
+}
+
+// writeConfigDoc replaces config.toml atomically and owner-only (it can hold
+// certificate passwords). See atomicfile.Write.
+func writeConfigDoc(configDir string, doc map[string]any) error {
+	return atomicfile.Write(
+		filepath.Join(configDir, "config.toml"), 0o600,
+		func(w io.Writer) error { return toml.NewEncoder(w).Encode(doc) },
+	)
 }
 
 // SaveClientCertificates writes only the HTTP client_certificates setting,
@@ -382,17 +360,9 @@ func SaveClientCertificates(configDir string, certs []ClientCertificate) error {
 		return err
 	}
 	path := filepath.Join(configDir, "config.toml")
-	var raw []byte
-	if info, err := os.Stat(path); err == nil && !info.IsDir() {
-		raw, _ = os.ReadFile(path)
-	}
-	var doc map[string]any
-	if len(raw) > 0 {
-		if _, err := toml.Decode(string(raw), &doc); err != nil {
-			return fmt.Errorf("decode config.toml: %w", err)
-		}
-	} else {
-		doc = make(map[string]any)
+	doc, err := readConfigDoc(path)
+	if err != nil {
+		return err
 	}
 	httpDoc, ok := doc["http"].(map[string]any)
 	if !ok {
@@ -420,15 +390,7 @@ func SaveClientCertificates(configDir string, certs []ClientCertificate) error {
 	}
 	httpDoc["client_certificates"] = entries
 	doc["http"] = httpDoc
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	if err := f.Chmod(0o600); err != nil {
-		return err
-	}
-	return toml.NewEncoder(f).Encode(doc)
+	return writeConfigDoc(configDir, doc)
 }
 
 // Timeout returns the configured HTTP timeout as time.Duration.
