@@ -29,7 +29,15 @@ type Manager struct {
 
 // New creates a transport manager and loads all configured certificates.
 func New(cfg config.Config) (*Manager, error) {
-	m := &Manager{base: &http.Transport{ResponseHeaderTimeout: cfg.Timeout()}}
+	// Start from net/http's defaults so HTTP(S)_PROXY/NO_PROXY, the dial and
+	// TLS handshake timeouts, idle-connection limits and HTTP/2 all apply.
+	base, ok := http.DefaultTransport.(*http.Transport)
+	if !ok {
+		return nil, fmt.Errorf("transport: http.DefaultTransport is %T", http.DefaultTransport)
+	}
+	base = base.Clone()
+	base.ResponseHeaderTimeout = cfg.Timeout()
+	m := &Manager{base: base}
 	if err := m.Reload(cfg); err != nil {
 		return nil, err
 	}
@@ -59,6 +67,10 @@ func (m *Manager) Reload(cfg config.Config) error {
 		}
 		clone := m.base.Clone()
 		clone.TLSClientConfig = tlsConfig
+		// Client-certificate hosts stay on HTTP/1.1, as before: the TLS config
+		// allows renegotiation, which HTTP/2 forbids.
+		clone.ForceAttemptHTTP2 = false
+		clone.TLSNextProto = map[string]func(string, *tls.Conn) http.RoundTripper{}
 		transports[host] = clone
 	}
 	m.mu.Lock()

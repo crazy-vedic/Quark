@@ -55,6 +55,7 @@ type importStats struct {
 // NewImportPostmanCmd returns the 'quark import-postman' subcommand.
 func NewImportPostmanCmd(st ImportPostmanStore, logger *DebugLogger) *cobra.Command {
 	var collectionName, onDuplicate string
+	var includeDisabled bool
 
 	cmd := &cobra.Command{
 		Use:   "import-postman <collection.json|directory>",
@@ -84,6 +85,12 @@ func NewImportPostmanCmd(st ImportPostmanStore, logger *DebugLogger) *cobra.Comm
 				)
 			}
 
+			var importerOpts []postman.Option
+			if includeDisabled {
+				importerOpts = append(importerOpts, postman.WithDisabledHeaders())
+			}
+			importer := postman.NewImporter(importerOpts...)
+
 			var allStats []importStats
 			var globalAction duplicateAction
 
@@ -98,6 +105,7 @@ func NewImportPostmanCmd(st ImportPostmanStore, logger *DebugLogger) *cobra.Comm
 					collectionName,
 					onDuplicate,
 					&globalAction,
+					importer,
 					logger,
 				)
 				if err != nil {
@@ -114,6 +122,7 @@ func NewImportPostmanCmd(st ImportPostmanStore, logger *DebugLogger) *cobra.Comm
 					collectionName,
 					onDuplicate,
 					&globalAction,
+					importer,
 					logger,
 				)
 				if err != nil {
@@ -178,6 +187,9 @@ func NewImportPostmanCmd(st ImportPostmanStore, logger *DebugLogger) *cobra.Comm
 	cmd.Flags().
 		StringVarP(&collectionName, "collection-name", "n", "", "Override the imported collection name")
 	cmd.Flags().
+		BoolVar(&includeDisabled, "include-disabled", false,
+			"Import headers that are switched off in Postman as active headers (by default they are left out and listed as warnings)")
+	cmd.Flags().
 		StringVar(&onDuplicate, "on-duplicate", "duplicate", "Action when collection name already exists: replace, duplicate, merge, skip")
 
 	return cmd
@@ -190,6 +202,7 @@ func importSingleFile(
 	st ImportPostmanStore,
 	path, overrideName, onDuplicate string,
 	globalAction *duplicateAction,
+	importer *postman.Importer,
 	logger *DebugLogger,
 ) (importStats, error) {
 	logger.Logf("parsing file=%s", path)
@@ -200,7 +213,7 @@ func importSingleFile(
 	}
 	defer f.Close()
 
-	result, err := postman.NewImporter().Parse(f)
+	result, err := importer.Parse(f)
 	if err != nil {
 		logger.Logf("parse failed file=%s err=%v", path, err)
 		return importStats{filePath: path, err: err}, fmt.Errorf("parse: %w", err)
@@ -576,6 +589,7 @@ func importBulk(
 	st ImportPostmanStore,
 	dir, overrideName, onDuplicate string,
 	globalAction *duplicateAction,
+	importer *postman.Importer,
 	logger *DebugLogger,
 ) ([]importStats, envImportResult, error) {
 	var files []string
@@ -653,6 +667,7 @@ func importBulk(
 			overrideName,
 			onDuplicate,
 			globalAction,
+			importer,
 			logger,
 		)
 		if err != nil {

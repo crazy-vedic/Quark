@@ -43,6 +43,13 @@ func SearchResultsMsg(hits []*search.SearchHit) searchResultsMsg {
 	return searchResultsMsg{hits: hits}
 }
 
+func SearchResultsMsgWithFailures(
+	hits []*search.SearchHit,
+	failures []search.CollectionFailure,
+) searchResultsMsg {
+	return searchResultsMsg{hits: hits, failures: failures}
+}
+
 func ExecutionHistoryLoadedMsg(requestID string, executions []*domain.Execution) tea.Msg {
 	return executionHistoryLoadedMsg{requestID: requestID, executions: executions}
 }

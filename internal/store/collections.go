@@ -233,6 +233,38 @@ func (s *Store) listCollectionsWhere(
 	return out, rows.Err()
 }
 
+// RenameCollection changes a collection's name and nothing else.
+// Returns ErrNotFound for an unknown ID and ErrDuplicate when a sibling
+// already has the name.
+func (s *Store) RenameCollection(ctx context.Context, id, name string) error {
+	return renameCollection(ctx, s.db, id, name)
+}
+
+func renameCollection(ctx context.Context, db environmentSQL, id, name string) error {
+	name, _ = NormalizeName(name)
+	res, err := db.ExecContext(
+		ctx,
+		`UPDATE collections
+		 SET name = ?, updated_at=CURRENT_TIMESTAMP, version=version+1
+		 WHERE id = ?`,
+		name, id,
+	)
+	if err != nil {
+		if isSQLiteUnique(err) {
+			return fmt.Errorf("store: rename collection %q: %w", name, ErrDuplicate)
+		}
+		return fmt.Errorf("store: rename collection %q: %w", id, err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("store: rename collection %q: %w", id, err)
+	}
+	if n == 0 {
+		return fmt.Errorf("store: rename collection %q: %w", id, ErrNotFound)
+	}
+	return nil
+}
+
 // MoveCollection reparents a collection, rejecting missing parents and cycles.
 func (s *Store) MoveCollection(ctx context.Context, id, parentID string) error {
 	if id == parentID {

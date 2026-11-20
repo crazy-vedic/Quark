@@ -51,11 +51,27 @@ type RequestGroup struct {
 }
 
 // Importer parses Postman Collection v2.1 JSON files.
-type Importer struct{}
+type Importer struct {
+	includeDisabledHeaders bool
+}
+
+// Option configures an Importer.
+type Option func(*Importer)
+
+// WithDisabledHeaders imports headers that are switched off in Postman as
+// active headers. Quark has no per-header switch, so by default they are left
+// out; either way the result carries a warning naming each one.
+func WithDisabledHeaders() Option {
+	return func(im *Importer) { im.includeDisabledHeaders = true }
+}
 
 // NewImporter constructs an Importer. Zero options are valid.
-func NewImporter() *Importer {
-	return &Importer{}
+func NewImporter(opts ...Option) *Importer {
+	im := &Importer{}
+	for _, opt := range opts {
+		opt(im)
+	}
+	return im
 }
 
 // Parse reads a Postman Collection JSON from r and returns the parsed result.
@@ -66,7 +82,7 @@ func (im *Importer) Parse(r io.Reader) (*ImportResult, error) {
 		return nil, err
 	}
 
-	result := ImportCollection(c)
+	result := importCollection(c, im.includeDisabledHeaders)
 
 	// Security scoring: scan for credentials in headers, URLs, and auth config.
 	maxSecurity := Safe
@@ -119,8 +135,7 @@ func scoreRequestSecurity(req *domain.Request) SecurityLevel {
 	}
 
 	// Check URL for credentials (e.g., https://user:pass@host.com)
-	if strings.Contains(req.URL, "@") && strings.Contains(req.URL, ":") {
-		// Might have user:pass@host
+	if urlHasUserinfo(req.URL) {
 		return Dangerous
 	}
 
@@ -131,6 +146,20 @@ func scoreRequestSecurity(req *domain.Request) SecurityLevel {
 	}
 
 	return Safe
+}
+
+// urlHasUserinfo reports whether the authority part of rawURL carries
+// userinfo (user@host or user:pass@host). It works on the raw text because
+// imported URLs may contain {{placeholders}} that net/url cannot parse.
+func urlHasUserinfo(rawURL string) bool {
+	authority := rawURL
+	if i := strings.Index(authority, "://"); i >= 0 {
+		authority = authority[i+len("://"):]
+	}
+	if i := strings.IndexAny(authority, "/?#"); i >= 0 {
+		authority = authority[:i]
+	}
+	return strings.Contains(authority, "@")
 }
 
 func isCredentialHeader(key string) bool {

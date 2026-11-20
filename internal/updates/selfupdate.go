@@ -29,6 +29,12 @@ func NewSelfUpdater(repo string, currentPath string, currentVersion string) *Sel
 	}
 }
 
+// SetBaseURL overrides the host release assets are downloaded from. The
+// default is https://github.com; tests point it at a local server.
+func (su *SelfUpdater) SetBaseURL(baseURL string) {
+	su.gh.baseURL = strings.TrimRight(baseURL, "/")
+}
+
 // CheckUpdate checks if an update is available without downloading.
 func (su *SelfUpdater) CheckUpdate(ctx context.Context) (bool, string, error) {
 	return su.gh.IsUpdateAvailable(ctx, su.currentVersion)
@@ -108,8 +114,8 @@ func (su *SelfUpdater) downloadBinary(
 	ctx context.Context,
 	version, binaryName string,
 ) (string, error) {
-	downloadURL := fmt.Sprintf("https://github.com/%s/releases/download/%s/%s",
-		su.gh.repo, version, binaryName)
+	downloadURL := fmt.Sprintf("%s/%s/releases/download/%s/%s",
+		su.gh.baseURL, su.gh.repo, version, binaryName)
 
 	req, err := http.NewRequestWithContext(ctx, "GET", downloadURL, nil)
 	if err != nil {
@@ -126,27 +132,14 @@ func (su *SelfUpdater) downloadBinary(
 		return "", fmt.Errorf("download failed with status %d", resp.StatusCode)
 	}
 
-	// Try to create temp file in target directory to avoid cross-filesystem issues
-	// Fallback to system /tmp if target dir not writable
-	tmpDir := filepath.Join(filepath.Dir(su.currentPath), "tmp")
-	if err := os.MkdirAll(tmpDir, 0o755); err == nil {
-		tmp, err := os.CreateTemp(tmpDir, "quark-update-*.tmp")
-		if err == nil {
-			tmpPath := tmp.Name()
-			defer tmp.Close()
-
-			if _, err := io.Copy(tmp, resp.Body); err != nil {
-				os.Remove(tmpPath)
-				return "", err
-			}
-			return tmpPath, nil
-		}
-	}
-
-	// Fallback to system temp dir
-	tmp, err := os.CreateTemp("", "quark-update-*.tmp")
+	// Prefer a temp file beside the binary so the final rename stays on one
+	// filesystem; fall back to the system temp dir when that is not writable.
+	tmp, err := os.CreateTemp(filepath.Dir(su.currentPath), ".quark-update-*.tmp")
 	if err != nil {
-		return "", err
+		tmp, err = os.CreateTemp("", "quark-update-*.tmp")
+		if err != nil {
+			return "", err
+		}
 	}
 	tmpPath := tmp.Name()
 
@@ -155,13 +148,29 @@ func (su *SelfUpdater) downloadBinary(
 		os.Remove(tmpPath)
 		return "", err
 	}
-
 	if err := tmp.Close(); err != nil {
 		os.Remove(tmpPath)
 		return "", err
 	}
 
+	// os.CreateTemp creates the file 0600. The file replaces the running
+	// binary, so it needs the execute bits of the binary it replaces.
+	if err := os.Chmod(tmpPath, su.installMode()); err != nil {
+		os.Remove(tmpPath)
+		return "", err
+	}
+
 	return tmpPath, nil
+}
+
+// installMode returns the permissions for the new binary: those of the
+// current binary with the execute bits set, or 0755 when it cannot be read.
+func (su *SelfUpdater) installMode() os.FileMode {
+	info, err := os.Stat(su.currentPath)
+	if err != nil {
+		return 0o755
+	}
+	return info.Mode().Perm() | 0o111
 }
 
 // verifyChecksum downloads SHA256SUMS and verifies the binary.

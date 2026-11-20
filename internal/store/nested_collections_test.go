@@ -101,3 +101,34 @@ func TestNestedCollections_AmbiguousReference(t *testing.T) {
 	assert.True(t, errors.As(err, &ambiguous))
 	assert.Len(t, ambiguous.Matches, 2)
 }
+
+func TestRenameCollection_ChangesOnlyTheName(t *testing.T) {
+	ctx := context.Background()
+	s, err := store.New(filepath.Join(t.TempDir(), "rename.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	parent := &domain.Collection{ID: "parent", Name: "parent"}
+	require.NoError(t, s.SaveCollection(ctx, parent))
+	child := &domain.Collection{
+		ID:          "child",
+		Name:        "child",
+		Description: "notes",
+		ParentID:    "parent",
+	}
+	require.NoError(t, s.SaveCollection(ctx, child))
+	sibling := &domain.Collection{ID: "sibling", Name: "sibling", ParentID: "parent"}
+	require.NoError(t, s.SaveCollection(ctx, sibling))
+
+	require.NoError(t, s.RenameCollection(ctx, "child", "renamed"))
+	got, err := s.GetCollection(ctx, "child")
+	require.NoError(t, err)
+	assert.Equal(t, "renamed", got.Name)
+	assert.Equal(t, "parent", got.ParentID)
+	assert.Equal(t, "notes", got.Description)
+
+	err = s.RenameCollection(ctx, "child", "sibling")
+	require.ErrorIs(t, err, store.ErrDuplicate)
+	err = s.RenameCollection(ctx, "missing", "x")
+	require.ErrorIs(t, err, store.ErrNotFound)
+}

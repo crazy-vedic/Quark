@@ -12,13 +12,14 @@ quark tui                      # Launch TUI explicitly
 quark collection list
 quark collection create <name>
 quark request list [--collection <id>]
+quark request export-curl <Collection/Request>
 quark run <Collection/Request>
 quark search <query>
 quark schedule add <Collection/Request> --at <time>
 quark schedule list
 quark schedule run-due
 quark import curl <curl-command> [--collection <id>] [--name <name>]
-quark import-postman <file|dir> [--collection-name <name>] [--on-duplicate <action>]
+quark import-postman <file|dir> [--collection-name <name>] [--on-duplicate <action>] [--include-disabled]
 quark env list [<collection-id>]
 quark env create <collection-id> <name>
 quark env set <collection-id> <env-name> <key> <value>
@@ -59,6 +60,16 @@ quark run <Collection/Request>
 ```
 
 Executes a saved request by path (collection name / request name). Uses `exec.Executor.Execute`. Prints status, headers, body (or temp file path for large bodies).
+
+### `quark request export-curl`
+
+**Source:** `internal/cli/request.go`
+
+```
+quark request export-curl <Collection/Request>
+```
+
+Prints the saved request as a single curl command (the same one the TUI copies with its export-curl key). `{{variables}}` are filled in from the collection's active environment and Global, as `quark run` does; a variable with no value is an error. Headers saved as arrays emit one `-H` per value. Fails with a clear message if the headers JSON is malformed or a value is not a string or string array.
 
 Shell completion via `CompleteRequestPaths`.
 
@@ -125,6 +136,7 @@ Imports Postman Collection v2.1 JSON or a bulk export directory (collections + e
 |---|---|---|
 | `--collection-name`, `-n` | (from file) | Override imported collection name |
 | `--on-duplicate` | `duplicate` | Action when name exists: `replace`, `duplicate`, `merge`, `skip` |
+| `--include-disabled` | off | Import headers switched off in Postman as active headers. By default they are left out; either way each one is listed as a warning (name only, never the value) |
 
 Interactive prompts may appear for duplicate handling when run in a TTY. Uses transactions for atomic imports.
 

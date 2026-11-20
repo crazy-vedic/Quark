@@ -168,3 +168,28 @@ func scanScheduledRuns(rows *sql.Rows) ([]*domain.ScheduledRun, error) {
 	}
 	return out, nil
 }
+
+// RecoverStaleScheduledRuns marks runs left in the running state since before
+// the cutoff as failed. A process that dies mid-run leaves its claim behind.
+// It returns the number of runs changed.
+func (s *Store) RecoverStaleScheduledRuns(ctx context.Context, cutoff time.Time) (int, error) {
+	// updated_at uses CURRENT_TIMESTAMP's UTC text form, so compare in that form.
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE scheduled_runs
+		 SET status = ?,
+		     last_error = 'interrupted while running; marked failed on recovery',
+		     updated_at = CURRENT_TIMESTAMP
+		 WHERE status = ? AND updated_at < ?`,
+		domain.ScheduledRunFailed,
+		domain.ScheduledRunRunning,
+		cutoff.UTC().Format("2006-01-02 15:04:05"),
+	)
+	if err != nil {
+		return 0, fmt.Errorf("store: recover stale scheduled runs: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("store: recover stale scheduled runs: rows affected: %w", err)
+	}
+	return int(n), nil
+}

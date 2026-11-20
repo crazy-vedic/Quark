@@ -51,6 +51,9 @@ type RequestWriter interface {
 // CollectionWriter is the mutation interface for collection storage.
 type CollectionWriter interface {
 	SaveCollection(ctx context.Context, c *domain.Collection) error
+	// RenameCollection changes only the name; parent, description and
+	// metadata are left untouched.
+	RenameCollection(ctx context.Context, id, name string) error
 	DeleteCollection(ctx context.Context, id string) error
 }
 
