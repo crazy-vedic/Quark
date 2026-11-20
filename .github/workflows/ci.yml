@@ -62,7 +62,7 @@ jobs:
         id: cache-check
         if: github.event_name == 'push'
         continue-on-error: true
-        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: /tmp/tree-cache
           key: tree-results-${{ steps.tree.outputs.sha }}
@@ -94,7 +94,7 @@ jobs:
     if: github.event_name == 'push' && needs.check-tree-cache.outputs.use-cache == 'true'
     steps:
       - name: Restore cached baseline
-        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: /tmp/baseline
           key: tree-results-${{ needs.check-tree-cache.outputs.tree-sha }}
@@ -403,7 +403,7 @@ jobs:
 
       - name: Restore Go dependency caches
         id: go-deps-cache
-        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ${{ runner.temp }}/go-mod-cache
@@ -488,7 +488,7 @@ jobs:
 
       - name: Restore Go dependency caches
         id: go-deps-cache
-        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ${{ runner.temp }}/go-mod-cache
@@ -587,7 +587,7 @@ jobs:
 
       - name: Restore Go dependency caches
         id: go-deps-cache
-        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ${{ runner.temp }}/go-mod-cache
@@ -666,7 +666,7 @@ jobs:
 
       - name: Restore Go dependency caches
         id: go-deps-cache
-        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ${{ runner.temp }}/go-mod-cache
@@ -820,7 +820,7 @@ jobs:
     steps:
       - name: Restore baseline cache
         id: cache-baseline
-        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: /tmp/baseline
           key: coverage-master-${{ github.event.pull_request.base.sha }}
@@ -858,7 +858,7 @@ jobs:
       - name: Restore Go dependency caches
         if: steps.check-baseline.outputs.found != 'true'
         id: go-deps-cache
-        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ${{ runner.temp }}/go-mod-cache
