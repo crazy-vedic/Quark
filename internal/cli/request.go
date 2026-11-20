@@ -21,7 +21,7 @@ func NewRequestCmd(r SearchStore) *cobra.Command {
 }
 
 func newRequestExportCurlCmd(r SearchStore) *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "export-curl <Collection/Request>",
 		Short: "Print a saved request as a curl command",
 		Long: "Print a saved request as a curl command, the same one the TUI copies.\n" +
@@ -57,6 +57,8 @@ func newRequestExportCurlCmd(r SearchStore) *cobra.Command {
 			return nil
 		},
 	}
+	cmd.ValidArgsFunction = CompleteRequestPaths(r.ListCollections, r.ListRequests)
+	return cmd
 }
 
 func newRequestListCmd(r SearchStore) *cobra.Command {

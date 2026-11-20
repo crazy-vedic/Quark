@@ -196,7 +196,7 @@ Several commands register `ValidArgsFunction` for cobra completion:
 - `CompleteRequestPaths` — collection/request path
 - `CompleteCollectionThenEnvironment` — collection then environment name
 
-Used by lazy wrappers in `main.go`.
+Used when `lazyCommand` (`cmd/quark/lazy.go`) mirrors the real commands.
 
 ## CLI vs TUI
 
