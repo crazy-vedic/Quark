@@ -5,6 +5,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/BurntSushi/toml"
 
+	"github.com/crazy-vedic/quark/internal/atomicfile"
 	"github.com/crazy-vedic/quark/internal/keybindings"
 )
 
@@ -342,31 +344,13 @@ func readConfigDoc(path string) (map[string]any, error) {
 	return doc, nil
 }
 
-// writeConfigDoc replaces config.toml atomically: it writes a 0600 temp file
-// in the same directory, syncs it and renames it into place, so a crash never
-// leaves a half-written config and the file is never group/world readable.
+// writeConfigDoc replaces config.toml atomically and owner-only (it can hold
+// certificate passwords). See atomicfile.Write.
 func writeConfigDoc(configDir string, doc map[string]any) error {
-	tmp, err := os.CreateTemp(configDir, ".config-*.tmp")
-	if err != nil {
-		return err
-	}
-	defer os.Remove(tmp.Name())
-	if err := tmp.Chmod(0o600); err != nil {
-		tmp.Close()
-		return err
-	}
-	if err := toml.NewEncoder(tmp).Encode(doc); err != nil {
-		tmp.Close()
-		return err
-	}
-	if err := tmp.Sync(); err != nil {
-		tmp.Close()
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		return err
-	}
-	return os.Rename(tmp.Name(), filepath.Join(configDir, "config.toml"))
+	return atomicfile.Write(
+		filepath.Join(configDir, "config.toml"), 0o600,
+		func(w io.Writer) error { return toml.NewEncoder(w).Encode(doc) },
+	)
 }
 
 // SaveClientCertificates writes only the HTTP client_certificates setting,
