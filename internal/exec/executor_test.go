@@ -243,46 +243,57 @@ func TestExecutor_SpecialHeadersProduceExpectedWireRequest(t *testing.T) {
 	}
 }
 
-func TestExecutor_FormatsJSONBodyByContentType(t *testing.T) {
+func TestExecutor_SendsJSONBodyVerbatim(t *testing.T) {
 	var received string
 	transport := roundTripperFunc(func(r *http.Request) (*http.Response, error) {
 		body, err := io.ReadAll(r.Body)
 		require.NoError(t, err)
 		received = string(body)
 		return &http.Response{
-			StatusCode: 200,
-			Status:     "200 OK",
+			StatusCode: http.StatusOK,
 			Header:     make(http.Header),
 			Body:       io.NopCloser(strings.NewReader("ok")),
 			Request:    r,
 		}, nil
 	})
 
+	// The bytes sent must be the stored bytes: re-indenting changes the body
+	// under HMAC signatures and Content-Length expectations.
+	const stored = `{"name":"quark","items":[1,2]}`
 	_, err := newTestExecutor(transport).Execute(context.Background(), &domain.Request{
 		Method:  http.MethodPost,
 		URL:     "https://example.test/json",
-		Body:    `{"name":"quark","items":[1,2]}`,
+		Body:    stored,
 		Headers: `{"Content-Type":"application/json; charset=utf-8"}`,
 	})
 	require.NoError(t, err)
-	assert.Equal(t, "{\n  \"name\": \"quark\",\n  \"items\": [\n    1,\n    2\n  ]\n}", received)
+	assert.Equal(t, stored, received)
 }
 
-func TestExecutor_RejectsInvalidJSONBodyByContentType(t *testing.T) {
-	called := false
-	transport := roundTripperFunc(func(*http.Request) (*http.Response, error) {
-		called = true
-		return nil, errors.New("transport must not be called")
+// Malformed JSON is sent as written. Testing an API's handling of bad payloads
+// needs exactly that, and the server is the one that rejects it.
+func TestExecutor_SendsInvalidJSONBodyVerbatim(t *testing.T) {
+	var received string
+	transport := roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+		body, err := io.ReadAll(r.Body)
+		require.NoError(t, err)
+		received = string(body)
+		return &http.Response{
+			StatusCode: http.StatusBadRequest,
+			Header:     make(http.Header),
+			Body:       io.NopCloser(strings.NewReader("bad json")),
+			Request:    r,
+		}, nil
 	})
-	_, err := newTestExecutor(transport).Execute(context.Background(), &domain.Request{
+	result, err := newTestExecutor(transport).Execute(context.Background(), &domain.Request{
 		Method:  http.MethodPost,
 		URL:     "https://example.test/json",
 		Body:    `{"invalid":`,
 		Headers: `{"Content-Type":"application/json"}`,
 	})
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "invalid JSON body")
-	assert.False(t, called)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusBadRequest, result.StatusCode)
+	assert.Equal(t, `{"invalid":`, received)
 }
 
 func TestExecutor_RejectsMissingBodyFile(t *testing.T) {
@@ -1020,53 +1031,6 @@ func TestExecutor_ZeroTimeoutDoesNotExpireImmediately(t *testing.T) {
 		require.NoError(t, err, "timeout %s", timeout)
 		assert.Equal(t, http.StatusOK, result.StatusCode)
 	}
-}
-
-// A body with {{placeholders}} is a template. If it is already valid JSON it is
-// indented like any other body; if it is only valid once the placeholders are
-// filled in, it is checked with stand-ins and kept exactly as the user wrote it.
-func TestFormatRequestBodyChecksJSONTemplates(t *testing.T) {
-	const ct = "application/json"
-
-	t.Run("valid JSON containing braces is indented as before", func(t *testing.T) {
-		got, err := exec.FormatRequestBody(`{"name":"user-{{id}}"}`, ct)
-		require.NoError(t, err)
-		assert.Equal(t, "{\n  \"name\": \"user-{{id}}\"\n}", got)
-	})
-
-	kept := map[string]string{
-		"unquoted value":   `{"id": {{id}}, "tags": {{tags}}}`,
-		"as an object key": `{ {{key}}: 1 }`,
-		"fallback syntax":  `{"id": {{1|id}}}`,
-		"mixed":            `{"id": {{id}}, "name": "user-{{n}}"}`,
-	}
-	for name, body := range kept {
-		t.Run("keeps "+name, func(t *testing.T) {
-			got, err := exec.FormatRequestBody(body, ct)
-			require.NoError(t, err)
-			assert.Equal(t, body, got, "a template is not reformatted")
-		})
-	}
-
-	rejected := map[string]string{
-		"trailing comma": `{"id": {{id}},}`,
-		"unclosed":       `{"id": {{id}}`,
-		"missing colon":  `{"id" {{id}}}`,
-		"not JSON":       `hello {{name}}`,
-		"no placeholder": `{"id": 1,}`,
-	}
-	for name, body := range rejected {
-		t.Run("rejects "+name, func(t *testing.T) {
-			_, err := exec.FormatRequestBody(body, ct)
-			require.ErrorContains(t, err, "invalid JSON body")
-		})
-	}
-
-	t.Run("other media types are untouched", func(t *testing.T) {
-		got, err := exec.FormatRequestBody(`a={{a}}&b`, "application/x-www-form-urlencoded")
-		require.NoError(t, err)
-		assert.Equal(t, `a={{a}}&b`, got)
-	})
 }
 
 // The reported duration must cover the body download, not only the wait for
