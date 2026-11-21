@@ -181,19 +181,17 @@ func buildHTTPRequest(ctx context.Context, req *domain.Request) (*http.Request, 
 	if req.Headers != "" && req.Headers != "{}" {
 		parsedHeaders, err := parseHeaders(req.Headers)
 		if err != nil {
-			// Malformed JSON in the headers column — warn and continue without
-			// headers rather than silently sending the request with none applied.
-			slog.Warn("exec: failed to parse request headers; sending without headers",
-				"request_id", req.ID, "err", err)
-		} else {
-			for key, values := range parsedHeaders {
-				for _, value := range values {
-					value, err := resolveHeaderFile(value)
-					if err != nil {
-						return nil, fmt.Errorf("exec: header %q: %w", key, err)
-					}
-					headers.Add(key, value)
+			// Never send without the stored headers: that would silently
+			// drop Authorization and change what the request means.
+			return nil, fmt.Errorf("exec: request headers are not valid JSON: %w", err)
+		}
+		for key, values := range parsedHeaders {
+			for _, value := range values {
+				value, err := resolveHeaderFile(value)
+				if err != nil {
+					return nil, fmt.Errorf("exec: header %q: %w", key, err)
 				}
+				headers.Add(key, value)
 			}
 		}
 	}
