@@ -211,3 +211,14 @@ func TestProof_SaveKeybindings_PreservesOtherSections(t *testing.T) {
 	assert.Equal(t, 3, cfg.HTTP.MaxRedirects)
 	assert.Equal(t, "dark", cfg.UI.Theme)
 }
+
+// A parse error must name the file, so the user knows what to fix.
+func TestLoad_ParseErrorNamesTheFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.toml")
+	require.NoError(t, os.WriteFile(path, []byte("[ui\ntheme = \"dark\"\n"), 0o600))
+
+	_, err := config.Load(dir)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), path)
+}

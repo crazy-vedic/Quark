@@ -457,3 +457,20 @@ func TestSaveRequest_CanMoveToAnotherCollection(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "to-col", got.CollectionID)
 }
+
+// Two requests in one collection cannot share a name. The store must report
+// that as ErrDuplicate, like it does for collections and environments.
+func TestSaveRequest_DuplicateNameReturnsErrDuplicate(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	col := &domain.Collection{ID: "dup-col", Name: "Dup"}
+	require.NoError(t, s.SaveCollection(ctx, col))
+	require.NoError(t, s.SaveRequest(ctx, &domain.Request{
+		ID: "dup-1", CollectionID: col.ID, Name: "Same", Method: "GET", URL: "https://a.test",
+	}))
+
+	err := s.SaveRequest(ctx, &domain.Request{
+		ID: "dup-2", CollectionID: col.ID, Name: "Same", Method: "GET", URL: "https://b.test",
+	})
+	require.ErrorIs(t, err, store.ErrDuplicate)
+}

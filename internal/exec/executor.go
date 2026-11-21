@@ -1,14 +1,11 @@
 package exec
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"log/slog"
-	"mime"
 	"net/http"
 	"net/url"
 	"os"
@@ -199,7 +196,7 @@ func buildHTTPRequest(ctx context.Context, req *domain.Request) (*http.Request, 
 		}
 	}
 
-	body, err := requestBodyValue(req.Body, headers.Get("Content-Type"))
+	body, err := requestBodyValue(req.Body)
 	if err != nil {
 		return nil, err
 	}
@@ -234,7 +231,7 @@ const maxRequestFileSize = 10 << 20
 // requestBodyReader expands the exact @path form used by the Body editor.
 // Keeping the reference in domain.Request means saved requests remain small
 // and continue to follow changes to the referenced file.
-func requestBodyValue(body, contentType string) (string, error) {
+func requestBodyValue(body string) (string, error) {
 	if body == "" {
 		return "", nil
 	}
@@ -246,52 +243,10 @@ func requestBodyValue(body, contentType string) (string, error) {
 		}
 		body = string(data)
 	}
-	return FormatRequestBody(body, contentType)
-}
-
-// FormatRequestBody prepares body text according to its media type. JSON is
-// validated and indented; other media types are intentionally byte-preserved.
-// An @file reference is left untouched so callers such as the TUI can persist
-// the reference and defer reading it until dispatch.
-func FormatRequestBody(body, contentType string) (string, error) {
-	if body == "" || (strings.HasPrefix(body, "@") && len(body) > 1) {
-		return body, nil
-	}
-	mediaType, _, err := mime.ParseMediaType(contentType)
-	if err != nil {
-		mediaType = strings.TrimSpace(strings.Split(contentType, ";")[0])
-	}
-	if mediaType != "application/json" && !strings.HasSuffix(mediaType, "+json") {
-		return body, nil
-	}
-	var formatted bytes.Buffer
-	if err := json.Indent(&formatted, []byte(body), "", "  "); err != nil {
-		return keepJSONTemplate(body, err)
-	}
-	return formatted.String(), nil
-}
-
-// keepJSONTemplate decides what to do with a body that json.Indent rejected.
-// A body with {{placeholders}} is a template: it is only valid JSON once the
-// placeholders are filled in, so it is kept as written if it could be valid.
-// Anything else is the invalid JSON it appears to be.
-func keepJSONTemplate(body string, indentErr error) (string, error) {
-	if placeholderRE.MatchString(body) && validJSONTemplate(body) {
-		return body, nil
-	}
-	return "", fmt.Errorf("invalid JSON body: %w", indentErr)
-}
-
-// validJSONTemplate reports whether body is valid JSON for some values of its
-// {{placeholders}}. A placeholder can stand for a value (`null`), for text
-// inside a string (`x`), or for a quoted key (`"x"`), so any stand-in may pass.
-func validJSONTemplate(body string) bool {
-	for _, standIn := range []string{"null", "x", `"x"`} {
-		if json.Valid([]byte(placeholderRE.ReplaceAllString(body, standIn))) {
-			return true
-		}
-	}
-	return false
+	// The body is sent exactly as stored. Re-formatting or validating it here
+	// would change the bytes on the wire and block deliberately malformed
+	// payloads. Pretty-printing is an editor concern (see the TUI save path).
+	return body, nil
 }
 
 func resolveHeaderFile(value string) (string, error) {

@@ -272,7 +272,7 @@ func TestNewRunCmd_ResolvesFileBackedValuesAndFormatsJSON(t *testing.T) {
 	cmd.SetArgs([]string{"API/upload"})
 	cmd.SetContext(context.Background())
 	require.NoError(t, cmd.Execute())
-	require.Equal(t, "{\n  \"name\": \"quark\"\n}", transport.lastBody)
+	require.Equal(t, `{"name":"quark"}`, transport.lastBody, "body is sent as stored")
 	require.Equal(t, "file-token", transport.lastHeaders.Get("X-Token"))
 }
 

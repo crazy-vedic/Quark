@@ -108,6 +108,6 @@ func TestE2E_TUIFileBodyHeaderAndJSONReachHTTPServer(t *testing.T) {
 	assert.Equal(t, 200, m.Response().StatusCode)
 	assert.Equal(t, "e2e.example", receivedHost)
 	assert.Equal(t, "from-file", receivedToken)
-	assert.Equal(t, "{\n  \"name\": \"quark\",\n  \"items\": [\n    1,\n    2\n  ]\n}", receivedBody)
+	assert.Equal(t, `{"name":"quark","items":[1,2]}`, receivedBody)
 	assert.Empty(t, receivedTransfer)
 }

@@ -57,7 +57,7 @@ runtimeOnce := func() (*runtime, error) {
 
 Why: `--config` must be parsed before opening the DB. Also, `quark --help` should not touch the database.
 
-Commands that need the store use `lazy*` wrapper functions in `main.go` that call `runtimeOnce()` before delegating to `internal/cli`.
+Commands that need the store are declared once, in `internal/cli`. The `lazy*Cmd` functions in `cmd/quark/lazy.go` are one-line calls to `lazyCommand(runtimeOnce, build)`, which builds the real command tree with a placeholder runtime to learn its shape (names, flags, help), then replaces each `RunE` and completion function with one that calls `runtimeOnce()`, rebuilds the tree with the real runtime, copies the flags the user gave onto the matching real command and runs it. To add a flag or subcommand, change `internal/cli` only; `TestLazyCommandsExposeExactlyTheRealCommands` guards that nothing is declared twice.
 
 **Exception:** `keybindings` subcommands load config directly via `configDir` without opening the store.
 
