@@ -464,6 +464,8 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.handleClientCertKey(msg)
 		case postmanImportMode:
 			return m.handlePostmanImportKey(msg)
+		case overdueRunsMode:
+			return m.handleOverdueRunsKey(msg)
 		default:
 			return m.handleNormalKey(msg)
 		}
@@ -559,7 +561,12 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.activeEnvStore,
 			m.activeEnv,
 			m.now,
+			m.deferredRuns,
 		)
+	case overdueScheduledRunsMsg:
+		return m.openOverdueRuns(msg.runs), nil
+	case overdueRunsCancelledMsg:
+		return m.applyOverdueRunsCancelled(msg)
 	case scheduledRunBackgroundResultMsg:
 		m, historyCmd := m.applyScheduledRunBackgroundResult(msg)
 		m, timerCmd := m.armScheduleTimer()

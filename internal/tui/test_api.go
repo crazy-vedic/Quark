@@ -84,6 +84,7 @@ const (
 	EnvMode              = envMode
 	CollectionPromptMode = collectionPromptMode
 	ScheduleMode         = scheduleMode
+	OverdueRunsMode      = overdueRunsMode
 
 	PromptNone                 = promptNone
 	PromptAdd                  = promptAdd
