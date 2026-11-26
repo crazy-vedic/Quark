@@ -9,7 +9,7 @@ The domain package has **zero internal dependencies** — only stdlib. All packa
 ```go
 type Request struct {
     ID, CollectionID, Name string
-    Method                   string  // GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS
+    Method                   string  // any HTTP token: GET, TRACE, PROPFIND, ...
     URL                      string
     Headers                  string  // JSON object
     AuthType                 string
@@ -22,6 +22,10 @@ type Request struct {
 ```
 
 Unique constraint: `(collection_id, name)`.
+
+`domain.ValidMethod` checks that a method is a non-empty RFC 9110 token; `Store.SaveRequest` and
+`Transaction.SaveRequest` call it and return `domain.ErrInvalidMethod` otherwise. The database
+has no method constraint (v10 removed the v1 `CHECK(method IN (...))`).
 
 ### Collection (`collection.go`)
 
@@ -139,8 +143,12 @@ Config directory and backup files use restrictive permissions (`0700` dir, `0600
 | 4 | `add_executions` | `executions` table |
 | 5 | `add_request_auth` | `auth_type`, `auth_config` columns on requests |
 | 6 | `add_scheduled_runs` | `scheduled_runs` table |
+| 7 | `repair_empty_request_ids` | gives empty request IDs a random ID |
+| 8 | `nested_collections` | `parent_id` on collections (table rebuild) |
+| 9 | `canonical_global_environment` | single Global environment |
+| 10 | `drop_request_method_check` | rebuilds `requests` without the method `CHECK` |
 
-Migrations are idempotent and applied in transactions. To add schema changes: append a new `migration{version: 7, ...}` entry.
+Migrations are idempotent and applied in transactions. To add schema changes: append a new `migration{version: N+1, ...}` entry. Table rebuilds (v8, v10) need `PRAGMA foreign_keys = OFF` outside the transaction so dropping the old table does not cascade.
 
 ### Key Store Files
 

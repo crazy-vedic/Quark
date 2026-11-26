@@ -172,7 +172,14 @@ CREATE TABLE collections (
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP, version INTEGER DEFAULT 1,
     parent_id TEXT
 );
-CREATE TABLE requests (id TEXT PRIMARY KEY, collection_id TEXT, name TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE requests (
+    id TEXT PRIMARY KEY, collection_id TEXT NOT NULL, name TEXT NOT NULL,
+    method TEXT NOT NULL CHECK(method IN ('GET','POST','PUT','DELETE','PATCH','HEAD','OPTIONS')),
+    url TEXT NOT NULL, headers TEXT DEFAULT '{}', body TEXT, sort_order INTEGER DEFAULT 0,
+    enabled BOOLEAN DEFAULT 1, created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    auth_type TEXT NOT NULL DEFAULT '', auth_config TEXT NOT NULL DEFAULT '{}'
+);
 CREATE TABLE executions (id TEXT PRIMARY KEY, request_id TEXT);
 CREATE TABLE scheduled_runs (id TEXT PRIMARY KEY, request_id TEXT);
 CREATE TABLE environments (
@@ -239,9 +246,12 @@ func TestStore_MigrationV9NormalizesEmptyLegacyGlobalData(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, map[string]string{"kept": "value"}, global.Vars())
 	assert.Equal(t, "global", global.ID)
-	var version int
-	require.NoError(t, s.DB().QueryRow(`SELECT MAX(version) FROM schema_versions`).Scan(&version))
-	assert.Equal(t, 9, version)
+	var applied int
+	require.NoError(
+		t,
+		s.DB().QueryRow(`SELECT COUNT(*) FROM schema_versions WHERE version = 9`).Scan(&applied),
+	)
+	assert.Equal(t, 1, applied)
 }
 
 func TestStore_MigrationV9InvalidLegacyDataRollsBack(t *testing.T) {

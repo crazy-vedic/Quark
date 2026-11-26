@@ -202,6 +202,10 @@ ON collections(COALESCE(parent_id, ''), name);
 		version: 9,
 		name:    "canonical_global_environment",
 	},
+	{
+		version: 10,
+		name:    "drop_request_method_check",
+	},
 }
 
 // migrate runs all pending migrations in order.
@@ -318,6 +322,9 @@ func (s *Store) applyMigration(m migration) error {
 	}
 	if m.version == 9 {
 		return s.applyCanonicalGlobalEnvironmentMigration(m)
+	}
+	if m.version == 10 {
+		return s.applyDropRequestMethodCheckMigration(m)
 	}
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -569,6 +576,73 @@ func (s *Store) applyNestedCollectionsMigration(m migration) error {
 		return err
 	}
 	_, _ = s.db.Exec(`PRAGMA legacy_alter_table = OFF; PRAGMA foreign_keys = ON`)
+	return nil
+}
+
+// applyDropRequestMethodCheckMigration rebuilds requests without the v1
+// CHECK constraint that limited method to seven verbs. SQLite cannot drop a
+// constraint in place, so it copies the rows into a new table with the same
+// columns, keys and index. Method validity is now checked in Go by
+// domain.ValidMethod before every save.
+func (s *Store) applyDropRequestMethodCheckMigration(m migration) (err error) {
+	// Foreign keys must be off while requests is dropped, or the drop would
+	// cascade into scheduled_runs. The pragma has no effect inside a
+	// transaction, so it is toggled on the single connection around it.
+	if _, err := s.db.Exec(`PRAGMA foreign_keys = OFF`); err != nil {
+		return fmt.Errorf("disable foreign keys: %w", err)
+	}
+	defer func() {
+		if _, fkErr := s.db.Exec(`PRAGMA foreign_keys = ON`); fkErr != nil && err == nil {
+			err = fmt.Errorf("enable foreign keys: %w", fkErr)
+		}
+	}()
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if _, err := tx.Exec(`
+CREATE TABLE requests_new (
+    id            TEXT PRIMARY KEY,
+    collection_id TEXT NOT NULL,
+    name          TEXT NOT NULL,
+    method        TEXT NOT NULL,
+    url           TEXT NOT NULL,
+    headers       TEXT DEFAULT '{}',
+    body          TEXT,
+    sort_order    INTEGER DEFAULT 0,
+    enabled       BOOLEAN DEFAULT 1,
+    created_at    DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at    DATETIME DEFAULT CURRENT_TIMESTAMP,
+    auth_type     TEXT NOT NULL DEFAULT '',
+    auth_config   TEXT NOT NULL DEFAULT '{}',
+    FOREIGN KEY (collection_id) REFERENCES collections(id) ON DELETE CASCADE,
+    UNIQUE(collection_id, name)
+);
+INSERT INTO requests_new (id, collection_id, name, method, url, headers, body, sort_order,
+    enabled, created_at, updated_at, auth_type, auth_config)
+SELECT id, collection_id, name, method, url, headers, body, sort_order,
+    enabled, created_at, updated_at, auth_type, auth_config
+FROM requests;
+DROP TABLE requests;
+ALTER TABLE requests_new RENAME TO requests;
+CREATE INDEX IF NOT EXISTS idx_requests_collection ON requests(collection_id, sort_order);
+`); err != nil {
+		return fmt.Errorf("rebuild requests: %w", err)
+	}
+	// No foreign_key_check here: rows are copied unchanged under the same
+	// keys, so the rebuild cannot add a violation, and failing on one that
+	// already existed would leave a working database unable to open.
+	if _, err := tx.Exec(
+		`INSERT INTO schema_versions (version) VALUES (?)`,
+		m.version,
+	); err != nil {
+		return fmt.Errorf("record version: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit: %w", err)
+	}
 	return nil
 }
 
