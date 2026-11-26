@@ -160,6 +160,7 @@ JSON formatting preserves the existing indent style (2-space, 4-space, tabs) and
 - **Collections & requests** — Organise, sort, enable/disable
 - **Import** — cURL and Postman Collection v2.1 from the CLI or TUI
 - **Response preview** — Syntax-highlighted JSON, streaming for large bodies
+- **Timing breakdown** — The response status line shows DNS, connect, TLS, TTFB and download times when the pane is wide enough
 - **Themes** — Terminal-aware dark and light palettes, local custom themes, live preview and reload
 - **Fuzzy search** — `/` to search across everything
 - **Auto-backup** — Last 10 backups in `~/.quark/backup/`
@@ -195,7 +196,9 @@ PKCS#12 files, prefer `--password-env` to keep passwords out of shell history.
 `quark run <Collection/Request>` prints the response body after its status
 summary. Valid JSON is pretty-printed and syntax-highlighted in a terminal.
 Add `--verbose` to print request details and response headers to stderr; this
-can include credentials from the saved request.
+can include credentials from the saved request. Verbose output also prints a
+`Phases:` line with the time spent in DNS lookup, TCP connect, TLS handshake,
+time to first byte, and download.
 
 ### Text Selection & Editing
 

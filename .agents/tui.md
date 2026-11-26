@@ -108,7 +108,9 @@ caches are invalidated while preserving scroll position on theme changes.
 1. User triggers run (Enter or run keybinding)
 2. Model sends execute message
 3. `RequestExecutor.Execute(ctx, req)` called asynchronously (tea.Cmd)
-4. Result message updates response pane
+4. Result message updates response pane. The live status line appends
+   `ExecuteResult.Timing.Compact()` (DNS/connect/TLS/TTFB/download) only when
+   it fits the pane's inner width, so it never wraps and steals a body row.
 5. Old temp file cleaned up on new response (BUG-007)
 
 Context from `Deps.Ctx` propagates cancellation on SIGINT.

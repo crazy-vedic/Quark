@@ -153,8 +153,18 @@ type ExecuteResult struct {
     TempPath        string  // non-empty if body streamed to file
     ResponseTime    time.Duration
     ContentType     string
+    Timing          Timing // DNS, Connect, TLS, TTFB, Download, Reused
 }
 ```
+
+`Timing` (`timing.go`) is recorded with `net/http/httptrace` for every
+dispatch. It describes the final hop when redirects are followed (the
+recorder resets on each `GetConn`). TTFB is measured from the request being
+written to the first response byte; Download from the first byte to the end
+of the body read. Phases that did not happen (reused connection, plain http,
+IP literal) stay zero, and `Compact()` omits them. Transports that fire no
+trace hooks (test round-trippers) leave `Timing` zero. This is network
+timing; `internal/timing` is unrelated UI instrumentation.
 
 Methods: `Cleanup()` removes temp file if set.
 
@@ -175,7 +185,8 @@ Always use `errors.Is` for checks.
 
 1. Resolve collection/request by path
 2. Call `executor.Execute(ctx, req)`
-3. Print status, headers, body (or temp file notice)
+3. Print status, headers, body (or temp file notice); `--verbose` adds a
+   `Phases:` line on stderr from `ExecuteResult.Timing`
 4. Exit non-zero on execution error (not on 4xx/5xx)
 
 ## TUI Integration
