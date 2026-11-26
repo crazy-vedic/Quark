@@ -64,7 +64,10 @@ type Execution struct {
     RequestSnapshot  string  // full JSON snapshot of Request at run time
     StatusCode       int
     ResponseHeaders  string  // JSON
-    ResponseBody     string
+    ResponseBody     string  // at most exec.DefaultHistoryBodyLimit (1 MiB) bytes
+    ResponseSize     int64   // full body size in bytes
+    ResponseBodyTruncated bool // only a prefix of the body was stored
+    BodyOmitted      bool    // set by list queries, which skip bodies
     ResponseTimeMs   int
     StartedAt, CompletedAt time.Time
     Error            string
@@ -72,6 +75,8 @@ type Execution struct {
 ```
 
 **Not FK-linked to Request** — history survives request deletion. Indexed by `(request_id, completed_at DESC)`.
+
+`ListExecutionsByRequest(ctx, requestID, limit)` returns newest-first entries **without bodies** (`BodyOmitted` set; `limit <= 0` means no limit). `GetExecution(ctx, id)` returns one entry with its stored body. The TUI loads the newest body with the list and fetches others on demand.
 
 ### ScheduledRun (`scheduled_run.go`)
 
@@ -139,6 +144,10 @@ Config directory and backup files use restrictive permissions (`0700` dir, `0600
 | 4 | `add_executions` | `executions` table |
 | 5 | `add_request_auth` | `auth_type`, `auth_config` columns on requests |
 | 6 | `add_scheduled_runs` | `scheduled_runs` table |
+| 7 | `repair_empty_request_ids` | Repairs requests stored with an empty ID |
+| 8 | `nested_collections` | `parent_id` on collections |
+| 9 | `canonical_global_environment` | Merges legacy global environments |
+| 10 | `execution_body_size` | `response_size`, `response_body_truncated` on executions |
 
 Migrations are idempotent and applied in transactions. To add schema changes: append a new `migration{version: 7, ...}` entry.
 
