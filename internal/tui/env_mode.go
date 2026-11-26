@@ -258,7 +258,7 @@ func (m Model) handleEnvKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 
 	// Resolver lookup: when wired, the resolver is the single source of truth.
-	if action, ok := m.resolver.Resolve(6, 0, msg); ok {
+	if action, ok := m.resolver.Resolve(keybindings.ModeEnv, keybindings.PaneSidebar, msg); ok {
 		return m.dispatchEnvAction(action)
 	}
 	// Key didn't map to any action — intentional no-op.

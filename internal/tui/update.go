@@ -715,7 +715,8 @@ func (m Model) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	if action, ok := m.resolver.Resolve(0, int(m.focus), msg); ok {
+	pane := keybindings.Pane(m.focus)
+	if action, ok := m.resolver.Resolve(keybindings.ModeNormal, pane, msg); ok {
 		return m.dispatchNormalAction(action)
 	}
 	// Key didn't map to any action — intentional no-op.
@@ -1149,7 +1150,7 @@ func (m Model) handleSearchKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	b := textedit.Input(&m.searchInput)
 	// Up/Down belong to the result list, so the editor must not collapse a
 	// selection on them. Only a text change re-runs the search.
-	action, resolved := m.resolver.Resolve(1, 0, msg)
+	action, resolved := m.resolver.Resolve(keybindings.ModeSearch, keybindings.PaneSidebar, msg)
 	vertical := resolved &&
 		(action == keybindings.ActionNavigateUp || action == keybindings.ActionNavigateDown)
 	if !vertical {
@@ -1349,7 +1350,11 @@ func (m Model) closeSchedulePrompt() Model {
 }
 
 func (m Model) handleScheduleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	if action, ok := m.resolver.Resolve(7, 0, msg); ok {
+	if action, ok := m.resolver.Resolve(
+		keybindings.ModeCollectionPrompt,
+		keybindings.PaneSidebar,
+		msg,
+	); ok {
 		switch action {
 		case keybindings.ActionConfirm:
 			req := m.activePaneRequest()
@@ -1745,7 +1750,7 @@ func (m Model) handleHelpSearchKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.helpScrollOffset = 0
 		return m, cmd
 	}
-	if action, ok := m.resolver.Resolve(2, 0, msg); ok {
+	if action, ok := m.resolver.Resolve(keybindings.ModeHelp, keybindings.PaneSidebar, msg); ok {
 		switch action {
 		case keybindings.ActionSearch:
 			// Don't consume "/" — let it be typed into the search input.
@@ -1851,7 +1856,12 @@ func (m Model) handleHelpKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m = m.status("success", "Reset all keybindings to defaults")
 			return m, nil
 		}
-		if action, ok := m.resolver.Resolve(2, 0, msg); ok && action == keybindings.ActionClose {
+		if action, ok := m.resolver.Resolve(
+			keybindings.ModeHelp,
+			keybindings.PaneSidebar,
+			msg,
+		); ok &&
+			action == keybindings.ActionClose {
 			m.helpEditState = helpViewing
 			return m, nil
 		}
@@ -1868,7 +1878,7 @@ func (m Model) handleHelpKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// Viewing state — navigate, edit, reset, or close.
 	entries := keybindings.ListEntries(m.cfg.Keybindings)
 
-	if action, ok := m.resolver.Resolve(2, 0, msg); ok {
+	if action, ok := m.resolver.Resolve(keybindings.ModeHelp, keybindings.PaneSidebar, msg); ok {
 		switch action {
 		case keybindings.ActionSearch:
 			m.helpSearch = true
@@ -1970,7 +1980,12 @@ func (m Model) handleImportKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// the same ticketed clipboard path as every other field, and it inserts at
 	// the cursor, so existing import text is kept.
 	// Resolver lookup for overlay mode.
-	if action, ok := m.resolver.Resolve(3, 0, msg); ok && action != keybindings.ActionImportCurl {
+	if action, ok := m.resolver.Resolve(
+		keybindings.ModeImport,
+		keybindings.PaneSidebar,
+		msg,
+	); ok &&
+		action != keybindings.ActionImportCurl {
 		switch action {
 		case keybindings.ActionImportParse:
 			if m.importPreview == nil {
@@ -2054,7 +2069,11 @@ func (m Model) handleImportKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	// Check for edit action when naming the imported request.
 	if m.importPreview != nil && !m.importReplace {
-		if action, ok := m.resolver.Resolve(3, 0, msg); ok &&
+		if action, ok := m.resolver.Resolve(
+			keybindings.ModeImport,
+			keybindings.PaneSidebar,
+			msg,
+		); ok &&
 			action == keybindings.ActionImportEdit {
 			m.importPreview = nil
 			m.importError = ""
@@ -2208,7 +2227,7 @@ func (m Model) handleBodyFieldKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	// Body actions come first: Enter saves and Ctrl+J inserts a newline. The
 	// editor would otherwise take Enter as a plain newline.
-	if action, ok := m.resolver.Resolve(4, 0, msg); ok {
+	if action, ok := m.resolver.Resolve(keybindings.ModeBody, keybindings.PaneSidebar, msg); ok {
 		switch action {
 		case "save":
 			saved, cmd := m.saveBody()
@@ -2258,7 +2277,7 @@ func (m Model) handleAuthFieldKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleAuthFieldEdit(msg)
 	}
 
-	if action, ok := m.resolver.Resolve(8, 0, msg); ok {
+	if action, ok := m.resolver.Resolve(keybindings.ModeAuth, keybindings.PaneSidebar, msg); ok {
 		switch action {
 		case "save":
 			return m.saveAuth()
@@ -2348,7 +2367,7 @@ func (m Model) handleHeadersFieldKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 
 	// Resolver lookup for header editor mode (list mode only).
-	if action, ok := m.resolver.Resolve(5, 0, msg); ok {
+	if action, ok := m.resolver.Resolve(keybindings.ModeHeader, keybindings.PaneSidebar, msg); ok {
 		switch action {
 		case "save":
 			return m.saveHeaders()
@@ -2591,7 +2610,11 @@ func (m Model) handleCollectionPromptKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, deleteCollectionCmd(m.ctx, m.colWriter, m.promptTargetID)
 	}
 
-	if action, ok := m.resolver.Resolve(7, 0, msg); ok {
+	if action, ok := m.resolver.Resolve(
+		keybindings.ModeCollectionPrompt,
+		keybindings.PaneSidebar,
+		msg,
+	); ok {
 		switch action {
 		case keybindings.ActionCancel:
 			return m.closeCollectionPrompt(), nil
