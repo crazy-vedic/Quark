@@ -65,6 +65,8 @@ Loaded with merge semantics: only explicitly-set TOML fields override defaults (
 
 User keybinding overrides. Managed via `quark keybindings set/reset`. Saved by `config.SaveKeybindings` which preserves other config sections.
 
+All savers (`SaveTheme`, `SaveKeybindings`, `SaveClientCertificates`, `SaveLastRequestID`) go through `updateConfig`, which edits the file text line by line (`tomledit.go`) so comments, blank lines and key order survive. The edited text is decoded and compared with the expected document; if it differs (an unusual layout such as a table built from dotted keys), the whole document is re-encoded instead. Writes are atomic and `0600` via `atomicfile.Write`.
+
 ### Config API
 
 ```go
@@ -137,6 +139,6 @@ Only `http://` and `https://` URLs are allowed for execution. Prevents SSRF-styl
 | Request run | Optional backup, execution history recorded |
 | Request delete | Execution history retained (no FK) |
 | Collection delete | Cascades to requests, environments, scheduled runs |
-| Config change | Keybindings saved atomically; other sections preserved |
+| Config change | Only changed keys rewritten, atomically; comments and other sections preserved |
 
 See also: [entrypoints.md](entrypoints.md), [domain-and-store.md](domain-and-store.md), [caveats.md](caveats.md).

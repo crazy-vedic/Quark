@@ -152,6 +152,10 @@ json_on_save = false               # Disable JSON auto-formatting (default: enab
 
 JSON formatting preserves the existing indent style (2-space, 4-space, tabs) and is applied when you save a request body that parses as valid JSON. Invalid JSON or non-JSON text is left unchanged.
 
+When Quark itself saves `config.toml` (theme, keybindings, client certificates,
+last opened request), it rewrites only the keys it changes; your comments,
+blank lines and key order are kept.
+
 ---
 
 ## Features
