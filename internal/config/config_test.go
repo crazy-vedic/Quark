@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -221,4 +222,93 @@ func TestLoad_ParseErrorNamesTheFile(t *testing.T) {
 	_, err := config.Load(dir)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), path)
+}
+
+// Savers rewrite only the keys they change: the user's comments, blank lines
+// and key order survive.
+func TestSavers_PreserveCommentsAndOrder(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.toml")
+	original := `# My Quark settings
+
+[http]
+# the staging API is slow
+timeout = "60s"
+max_redirects = 3 # keep it short
+
+[ui]
+theme = "dark" # night mode
+editor = "nano"
+`
+	require.NoError(t, os.WriteFile(path, []byte(original), 0o600))
+
+	require.NoError(t, config.SaveTheme(dir, "light"))
+	require.NoError(t, config.SaveLastRequestID(dir, "req-1"))
+	require.NoError(t, config.SaveClientCertificates(dir, []config.ClientCertificate{
+		{Host: "api.example", File: "client.p12", PasswordEnv: "CERT_PASS"},
+	}))
+	binds := keybindings.DefaultKeybindings()
+	binds.Quit = "ctrl+q"
+	require.NoError(t, config.SaveKeybindings(dir, binds))
+
+	raw, err := os.ReadFile(path)
+	require.NoError(t, err)
+	got := string(raw)
+	assert.True(t, strings.HasPrefix(got, `# My Quark settings
+
+[http]
+# the staging API is slow
+timeout = "60s"
+max_redirects = 3 # keep it short
+
+[ui]
+theme = "light" # night mode
+editor = "nano"
+last_request_id = "req-1"
+
+[[http.client_certificates]]
+host = "api.example"
+file = "client.p12"
+password_env = "CERT_PASS"
+
+[keybindings]
+`), "unexpected config.toml:\n%s", got)
+	assert.Contains(t, got, `quit = "ctrl+q"`)
+
+	cfg, err := config.Load(dir)
+	require.NoError(t, err)
+	assert.Equal(t, "light", cfg.UI.Theme)
+	assert.Equal(t, 3, cfg.HTTP.MaxRedirects)
+	assert.Equal(t, "ctrl+q", cfg.Keybindings.Quit)
+	require.Len(t, cfg.HTTP.ClientCertificates, 1)
+
+	// Saving again with nothing changed leaves the file byte-for-byte alone.
+	require.NoError(t, config.SaveKeybindings(dir, binds))
+	require.NoError(t, config.SaveTheme(dir, "light"))
+	again, err := os.ReadFile(path)
+	require.NoError(t, err)
+	assert.Equal(t, got, string(again))
+
+	// Removing the last certificate removes its table and nothing else.
+	require.NoError(t, config.SaveClientCertificates(dir, nil))
+	raw, err = os.ReadFile(path)
+	require.NoError(t, err)
+	assert.NotContains(t, string(raw), "[[http.client_certificates]]")
+	assert.NotContains(t, string(raw), "\n\n\n")
+	assert.Contains(t, string(raw), "max_redirects = 3 # keep it short\n")
+}
+
+// A layout the line editor cannot extend (a table made of dotted keys) still
+// saves correctly, by re-encoding the whole document.
+func TestSaveTheme_DottedKeyTableFallsBackToReencode(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.toml")
+	require.NoError(t, os.WriteFile(path, []byte("ui.editor = \"nano\"\n"), 0o600))
+
+	require.NoError(t, config.SaveTheme(dir, "light"))
+
+	cfg, err := config.Load(dir)
+	require.NoError(t, err)
+	assert.Equal(t, "light", cfg.UI.Theme)
+	assert.Equal(t, "nano", cfg.UI.Editor)
 }
