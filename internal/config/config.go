@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"time"
 
 	"github.com/BurntSushi/toml"
@@ -238,25 +239,13 @@ func Load(configDir string) (Config, error) {
 // SaveLastRequestID persists the request opened most recently in the TUI,
 // preserving all other config.toml sections and values.
 func SaveLastRequestID(configDir, requestID string) error {
-	if err := os.MkdirAll(configDir, 0o700); err != nil {
-		return err
-	}
-	path := filepath.Join(configDir, "config.toml")
-	doc, err := readConfigDoc(path)
-	if err != nil {
-		return err
-	}
-	uiDoc, ok := doc["ui"].(map[string]any)
-	if !ok {
-		uiDoc = make(map[string]any)
-	}
-	if requestID == "" {
-		delete(uiDoc, "last_request_id")
-	} else {
-		uiDoc["last_request_id"] = requestID
-	}
-	doc["ui"] = uiDoc
-	return writeConfigDoc(configDir, doc)
+	return updateConfig(configDir, func(c *configChange) {
+		if requestID == "" {
+			c.deleteKey("ui", "last_request_id")
+		} else {
+			c.setString(requestID, "ui", "last_request_id")
+		}
+	})
 }
 
 // mergeKeybindings copies non-empty fields from src into dst.
@@ -271,128 +260,192 @@ func mergeKeybindings(dst, src keybindings.Keybindings) keybindings.Keybindings 
 	return dst
 }
 
-// SaveKeybindings writes only the [keybindings] section to configDir/config.toml,
-// preserving all other sections.
+// SaveKeybindings rewrites the [keybindings] table of configDir/config.toml,
+// preserving all other sections, comments and key order.
 func SaveKeybindings(configDir string, binds keybindings.Keybindings) error {
-	if err := os.MkdirAll(configDir, 0o700); err != nil {
-		return err
-	}
-	path := filepath.Join(configDir, "config.toml")
-
-	// Decode into a generic map so we preserve the exact structure of
-	// all other sections. An unreadable or invalid config is not overwritten.
-	doc, err := readConfigDoc(path)
-	if err != nil {
-		return err
-	}
-
-	// Build the keybindings map from the struct via reflection.
-	bindsMap := make(map[string]any)
-	v := reflect.ValueOf(binds)
-	t := v.Type()
-	for i := 0; i < v.NumField(); i++ {
-		key := t.Field(i).Tag.Get("toml")
-		val := v.Field(i).String()
-		if key != "" && val != "" {
-			bindsMap[key] = val
+	return updateConfig(configDir, func(c *configChange) {
+		want := make(map[string]bool)
+		v := reflect.ValueOf(binds)
+		t := v.Type()
+		for i := 0; i < v.NumField(); i++ {
+			key := t.Field(i).Tag.Get("toml")
+			val := v.Field(i).String()
+			if key != "" && val != "" {
+				want[key] = true
+				c.setString(val, "keybindings", key)
+			}
 		}
-	}
-	doc["keybindings"] = bindsMap
-
-	return writeConfigDoc(configDir, doc)
+		// The table is replaced as a whole: drop keys the struct no longer has.
+		if old, ok := c.doc["keybindings"].(map[string]any); ok {
+			for key := range old {
+				if !want[key] {
+					c.deleteKey("keybindings", key)
+				}
+			}
+		}
+	})
 }
 
 // SaveTheme updates only [ui].theme. It refuses malformed existing config and
 // writes a temporary file before replacement so a failed encode cannot truncate
 // a working configuration containing credentials or keybindings.
 func SaveTheme(configDir, name string) error {
-	if err := os.MkdirAll(configDir, 0o700); err != nil {
-		return err
-	}
-	path := filepath.Join(configDir, "config.toml")
-	doc, err := readConfigDoc(path)
-	if err != nil {
-		return err
-	}
-	ui, ok := doc["ui"].(map[string]any)
-	if !ok {
-		ui = make(map[string]any)
-	}
-	ui["theme"] = name
-	doc["ui"] = ui
-
-	return writeConfigDoc(configDir, doc)
-}
-
-// readConfigDoc loads config.toml as a generic document so a saver can change
-// one section and keep the rest. A missing file is an empty document. Any
-// other read error and any parse error is returned: carrying on with an empty
-// document would overwrite the user's settings with a single section.
-func readConfigDoc(path string) (map[string]any, error) {
-	doc := make(map[string]any)
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
-			return doc, nil
-		}
-		return nil, fmt.Errorf("read config.toml: %w", err)
-	}
-	if len(raw) == 0 {
-		return doc, nil
-	}
-	if _, err := toml.Decode(string(raw), &doc); err != nil {
-		return nil, fmt.Errorf("decode config.toml: %w", err)
-	}
-	return doc, nil
-}
-
-// writeConfigDoc replaces config.toml atomically and owner-only (it can hold
-// certificate passwords). See atomicfile.Write.
-func writeConfigDoc(configDir string, doc map[string]any) error {
-	return atomicfile.Write(
-		filepath.Join(configDir, "config.toml"), 0o600,
-		func(w io.Writer) error { return toml.NewEncoder(w).Encode(doc) },
-	)
+	return updateConfig(configDir, func(c *configChange) {
+		c.setString(name, "ui", "theme")
+	})
 }
 
 // SaveClientCertificates writes only the HTTP client_certificates setting,
 // preserving all other sections in config.toml.
 func SaveClientCertificates(configDir string, certs []ClientCertificate) error {
+	entries := make([][]field, 0, len(certs))
+	for _, cert := range certs {
+		entry := []field{{"host", cert.Host}, {"file", cert.File}}
+		for _, f := range []field{
+			{"type", cert.Type},
+			{"key_file", cert.KeyFile},
+			{"ca_file", cert.CAFile},
+			{"password", cert.Password},
+			{"password_env", cert.PasswordEnv},
+		} {
+			if f.value != "" {
+				entry = append(entry, f)
+			}
+		}
+		entries = append(entries, entry)
+	}
+	return updateConfig(configDir, func(c *configChange) {
+		c.setArrayTable(entries, "http", "client_certificates")
+	})
+}
+
+// configChange applies one saver's edits twice: to the decoded document, which
+// is what config.toml must decode to afterwards, and to the file's text, which
+// keeps the user's comments and formatting.
+type configChange struct {
+	doc  map[string]any
+	text *tomlEdit
+}
+
+// table returns the decoded table at path, creating it if needed.
+func (c *configChange) table(path []string) map[string]any {
+	t := c.doc
+	for _, k := range path {
+		next, ok := t[k].(map[string]any)
+		if !ok {
+			next = make(map[string]any)
+			t[k] = next
+		}
+		t = next
+	}
+	return t
+}
+
+func (c *configChange) setString(value string, path ...string) {
+	t := c.table(path[:len(path)-1])
+	key := path[len(path)-1]
+	if old, ok := t[key].(string); ok && old == value {
+		return // unchanged: keep the user's quoting style
+	}
+	t[key] = value
+	c.text.setString(path, value)
+}
+
+func (c *configChange) deleteKey(path ...string) {
+	t := c.table(path[:len(path)-1])
+	key := path[len(path)-1]
+	if _, ok := t[key]; !ok {
+		return
+	}
+	delete(t, key)
+	c.text.deleteKey(path)
+}
+
+// setArrayTable replaces the array of tables at path. An empty list removes it.
+func (c *configChange) setArrayTable(entries [][]field, path ...string) {
+	t := c.table(path[:len(path)-1])
+	key := path[len(path)-1]
+	if len(entries) == 0 {
+		delete(t, key)
+	} else {
+		list := make([]map[string]any, len(entries))
+		for i, entry := range entries {
+			list[i] = make(map[string]any, len(entry))
+			for _, f := range entry {
+				list[i][f.key] = f.value
+			}
+		}
+		t[key] = list
+	}
+	c.text.setArrayTable(path, entries)
+}
+
+// updateConfig reads config.toml, applies change and writes the result
+// atomically and owner-only (it can hold certificate passwords; see
+// atomicfile.Write). Only the changed keys are rewritten, so comments and
+// order are kept. If the edited text does not decode to the expected document
+// (a layout the line editor does not handle, such as a table defined by dotted
+// keys), the whole document is re-encoded instead.
+func updateConfig(configDir string, change func(*configChange)) error {
 	if err := os.MkdirAll(configDir, 0o700); err != nil {
 		return err
 	}
 	path := filepath.Join(configDir, "config.toml")
-	doc, err := readConfigDoc(path)
+	raw, doc, err := readConfigDoc(path)
 	if err != nil {
 		return err
 	}
-	httpDoc, ok := doc["http"].(map[string]any)
-	if !ok {
-		httpDoc = make(map[string]any)
+	c := &configChange{doc: doc, text: newTOMLEdit(raw)}
+	change(c)
+
+	edited := c.text.String()
+	if !decodesTo(edited, doc) {
+		var b strings.Builder
+		if err := toml.NewEncoder(&b).Encode(doc); err != nil {
+			return fmt.Errorf("encode config.toml: %w", err)
+		}
+		edited = b.String()
 	}
-	entries := make([]map[string]any, 0, len(certs))
-	for _, cert := range certs {
-		entry := map[string]any{"host": cert.Host, "file": cert.File}
-		if cert.Type != "" {
-			entry["type"] = cert.Type
-		}
-		if cert.KeyFile != "" {
-			entry["key_file"] = cert.KeyFile
-		}
-		if cert.CAFile != "" {
-			entry["ca_file"] = cert.CAFile
-		}
-		if cert.Password != "" {
-			entry["password"] = cert.Password
-		}
-		if cert.PasswordEnv != "" {
-			entry["password_env"] = cert.PasswordEnv
-		}
-		entries = append(entries, entry)
+	return atomicfile.Write(path, 0o600, func(w io.Writer) error {
+		_, err := io.WriteString(w, edited)
+		return err
+	})
+}
+
+// decodesTo reports whether text is valid TOML that decodes to the same values
+// as doc. Both sides go through one encode/decode so their Go types match.
+func decodesTo(text string, doc map[string]any) bool {
+	var b strings.Builder
+	if err := toml.NewEncoder(&b).Encode(doc); err != nil {
+		return false
 	}
-	httpDoc["client_certificates"] = entries
-	doc["http"] = httpDoc
-	return writeConfigDoc(configDir, doc)
+	want, got := map[string]any{}, map[string]any{}
+	if _, err := toml.Decode(b.String(), &want); err != nil {
+		return false
+	}
+	if _, err := toml.Decode(text, &got); err != nil {
+		return false
+	}
+	return reflect.DeepEqual(want, got)
+}
+
+// readConfigDoc loads config.toml as text and as a generic document so a saver
+// can change one key and keep the rest. A missing file is an empty document.
+// Any other read error and any parse error is returned: carrying on with an
+// empty document would overwrite the user's settings with a single section.
+func readConfigDoc(path string) (string, map[string]any, error) {
+	doc := make(map[string]any)
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return "", doc, nil
+		}
+		return "", nil, fmt.Errorf("read config.toml: %w", err)
+	}
+	if _, err := toml.Decode(string(raw), &doc); err != nil {
+		return "", nil, fmt.Errorf("decode config.toml: %w", err)
+	}
+	return string(raw), doc, nil
 }
 
 // Timeout returns the configured HTTP timeout as time.Duration.
