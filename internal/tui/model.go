@@ -266,9 +266,10 @@ type Model struct {
 	activeRequest *domain.Request // currently selected request (template)
 	urlInput      textinput.Model
 	method        string
-	activeField   requestField // which inline field is active in the request pane
-	preEditURL    string       // URL value saved when editing starts; restored on Esc
-	preEditBody   string       // Body value saved when editing starts; restored on Esc
+	activeField   requestField    // which inline field is active in the request pane
+	preEditURL    string          // URL value saved when editing starts; restored on Esc
+	preEditBody   string          // Body value saved when editing starts; restored on Esc
+	execProcess   execProcessFunc // nil = tea.ExecProcess; tests run the editor synchronously
 
 	// --- Response state ---
 	response            *exec.ExecuteResult

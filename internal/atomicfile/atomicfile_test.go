@@ -125,6 +125,8 @@ var allowed = map[string]string{
 	"internal/exec/executor.go:readResponse:os.CreateTemp": "scratch file for an oversized " +
 		"response body, not a user file",
 	"internal/exec/executor.go:readResponse:os.Chmod": "restricts that scratch file to 0600",
+	"internal/tui/external_editor.go:openBodyInExternalEditor:os.CreateTemp": "scratch file " +
+		"handed to the external body editor, removed when it exits",
 	"internal/updates/selfupdate.go:Update:os.Rename": "Windows only: parks the backup as " +
 		".old; moves a file, writes no content",
 	"internal/updates/selfupdate.go:replace:os.Rename": "installs the staged binary; the " +
