@@ -101,7 +101,7 @@ func TestCompletionUninstallCommandTakesShellArgument(t *testing.T) {
 	root := testCompletionRoot(t)
 	require.NoError(t, installShellCompletion(root, shellZsh, &bytes.Buffer{}))
 	root.AddCommand(NewCompletionCmd(root))
-	root.SetArgs([]string{"completion", "uninstall", "zsh"})
+	root.SetArgs([]string{completionCmdName, "uninstall", "zsh"})
 	var stderr bytes.Buffer
 	root.SetErr(&stderr)
 	require.NoError(t, root.Execute())
@@ -121,7 +121,7 @@ func TestCompletionUninstallCommandDetectsShell(t *testing.T) {
 
 	root := testCompletionRoot(t)
 	root.AddCommand(NewCompletionCmd(root))
-	root.SetArgs([]string{"completion", "uninstall"})
+	root.SetArgs([]string{completionCmdName, "uninstall"})
 	var stderr bytes.Buffer
 	root.SetErr(&stderr)
 	require.NoError(t, root.Execute())
@@ -131,7 +131,7 @@ func TestCompletionUninstallCommandDetectsShell(t *testing.T) {
 func TestCompletionUninstallCommandRejectsUnknownShell(t *testing.T) {
 	root := testCompletionRoot(t)
 	root.AddCommand(NewCompletionCmd(root))
-	root.SetArgs([]string{"completion", "uninstall", "tcsh"})
+	root.SetArgs([]string{completionCmdName, "uninstall", "tcsh"})
 	root.SetErr(&bytes.Buffer{})
 	root.SetOut(&bytes.Buffer{})
 	require.Error(t, root.Execute())
