@@ -377,20 +377,19 @@ func NewResolver(binds Keybindings) *Resolver {
 }
 
 // Resolve returns the action name for a given key in a given mode.
-// mode: 0=normal, 1=search, 2=help, 3=import, 4=body, 5=header, 6=env, 7=collection prompt, 8=auth, 9=certificate
-// pane: 0=sidebar, 1=request, 2=response (only used in normal mode)
-func (r *Resolver) Resolve(mode, pane int, msg tea.KeyMsg) (string, bool) {
+// pane is only consulted in ModeNormal.
+func (r *Resolver) Resolve(mode Mode, pane Pane, msg tea.KeyMsg) (string, bool) {
 	key := msg.String()
 
 	// Validate mode.
-	if mode < 0 || mode > 9 {
+	if mode < ModeNormal || mode > ModeCertificate {
 		return "", false
 	}
 
 	// Overlay modes (search, help, import, body, header) check mode-specific first,
 	// then global, so that e.g. tab in the header editor maps to switch_field rather
 	// than pane_next.
-	if mode != 0 {
+	if mode != ModeNormal {
 		if action, ok := r.lookupOverlay(mode, key); ok {
 			return action, true
 		}
@@ -406,15 +405,15 @@ func (r *Resolver) Resolve(mode, pane int, msg tea.KeyMsg) (string, bool) {
 	}
 
 	switch pane {
-	case 0:
+	case PaneSidebar:
 		if action, ok := r.sidebar[key]; ok {
 			return action, true
 		}
-	case 1:
+	case PaneRequest:
 		if action, ok := r.request[key]; ok {
 			return action, true
 		}
-	case 2:
+	case PaneResponse:
 		if action, ok := r.response[key]; ok {
 			return action, true
 		}
@@ -424,41 +423,41 @@ func (r *Resolver) Resolve(mode, pane int, msg tea.KeyMsg) (string, bool) {
 }
 
 // lookupOverlay returns the action for an overlay mode (search, help, import, body, header, env, collection, auth).
-func (r *Resolver) lookupOverlay(mode int, key string) (string, bool) {
+func (r *Resolver) lookupOverlay(mode Mode, key string) (string, bool) {
 	switch mode {
-	case 1:
+	case ModeSearch:
 		if action, ok := r.search[key]; ok {
 			return action, true
 		}
-	case 2:
+	case ModeHelp:
 		if action, ok := r.help[key]; ok {
 			return action, true
 		}
-	case 3:
+	case ModeImport:
 		if action, ok := r.import_[key]; ok {
 			return action, true
 		}
-	case 4:
+	case ModeBody:
 		if action, ok := r.body[key]; ok {
 			return action, true
 		}
-	case 5:
+	case ModeHeader:
 		if action, ok := r.header[key]; ok {
 			return action, true
 		}
-	case 6:
+	case ModeEnv:
 		if action, ok := r.env[key]; ok {
 			return action, true
 		}
-	case 7:
+	case ModeCollectionPrompt:
 		if action, ok := r.collection[key]; ok {
 			return action, true
 		}
-	case 8:
+	case ModeAuth:
 		if action, ok := r.auth[key]; ok {
 			return action, true
 		}
-	case 9:
+	case ModeCertificate:
 		if action, ok := r.certificate[key]; ok {
 			return action, true
 		}

@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/crazy-vedic/quark/internal/config"
+	"github.com/crazy-vedic/quark/internal/keybindings"
 )
 
 const (
@@ -44,7 +45,7 @@ func (m Model) closeClientCertModal() Model {
 }
 
 func (m Model) handleClientCertKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	action, ok := m.resolver.Resolve(9, 0, msg)
+	action, ok := m.resolver.Resolve(keybindings.ModeCertificate, keybindings.PaneSidebar, msg)
 	if !ok {
 		if m.clientCertEditing {
 			return m.updateClientCertInput(msg)

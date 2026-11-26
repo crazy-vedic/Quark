@@ -14,8 +14,8 @@ func TestResolver_Default_Global(t *testing.T) {
 
 	tests := []struct {
 		key    string
-		mode   int
-		pane   int
+		mode   Mode
+		pane   Pane
 		want   string
 		wantOk bool
 	}{

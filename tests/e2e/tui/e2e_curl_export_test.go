@@ -69,8 +69,8 @@ func assertCurlExportKeybinding(t *testing.T) {
 	binds := keybindings.DefaultKeybindings()
 	resolver := keybindings.NewResolver(binds)
 	action, ok := resolver.Resolve(
-		0,
-		1,
+		keybindings.ModeNormal,
+		keybindings.PaneRequest,
 		tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(binds.ExportCurl)},
 	)
 	require.True(t, ok)

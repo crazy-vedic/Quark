@@ -84,6 +84,7 @@ Exact keys are configurable — see keybindings section.
 | `actions.go` | Action name constants |
 | `entries.go` | Grouped listing for help/CLI |
 | `resolver.go` | Resolve key press → action |
+| `modes.go` | `Mode` / `Pane` constants passed to `Resolver.Resolve` (`ModeNormal`, `ModeSearch`, ..., `PaneSidebar`, ...) |
 | `hints.go` | Footer hint strings |
 
 User overrides stored in `config.toml` `[keybindings]` section. Managed via `quark keybindings` CLI commands (not in-TUI).
