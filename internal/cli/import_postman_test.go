@@ -104,6 +104,41 @@ func TestImportSingleFile_NestedFoldersDoesNotBlockStoreConnection(t *testing.T)
 	require.Equal(t, "List", requests[0].Name)
 }
 
+func TestImportSingleFile_KeepsNonStandardMethods(t *testing.T) {
+	st, err := store.New(filepath.Join(t.TempDir(), "quark.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, st.Close()) })
+
+	file := filepath.Join(t.TempDir(), "methods.postman_collection.json")
+	require.NoError(t, os.WriteFile(file, []byte(`{
+		"info": {"name": "Methods", "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"},
+		"item": [
+			{"name": "Trace", "request": {"method": "TRACE", "url": {"raw": "https://example.com"}}},
+			{"name": "Find", "request": {"method": "propfind", "url": {"raw": "https://example.com"}}}
+		]
+	}`), 0600))
+
+	cmd := &cobra.Command{}
+	globalAction := duplicateAction("")
+	stats, err := importSingleFile(
+		context.Background(), cmd, st, file, "", "duplicate", &globalAction,
+		postman.NewImporter(), NewDebugLogger(nil),
+	)
+	require.NoError(t, err)
+	require.Equal(t, 2, stats.imported)
+
+	cols, err := st.ListCollections(context.Background())
+	require.NoError(t, err)
+	require.Len(t, cols, 1)
+	requests, err := st.ListRequests(context.Background(), cols[0].ID)
+	require.NoError(t, err)
+	methods := map[string]string{}
+	for _, r := range requests {
+		methods[r.Name] = r.Method
+	}
+	assert.Equal(t, map[string]string{"Trace": "TRACE", "Find": "PROPFIND"}, methods)
+}
+
 func TestImportParsedEnvironmentsForCollection_PreservesNamedEnvironmentsAndLocalData(
 	t *testing.T,
 ) {
