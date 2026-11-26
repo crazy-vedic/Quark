@@ -155,6 +155,7 @@ func runWithArgs(args []string) error {
 		executor := exec.New(httpTransport,
 			exec.WithTimeout(cfg.Timeout()),
 			exec.WithRedirects(cfg.HTTP.FollowRedirects, cfg.HTTP.MaxRedirects),
+			exec.WithMaxDownload(cfg.MaxDownload()),
 			exec.WithExecutionWriter(st),
 		)
 		importer := curl.NewImporter()

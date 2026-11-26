@@ -13,6 +13,7 @@ var (
 	ErrTimeout          = errors.New("request timed out")
 	ErrRequestCancelled = errors.New("request cancelled")
 	ErrInvalidURL       = errors.New("invalid URL")
+	ErrDownloadTooLarge = errors.New("response body exceeds http.max_download")
 )
 
 // ExecuteResult holds the outcome of a single HTTP dispatch.

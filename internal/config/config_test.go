@@ -50,7 +50,10 @@ func TestLoad_MaxDownload(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
 			content := "[http]\nmax_download = " + tc.value + "\n"
-			require.NoError(t, os.WriteFile(filepath.Join(dir, "config.toml"), []byte(content), 0o600))
+			require.NoError(
+				t,
+				os.WriteFile(filepath.Join(dir, "config.toml"), []byte(content), 0o600),
+			)
 			cfg, err := config.Load(dir)
 			require.NoError(t, err)
 			assert.Equal(t, tc.want, cfg.MaxDownload())
@@ -63,7 +66,10 @@ func TestLoad_MaxDownloadInvalid(t *testing.T) {
 		t.Run(value, func(t *testing.T) {
 			dir := t.TempDir()
 			content := "[http]\nmax_download = " + value + "\n"
-			require.NoError(t, os.WriteFile(filepath.Join(dir, "config.toml"), []byte(content), 0o600))
+			require.NoError(
+				t,
+				os.WriteFile(filepath.Join(dir, "config.toml"), []byte(content), 0o600),
+			)
 			_, err := config.Load(dir)
 			require.Error(t, err)
 		})

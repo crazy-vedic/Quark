@@ -45,6 +45,7 @@ Loaded with merge semantics: only explicitly-set TOML fields override defaults (
 | `timeout` | `30s` | Request timeout (Go duration syntax) |
 | `follow_redirects` | `true` | Follow HTTP redirects |
 | `max_redirects` | `10` | Max redirect hops |
+| `max_download` | `"1GB"` | Max response body size; bytes or `KB`/`MB`/`GB` (1024 multiples, `config.ByteSize`). `0` = unlimited |
 
 #### `[logging]`
 

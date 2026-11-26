@@ -26,6 +26,7 @@ type Executor struct {
 	client            *http.Client // constructed once in New(); transport is shared
 	timeout           time.Duration
 	maxResponseSize   int
+	maxDownload       int64
 	logger            *slog.Logger
 	preRequestHooks   []PreRequestHook
 	postResponseHooks []PostResponseHook
@@ -51,6 +52,7 @@ func New(transport http.RoundTripper, opts ...Option) *Executor {
 		client:            client,
 		timeout:           o.timeout,
 		maxResponseSize:   o.maxResponseSize,
+		maxDownload:       o.maxDownload,
 		logger:            o.logger,
 		preRequestHooks:   o.preRequestHooks,
 		postResponseHooks: o.postResponseHooks,
@@ -342,40 +344,81 @@ func (e *Executor) readResponse(
 	}
 
 	result.Size = int64(len(body))
+	if e.maxDownload > 0 && result.Size > e.maxDownload {
+		return nil, e.downloadTooLarge()
+	}
 
 	if int(lr.N) == 0 {
 		// Body exceeded threshold — write to temp file (lr.N == 0 because we
 		// set it to maxResponseSize+1 and it was fully consumed).
-		f, err := os.CreateTemp("", "quark-response-*.tmp")
+		path, size, err := e.streamToTempFile(body, resp.Body)
 		if err != nil {
-			return nil, fmt.Errorf("exec: create temp file: %w", err)
+			return nil, err
 		}
-		// 0600: response bodies may contain sensitive data (tokens, PII).
-		// Restrict immediately after creation before writing any content.
-		if err := os.Chmod(f.Name(), 0o600); err != nil {
-			_ = f.Close()
-			_ = os.Remove(f.Name())
-			return nil, fmt.Errorf("exec: chmod temp file: %w", err)
-		}
-		defer f.Close()
-
-		// Write what we already read + remainder.
-		n1, err := f.Write(body)
-		if err != nil {
-			return nil, fmt.Errorf("exec: write temp: %w", err)
-		}
-		n2, err := io.Copy(f, resp.Body)
-		if err != nil {
-			return nil, fmt.Errorf("exec: copy temp: %w", err)
-		}
-		result.Size = int64(n1) + n2
-		result.TempPath = f.Name()
+		result.Size = size
+		result.TempPath = path
 		result.Body = nil
 	} else {
 		result.Body = body
 	}
 
 	return result, nil
+}
+
+// streamToTempFile writes head followed by the rest of rest into a new temp
+// file and returns its path and total size. At most e.maxDownload bytes are
+// accepted in total; on that or any other failure the partial file is
+// removed so an oversized or broken download does not stay on disk.
+func (e *Executor) streamToTempFile(
+	head []byte,
+	rest io.Reader,
+) (path string, size int64, err error) {
+	f, err := os.CreateTemp("", "quark-response-*.tmp")
+	if err != nil {
+		return "", 0, fmt.Errorf("exec: create temp file: %w", err)
+	}
+	name := f.Name()
+	defer func() {
+		closeErr := f.Close()
+		if err == nil && closeErr != nil {
+			err = fmt.Errorf("exec: close temp file: %w", closeErr)
+		}
+		if err != nil {
+			_ = os.Remove(name)
+			path, size = "", 0
+		}
+	}()
+	// 0600: response bodies may contain sensitive data (tokens, PII).
+	// Restrict immediately after creation before writing any content.
+	if err := os.Chmod(name, 0o600); err != nil {
+		return "", 0, fmt.Errorf("exec: chmod temp file: %w", err)
+	}
+
+	// Write what we already read + remainder.
+	n1, err := f.Write(head)
+	if err != nil {
+		return "", 0, fmt.Errorf("exec: write temp: %w", err)
+	}
+	src := rest
+	if e.maxDownload > 0 {
+		// Read one byte past the limit so an exact-size body is accepted
+		// and a larger one is detected without reading it all.
+		src = io.LimitReader(rest, e.maxDownload-int64(n1)+1)
+	}
+	n2, err := io.Copy(f, src)
+	if err != nil {
+		return "", 0, fmt.Errorf("exec: copy temp: %w", err)
+	}
+	size = int64(n1) + n2
+	if e.maxDownload > 0 && size > e.maxDownload {
+		return "", 0, e.downloadTooLarge()
+	}
+	return name, size, nil
+}
+
+func (e *Executor) downloadTooLarge() error {
+	return fmt.Errorf("exec: %w (limit %d bytes); raise or disable it in config.toml",
+		ErrDownloadTooLarge, e.maxDownload)
 }
 
 // classifyError maps network/context errors to Quark sentinel errors.
