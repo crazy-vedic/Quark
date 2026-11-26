@@ -363,7 +363,7 @@ Supported duplicate actions:
 ### 3. What gets migrated
 
 - Collections and requests
-- HTTP method, URL, headers, and body
+- HTTP method (any valid method, including `TRACE`, `PROPFIND` or custom verbs), URL, headers, and body
 - Common auth styles that can be mapped into Quark requests
 - Environment files found in a bulk export directory. Postman environments are
   preserved by name as selectable environments on each imported root collection;

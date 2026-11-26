@@ -49,9 +49,14 @@ func TestTransactionSaveRequest_AcceptsCustomAndRejectsInvalidMethod(t *testing.
 	require.NoError(t, err)
 	require.NoError(t, tx.SaveRequest(ctx,
 		&domain.Request{CollectionID: "col", Name: "t", Method: "TRACE", URL: "http://x"}))
-	assert.ErrorIs(t,
-		tx.SaveRequest(ctx, &domain.Request{CollectionID: "col", Name: "b", Method: "B A D", URL: "http://x"}),
-		domain.ErrInvalidMethod)
+	assert.ErrorIs(
+		t,
+		tx.SaveRequest(
+			ctx,
+			&domain.Request{CollectionID: "col", Name: "b", Method: "B A D", URL: "http://x"},
+		),
+		domain.ErrInvalidMethod,
+	)
 	require.NoError(t, tx.Commit())
 }
 
@@ -100,8 +105,10 @@ INSERT INTO requests (id, collection_id, name, method, url, headers, body, sort_
 VALUES ('req-1', 'col-1', 'List', 'POST', 'http://x', '{"A":"b"}', 'payload', 3, 0, 'bearer', '{"token":"t"}');
 INSERT INTO scheduled_runs (id, request_id, run_at) VALUES ('run-1', 'req-1', '2030-01-01 00:00:00');`)
 	require.NoError(t, err)
-	_, err = db.ExecContext(ctx,
-		`INSERT INTO requests (id, collection_id, name, method, url) VALUES ('r2', 'col-1', 'T', 'TRACE', 'http://x')`)
+	_, err = db.ExecContext(
+		ctx,
+		`INSERT INTO requests (id, collection_id, name, method, url) VALUES ('r2', 'col-1', 'T', 'TRACE', 'http://x')`,
+	)
 	require.Error(t, err, "legacy schema must reject TRACE")
 	require.NoError(t, db.Close())
 
@@ -130,7 +137,8 @@ INSERT INTO scheduled_runs (id, request_id, run_at) VALUES ('run-1', 'req-1', '2
 
 	var idx int
 	require.NoError(t, s.DB().QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='idx_requests_collection'`).Scan(&idx))
+		`SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='idx_requests_collection'`).
+		Scan(&idx))
 	assert.Equal(t, 1, idx)
 	dup := &domain.Request{CollectionID: "col-1", Name: "List", Method: "GET", URL: "http://x"}
 	assert.ErrorIs(t, s.SaveRequest(ctx, dup), store.ErrDuplicate)
@@ -140,10 +148,16 @@ INSERT INTO scheduled_runs (id, request_id, run_at) VALUES ('run-1', 'req-1', '2
 	assert.Equal(t, 1, fkOn)
 
 	var runs int
-	require.NoError(t, s.DB().QueryRowContext(ctx, `SELECT COUNT(*) FROM scheduled_runs`).Scan(&runs))
+	require.NoError(
+		t,
+		s.DB().QueryRowContext(ctx, `SELECT COUNT(*) FROM scheduled_runs`).Scan(&runs),
+	)
 	assert.Equal(t, 1, runs)
 	require.NoError(t, s.DeleteRequest(ctx, "req-1"))
-	require.NoError(t, s.DB().QueryRowContext(ctx, `SELECT COUNT(*) FROM scheduled_runs`).Scan(&runs))
+	require.NoError(
+		t,
+		s.DB().QueryRowContext(ctx, `SELECT COUNT(*) FROM scheduled_runs`).Scan(&runs),
+	)
 	assert.Equal(t, 0, runs, "scheduled_runs must still cascade from requests")
 
 	// Deleting the collection still cascades to its requests.

@@ -9,7 +9,17 @@ import (
 )
 
 func TestValidMethod(t *testing.T) {
-	valid := []string{"GET", "POST", "TRACE", "PROPFIND", "QUERY", "MKCOL", "X-CUSTOM", "M_1", "patch"}
+	valid := []string{
+		"GET",
+		"POST",
+		"TRACE",
+		"PROPFIND",
+		"QUERY",
+		"MKCOL",
+		"X-CUSTOM",
+		"M_1",
+		"patch",
+	}
 	for _, m := range valid {
 		assert.NoError(t, domain.ValidMethod(m), m)
 	}

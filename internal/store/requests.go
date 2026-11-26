@@ -91,6 +91,9 @@ func (s *Store) SaveRequest(ctx context.Context, req *domain.Request) error {
 	if req.CollectionID == "" {
 		return fmt.Errorf("store: save request: %w", ErrCollectionRequired)
 	}
+	if err := domain.ValidMethod(req.Method); err != nil {
+		return fmt.Errorf("store: save request %q: %w", req.Name, err)
+	}
 
 	// Verify collection exists
 	var exists int
