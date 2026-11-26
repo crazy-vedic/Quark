@@ -902,47 +902,10 @@ func (m Model) viewResponsePane(w, h int) string {
 	if bodyLines < 0 {
 		bodyLines = 0
 	}
-
-	// Tab content is formatted lazily by the scrollable component.
-	var formatBody func() string
-	if currentExec != nil {
-		switch m.responseTab {
-		case bodyTab:
-			formatBody = func() string { return m.viewExecutionBody(currentExec, timingSpan) }
-		case headersTab:
-			formatBody = func() string { return m.viewExecutionHeaders(currentExec) }
-		case rawTab:
-			formatBody = func() string {
-				if currentExec.ResponseBody == "" {
-					return m.styles.mutedStyle.Render("  (empty body)")
-				}
-				return stripANSI(currentExec.ResponseBody)
-			}
-		}
-	} else if r := m.response; r != nil {
-		switch m.responseTab {
-		case bodyTab:
-			formatBody = func() string { return m.viewResponseBody(timingSpan) }
-		case headersTab:
-			formatBody = m.viewResponseHeaders
-		case rawTab:
-			formatBody = func() string {
-				if r.Body != nil {
-					return stripANSI(string(r.Body))
-				}
-				if r.TempPath != "" {
-					return m.styles.mutedStyle.Render(fmt.Sprintf("[streamed → %s]", r.TempPath))
-				}
-				return ""
-			}
-		}
-	}
-	// Body/Raw content is owned by a scrollable text component. Keep the
-	// response history popup as a separate column, but let wheel and arrows
-	// move through the body instead of changing history.
-	m.responseText.SetDebugLog(m.debugLog, "response")
-	m.responseText.SetTiming(m.timing)
-	m.responseText.SetFormattedContent(m.responseTextSourceKey(), formatBody, timingSpan)
+	// Body/Raw content is owned by a scrollable text component, which formats it
+	// lazily. Keep the response history popup as a separate column, but let
+	// wheel and arrows move through the body instead of changing history.
+	m.setResponseTextContent(timingSpan)
 
 	popup := m.viewExecutionHistoryPopup(w, bodyLines)
 	if popup != "" && w >= 64 {
@@ -1046,7 +1009,7 @@ func (m Model) formatResponseTextContent(parent ...*timing.Span) string {
 				return stripANSI(string(r.Body))
 			}
 			if r.TempPath != "" {
-				return m.styles.mutedStyle.Render(fmt.Sprintf("[streamed â†’ %s]", r.TempPath))
+				return m.styles.mutedStyle.Render(fmt.Sprintf("[streamed → %s]", r.TempPath))
 			}
 		}
 	}

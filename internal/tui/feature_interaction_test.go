@@ -10,6 +10,7 @@ import (
 
 	"github.com/crazy-vedic/quark/internal/config"
 	"github.com/crazy-vedic/quark/internal/domain"
+	"github.com/crazy-vedic/quark/internal/exec"
 )
 
 func TestRequestURLTabAcceptsLoadedURLSuggestion(t *testing.T) {
@@ -24,6 +25,35 @@ func TestRequestURLTabAcceptsLoadedURLSuggestion(t *testing.T) {
 	m = requireModel(t, updated)
 
 	require.Equal(t, "https://api.example.com/users", m.urlInput.Value())
+}
+
+// The Raw tab label for a streamed response is user-visible text. Whichever
+// path formats it first (render, scroll keys or the full-screen viewer), it
+// must contain a real arrow, not the mis-encoded bytes of one.
+func TestRawTabStreamedLabelIsValidText(t *testing.T) {
+	newStreamed := func() Model {
+		m := New(Deps{Config: config.Default(t.TempDir())})
+		m.response = &exec.ExecuteResult{StatusCode: 200, TempPath: "/tmp/quark-response-1.tmp"}
+		m.responseTab = rawTab
+		return m
+	}
+	const want = "[streamed → /tmp/quark-response-1.tmp]"
+
+	m := newStreamed()
+	got := stripANSI(m.formatResponseTextContent())
+	require.Contains(t, got, want)
+	require.NotContains(t, got, "â")
+
+	m = newStreamed()
+	require.Contains(t, stripANSI(m.viewResponsePane(100, 20)), want)
+
+	// Format through the update-path helper before any render: the render
+	// must not show a different label.
+	m = newStreamed()
+	m.setResponseTextContent()
+	pane := stripANSI(m.viewResponsePane(100, 20))
+	require.Contains(t, pane, want)
+	require.NotContains(t, pane, "â")
 }
 
 func TestHeaderEditTabCompletesNameAndValue(t *testing.T) {
