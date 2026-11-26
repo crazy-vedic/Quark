@@ -878,7 +878,7 @@ func (m Model) viewResponsePane(w, h int) string {
 		sb.WriteString(m.viewExecutionStatus(currentExec))
 		sb.WriteString("\n")
 	} else {
-		sb.WriteString(m.viewLiveResponseStatus())
+		sb.WriteString(m.viewLiveResponseStatus(max(1, w-2)))
 		sb.WriteString("\n")
 	}
 
@@ -1148,7 +1148,10 @@ func (m Model) viewingHistoricalExecution() bool {
 	return len(m.executions) > 1 && m.execCursor > 0
 }
 
-func (m Model) viewLiveResponseStatus() string {
+// viewLiveResponseStatus renders the status line for the live response. The
+// timing breakdown (DNS, connect, TLS, TTFB, download) is appended when it
+// fits in maxWidth, so the line never wraps and steals a body row.
+func (m Model) viewLiveResponseStatus(maxWidth int) string {
 	r := m.response
 	statusColor := m.styles.goodStyle
 	if r.StatusCode >= 400 {
@@ -1156,8 +1159,15 @@ func (m Model) viewLiveResponseStatus() string {
 	} else if r.StatusCode >= 300 {
 		statusColor = m.styles.warnStyle
 	}
+	summary := fmt.Sprintf("%v  %d bytes", r.Duration.Round(time.Millisecond), r.Size)
+	if phases := r.Timing.Compact(); phases != "" {
+		withPhases := summary + "  (" + phases + ")"
+		if lipgloss.Width(fmt.Sprintf("  %s  %s", r.Status, withPhases)) <= maxWidth {
+			summary = withPhases
+		}
+	}
 	return statusColor.Render(fmt.Sprintf("  %s", r.Status)) +
-		"  " + m.styles.mutedStyle.Render(fmt.Sprintf("%v  %d bytes", r.Duration.Round(1_000_000), r.Size))
+		"  " + m.styles.mutedStyle.Render(summary)
 }
 
 func (m Model) viewExecutionStatus(ex *domain.Execution) string {

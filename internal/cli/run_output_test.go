@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
@@ -58,8 +59,10 @@ func TestPrintRunResultVerboseIncludesRequestAndResponseDetails(t *testing.T) {
 	result := &exec.ExecuteResult{
 		Status: "200 OK", Size: 12, Body: []byte(`{"ok":true}`),
 		Headers: map[string][]string{"Z-Last": {"z"}, "A-First": {"a"}},
+		Timing:  exec.Timing{DNS: 2 * time.Millisecond, TTFB: 40 * time.Millisecond},
 	}
 	require.NoError(t, printRunResult(cmd, req, result, true))
+	require.Contains(t, stderr.String(), "Phases: dns 2.0ms  ttfb 40ms\n")
 	require.Contains(t, stderr.String(), "Status: 200 OK")
 	require.NotContains(
 		t,
@@ -76,6 +79,19 @@ func TestPrintRunResultVerboseIncludesRequestAndResponseDetails(t *testing.T) {
 		strings.Index(stderr.String(), "< A-First:"),
 		strings.Index(stderr.String(), "< Z-Last:"),
 	)
+}
+
+func TestPrintRunResultOmitsPhasesWithoutVerbose(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	cmd := &cobra.Command{}
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
+	result := &exec.ExecuteResult{
+		Status: "200 OK",
+		Timing: exec.Timing{TTFB: 40 * time.Millisecond},
+	}
+	require.NoError(t, printRunResult(cmd, &domain.Request{}, result, false))
+	require.NotContains(t, stderr.String(), "Phases:")
 }
 
 func TestPrintRunResultStreamsBodyAndCleansTemporaryFile(t *testing.T) {

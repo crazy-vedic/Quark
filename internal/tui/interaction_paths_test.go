@@ -573,7 +573,7 @@ func TestViewPaneStates(t *testing.T) {
 		Warnings: []string{"review this import"},
 	}
 	require.NotEmpty(t, m.viewImportModal())
-	require.NotEmpty(t, m.viewLiveResponseStatus())
+	require.NotEmpty(t, m.viewLiveResponseStatus(80))
 	m.response = nil
 	m.executions = []*domain.Execution{
 		{

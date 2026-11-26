@@ -125,7 +125,8 @@ func (e *Executor) Execute(ctx context.Context, req *domain.Request) (*ExecuteRe
 		timeoutCtx, cancel = context.WithTimeout(ctx, e.timeout)
 	}
 	defer cancel()
-	httpReq = httpReq.WithContext(timeoutCtx)
+	trace := &timingRecorder{}
+	httpReq = httpReq.WithContext(trace.withTrace(timeoutCtx))
 
 	// 3. HTTP dispatch.
 	start := time.Now()
@@ -147,6 +148,7 @@ func (e *Executor) Execute(ctx context.Context, req *domain.Request) (*ExecuteRe
 	// client.Do returns when the headers arrive; the body is read above.
 	// Report the whole exchange, not just the time to first byte.
 	result.Duration = time.Since(start)
+	result.Timing = trace.finish()
 
 	// 4. Post-response hook chain. Errors are warnings — next hook still fires.
 	for _, h := range e.postResponseHooks {
