@@ -12,6 +12,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/muesli/termenv"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -1014,4 +1015,27 @@ func TestView_EnvModalWidth_NeverExceedsTerminal(t *testing.T) {
 	if lipgloss.Width(view) > 40 {
 		t.Fatalf("env modal frame width %d > terminal 40", lipgloss.Width(view))
 	}
+}
+
+func TestView_LiveResponseStatusShowsTimingPhasesWhenTheyFit(t *testing.T) {
+	result := &exec.ExecuteResult{
+		StatusCode: 200,
+		Status:     "200 OK",
+		Body:       []byte(`{"ok":true}`),
+		Duration:   55 * time.Millisecond,
+		Timing: exec.Timing{
+			DNS: 2 * time.Millisecond, Connect: time.Millisecond,
+			TLS: 12 * time.Millisecond, TTFB: 40 * time.Millisecond,
+		},
+	}
+	wide := callUpdate(t, newTestModel(), tea.WindowSizeMsg{Width: 220, Height: 40})
+	wide = callUpdate(t, wide, tui.HttpResponseMsg(result))
+	view := ansi.Strip(wide.View())
+	assert.Contains(t, view, "(dns 2.0ms  connect 1.0ms  tls 12ms  ttfb 40ms)")
+
+	narrow := callUpdate(t, newTestModel(), tea.WindowSizeMsg{Width: 80, Height: 30})
+	narrow = callUpdate(t, narrow, tui.HttpResponseMsg(result))
+	view = ansi.Strip(narrow.View())
+	assert.Contains(t, view, "200 OK")
+	assert.NotContains(t, view, "ttfb", "phases are dropped rather than wrapping the status line")
 }

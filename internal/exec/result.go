@@ -31,6 +31,9 @@ type ExecuteResult struct {
 	TempPath string // non-empty if body > streaming threshold; call Cleanup() when done
 	Duration time.Duration
 	Size     int64
+	// Timing breaks Duration into DNS, connect, TLS, TTFB and download
+	// phases. Zero when the transport fires no httptrace hooks.
+	Timing Timing
 }
 
 // IsStreamed reports whether the response body was written to a temp file.

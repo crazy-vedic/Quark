@@ -42,6 +42,9 @@ func printRunResult(
 	// The status block goes to stderr so stdout carries only the response body.
 	fmt.Fprintf(cmd.ErrOrStderr(), "Status: %s\nSize:   %d bytes\nTime:   %v\n",
 		result.Status, result.Size, result.Duration.Round(time.Millisecond))
+	if verbose && !result.Timing.IsZero() {
+		fmt.Fprintf(cmd.ErrOrStderr(), "Phases: %s\n", result.Timing.Compact())
+	}
 	if result.Size == 0 {
 		return nil
 	}
