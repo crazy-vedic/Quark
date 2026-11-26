@@ -912,12 +912,7 @@ func (m Model) viewResponsePane(w, h int) string {
 		case headersTab:
 			formatBody = func() string { return m.viewExecutionHeaders(currentExec) }
 		case rawTab:
-			formatBody = func() string {
-				if currentExec.ResponseBody == "" {
-					return m.styles.mutedStyle.Render("  (empty body)")
-				}
-				return stripANSI(currentExec.ResponseBody)
-			}
+			formatBody = func() string { return m.viewExecutionRawBody(currentExec) }
 		}
 	} else if r := m.response; r != nil {
 		switch m.responseTab {
@@ -1030,10 +1025,7 @@ func (m Model) formatResponseTextContent(parent ...*timing.Span) string {
 		case headersTab:
 			return m.viewExecutionHeaders(currentExec)
 		case rawTab:
-			if currentExec.ResponseBody == "" {
-				return m.styles.mutedStyle.Render("  (empty body)")
-			}
-			return stripANSI(currentExec.ResponseBody)
+			return m.viewExecutionRawBody(currentExec)
 		}
 	} else if r := m.response; r != nil {
 		switch m.responseTab {
@@ -1172,10 +1164,12 @@ func (m Model) viewExecutionStatus(ex *domain.Execution) string {
 	case ex.StatusCode >= 300:
 		responseStatusStyle = m.styles.warnStyle
 	}
+	sizeText := fmt.Sprintf("%dms  %d bytes", ex.ResponseTimeMs, ex.BodySize())
+	if ex.ResponseBodyTruncated {
+		sizeText += " (stored truncated)"
+	}
 	return responseStatusStyle.Render("  "+statusLabel) +
-		"  " + m.styles.mutedStyle.Render(
-		fmt.Sprintf("%dms  %d bytes", ex.ResponseTimeMs, len(ex.ResponseBody)),
-	)
+		"  " + m.styles.mutedStyle.Render(sizeText)
 }
 
 // isBinaryBody reports whether body bytes look like binary/non-textual content.
@@ -1258,6 +1252,38 @@ func (m Model) viewExecutionBody(ex *domain.Execution, parent ...*timing.Span) s
 		logDebugTiming(m.debugLog, "view_execution_body", started,
 			fmt.Sprintf("bytes=%d", bodyBytes))
 	}()
+	if ex.BodyOmitted {
+		return m.styles.mutedStyle.Render("  Loading body…")
+	}
+	if ex.ResponseBodyTruncated {
+		return m.viewTruncatedExecutionNote(ex) + "\n\n" + m.viewStoredExecutionBody(ex)
+	}
+	return m.viewStoredExecutionBody(ex)
+}
+
+// viewTruncatedExecutionNote explains that history kept only a body prefix.
+func (m Model) viewTruncatedExecutionNote(ex *domain.Execution) string {
+	return m.styles.warnStyle.Render(fmt.Sprintf(
+		"  [history stored the first %d of %d bytes]",
+		len(ex.ResponseBody), ex.BodySize(),
+	))
+}
+
+// viewExecutionRawBody renders the stored body without formatting.
+func (m Model) viewExecutionRawBody(ex *domain.Execution) string {
+	if ex.BodyOmitted {
+		return m.styles.mutedStyle.Render("  Loading body…")
+	}
+	if ex.ResponseBody == "" {
+		return m.styles.mutedStyle.Render("  (empty body)")
+	}
+	if ex.ResponseBodyTruncated {
+		return m.viewTruncatedExecutionNote(ex) + "\n\n" + stripANSI(ex.ResponseBody)
+	}
+	return stripANSI(ex.ResponseBody)
+}
+
+func (m Model) viewStoredExecutionBody(ex *domain.Execution) string {
 	if ex.Error != "" {
 		if ex.ResponseBody == "" {
 			return m.styles.errorStyle.Render("  " + ex.Error)

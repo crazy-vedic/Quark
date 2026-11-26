@@ -74,9 +74,11 @@ func TestCLI_Schedule_AddRunDuePersistsHistory(t *testing.T) {
 	assert.Equal(t, req.ID, runs[0].RequestID)
 	assert.Equal(t, domain.ScheduledRunCompleted, runs[0].Status)
 
-	executions, err := st.ListExecutionsByRequest(ctx, req.ID)
+	executions, err := st.ListExecutionsByRequest(ctx, req.ID, 0)
 	require.NoError(t, err)
 	require.Len(t, executions, 1)
 	assert.Equal(t, 202, executions[0].StatusCode)
-	assert.Contains(t, executions[0].ResponseBody, `"queued":true`)
+	full, err := st.GetExecution(ctx, executions[0].ID)
+	require.NoError(t, err)
+	assert.Contains(t, full.ResponseBody, `"queued":true`)
 }

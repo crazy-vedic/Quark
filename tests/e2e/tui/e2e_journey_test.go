@@ -551,7 +551,7 @@ func TestE2E_ResponsePane_HistoryNavigationAcrossExecutions(t *testing.T) {
 	msg = runCmd(t, cmd)
 	require.NotNil(t, msg)
 	m = callUpdate(t, m, msg)
-	executions, err := st.ListExecutionsByRequest(context.Background(), req.ID)
+	executions, err := st.ListExecutionsByRequest(context.Background(), req.ID, 0)
 	require.NoError(t, err)
 	require.Len(t, executions, 1)
 	require.Equal(t, 201, executions[0].StatusCode)
@@ -569,7 +569,7 @@ func TestE2E_ResponsePane_HistoryNavigationAcrossExecutions(t *testing.T) {
 	msg = runCmd(t, cmd)
 	require.NotNil(t, msg)
 	m = callUpdate(t, m, msg)
-	executions, err = st.ListExecutionsByRequest(context.Background(), req.ID)
+	executions, err = st.ListExecutionsByRequest(context.Background(), req.ID, 0)
 	require.NoError(t, err)
 	require.Len(t, executions, 2)
 	require.Equal(t, 503, executions[0].StatusCode)
@@ -587,8 +587,13 @@ func TestE2E_ResponsePane_HistoryNavigationAcrossExecutions(t *testing.T) {
 	assertViewNotContains(t, m, "Execution History")
 
 	// Move down to an older execution in the history list.
-	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyShiftDown})
+	m, cmd = callUpdateWithCmd(t, m, tea.KeyMsg{Type: tea.KeyShiftDown})
 	assert.Equal(t, 1, m.ExecCursor())
+	assertViewContains(t, m, "Loading body")
+	// History lists entries without bodies; the older body loads on demand.
+	msg = runCmd(t, cmd)
+	require.NotNil(t, msg)
+	m = callUpdate(t, m, msg)
 	assertViewContains(t, m, "Run 2/2")
 	assertViewContains(t, m, "201")
 	assertViewContains(t, m, "older")

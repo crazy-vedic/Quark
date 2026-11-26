@@ -202,6 +202,15 @@ ON collections(COALESCE(parent_id, ''), name);
 		version: 9,
 		name:    "canonical_global_environment",
 	},
+	{
+		version: 10,
+		name:    "execution_body_size",
+		upSQL: `
+ALTER TABLE executions ADD COLUMN response_size INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE executions ADD COLUMN response_body_truncated INTEGER NOT NULL DEFAULT 0;
+UPDATE executions SET response_size = length(CAST(response_body AS BLOB));
+`,
+	},
 }
 
 // migrate runs all pending migrations in order.

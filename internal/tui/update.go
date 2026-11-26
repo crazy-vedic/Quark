@@ -388,6 +388,18 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.execCursor = 0
 		return m, nil
 
+	case executionBodyLoadedMsg:
+		if m.activeRequest == nil || msg.execution == nil || msg.requestID != m.activeRequest.ID {
+			return m, nil
+		}
+		for i, ex := range m.executions {
+			if ex.ID == msg.execution.ID {
+				m.executions[i] = msg.execution
+				break
+			}
+		}
+		return m, nil
+
 	case tea.KeyMsg:
 		// A terminal paste in normal mode has no field to receive it. Its text
 		// must not be read as shortcuts such as q, so it is dropped here.
@@ -930,10 +942,12 @@ func (m Model) handleResponseAction(action string, parent ...*timing.Span) (tea.
 	case "history_next":
 		if m.execCursor < len(m.executions)-1 {
 			m.execCursor++
+			return m, m.loadSelectedExecutionBodyCmd()
 		}
 	case "history_prev":
 		if m.execCursor > 0 {
 			m.execCursor--
+			return m, m.loadSelectedExecutionBodyCmd()
 		}
 	case "retry_request":
 		if m.loading || m.executor == nil {

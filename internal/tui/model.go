@@ -152,6 +152,12 @@ type executionHistoryLoadedMsg struct {
 	executions []*domain.Execution
 }
 
+// executionBodyLoadedMsg carries one history entry loaded with its body.
+type executionBodyLoadedMsg struct {
+	requestID string
+	execution *domain.Execution
+}
+
 // collectionSavedMsg is sent when a collection is saved successfully.
 type collectionSavedMsg struct{}
 
@@ -760,6 +766,9 @@ func loadLastRequestCmd(ctx context.Context, reader store.RequestReader, request
 	}
 }
 
+// historyListLimit caps how many history entries the response pane lists.
+const historyListLimit = 200
+
 func loadExecutionHistoryCmd(
 	ctx context.Context,
 	reader store.ExecutionReader,
@@ -769,12 +778,46 @@ func loadExecutionHistoryCmd(
 		if reader == nil || requestID == "" {
 			return executionHistoryLoadedMsg{requestID: requestID}
 		}
-		executions, err := reader.ListExecutionsByRequest(ctx, requestID)
+		executions, err := reader.ListExecutionsByRequest(ctx, requestID, historyListLimit)
 		if err != nil {
 			return errLoadMsg{err: fmt.Errorf("load executions: %w", err)}
 		}
+		// The list omits bodies. Load the newest entry's body now, since the
+		// response pane shows it first.
+		if len(executions) > 0 && executions[0].BodyOmitted {
+			full, err := reader.GetExecution(ctx, executions[0].ID)
+			if err != nil {
+				return errLoadMsg{err: fmt.Errorf("load execution body: %w", err)}
+			}
+			executions[0] = full
+		}
 		return executionHistoryLoadedMsg{requestID: requestID, executions: executions}
 	}
+}
+
+// loadExecutionBodyCmd fetches one history entry with its stored body.
+func loadExecutionBodyCmd(
+	ctx context.Context,
+	reader store.ExecutionReader,
+	requestID, executionID string,
+) tea.Cmd {
+	return func() tea.Msg {
+		full, err := reader.GetExecution(ctx, executionID)
+		if err != nil {
+			return errLoadMsg{err: fmt.Errorf("load execution body: %w", err)}
+		}
+		return executionBodyLoadedMsg{requestID: requestID, execution: full}
+	}
+}
+
+// loadSelectedExecutionBodyCmd returns a command that loads the body of the
+// selected history entry when the history list omitted it, or nil.
+func (m Model) loadSelectedExecutionBodyCmd() tea.Cmd {
+	ex := m.selectedExecution()
+	if ex == nil || !ex.BodyOmitted || m.executionReader == nil {
+		return nil
+	}
+	return loadExecutionBodyCmd(m.ctx, m.executionReader, ex.RequestID, ex.ID)
 }
 
 // loadActiveEnvCmd queries the store for the persisted active env of a collection.

@@ -8,6 +8,7 @@ import (
 type options struct {
 	timeout           time.Duration
 	maxResponseSize   int
+	historyBodyLimit  int
 	logger            *slog.Logger
 	preRequestHooks   []PreRequestHook
 	postResponseHooks []PostResponseHook
@@ -19,11 +20,12 @@ type options struct {
 
 func defaultOptions() options {
 	return options{
-		timeout:         30 * time.Second,
-		maxResponseSize: 10 << 20, // 10 MiB
-		logger:          slog.Default(),
-		followRedirects: true,
-		maxRedirects:    10,
+		timeout:          30 * time.Second,
+		maxResponseSize:  10 << 20, // 10 MiB
+		historyBodyLimit: DefaultHistoryBodyLimit,
+		logger:           slog.Default(),
+		followRedirects:  true,
+		maxRedirects:     10,
 	}
 }
 
@@ -61,6 +63,18 @@ func (o maxRespSizeOption) apply(opts *options) { opts.maxResponseSize = int(o) 
 // WithMaxResponseSize sets the in-memory threshold (bytes). Responses larger
 // than this are streamed to a temp file and ExecuteResult.TempPath is set.
 func WithMaxResponseSize(n int) maxRespSizeOption { return maxRespSizeOption(n) }
+
+// DefaultHistoryBodyLimit is the largest response body prefix, in bytes, that
+// is stored in execution history. Larger bodies are cut and marked truncated.
+const DefaultHistoryBodyLimit = 1 << 20 // 1 MiB
+
+type historyBodyLimitOption int
+
+func (o historyBodyLimitOption) apply(opts *options) { opts.historyBodyLimit = int(o) }
+
+// WithHistoryBodyLimit sets how many bytes of each response body are stored in
+// execution history. Zero or less stores whole bodies.
+func WithHistoryBodyLimit(n int) historyBodyLimitOption { return historyBodyLimitOption(n) }
 
 type loggerOption struct{ l *slog.Logger }
 

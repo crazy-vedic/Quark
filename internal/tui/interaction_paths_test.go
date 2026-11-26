@@ -275,9 +275,12 @@ func (f failingRequestReader) ListRequests(context.Context, string) ([]*domain.R
 	return nil, errors.New("requests")
 }
 func (f failingRequestReader) ListExecutionsByRequest(
-	context.Context, string,
+	context.Context, string, int,
 ) ([]*domain.Execution, error) {
 	return nil, errors.New("history")
+}
+func (f failingRequestReader) GetExecution(context.Context, string) (*domain.Execution, error) {
+	return nil, errors.New("history body")
 }
 
 type failingActiveEnvironmentStore struct{}

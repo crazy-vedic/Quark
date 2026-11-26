@@ -92,11 +92,13 @@ func TestE2E_ScheduledBackgroundRunPersistsHistory(t *testing.T) {
 	require.Len(t, model.Executions(), 1)
 	assert.Equal(t, 202, model.Executions()[0].StatusCode)
 
-	executions, err := st.ListExecutionsByRequest(ctx, req.ID)
+	executions, err := st.ListExecutionsByRequest(ctx, req.ID, 0)
 	require.NoError(t, err)
 	require.Len(t, executions, 1)
 	assert.Equal(t, 202, executions[0].StatusCode)
-	assert.Contains(t, executions[0].ResponseBody, `"queued":true`)
+	full, err := st.GetExecution(ctx, executions[0].ID)
+	require.NoError(t, err)
+	assert.Contains(t, full.ResponseBody, `"queued":true`)
 }
 
 func TestE2E_ScheduledStartupTimerUsesWallClock(t *testing.T) {
@@ -185,7 +187,7 @@ func TestE2E_ScheduledStartupTimerUsesWallClock(t *testing.T) {
 	assert.Equal(t, domain.ScheduledRunCompleted, run.Status)
 	assert.Contains(t, model.StatusSuccess(), `Sent "Payments / List Payments" in the background`)
 
-	executions, err := st.ListExecutionsByRequest(ctx, req.ID)
+	executions, err := st.ListExecutionsByRequest(ctx, req.ID, 0)
 	require.NoError(t, err)
 	require.Len(t, executions, 1)
 	assert.Equal(t, 204, executions[0].StatusCode)

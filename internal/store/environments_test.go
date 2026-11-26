@@ -173,7 +173,7 @@ CREATE TABLE collections (
     parent_id TEXT
 );
 CREATE TABLE requests (id TEXT PRIMARY KEY, collection_id TEXT, name TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
-CREATE TABLE executions (id TEXT PRIMARY KEY, request_id TEXT);
+CREATE TABLE executions (id TEXT PRIMARY KEY, request_id TEXT, response_body TEXT NOT NULL DEFAULT '');
 CREATE TABLE scheduled_runs (id TEXT PRIMARY KEY, request_id TEXT);
 CREATE TABLE environments (
     id TEXT PRIMARY KEY, collection_id TEXT, name TEXT NOT NULL,
@@ -241,7 +241,7 @@ func TestStore_MigrationV9NormalizesEmptyLegacyGlobalData(t *testing.T) {
 	assert.Equal(t, "global", global.ID)
 	var version int
 	require.NoError(t, s.DB().QueryRow(`SELECT MAX(version) FROM schema_versions`).Scan(&version))
-	assert.Equal(t, 9, version)
+	assert.GreaterOrEqual(t, version, 9)
 }
 
 func TestStore_MigrationV9InvalidLegacyDataRollsBack(t *testing.T) {
