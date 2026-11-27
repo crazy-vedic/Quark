@@ -28,6 +28,8 @@ Optional. All fields have defaults via `config.Default(configDir)`.
 
 Loaded with merge semantics: only explicitly-set TOML fields override defaults (avoids bool zero-value clobbering for `FollowRedirects`, `AutoBackup`).
 
+`config.LoadWithWarnings` returns a warning for each unrecognised key (typos, removed settings); those keys are ignored. The CLI prints warnings to stderr and the TUI shows them in the status bar at startup. `config.Validate` rejects values that cannot work and makes `Load` fail, naming the file: `ui.default_method` must be an HTTP method token, `http.timeout` and `http.max_redirects` must not be negative (`timeout = "0s"` means no timeout), `backup.keep_last` must not be negative, and `updates.check_interval`, `updates.retry_after_failure` and `updates.timeout` must be positive.
+
 ### Sections
 
 #### `[ui]`

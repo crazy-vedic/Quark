@@ -139,3 +139,15 @@ func TestRequestPaneShowsGettingStartedMessageWithoutRequests(t *testing.T) {
 		t.Fatalf("request pane = %q, want getting-started guidance", got)
 	}
 }
+
+func TestStartupShowsConfigWarningInStatusBar(t *testing.T) {
+	cfg := config.Default(t.TempDir())
+	m := New(Deps{
+		Config:         cfg,
+		ConfigDir:      t.TempDir(),
+		ConfigWarnings: []string{`/x/config.toml: unknown setting "ui.themee" is ignored`},
+	})
+	if !strings.Contains(m.statusErr, `unknown setting "ui.themee"`) {
+		t.Fatalf("status = %q, want the config warning", m.statusErr)
+	}
+}

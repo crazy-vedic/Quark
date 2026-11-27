@@ -441,7 +441,10 @@ type Deps struct {
 	Importer        CurlImporter    // accepts *curl.Importer or any fake
 	PostmanImporter PostmanImporter
 	Config          config.Config
-	Resolver        *keybindings.Resolver
+	// ConfigWarnings are shown once in the status bar at startup, for
+	// config.toml keys Quark does not recognise.
+	ConfigWarnings []string
+	Resolver       *keybindings.Resolver
 	// Ctx is the root context for all background operations. If nil,
 	// context.Background() is used. Pass main.go's signal-aware context
 	// so TUI goroutines are cancelled when the process receives SIGINT/SIGTERM.
@@ -613,6 +616,9 @@ func New(deps Deps) Model {
 	if err != nil {
 		selected, _ = theme.Resolve(deps.ConfigDir, "auto", m.terminalDark)
 		m.statusErr = err.Error()
+	}
+	if len(deps.ConfigWarnings) > 0 && m.statusErr == "" {
+		m = m.status("warn", strings.Join(deps.ConfigWarnings, "; "))
 	}
 	return m.useTheme(selected)
 }

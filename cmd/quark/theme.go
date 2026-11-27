@@ -22,10 +22,11 @@ func newThemeCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			cfg, err := config.Load(configDir)
+			cfg, warnings, err := config.LoadWithWarnings(configDir)
 			if err != nil {
 				return err
 			}
+			config.WriteWarnings(cmd.ErrOrStderr(), warnings)
 			for _, name := range names {
 				marker := "  "
 				if name == cfg.UI.Theme {
@@ -59,10 +60,11 @@ func newThemeCmd() *cobra.Command {
 			if len(args) == 1 {
 				name = args[0]
 			} else {
-				cfg, err := config.Load(configDir)
+				cfg, warnings, err := config.LoadWithWarnings(configDir)
 				if err != nil {
 					return err
 				}
+				config.WriteWarnings(cmd.ErrOrStderr(), warnings)
 				name = cfg.UI.Theme
 				if value := os.Getenv("QUARK_THEME"); value != "" {
 					name = value
