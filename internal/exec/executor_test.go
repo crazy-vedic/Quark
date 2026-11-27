@@ -1181,3 +1181,23 @@ func TestExecutor_UnknownBodyTypeRefused(t *testing.T) {
 	_, err := newTestExecutor(&http.Transport{}).Execute(context.Background(), req)
 	assert.ErrorContains(t, err, `unsupported body type "xml"`)
 }
+
+func TestExecutor_PersistsBodyTypeInSnapshot(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(200)
+	}))
+	defer srv.Close()
+
+	transport := &http.Transport{}
+	defer transport.CloseIdleConnections()
+
+	writer := &recordingExecutionWriter{}
+	e := newTestExecutor(transport, exec.WithExecutionWriter(writer))
+	req := newTestRequest("POST", srv.URL, `a=1`)
+	req.BodyType = domain.BodyTypeFormURLEncoded
+	_, err := e.Execute(context.Background(), req)
+
+	require.NoError(t, err)
+	require.Len(t, writer.executions, 1)
+	assert.Contains(t, writer.executions[0].RequestSnapshot, `"body_type":"form-urlencoded"`)
+}
