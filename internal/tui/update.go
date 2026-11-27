@@ -602,11 +602,6 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, cmd
 	}
-	if m.activeField == scriptField {
-		var cmd tea.Cmd
-		m.scripts.area, cmd = m.scripts.area.Update(msg)
-		return m, cmd
-	}
 	if m.activeField == extractField && m.extract.editing {
 		var cmd tea.Cmd
 		if m.extract.varInput.Focused() {

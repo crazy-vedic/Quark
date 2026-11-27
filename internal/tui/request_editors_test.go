@@ -228,3 +228,41 @@ func TestExtractEditorEscInListDiscardsChanges(t *testing.T) {
 	assert.Empty(t, m.ExtractRules())
 	assert.Empty(t, m.ActiveRequest().Extractions, "nothing was saved")
 }
+
+func TestScriptEditorSavesBothPhasesAndSwitches(t *testing.T) {
+	m := extractTestModel()
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("P")})
+	require.Equal(t, tui.ScriptField, m.ActiveField())
+	require.Equal(t, 0, m.ScriptPhase())
+
+	m = typeRunes(t, m, "req.method = 'PUT';")
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyTab})
+	require.Equal(t, 1, m.ScriptPhase())
+	assert.Equal(t, "", m.ScriptText(), "the post-response script starts empty")
+	m = typeRunes(t, m, "assert(res.status === 200, 'ok');")
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyTab})
+	assert.Equal(
+		t,
+		"req.method = 'PUT';",
+		m.ScriptText(),
+		"switching back shows the pre-request text",
+	)
+
+	m2, cmd := callUpdateWithCmd(t, m, tea.KeyMsg{Type: tea.KeyCtrlS})
+	assert.NotNil(t, cmd, "saving persists the request")
+	assert.Equal(t, tui.NoneField, m2.ActiveField())
+	require.NotNil(t, m2.ActiveRequest())
+	assert.Equal(t, "req.method = 'PUT';", m2.ActiveRequest().PreScript)
+	assert.Equal(t, "assert(res.status === 200, 'ok');", m2.ActiveRequest().PostScript)
+}
+
+func TestScriptEditorEscDiscardsChanges(t *testing.T) {
+	m := extractTestModel()
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("P")})
+	m = typeRunes(t, m, "console.log('x');")
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyEsc})
+
+	assert.Equal(t, tui.NoneField, m.ActiveField())
+	assert.Empty(t, m.ActiveRequest().PreScript)
+	assert.Empty(t, m.ActiveRequest().PostScript)
+}

@@ -12,7 +12,7 @@ import (
 )
 
 // scriptResolverMode is the keybindings mode of the script editor.
-const scriptResolverMode = 12
+const scriptResolverMode = 11
 
 // Script phases shown by the script editor.
 const (
