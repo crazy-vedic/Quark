@@ -1587,7 +1587,8 @@ func (m Model) viewStatusBar(statusOverride string) string {
 		rightStyle = m.styles.errorStyle
 	case m.tmuxDetected && m.showTmuxWarning:
 		// BUG-010: only show tmux warning briefly (first N renders), not permanently.
-		rightPlain = "  ⚠ tmux: Ctrl+w intercepted — use " + m.renderHintKeys(
+		rightPlain = "  ⚠ tmux: " + m.keyLabelOr(keybindings.ActionDeleteWord, "some keys") +
+			" intercepted — use " + m.renderHintKeys(
 			[]string{
 				keybindings.ActionFocusSidebar,
 				keybindings.ActionFocusRequest,
@@ -2190,7 +2191,7 @@ func (m Model) viewImportModal() string {
 		}
 		sb.WriteString(
 			"\n" + m.styles.mutedStyle.Render(
-				"Ctrl+V: read clipboard   Ctrl+S: parse   Esc: cancel",
+				m.importKeyLegend(),
 			),
 		)
 		box := lipgloss.NewStyle().
@@ -2326,6 +2327,39 @@ func (m Model) hintKeys(actions []string, includeAliases bool) []string {
 		}
 	}
 	return dedupeHintKeys(keys)
+}
+
+// keyLabel returns the label of the key the resolver binds to action, or ""
+// when the action has no binding. Callers that write a key into running text
+// use it so that rebinding changes the text, and an unbound action shows no
+// shortcut.
+func (m Model) keyLabel(action string) string {
+	return keybindings.FormatKey(m.resolver.Binding(action))
+}
+
+// keyLabelOr is keyLabel with a fallback for when the action has no binding.
+func (m Model) keyLabelOr(action, fallback string) string {
+	if key := m.keyLabel(action); key != "" {
+		return key
+	}
+	return fallback
+}
+
+// importKeyLegend lists the import dialog's keys from the resolver, skipping
+// any action that has no binding.
+func (m Model) importKeyLegend() string {
+	legend := []struct{ action, text string }{
+		{keybindings.ActionPaste, "read clipboard"},
+		{keybindings.ActionImportParse, "parse"},
+		{keybindings.ActionImportCancel, "cancel"},
+	}
+	parts := make([]string, 0, len(legend))
+	for _, item := range legend {
+		if key := m.keyLabel(item.action); key != "" {
+			parts = append(parts, key+": "+item.text)
+		}
+	}
+	return strings.Join(parts, "   ")
 }
 
 func dedupeHintKeys(keys []string) []string {

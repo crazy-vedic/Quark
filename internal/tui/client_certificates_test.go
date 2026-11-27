@@ -54,6 +54,19 @@ func setCertFields(m Model, host, typ, file, ca string) Model {
 	return m
 }
 
+func TestClientCertEmptyHintFollowsRebinding(t *testing.T) {
+	cfg := config.Default(t.TempDir())
+	cfg.Keybindings.CertAdd = "n"
+	m := New(Deps{Config: cfg}).openClientCertModal()
+	require.Contains(t, m.viewClientCertModal(), "Press n to add one.")
+
+	cfg.Keybindings.CertAdd = ""
+	m = New(Deps{Config: cfg}).openClientCertModal()
+	view := m.viewClientCertModal()
+	require.Contains(t, view, "No certificates configured.")
+	require.NotContains(t, view, "Press")
+}
+
 func TestClientCertificateModalNavigationAndEditing(t *testing.T) {
 	m := New(Deps{Config: config.Default(t.TempDir())}).openClientCertModal()
 	_, _ = m.handleClientCertKey(tea.KeyMsg{Type: tea.KeyDown})

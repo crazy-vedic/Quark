@@ -177,6 +177,10 @@ type Resolver struct {
 	collection  map[string]string
 	auth        map[string]string
 	certificate map[string]string
+
+	// binds is the configuration the maps were built from. Hints read it through
+	// Binding, so they show the same keys that Resolve acts on.
+	binds Keybindings
 }
 
 // addAlias adds a key → action alias to a map, but only if the key is not
@@ -360,6 +364,7 @@ func NewResolver(binds Keybindings) *Resolver {
 	addAlias(certificate, "enter", "edit")
 
 	return &Resolver{
+		binds:       binds,
 		global:      global,
 		sidebar:     sidebar,
 		request:     request,
@@ -379,6 +384,15 @@ func NewResolver(binds Keybindings) *Resolver {
 // Resolve returns the action name for a given key in a given mode.
 // mode: 0=normal, 1=search, 2=help, 3=import, 4=body, 5=header, 6=env, 7=collection prompt, 8=auth, 9=certificate
 // pane: 0=sidebar, 1=request, 2=response (only used in normal mode)
+// Binding returns the configured key for action, or "" when the action is
+// unbound or r is nil.
+func (r *Resolver) Binding(action string) string {
+	if r == nil {
+		return ""
+	}
+	return GetAction(r.binds, action)
+}
+
 func (r *Resolver) Resolve(mode, pane int, msg tea.KeyMsg) (string, bool) {
 	key := msg.String()
 

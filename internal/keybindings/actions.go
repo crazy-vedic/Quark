@@ -33,6 +33,11 @@ const (
 	ActionSelectAll       = "select_all"
 	ActionCopy            = "copy"
 	ActionCut             = "cut"
+	ActionPaste           = "paste"
+	ActionDeleteWord      = "delete_word"
+	ActionCertAdd         = "cert_add"
+	ActionRequestDelete   = "request_delete"
+	ActionQuit            = "quit"
 
 	ActionNavigateDown = "navigate_down"
 	ActionNavigateUp   = "navigate_up"

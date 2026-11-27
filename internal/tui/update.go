@@ -2531,7 +2531,7 @@ func (m Model) enterCollectionPrompt(pt promptType, targetID string) (Model, tea
 	case promptDeleteConfirm:
 		m.promptInput.Placeholder = "Type 'delete' to confirm"
 	case promptDeleteTiny:
-		m.promptInput.Placeholder = "Press (d) again to confirm"
+		m.promptInput.Placeholder = m.tinyDeletePlaceholder()
 	case promptDeleteRequestConfirm:
 		m.promptInput.Placeholder = "Type 'delete' to confirm"
 	}
@@ -2563,6 +2563,13 @@ func wrapPromptSuccess(cmd tea.Cmd) tea.Cmd {
 			return msg
 		}
 	}
+}
+
+// tinyDeletePlaceholder asks for the request delete key to be pressed again,
+// naming that key from the resolver.
+func (m Model) tinyDeletePlaceholder() string {
+	key := m.keyLabelOr(keybindings.ActionRequestDelete, "the delete key")
+	return "Press " + key + " again to confirm"
 }
 
 // handleCollectionPromptKey handles key input in the collection prompt overlay.

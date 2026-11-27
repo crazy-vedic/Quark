@@ -609,3 +609,15 @@ func TestRecordBinding_TextSelectionConflictRejected(t *testing.T) {
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "conflict")
 }
+
+func TestResolverBindingReturnsConfiguredKey(t *testing.T) {
+	binds := DefaultKeybindings()
+	binds.Quit = "x"
+	binds.DeleteWord = ""
+	r := NewResolver(binds)
+	assert.Equal(t, "x", r.Binding("quit"))
+	assert.Equal(t, "", r.Binding("delete_word"))
+	assert.Equal(t, "", r.Binding("no_such_action"))
+	var nilResolver *Resolver
+	assert.Equal(t, "", nilResolver.Binding("quit"))
+}

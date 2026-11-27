@@ -153,6 +153,16 @@ func TestCommandAndEnvironmentBranches(t *testing.T) {
 	_, _ = m.handleNormalKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'?'}})
 	_, _ = m.handleHelpKey(tea.KeyMsg{Type: tea.KeyEsc})
 	require.Empty(t, helpResetAllDiffs(keybindings.DefaultKeybindings()))
+	cfg := config.Default(t.TempDir())
+	require.Equal(t,
+		"Ctrl+V: read clipboard   Ctrl+S: parse   Esc: cancel",
+		New(Deps{Config: cfg}).importKeyLegend())
+	cfg.Keybindings.ImportParse = "ctrl+p"
+	cfg.Keybindings.ImportCancel = ""
+	cfg.Keybindings.RequestDelete = "x"
+	m = New(Deps{Config: cfg, Resolver: keybindings.NewResolver(cfg.Keybindings)})
+	require.Equal(t, "Ctrl+V: read clipboard   Ctrl+P: parse", m.importKeyLegend())
+	require.Equal(t, "Press x again to confirm", m.tinyDeletePlaceholder())
 	require.Empty(t, parseHeadersJSON("not-json"))
 	require.NotEmpty(t, parseHeadersJSON(`{"X":"one","Y":"two"}`))
 	_, _ = m.handleCollectionPromptKey(tea.KeyMsg{Type: tea.KeyEsc})

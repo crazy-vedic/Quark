@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/crazy-vedic/quark/internal/config"
+	"github.com/crazy-vedic/quark/internal/keybindings"
 )
 
 const (
@@ -297,9 +298,11 @@ func (m Model) viewClientCertModal() string {
 		m.styles.mutedStyle.Render("Certificates are selected by request hostname.") + "\n\n",
 	)
 	if len(m.clientCerts) == 0 {
-		sb.WriteString(
-			m.styles.mutedStyle.Render("No certificates configured. Press a to add one.") + "\n",
-		)
+		empty := "No certificates configured."
+		if key := m.keyLabel(keybindings.ActionCertAdd); key != "" {
+			empty += " Press " + key + " to add one."
+		}
+		sb.WriteString(m.styles.mutedStyle.Render(empty) + "\n")
 	} else {
 		for i, cert := range m.clientCerts {
 			cursor := "  "
