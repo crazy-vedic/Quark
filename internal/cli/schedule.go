@@ -51,6 +51,7 @@ func NewScheduleCmd(st ScheduleStore, e *exec.Executor, now func() time.Time) *c
 	}
 	cmd.AddCommand(newScheduleAddCmd(st, now))
 	cmd.AddCommand(newScheduleListCmd(st))
+	cmd.AddCommand(newScheduleCancelCmd(st))
 	cmd.AddCommand(newScheduleRunDueCmd(st, e, now))
 	return cmd
 }
@@ -98,7 +99,8 @@ func newScheduleListCmd(st ScheduleStore) *cobra.Command {
 		Use:   "list",
 		Short: "List scheduled runs",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			runs, err := st.ListScheduledRuns(cmd.Context())
+			ctx := cmd.Context()
+			runs, err := st.ListScheduledRuns(ctx)
 			if err != nil {
 				return fmt.Errorf("schedule list: %w", err)
 			}
@@ -106,17 +108,139 @@ func newScheduleListCmd(st ScheduleStore) *cobra.Command {
 				fmt.Fprintln(cmd.OutOrStdout(), "No scheduled runs.")
 				return nil
 			}
+			paths, err := scheduleCollectionPaths(ctx, st)
+			if err != nil {
+				return fmt.Errorf("schedule list: %w", err)
+			}
 			for _, run := range runs {
-				fmt.Fprintf(cmd.OutOrStdout(), "  %s  %-9s  %s  request=%s\n",
+				fmt.Fprintf(cmd.OutOrStdout(), "  %s  %-9s  %s  %s\n",
 					shortScheduleID(run.ID),
 					run.Status,
 					run.RunAt.Format(time.RFC3339),
-					run.RequestID,
+					scheduledRequestPath(ctx, st, paths, run.RequestID),
 				)
 			}
 			return nil
 		},
 	}
+}
+
+func newScheduleCancelCmd(st ScheduleStore) *cobra.Command {
+	return &cobra.Command{
+		Use:   "cancel <run-id>",
+		Short: "Cancel a pending scheduled run",
+		Long: "Cancel a pending scheduled run so it never fires. " +
+			"Accepts the full run ID or the unique prefix shown by `schedule list`.",
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := cmd.Context()
+			run, err := resolveScheduledRun(ctx, st, args[0])
+			if err != nil {
+				return fmt.Errorf("schedule cancel: %w", err)
+			}
+			id := shortScheduleID(run.ID)
+			switch run.Status {
+			case domain.ScheduledRunCancelled:
+				fmt.Fprintf(cmd.OutOrStdout(), "Already cancelled %s\n", id)
+				return nil
+			case domain.ScheduledRunPending:
+			default:
+				return fmt.Errorf(
+					"schedule cancel: run %s is %s; only pending runs can be cancelled",
+					id, run.Status)
+			}
+			// Claiming first makes the cancel atomic with respect to run-due and
+			// the TUI: whoever claims a pending run owns it, so a run cannot be
+			// cancelled after it has started.
+			claimed, err := st.ClaimScheduledRun(ctx, run.ID)
+			if err != nil {
+				return fmt.Errorf("schedule cancel: %w", err)
+			}
+			if !claimed {
+				return fmt.Errorf("schedule cancel: run %s is no longer pending", id)
+			}
+			run.Status = domain.ScheduledRunCancelled
+			run.LastError = ""
+			if err := st.SaveScheduledRun(ctx, run); err != nil {
+				return fmt.Errorf("schedule cancel: save: %w", err)
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "Cancelled %s\n", id)
+			return nil
+		},
+	}
+}
+
+// resolveScheduledRun matches a run by full ID or by an ID prefix of at least
+// minIDPrefixLength characters, the length schedule list prints.
+func resolveScheduledRun(
+	ctx context.Context,
+	st ScheduleStore,
+	reference string,
+) (*domain.ScheduledRun, error) {
+	reference = strings.TrimSpace(reference)
+	if reference == "" {
+		return nil, fmt.Errorf("run ID is required")
+	}
+	runs, err := st.ListScheduledRuns(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var matches []*domain.ScheduledRun
+	for _, run := range runs {
+		if run.ID == reference ||
+			(len(reference) >= minIDPrefixLength && strings.HasPrefix(run.ID, reference)) {
+			matches = append(matches, run)
+		}
+	}
+	switch len(matches) {
+	case 0:
+		return nil, fmt.Errorf("scheduled run %q not found", reference)
+	case 1:
+		return matches[0], nil
+	default:
+		return nil, fmt.Errorf("scheduled run %q is ambiguous; use more of its ID", reference)
+	}
+}
+
+// scheduleCollectionPaths maps each collection ID to its full Collection path.
+// Stores that support nested collections report the full path; flat stores
+// fall back to the collection name.
+func scheduleCollectionPaths(ctx context.Context, st ScheduleStore) (map[string]string, error) {
+	cols, err := st.ListCollections(ctx)
+	if err != nil {
+		return nil, err
+	}
+	nested, hasNested := st.(collectionFullPathResolver)
+	paths := make(map[string]string, len(cols))
+	for _, col := range cols {
+		path := col.Name
+		if hasNested {
+			if full, err := nested.CollectionPath(ctx, col.ID); err == nil {
+				path = full
+			}
+		}
+		paths[col.ID] = path
+	}
+	return paths, nil
+}
+
+// scheduledRequestPath returns the Collection/Request path of a scheduled
+// request. A request that no longer exists is shown by its short ID.
+func scheduledRequestPath(
+	ctx context.Context,
+	st ScheduleStore,
+	collectionPaths map[string]string,
+	requestID string,
+) string {
+	req, err := st.GetRequest(ctx, requestID)
+	if err != nil || req == nil {
+		return "(missing request " + shortID(requestID) + ")"
+	}
+	colPath, ok := collectionPaths[req.CollectionID]
+	if !ok {
+		return "(unknown collection)/" + req.Name
+	}
+	return colPath + "/" + req.Name
 }
 
 func newScheduleRunDueCmd(st ScheduleStore, e *exec.Executor, now func() time.Time) *cobra.Command {
