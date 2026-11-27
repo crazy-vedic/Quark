@@ -653,6 +653,15 @@ func VisualRows(s string, contentWidth int) int { return visualRows(s, contentWi
 // field does when the user presses b: the textarea is loaded and focused.
 func (m Model) WithBodyEdit() Model { return m.beginBodyEdit() }
 
+// WithMethodEdit opens the method input the way pressing t does.
+func (m Model) WithMethodEdit() Model {
+	mm, _ := m.beginMethodEdit()
+	return mm
+}
+
+// MethodInputValue returns the text typed into the method input.
+func (m Model) MethodInputValue() string { return m.methodInput.Value() }
+
 // WithURLEdit starts editing the URL field the way pressing u does: the value
 // is remembered for cancel and the input is focused.
 func (m Model) WithURLEdit() Model {

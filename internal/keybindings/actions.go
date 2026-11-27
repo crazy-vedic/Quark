@@ -8,6 +8,7 @@ const (
 	ActionEditURL         = "edit_url"
 	ActionMethodNext      = "method_next"
 	ActionMethodPrev      = "method_prev"
+	ActionEditMethod      = "edit_method"
 	ActionSendRequest     = "send_request"
 	ActionEditBody        = "edit_body"
 	ActionEditHeaders     = "edit_headers"

@@ -53,6 +53,7 @@ type namedWidget struct {
 // below, because each widget uses one bit of the uint32 mask.
 var textWidgets = [...]namedWidget{
 	{"urlInput", func(m *Model) TextWidget { return &m.urlInput }},
+	{"methodInput", func(m *Model) TextWidget { return &m.methodInput }},
 	{"viewerFind", func(m *Model) TextWidget { return &m.viewerFind }},
 	{"searchInput", func(m *Model) TextWidget { return &m.searchInput }},
 	{"importInput", func(m *Model) TextWidget { return &m.importInput }},

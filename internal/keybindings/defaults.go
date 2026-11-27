@@ -34,6 +34,7 @@ func DefaultKeybindings() Keybindings {
 		EditURL:       "u",
 		MethodNext:    "m",
 		MethodPrev:    "M",
+		EditMethod:    "t",
 		SendRequest:   "s",
 		EditBody:      "b",
 		EditHeaders:   "h",

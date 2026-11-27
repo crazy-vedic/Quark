@@ -90,6 +90,7 @@ const (
 	bodyField
 	headersField
 	authField
+	methodField
 )
 
 // responseTabID identifies which tab is active in the response pane.
@@ -266,9 +267,11 @@ type Model struct {
 	activeRequest *domain.Request // currently selected request (template)
 	urlInput      textinput.Model
 	method        string
-	activeField   requestField // which inline field is active in the request pane
-	preEditURL    string       // URL value saved when editing starts; restored on Esc
-	preEditBody   string       // Body value saved when editing starts; restored on Esc
+	methodInput   textinput.Model // typed method, shown in the badge slot while methodField is active
+	preEditMethod string          // method saved when editing starts; restored on Esc
+	activeField   requestField    // which inline field is active in the request pane
+	preEditURL    string          // URL value saved when editing starts; restored on Esc
+	preEditBody   string          // Body value saved when editing starts; restored on Esc
 
 	// --- Response state ---
 	response            *exec.ExecuteResult
@@ -356,6 +359,7 @@ type Model struct {
 
 	// --- Text selection state (keyboard and mouse) ---
 	urlSelection         textedit.Selection // selection in URL input
+	methodSelection      textedit.Selection // selection in the method input
 	bodySelection        textedit.Selection // selection in body textarea
 	bodyView             *bodyViewCache     // last rendered body view; shared by Model copies
 	headerKeySelection   textedit.Selection // selection in header key input
@@ -472,6 +476,11 @@ func New(deps Deps) Model {
 	urlInput.Placeholder = "https://..."
 	urlInput.CharLimit = 2048
 
+	methodInput := textinput.New()
+	methodInput.Placeholder = "METHOD"
+	methodInput.Prompt = ""
+	methodInput.CharLimit = 32
+
 	searchInput := textinput.New()
 	searchInput.Placeholder = searchPlaceholder
 	searchInput.CharLimit = 256
@@ -553,6 +562,7 @@ func New(deps Deps) Model {
 		ctx:                     rootCtx,
 		method:                  deps.Config.UI.DefaultMethod,
 		urlInput:                urlInput,
+		methodInput:             methodInput,
 		searchInput:             searchInput,
 		viewerFind:              viewerFind,
 		importName:              importName,
