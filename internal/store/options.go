@@ -5,10 +5,11 @@ import (
 )
 
 type options struct {
-	logger     *slog.Logger
-	cacheSize  int    // SQLite page cache size; default 128 pages (~512KB)
-	backupPath string // directory for auto-backups; empty = ~/.quark/backup/
-	backupKeep int    // maximum number of backups to retain
+	logger      *slog.Logger
+	cacheSize   int    // SQLite page cache size; default 128 pages (~512KB)
+	backupPath  string // directory for auto-backups; empty = ~/.quark/backup/
+	backupKeep  int    // maximum number of backups to retain
+	historyKeep int    // executions kept per request; <= 0 keeps all
 }
 
 func defaultOptions() options {
@@ -61,3 +62,12 @@ func WithBackup(path string, keepLast ...int) backupOption {
 	}
 	return backupOption{path: path, keep: keep}
 }
+
+type historyKeepOption int
+
+func (o historyKeepOption) apply(opts *options) { opts.historyKeep = int(o) }
+
+// WithHistoryKeepLast keeps at most n executions per request: SaveExecution
+// deletes older entries of the same request after each insert. Zero or less
+// (the default) keeps every execution.
+func WithHistoryKeepLast(n int) historyKeepOption { return historyKeepOption(n) }

@@ -61,6 +61,12 @@ Loaded with merge semantics: only explicitly-set TOML fields override defaults (
 | `auto_backup` | `true` | Backup DB before writes |
 | `keep_last` | `10` | Retained backup count |
 
+#### `[history]`
+
+| Field | Default | Description |
+|---|---|---|
+| `keep_last` | `50` | Executions kept per request. Older runs of the same request are deleted after each run. `0` keeps every run |
+
 #### `[keybindings]`
 
 User keybinding overrides. Managed via `quark keybindings set/reset`. Saved by `config.SaveKeybindings` which preserves other config sections.
@@ -134,7 +140,7 @@ Only `http://` and `https://` URLs are allowed for execution. Prevents SSRF-styl
 | Event | Effect |
 |---|---|
 | First run | Creates config dir, DB, migrations, global + default envs |
-| Request run | Optional backup, execution history recorded |
+| Request run | Optional backup, execution history recorded, runs beyond `[history] keep_last` pruned |
 | Request delete | Execution history retained (no FK) |
 | Collection delete | Cascades to requests, environments, scheduled runs |
 | Config change | Keybindings saved atomically; other sections preserved |
