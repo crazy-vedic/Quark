@@ -405,24 +405,39 @@ const (
 	authRowAPIKeyIn
 	authRowAPIKeyName
 	authRowAPIKeyValue
+	authRowAuthURL
+	authRowTokenURL
+	authRowClientID
+	authRowClientSecret
+	authRowScope
 )
 
 type authEditor struct {
-	authType         string
-	apiKeyIn         string
-	cursor           int
-	editing          bool
-	tokenInput       textinput.Model
-	usernameInput    textinput.Model
-	passwordInput    textinput.Model
-	apiKeyNameInput  textinput.Model
-	apiKeyValueInput textinput.Model
+	authType          string
+	apiKeyIn          string
+	cursor            int
+	editing           bool
+	tokenInput        textinput.Model
+	usernameInput     textinput.Model
+	passwordInput     textinput.Model
+	apiKeyNameInput   textinput.Model
+	apiKeyValueInput  textinput.Model
+	authURLInput      textinput.Model
+	tokenURLInput     textinput.Model
+	clientIDInput     textinput.Model
+	clientSecretInput textinput.Model
+	scopeInput        textinput.Model
 	// Selection state for each auth field
-	tokenSelection       textedit.Selection
-	usernameSelection    textedit.Selection
-	passwordSelection    textedit.Selection
-	apiKeyNameSelection  textedit.Selection
-	apiKeyValueSelection textedit.Selection
+	tokenSelection        textedit.Selection
+	usernameSelection     textedit.Selection
+	passwordSelection     textedit.Selection
+	apiKeyNameSelection   textedit.Selection
+	apiKeyValueSelection  textedit.Selection
+	authURLSelection      textedit.Selection
+	tokenURLSelection     textedit.Selection
+	clientIDSelection     textedit.Selection
+	clientSecretSelection textedit.Selection
+	scopeSelection        textedit.Selection
 }
 
 // Deps holds all TUI dependencies.

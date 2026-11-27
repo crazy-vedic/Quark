@@ -78,6 +78,13 @@ var textWidgets = [...]namedWidget{
 	{"authEditor.apiKeyValueInput", func(m *Model) TextWidget {
 		return &m.authEditor.apiKeyValueInput
 	}},
+	{"authEditor.authURLInput", func(m *Model) TextWidget { return &m.authEditor.authURLInput }},
+	{"authEditor.tokenURLInput", func(m *Model) TextWidget { return &m.authEditor.tokenURLInput }},
+	{"authEditor.clientIDInput", func(m *Model) TextWidget { return &m.authEditor.clientIDInput }},
+	{"authEditor.clientSecretInput", func(m *Model) TextWidget {
+		return &m.authEditor.clientSecretInput
+	}},
+	{"authEditor.scopeInput", func(m *Model) TextWidget { return &m.authEditor.scopeInput }},
 	{"envEditor.editKey", func(m *Model) TextWidget { return &m.envEditor.editKey }},
 	{"envEditor.editVal", func(m *Model) TextWidget { return &m.envEditor.editVal }},
 }

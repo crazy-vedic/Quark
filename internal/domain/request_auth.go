@@ -10,6 +10,13 @@ const (
 	AuthTypeBearer = "bearer"
 	AuthTypeBasic  = "basic"
 	AuthTypeAPIKey = "api_key"
+	// AuthTypeOAuth2ClientCredentials fetches an access token from TokenURL
+	// with the client_credentials grant and caches it until it expires.
+	//nolint:gosec // G101 matches the word "Credentials"; this is an auth type name.
+	AuthTypeOAuth2ClientCredentials = "oauth2_client_credentials"
+	// AuthTypeOAuth2AuthorizationCode signs the user in through AuthURL with
+	// PKCE (S256) and a loopback redirect, then exchanges the code at TokenURL.
+	AuthTypeOAuth2AuthorizationCode = "oauth2_authorization_code"
 
 	AuthAPIKeyInHeader = "header"
 	AuthAPIKeyInQuery  = "query"
@@ -22,6 +29,13 @@ type AuthConfig struct {
 	In       string `json:"in,omitempty"`
 	Name     string `json:"name,omitempty"`
 	Value    string `json:"value,omitempty"`
+	// OAuth 2.0 fields. ClientSecret is optional for the authorization code
+	// grant (public clients use PKCE alone).
+	AuthURL      string `json:"auth_url,omitempty"`
+	TokenURL     string `json:"token_url,omitempty"`
+	ClientID     string `json:"client_id,omitempty"`
+	ClientSecret string `json:"client_secret,omitempty"`
+	Scope        string `json:"scope,omitempty"`
 }
 
 func NormalizeAuthType(authType string) string {
@@ -34,6 +48,10 @@ func NormalizeAuthType(authType string) string {
 		return AuthTypeBasic
 	case AuthTypeAPIKey:
 		return AuthTypeAPIKey
+	case AuthTypeOAuth2ClientCredentials:
+		return AuthTypeOAuth2ClientCredentials
+	case AuthTypeOAuth2AuthorizationCode:
+		return AuthTypeOAuth2AuthorizationCode
 	default:
 		return strings.ToLower(strings.TrimSpace(authType))
 	}

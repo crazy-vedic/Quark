@@ -15,6 +15,7 @@ type options struct {
 	executionWriter   ExecutionWriter
 	followRedirects   bool
 	maxRedirects      int
+	openBrowser       func(target string) error
 }
 
 func defaultOptions() options {
@@ -24,6 +25,7 @@ func defaultOptions() options {
 		logger:          slog.Default(),
 		followRedirects: true,
 		maxRedirects:    10,
+		openBrowser:     openSystemBrowser,
 	}
 }
 
@@ -105,4 +107,14 @@ func (o executionWriterOption) apply(opts *options) { opts.executionWriter = o.w
 // WithExecutionWriter enables persistence of immutable execution history.
 func WithExecutionWriter(w ExecutionWriter) executionWriterOption {
 	return executionWriterOption{w}
+}
+
+type browserOpenerOption struct{ open func(target string) error }
+
+func (o browserOpenerOption) apply(opts *options) { opts.openBrowser = o.open }
+
+// WithBrowserOpener replaces how OAuth 2.0 sign-in opens the authorization URL.
+// The default starts the system browser. Tests pass a fake browser.
+func WithBrowserOpener(open func(target string) error) browserOpenerOption {
+	return browserOpenerOption{open}
 }

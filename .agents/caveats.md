@@ -24,7 +24,7 @@ Help text and implementation both use this path.
 
 ### Plaintext credentials
 
-Bearer tokens, Basic passwords, API keys, and Authorization headers are stored **unencrypted** in SQLite (`requests.auth_config`, headers JSON). Backups are full DB copies.
+Bearer tokens, Basic passwords, API keys, OAuth 2.0 client secrets, and Authorization headers are stored **unencrypted** in SQLite (`requests.auth_config`, headers JSON). Backups are full DB copies.
 
 Protection is filesystem permissions only:
 

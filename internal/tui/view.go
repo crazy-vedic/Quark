@@ -2224,7 +2224,7 @@ func (m Model) viewImportModal() string {
 		for _, key := range keys {
 			for _, headerValue := range p.Headers.Values(key) {
 				if isCredentialHeader(key) {
-					headerValue = "[REDACTED]"
+					headerValue = redactedText
 				}
 				fmt.Fprintf(&sb, "  %s\n", truncate(key+": "+headerValue, innerW))
 			}

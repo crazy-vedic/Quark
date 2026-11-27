@@ -95,10 +95,12 @@ type AuthConfig struct {
     Username, Password string  // Basic
     Key, Value string  // API key
     In       string  // "header" or "query" for API key
+    AuthURL, TokenURL, ClientID, ClientSecret, Scope string  // OAuth 2.0
 }
 ```
 
-Auth types: `AuthTypeNone`, `AuthTypeBearer`, `AuthTypeBasic`, `AuthTypeAPIKey`.
+Auth types: `AuthTypeNone`, `AuthTypeBearer`, `AuthTypeBasic`, `AuthTypeAPIKey`,
+`AuthTypeOAuth2ClientCredentials`, `AuthTypeOAuth2AuthorizationCode`.
 
 Helpers: `NormalizeAuthType`, `ParseAuthConfig`, `MustAuthConfigJSON`.
 

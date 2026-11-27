@@ -158,6 +158,7 @@ JSON formatting preserves the existing indent style (2-space, 4-space, tabs) and
 
 - **Local SQLite** — `~/.quark/quark.db`, WAL mode, no network
 - **Collections & requests** — Organise, sort, enable/disable
+- **OAuth 2.0** — Client credentials, and authorization code with PKCE (browser sign-in on a loopback redirect). Access tokens are cached in memory and refreshed when a refresh token is available; they are not saved to disk
 - **Import** — cURL and Postman Collection v2.1 from the CLI or TUI
 - **Response preview** — Syntax-highlighted JSON, streaming for large bodies
 - **Themes** — Terminal-aware dark and light palettes, local custom themes, live preview and reload

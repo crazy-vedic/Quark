@@ -270,7 +270,8 @@ func (m Model) handleAuthEditClick(msg tea.MouseMsg) (Model, tea.Cmd) {
 
 func authRowEditable(row authRowID) bool {
 	switch row {
-	case authRowToken, authRowUsername, authRowPassword, authRowAPIKeyName, authRowAPIKeyValue:
+	case authRowToken, authRowUsername, authRowPassword, authRowAPIKeyName, authRowAPIKeyValue,
+		authRowAuthURL, authRowTokenURL, authRowClientID, authRowClientSecret, authRowScope:
 		return true
 	default:
 		return false
@@ -294,6 +295,16 @@ func (e *authEditor) inputForRow(row authRowID) textinput.Model {
 		return e.apiKeyNameInput
 	case authRowAPIKeyValue:
 		return e.apiKeyValueInput
+	case authRowAuthURL:
+		return e.authURLInput
+	case authRowTokenURL:
+		return e.tokenURLInput
+	case authRowClientID:
+		return e.clientIDInput
+	case authRowClientSecret:
+		return e.clientSecretInput
+	case authRowScope:
+		return e.scopeInput
 	default:
 		return textinput.New()
 	}
@@ -311,6 +322,16 @@ func (e *authEditor) assignInput(row authRowID, in textinput.Model) {
 		e.apiKeyNameInput = in
 	case authRowAPIKeyValue:
 		e.apiKeyValueInput = in
+	case authRowAuthURL:
+		e.authURLInput = in
+	case authRowTokenURL:
+		e.tokenURLInput = in
+	case authRowClientID:
+		e.clientIDInput = in
+	case authRowClientSecret:
+		e.clientSecretInput = in
+	case authRowScope:
+		e.scopeInput = in
 	}
 }
 

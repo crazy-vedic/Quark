@@ -124,6 +124,8 @@ Applied after variable interpolation, before dispatch:
 | Bearer | `Authorization: Bearer <token>` |
 | Basic | `Authorization: Basic <base64(user:pass)>` |
 | APIKey | Header or query param per `AuthConfig.In` |
+| OAuth2 client credentials | Token from `TokenURL` (`grant_type=client_credentials`), cached in memory until it nears expiry; `Authorization: <token_type> <access_token>`. Runs in `applyOAuth2Auth` after the request is built and before the timeout starts |
+| OAuth2 authorization code | Browser sign-in with PKCE (S256) and a loopback redirect on `127.0.0.1` (`state` checked). Token exchanged at `TokenURL`; expired tokens are refreshed with the refresh token, else sign-in runs again. Tokens are memory-only (`oauth2.go`) |
 
 Auth config stored as JSON in `Request.AuthConfig`.
 

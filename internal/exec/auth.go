@@ -34,6 +34,10 @@ func applyRequestAuth(httpReq *http.Request, req *domain.Request) error {
 		creds := base64.StdEncoding.EncodeToString([]byte(cfg.Username + ":" + cfg.Password))
 		httpReq.Header.Set("Authorization", "Basic "+creds)
 		return nil
+	case domain.AuthTypeOAuth2ClientCredentials, domain.AuthTypeOAuth2AuthorizationCode:
+		// The header needs a token fetched after the request is built; see
+		// applyOAuth2Auth. Validation happens there too.
+		return nil
 	case domain.AuthTypeAPIKey:
 		if cfg.Name == "" {
 			return fmt.Errorf("invalid auth config: api key name is required")
