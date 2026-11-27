@@ -572,7 +572,9 @@ func (m Model) viewRequestPane(w, h int) string {
 	}
 
 	// Loading indicator.
-	if m.loading {
+	if m.loading && m.streaming {
+		top = append(top, m.styles.warnStyle.Render("  ⟳ Streaming events…  [Esc] stop"))
+	} else if m.loading {
 		top = append(top, m.styles.warnStyle.Render("  ⟳ Sending…  [Esc] cancel"))
 	}
 
@@ -1138,6 +1140,10 @@ func (m Model) viewTabBar(maxWidth int) string {
 }
 
 func (m Model) selectedExecution() *domain.Execution {
+	// A live event stream is shown in place of the saved history.
+	if m.streaming {
+		return nil
+	}
 	if len(m.executions) == 0 || m.execCursor < 0 || m.execCursor >= len(m.executions) {
 		return nil
 	}
@@ -1155,6 +1161,12 @@ func (m Model) viewLiveResponseStatus() string {
 		statusColor = m.styles.errorStyle
 	} else if r.StatusCode >= 300 {
 		statusColor = m.styles.warnStyle
+	}
+	if m.streaming {
+		return statusColor.Render(fmt.Sprintf("  %s", r.Status)) +
+			"  " + m.styles.mutedStyle.Render(
+			fmt.Sprintf("streaming  %d events  %d bytes", m.streamEvents, r.Size),
+		)
 	}
 	return statusColor.Render(fmt.Sprintf("  %s", r.Status)) +
 		"  " + m.styles.mutedStyle.Render(fmt.Sprintf("%v  %d bytes", r.Duration.Round(1_000_000), r.Size))

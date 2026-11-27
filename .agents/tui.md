@@ -94,6 +94,7 @@ User overrides stored in `config.toml` `[keybindings]` section. Managed via `qua
 
 - JSON bodies: syntax-highlighted via `internal/highlight` (Chroma → ANSI), using the resolved theme's syntax style
 - Large/streamed bodies: read from temp file path
+- `text/event-stream` responses: shown event by event while live (`streamBatchMsg`, `internal/tui/sse_stream.go`); the history list is hidden during the stream
 - Binary content: must NOT render raw (BUG-002) — shows placeholder instead
 - Status line: method, URL, status code, timing
 

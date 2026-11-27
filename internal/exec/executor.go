@@ -70,6 +70,20 @@ func New(transport http.RoundTripper, opts ...Option) *Executor {
 //  4. Post-response hooks fire in registration order. Hook errors are logged via
 //     slog.Warn; the next hook still fires regardless.
 func (e *Executor) Execute(ctx context.Context, req *domain.Request) (*ExecuteResult, error) {
+	return e.ExecuteStream(ctx, req, StreamHandler{})
+}
+
+// ExecuteStream is Execute with incremental reading of text/event-stream
+// responses: h receives the response headers and then each event as it
+// arrives. Once such a response has started, the per-request timeout no
+// longer applies (the stream may stay open indefinitely); cancel ctx to stop
+// it, which ends the stream normally and returns what was received. Other
+// responses are read exactly as Execute reads them.
+func (e *Executor) ExecuteStream(
+	ctx context.Context,
+	req *domain.Request,
+	h StreamHandler,
+) (*ExecuteResult, error) {
 	startedAt := time.Now()
 	record := func(snapshot *domain.Request, result *ExecuteResult, execErr error) {
 		e.recordExecution(ctx, snapshot, result, execErr, startedAt, time.Now())
@@ -121,7 +135,19 @@ func (e *Executor) Execute(ctx context.Context, req *domain.Request) (*ExecuteRe
 	// A zero or negative timeout means "no timeout": WithTimeout(ctx, 0)
 	// would be expired before the request is sent.
 	timeoutCtx, cancel := ctx, context.CancelFunc(func() {})
-	if e.timeout > 0 {
+	stopTimeout := func() {}
+	if e.timeout > 0 && h.enabled() {
+		// A timer instead of a deadline, so it can be stopped once an
+		// event stream starts. The cause tells a timeout from a cancel.
+		causeCtx, cancelCause := context.WithCancelCause(ctx)
+		timer := time.AfterFunc(e.timeout, func() { cancelCause(context.DeadlineExceeded) })
+		timeoutCtx = causeCtx
+		cancel = func() {
+			timer.Stop()
+			cancelCause(context.Canceled)
+		}
+		stopTimeout = func() { timer.Stop() }
+	} else if e.timeout > 0 {
 		timeoutCtx, cancel = context.WithTimeout(ctx, e.timeout)
 	}
 	defer cancel()
@@ -134,13 +160,25 @@ func (e *Executor) Execute(ctx context.Context, req *domain.Request) (*ExecuteRe
 
 	if err != nil {
 		classified := e.classifyError(err)
+		if timedOut(timeoutCtx, ctx) {
+			classified = fmt.Errorf("exec: %w: %w", ErrTimeout, err)
+		}
 		record(req, nil, classified)
 		return nil, classified
 	}
 	defer resp.Body.Close()
 
-	result, err := e.readResponse(resp, elapsed)
+	var result *ExecuteResult
+	if h.enabled() && IsEventStream(resp.Header.Get("Content-Type")) {
+		stopTimeout()
+		result, err = e.readEventStream(resp, elapsed, h, func() bool { return ctx.Err() != nil })
+	} else {
+		result, err = e.readResponse(resp, elapsed)
+	}
 	if err != nil {
+		if h.enabled() && timedOut(timeoutCtx, ctx) {
+			err = fmt.Errorf("exec: %w: %w", ErrTimeout, err)
+		}
 		record(req, nil, err)
 		return nil, err
 	}
@@ -323,6 +361,22 @@ func applySpecialRequestHeaders(req *http.Request) error {
 	return nil
 }
 
+// newScratchFile creates the temp file that holds a response body over the
+// in-memory threshold. It is 0600 because bodies may contain sensitive data
+// (tokens, PII), and the mode is restricted before any content is written.
+func newScratchFile() (*os.File, error) {
+	f, err := os.CreateTemp("", "quark-response-*.tmp")
+	if err != nil {
+		return nil, fmt.Errorf("exec: create temp file: %w", err)
+	}
+	if err := os.Chmod(f.Name(), 0o600); err != nil {
+		_ = f.Close()
+		_ = os.Remove(f.Name())
+		return nil, fmt.Errorf("exec: chmod temp file: %w", err)
+	}
+	return f, nil
+}
+
 // readResponse reads the response body, streaming to /tmp if over threshold.
 func (e *Executor) readResponse(
 	resp *http.Response,
@@ -346,16 +400,9 @@ func (e *Executor) readResponse(
 	if int(lr.N) == 0 {
 		// Body exceeded threshold — write to temp file (lr.N == 0 because we
 		// set it to maxResponseSize+1 and it was fully consumed).
-		f, err := os.CreateTemp("", "quark-response-*.tmp")
+		f, err := newScratchFile()
 		if err != nil {
-			return nil, fmt.Errorf("exec: create temp file: %w", err)
-		}
-		// 0600: response bodies may contain sensitive data (tokens, PII).
-		// Restrict immediately after creation before writing any content.
-		if err := os.Chmod(f.Name(), 0o600); err != nil {
-			_ = f.Close()
-			_ = os.Remove(f.Name())
-			return nil, fmt.Errorf("exec: chmod temp file: %w", err)
+			return nil, err
 		}
 		defer f.Close()
 
@@ -376,6 +423,15 @@ func (e *Executor) readResponse(
 	}
 
 	return result, nil
+}
+
+// timedOut reports whether timeoutCtx was ended by the stoppable stream
+// timer rather than by the caller's parent context.
+func timedOut(timeoutCtx, parent context.Context) bool {
+	cause := context.Cause(timeoutCtx)
+	return parent.Err() == nil && cause != nil &&
+		errors.Is(cause, context.DeadlineExceeded) &&
+		!errors.Is(timeoutCtx.Err(), context.DeadlineExceeded)
 }
 
 // classifyError maps network/context errors to Quark sentinel errors.
