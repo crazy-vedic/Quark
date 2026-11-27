@@ -2,6 +2,7 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/google/uuid"
@@ -27,6 +28,7 @@ func NewCollectionCmd(s CollectionStore) *cobra.Command {
 	cmd.AddCommand(newCollectionCreateCmd(s))
 	cmd.AddCommand(newCollectionRenameCmd(s))
 	cmd.AddCommand(newCollectionDeleteCmd(s))
+	cmd.AddCommand(newCollectionMoveCmd(s))
 	return cmd
 }
 
@@ -128,4 +130,97 @@ func newCollectionDeleteCmd(s CollectionStore) *cobra.Command {
 	}
 	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "Confirm the deletion")
 	return cmd
+}
+
+// collectionMover is the store operation behind 'collection move'.
+type collectionMover interface {
+	MoveCollection(ctx context.Context, id, parentID string) error
+}
+
+func newCollectionMoveCmd(s CollectionStore) *cobra.Command {
+	return &cobra.Command{
+		Use:   "move <collection> <new-parent|/>",
+		Short: "Move a collection under another collection",
+		Long: "Move a collection, with everything in it, under a new parent collection. " +
+			"Use / as the new parent to make it a root collection.",
+		Args: cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			mover, ok := s.(collectionMover)
+			if !ok {
+				return fmt.Errorf("collection move: store cannot move collections")
+			}
+			ctx := cmd.Context()
+			moving, err := resolveCollectionReference(ctx, s, args[0])
+			if err != nil {
+				return fmt.Errorf("collection move: %w", err)
+			}
+			parentID := ""
+			if args[1] != "/" {
+				parent, err := resolveCollectionReference(ctx, s, args[1])
+				if err != nil {
+					return fmt.Errorf("collection move: new parent: %w", err)
+				}
+				parentID = parent.ID
+			}
+			cols, err := s.ListCollections(ctx)
+			if err != nil {
+				return fmt.Errorf("collection move: %w", err)
+			}
+			if err := checkCollectionMove(cols, moving, parentID); err != nil {
+				return fmt.Errorf("collection move: %w", err)
+			}
+			if err := mover.MoveCollection(ctx, moving.ID, parentID); err != nil {
+				return fmt.Errorf("collection move: %w", err)
+			}
+			if parentID == "" {
+				fmt.Fprintf(cmd.OutOrStdout(), "Moved collection %q to the root\n", args[0])
+			} else {
+				fmt.Fprintf(cmd.OutOrStdout(), "Moved collection %q under %q\n", args[0], args[1])
+			}
+			return nil
+		},
+	}
+}
+
+// checkCollectionMove rejects a move into the collection itself or one of its
+// descendants, and a move that would give two siblings the same name. The
+// store enforces both as well; checking here gives the reason.
+func checkCollectionMove(
+	cols []*domain.Collection,
+	moving *domain.Collection,
+	parentID string,
+) error {
+	byID := make(map[string]*domain.Collection, len(cols))
+	for _, c := range cols {
+		byID[c.ID] = c
+	}
+	where := "the root"
+	if parentID != "" {
+		parent, ok := byID[parentID]
+		if !ok {
+			return fmt.Errorf("collection %q not found", parentID)
+		}
+		where = fmt.Sprintf("%q", parent.Name)
+		seen := make(map[string]bool)
+		for id := parentID; id != "" && !seen[id]; {
+			if id == moving.ID {
+				return fmt.Errorf(
+					"cannot move %q into itself or one of its descendants",
+					moving.Name,
+				)
+			}
+			seen[id] = true
+			c, ok := byID[id]
+			if !ok {
+				break
+			}
+			id = c.ParentID
+		}
+	}
+	for _, c := range cols {
+		if c.ID != moving.ID && c.ParentID == parentID && c.Name == moving.Name {
+			return fmt.Errorf("a collection named %q already exists in %s", moving.Name, where)
+		}
+	}
+	return nil
 }

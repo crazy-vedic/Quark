@@ -11,6 +11,7 @@ quark                          # Default: launch TUI
 quark tui                      # Launch TUI explicitly
 quark collection list
 quark collection create <name>
+quark collection move <collection> <new-parent|/>
 quark request list [--collection <id>]
 quark request export-curl <Collection/Request>
 quark run <Collection/Request>
