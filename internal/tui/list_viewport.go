@@ -105,143 +105,6 @@ func buildHelpRows(entries []keybindings.Entry, selectedEntry int) ([]helpRow, i
 	return rows, selectedRow
 }
 
-type sidebarRowKind int
-
-const (
-	sidebarCollectionRow sidebarRowKind = iota
-	sidebarRequestRow
-)
-
-type sidebarRow struct {
-	kind     sidebarRowKind
-	colIndex int
-	reqIndex int
-	depth    int
-}
-
-func (m Model) buildSidebarRows() ([]sidebarRow, int) {
-	rows := make([]sidebarRow, 0, len(m.collections))
-	selectedRow := 0
-	children := make(map[string][]int, len(m.collections))
-	byID := make(map[string]*domain.Collection, len(m.collections))
-	roots := make([]int, 0, len(m.collections))
-	for i, col := range m.collections {
-		if col != nil {
-			byID[col.ID] = col
-		}
-		if col == nil || col.ParentID == "" {
-			roots = append(roots, i)
-			continue
-		}
-		children[col.ParentID] = append(children[col.ParentID], i)
-	}
-	byName := func(indices []int) {
-		sort.SliceStable(indices, func(i, j int) bool {
-			return m.collections[indices[i]].Name < m.collections[indices[j]].Name
-		})
-	}
-	byName(roots)
-	for _, indices := range children {
-		byName(indices)
-	}
-	var appendCollection func(int, int, map[int]bool)
-	appendCollection = func(colIdx, depth int, visiting map[int]bool) {
-		if colIdx < 0 || colIdx >= len(m.collections) || visiting[colIdx] {
-			return
-		}
-		visiting[colIdx] = true
-		col := m.collections[colIdx]
-		rows = append(
-			rows,
-			sidebarRow{kind: sidebarCollectionRow, colIndex: colIdx, reqIndex: -1, depth: depth},
-		)
-		if m.colCursor == colIdx && m.reqCursor == -1 {
-			selectedRow = len(rows) - 1
-		}
-		if m.expanded[col.ID] {
-			reqs := m.collectionRequests[col.ID]
-			for reqIdx := range reqs {
-				rows = append(
-					rows,
-					sidebarRow{
-						kind:     sidebarRequestRow,
-						colIndex: colIdx,
-						reqIndex: reqIdx,
-						depth:    depth + 1,
-					},
-				)
-				if m.colCursor == colIdx && m.reqCursor == reqIdx {
-					selectedRow = len(rows) - 1
-				}
-			}
-			for _, childIdx := range children[col.ID] {
-				appendCollection(childIdx, depth+1, visiting)
-			}
-		}
-		delete(visiting, colIdx)
-	}
-	for _, colIdx := range roots {
-		appendCollection(colIdx, 0, make(map[int]bool))
-	}
-	// Broken or cyclic parent references should remain visible instead of being
-	// silently dropped from the sidebar. Legitimate descendants hidden by a
-	// collapsed ancestor are deliberately excluded from this fallback.
-	for colIdx := range m.collections {
-		// A valid child whose parent is collapsed is intentionally absent from
-		// rows; it must not be re-added by the malformed-tree fallback below.
-		parentExists := false
-		if m.collections[colIdx] != nil && m.collections[colIdx].ParentID != "" {
-			for _, parent := range m.collections {
-				if parent != nil && parent.ID == m.collections[colIdx].ParentID {
-					parentExists = true
-					break
-				}
-			}
-		}
-		if parentExists {
-			continue
-		}
-		found := false
-		for _, row := range rows {
-			if row.kind == sidebarCollectionRow && row.colIndex == colIdx {
-				found = true
-				break
-			}
-		}
-		if !found && hasBrokenOrCyclicCollectionAncestry(m.collections[colIdx], byID) {
-			appendCollection(colIdx, 0, make(map[int]bool))
-		}
-	}
-	return rows, selectedRow
-}
-
-// collapseCollectionSubtree closes a collection and all of its descendants.
-// Descendants may be hidden while their parent is collapsed, so walking the
-// collection tree rather than only the visible rows is intentional. Request
-// data remains cached so reopening a collection does not require a reload.
-func (m Model) collapseCollectionSubtree(collectionID string) {
-	children := make(map[string][]string, len(m.collections))
-	for _, col := range m.collections {
-		if col != nil && col.ParentID != "" {
-			children[col.ParentID] = append(children[col.ParentID], col.ID)
-		}
-	}
-
-	stack := []string{collectionID}
-	seen := make(map[string]bool)
-	for len(stack) > 0 {
-		last := len(stack) - 1
-		id := stack[last]
-		stack = stack[:last]
-		if seen[id] {
-			continue
-		}
-		seen[id] = true
-		m.expanded[id] = false
-		stack = append(stack, children[id]...)
-	}
-}
-
 func hasBrokenOrCyclicCollectionAncestry(
 	col *domain.Collection,
 	byID map[string]*domain.Collection,
@@ -386,8 +249,8 @@ func (m Model) searchHitTopLevelGroup(hit *search.SearchHit) string {
 		collectionID = hit.Collection.ID
 	}
 
-	byID := make(map[string]*domain.Collection, len(m.collections))
-	for _, col := range m.collections {
+	byID := make(map[string]*domain.Collection, len(m.sidebar.collections))
+	for _, col := range m.sidebar.collections {
 		if col != nil {
 			byID[col.ID] = col
 		}

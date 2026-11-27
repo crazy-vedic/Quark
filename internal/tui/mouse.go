@@ -468,19 +468,19 @@ func (m Model) handleSidebarClick(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	case sidebarListHitTitle:
 		return m, nil
 	case sidebarListHitMoreAbove:
-		if m.sidebarOffset > 0 {
-			m.sidebarOffset--
+		if m.sidebar.offset > 0 {
+			m.sidebar.offset--
 		}
 		return m, nil
 	case sidebarListHitMoreBelow:
-		rows, _ := m.buildSidebarRows()
+		rows, _ := m.sidebar.buildRows()
 		maxScroll := max(0, len(rows)-m.sidebarVisible())
-		if m.sidebarOffset < maxScroll {
-			m.sidebarOffset++
+		if m.sidebar.offset < maxScroll {
+			m.sidebar.offset++
 		}
 		return m, nil
 	case sidebarListHitCollection:
-		if m.colCursor == hit.row.colIndex {
+		if m.sidebar.colCursor == hit.row.colIndex {
 			return m.toggleSidebarCollectionExpand(hit.row.colIndex)
 		}
 		return m.selectSidebarCollection(hit.row.colIndex), nil
@@ -494,34 +494,34 @@ func (m Model) handleSidebarClick(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) selectSidebarCollection(colIndex int) Model {
-	if colIndex < 0 || colIndex >= len(m.collections) {
+	if colIndex < 0 || colIndex >= len(m.sidebar.collections) {
 		return m
 	}
-	m.colCursor = colIndex
-	m.reqCursor = -1
+	m.sidebar.colCursor = colIndex
+	m.sidebar.reqCursor = -1
 	m = m.ensureSidebarCollectionVisible()
-	if colID := m.collections[colIndex].ID; m.expanded[colID] {
-		m.requests = m.collectionRequests[colID]
+	if colID := m.sidebar.collections[colIndex].ID; m.sidebar.expanded[colID] {
+		m.sidebar.requests = m.sidebar.collectionRequests[colID]
 	}
 	return m
 }
 
 func (m Model) toggleSidebarCollectionExpand(colIndex int) (Model, tea.Cmd) {
-	if colIndex < 0 || colIndex >= len(m.collections) {
+	if colIndex < 0 || colIndex >= len(m.sidebar.collections) {
 		return m, nil
 	}
-	m.colCursor = colIndex
-	m.reqCursor = -1
+	m.sidebar.colCursor = colIndex
+	m.sidebar.reqCursor = -1
 	m = m.ensureSidebarCollectionVisible()
 
-	colID := m.collections[colIndex].ID
-	if m.expanded[colID] {
-		m.collapseCollectionSubtree(colID)
+	colID := m.sidebar.collections[colIndex].ID
+	if m.sidebar.expanded[colID] {
+		m.sidebar.collapseSubtree(colID)
 		m, _ = m.selectRequest(nil)
 		return m, nil
 	}
 
-	m.expanded[colID] = true
+	m.sidebar.expanded[colID] = true
 	if m.reader != nil {
 		return m, loadRequestsCmd(m.ctx, m.reader, colID)
 	}
@@ -529,19 +529,19 @@ func (m Model) toggleSidebarCollectionExpand(colIndex int) (Model, tea.Cmd) {
 }
 
 func (m Model) selectSidebarRequest(colIndex, reqIndex int) (Model, tea.Cmd) {
-	if colIndex < 0 || colIndex >= len(m.collections) {
+	if colIndex < 0 || colIndex >= len(m.sidebar.collections) {
 		return m, nil
 	}
-	colID := m.collections[colIndex].ID
-	reqs := m.collectionRequests[colID]
+	colID := m.sidebar.collections[colIndex].ID
+	reqs := m.sidebar.collectionRequests[colID]
 	if reqIndex < 0 || reqIndex >= len(reqs) {
 		return m, nil
 	}
 
-	m.colCursor = colIndex
-	m.reqCursor = reqIndex
+	m.sidebar.colCursor = colIndex
+	m.sidebar.reqCursor = reqIndex
 	m = m.ensureSidebarCollectionVisible()
-	m.requests = reqs
+	m.sidebar.requests = reqs
 	m.focus = requestPane
 	return m.selectRequest(reqs[reqIndex])
 }
@@ -557,9 +557,9 @@ func (m Model) sidebarContentRect(layout normalLayout) layoutRect {
 }
 
 func (m Model) sidebarListWindow() (rows []sidebarRow, start, end int) {
-	rows, _ = m.buildSidebarRows()
+	rows, _ = m.sidebar.buildRows()
 	visible := m.sidebarVisible()
-	start = min(m.sidebarOffset, max(0, len(rows)-visible))
+	start = min(m.sidebar.offset, max(0, len(rows)-visible))
 	end = min(len(rows), start+visible)
 	return rows, start, end
 }
@@ -638,7 +638,7 @@ func (m Model) sidebarTreeRowScreenPos(rowIndex int) (x, y int, ok bool) {
 }
 
 func (m Model) sidebarRowIndexForCollection(colIndex int) (int, bool) {
-	rows, _ := m.buildSidebarRows()
+	rows, _ := m.sidebar.buildRows()
 	for i, row := range rows {
 		if row.kind == sidebarCollectionRow && row.colIndex == colIndex {
 			return i, true
@@ -648,7 +648,7 @@ func (m Model) sidebarRowIndexForCollection(colIndex int) (int, bool) {
 }
 
 func (m Model) sidebarRowIndexForRequest(colIndex, reqIndex int) (int, bool) {
-	rows, _ := m.buildSidebarRows()
+	rows, _ := m.sidebar.buildRows()
 	for i, row := range rows {
 		if row.kind == sidebarRequestRow && row.colIndex == colIndex && row.reqIndex == reqIndex {
 			return i, true

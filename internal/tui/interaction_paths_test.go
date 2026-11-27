@@ -79,11 +79,11 @@ func TestModelAndLayoutBranches(t *testing.T) {
 		require.NotEmpty(t, next)
 		require.NotEmpty(t, prev)
 	}
-	m.collections = []*domain.Collection{{ID: "a", Name: "A"}, {ID: "b", Name: "B"}}
-	m.colCursor = 9
-	require.Nil(t, m.selectedCollection())
-	m.colCursor = 0
-	require.Equal(t, "a", m.selectedCollection().ID)
+	m.sidebar.collections = []*domain.Collection{{ID: "a", Name: "A"}, {ID: "b", Name: "B"}}
+	m.sidebar.colCursor = 9
+	require.Nil(t, m.sidebar.selectedCollection())
+	m.sidebar.colCursor = 0
+	require.Equal(t, "a", m.sidebar.selectedCollection().ID)
 	require.Equal(t, []string{"a", "b"}, m.allCollectionIDs())
 	m.forceDim = DimAuto
 	m.width = 100
@@ -394,8 +394,8 @@ func TestNormalPaneActionBranches(t *testing.T) {
 			EnvReader: st, EnvWriter: st, ActiveEnvStore: st,
 			Scheduler: st, Executor: fakeExecutor{},
 		})
-		m.collections = []*domain.Collection{collection}
-		m.collectionRequests = map[string][]*domain.Request{collection.ID: {request}}
+		m.sidebar.collections = []*domain.Collection{collection}
+		m.sidebar.collectionRequests = map[string][]*domain.Request{collection.ID: {request}}
 		m.activeRequest = request
 		m.focus = requestPane
 		return m
@@ -602,7 +602,7 @@ func TestViewPaneStates(t *testing.T) {
 	require.NotEmpty(t, m.renderSearchHit(m.searchResults[0], "req", 50))
 	require.NotEmpty(t, m.collectionNameForSearchHit(m.searchResults[0]))
 	m.mode = normalMode
-	m.collections = []*domain.Collection{{ID: "c", Name: "Collection"}}
+	m.sidebar.collections = []*domain.Collection{{ID: "c", Name: "Collection"}}
 	m.promptMode = promptAdd
 	m.promptInput.SetValue("new")
 	require.NotEmpty(t, m.viewCollectionPromptModal())
@@ -632,8 +632,8 @@ func TestMouseGeometryBranches(t *testing.T) {
 		ID: "mouse-req", CollectionID: collection.ID, Name: "Request",
 		Method: "GET", URL: "https://example.test",
 	}
-	m.collections = []*domain.Collection{collection}
-	m.collectionRequests = map[string][]*domain.Request{collection.ID: {request}}
+	m.sidebar.collections = []*domain.Collection{collection}
+	m.sidebar.collectionRequests = map[string][]*domain.Request{collection.ID: {request}}
 	_, _ = m.selectSidebarRequest(99, 0)
 	_, _ = m.selectSidebarRequest(0, 99)
 	_, _ = m.selectSidebarRequest(0, 0)
@@ -684,7 +684,7 @@ func TestUpdateMessageDispatchBranches(t *testing.T) {
 	}
 
 	m := New(Deps{Config: config.Default(""), Ctx: ctx})
-	m.collections = []*domain.Collection{collection}
+	m.sidebar.collections = []*domain.Collection{collection}
 	m.activeRequest = request
 	m.activeEnvStore = nil
 	updated, _ := m.Update(
@@ -1038,8 +1038,8 @@ func TestActiveEnvName_IsCachedAcrossRenders(t *testing.T) {
 
 	reader := &countingEnvReader{EnvironmentHierarchyReader: st}
 	m := New(Deps{Config: config.Default(""), Ctx: ctx, Reader: st, EnvReader: reader})
-	m.collections = []*domain.Collection{col}
-	m.colCursor = 0
+	m.sidebar.collections = []*domain.Collection{col}
+	m.sidebar.colCursor = 0
 
 	require.Equal(t, defaultEnvironmentName, m.activeEnvName())
 	afterFirst := reader.reads
@@ -1097,9 +1097,9 @@ func TestCollectionsReload_KeepsSelectedCollection(t *testing.T) {
 	m := New(Deps{Config: config.Default("")})
 	updated, _ := m.Update(collectionsLoadedMsg{collections: cols("alpha", "beta", "gamma")})
 	m = updatedCertificateModel(t, updated)
-	for idx, col := range m.collections {
+	for idx, col := range m.sidebar.collections {
 		if col.ID == "id-gamma" {
-			m.colCursor = idx
+			m.sidebar.colCursor = idx
 		}
 	}
 	require.Equal(t, "id-gamma", m.activeCollectionID())

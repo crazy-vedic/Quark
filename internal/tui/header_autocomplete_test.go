@@ -47,9 +47,9 @@ func TestVariableCompletion(t *testing.T) {
 }
 
 func TestURLSuggestionUsesLoadedRequests(t *testing.T) {
-	m := Model{collectionRequests: map[string][]*domain.Request{
+	m := Model{sidebar: sidebarState{collectionRequests: map[string][]*domain.Request{
 		"col": {{URL: "https://api.example.com/users"}},
-	}}
+	}}}
 	if got := m.urlSuggestion("https://api.example.com/u"); got != "https://api.example.com/users" {
 		t.Fatalf("urlSuggestion = %q, want loaded request URL", got)
 	}

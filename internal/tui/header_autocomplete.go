@@ -73,7 +73,7 @@ func (m Model) urlSuggestion(input string) string {
 	if suggestion := variableCompletion(input, m.variableNames()); suggestion != "" {
 		return suggestion
 	}
-	for _, requests := range m.collectionRequests {
+	for _, requests := range m.sidebar.collectionRequests {
 		for _, req := range requests {
 			if req != nil && len(req.URL) > len(input) &&
 				strings.HasPrefix(strings.ToLower(req.URL), strings.ToLower(input)) {
@@ -101,7 +101,7 @@ func (m Model) variableNames() []string {
 			start = strings.Index(value, "{{")
 		}
 	}
-	for _, requests := range m.collectionRequests {
+	for _, requests := range m.sidebar.collectionRequests {
 		for _, req := range requests {
 			if req == nil {
 				continue

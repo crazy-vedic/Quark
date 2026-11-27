@@ -66,8 +66,12 @@ func TestStartupRestoresLastRequest(t *testing.T) {
 	if m.activeRequest == nil || m.activeRequest.ID != last.ID {
 		t.Fatalf("active request = %v, want %q", m.activeRequest, last.ID)
 	}
-	if m.colCursor != 1 || m.reqCursor != 0 {
-		t.Fatalf("sidebar selection = (%d, %d), want (1, 0)", m.colCursor, m.reqCursor)
+	if m.sidebar.colCursor != 1 || m.sidebar.reqCursor != 0 {
+		t.Fatalf(
+			"sidebar selection = (%d, %d), want (1, 0)",
+			m.sidebar.colCursor,
+			m.sidebar.reqCursor,
+		)
 	}
 }
 

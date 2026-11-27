@@ -23,10 +23,12 @@ func TestOrderCollectionsTreePlacesRootsBeforeDescendants(t *testing.T) {
 
 func TestBuildSearchRowsGroupsByTopLevelCollection(t *testing.T) {
 	m := Model{
-		collections: []*domain.Collection{
-			{ID: "root-a", Name: "Accounts"},
-			{ID: "child", Name: "Admin", ParentID: "root-a"},
-			{ID: "root-b", Name: "Billing"},
+		sidebar: sidebarState{
+			collections: []*domain.Collection{
+				{ID: "root-a", Name: "Accounts"},
+				{ID: "child", Name: "Admin", ParentID: "root-a"},
+				{ID: "root-b", Name: "Billing"},
+			},
 		},
 	}
 	hits := []*search.SearchHit{
@@ -52,16 +54,18 @@ func assertSearchGroupRow(t *testing.T, row searchRow, want string) {
 
 func TestBuildSidebarRowsHidesChildrenWhenParentIsCollapsed(t *testing.T) {
 	m := Model{
-		collections: []*domain.Collection{
-			{ID: "root", Name: "AEF"},
-			{ID: "child", Name: "Control Plane", ParentID: "root"},
+		sidebar: sidebarState{
+			collections: []*domain.Collection{
+				{ID: "root", Name: "AEF"},
+				{ID: "child", Name: "Control Plane", ParentID: "root"},
+			},
+			expanded:  map[string]bool{"root": false},
+			colCursor: 0,
+			reqCursor: -1,
 		},
-		expanded:  map[string]bool{"root": false},
-		colCursor: 0,
-		reqCursor: -1,
 	}
 
-	rows, _ := m.buildSidebarRows()
+	rows, _ := m.sidebar.buildRows()
 	if len(rows) != 1 || rows[0].colIndex != 0 {
 		t.Fatalf("collapsed sidebar rows = %#v, want only root collection", rows)
 	}
@@ -69,15 +73,17 @@ func TestBuildSidebarRowsHidesChildrenWhenParentIsCollapsed(t *testing.T) {
 
 func TestBuildSidebarRowsShowsChildrenWhenParentIsExpanded(t *testing.T) {
 	m := Model{
-		collections: []*domain.Collection{
-			{ID: "root", Name: "AEF"},
-			{ID: "child", Name: "Control Plane", ParentID: "root"},
+		sidebar: sidebarState{
+			collections: []*domain.Collection{
+				{ID: "root", Name: "AEF"},
+				{ID: "child", Name: "Control Plane", ParentID: "root"},
+			},
+			expanded:  map[string]bool{"root": true},
+			reqCursor: -1,
 		},
-		expanded:  map[string]bool{"root": true},
-		reqCursor: -1,
 	}
 
-	rows, _ := m.buildSidebarRows()
+	rows, _ := m.sidebar.buildRows()
 	if len(rows) != 2 || rows[1].colIndex != 1 || rows[1].depth != 1 {
 		t.Fatalf("expanded sidebar rows = %#v, want root and child", rows)
 	}
@@ -85,27 +91,29 @@ func TestBuildSidebarRowsShowsChildrenWhenParentIsExpanded(t *testing.T) {
 
 func TestBuildSidebarRows_HidesEntireCollapsedSubtree(t *testing.T) {
 	m := Model{
-		collections: []*domain.Collection{
-			{ID: "root", Name: "Root"},
-			{ID: "child", Name: "Child", ParentID: "root"},
-			{ID: "grandchild", Name: "Grandchild", ParentID: "child"},
-			{ID: "sibling", Name: "Sibling"},
-		},
-		expanded: map[string]bool{"root": false, "child": true, "grandchild": true},
-		collectionRequests: map[string][]*domain.Request{
-			"child": {{ID: "child-request", Name: "Hidden request"}},
+		sidebar: sidebarState{
+			collections: []*domain.Collection{
+				{ID: "root", Name: "Root"},
+				{ID: "child", Name: "Child", ParentID: "root"},
+				{ID: "grandchild", Name: "Grandchild", ParentID: "child"},
+				{ID: "sibling", Name: "Sibling"},
+			},
+			expanded: map[string]bool{"root": false, "child": true, "grandchild": true},
+			collectionRequests: map[string][]*domain.Request{
+				"child": {{ID: "child-request", Name: "Hidden request"}},
+			},
 		},
 	}
 
-	rows, _ := m.buildSidebarRows()
+	rows, _ := m.sidebar.buildRows()
 	require.Equal(t, []sidebarRow{
 		{kind: sidebarCollectionRow, colIndex: 0, reqIndex: -1, depth: 0},
 		{kind: sidebarCollectionRow, colIndex: 3, reqIndex: -1, depth: 0},
 	}, rows)
 
-	m.expanded["root"] = true
-	m.expanded["child"] = false
-	rows, _ = m.buildSidebarRows()
+	m.sidebar.expanded["root"] = true
+	m.sidebar.expanded["child"] = false
+	rows, _ = m.sidebar.buildRows()
 	require.Equal(t, []sidebarRow{
 		{kind: sidebarCollectionRow, colIndex: 0, reqIndex: -1, depth: 0},
 		{kind: sidebarCollectionRow, colIndex: 1, reqIndex: -1, depth: 1},
@@ -115,27 +123,29 @@ func TestBuildSidebarRows_HidesEntireCollapsedSubtree(t *testing.T) {
 
 func TestCollapseCollectionSubtreeClosesNestedCollections(t *testing.T) {
 	m := Model{
-		collections: []*domain.Collection{
-			{ID: "root", Name: "Root"},
-			{ID: "child", Name: "Child", ParentID: "root"},
-			{ID: "grandchild", Name: "Grandchild", ParentID: "child"},
-		},
-		expanded: map[string]bool{
-			"root": true, "child": true, "grandchild": true,
-		},
-		collectionRequests: map[string][]*domain.Request{
-			"root":       {{ID: "root-request"}},
-			"child":      {{ID: "child-request"}},
-			"grandchild": {{ID: "grandchild-request"}},
+		sidebar: sidebarState{
+			collections: []*domain.Collection{
+				{ID: "root", Name: "Root"},
+				{ID: "child", Name: "Child", ParentID: "root"},
+				{ID: "grandchild", Name: "Grandchild", ParentID: "child"},
+			},
+			expanded: map[string]bool{
+				"root": true, "child": true, "grandchild": true,
+			},
+			collectionRequests: map[string][]*domain.Request{
+				"root":       {{ID: "root-request"}},
+				"child":      {{ID: "child-request"}},
+				"grandchild": {{ID: "grandchild-request"}},
+			},
 		},
 	}
 
-	m.collapseCollectionSubtree("root")
+	m.sidebar.collapseSubtree("root")
 
-	require.False(t, m.expanded["root"])
-	require.False(t, m.expanded["child"])
-	require.False(t, m.expanded["grandchild"])
-	require.Len(t, m.collectionRequests, 3)
+	require.False(t, m.sidebar.expanded["root"])
+	require.False(t, m.sidebar.expanded["child"])
+	require.False(t, m.sidebar.expanded["grandchild"])
+	require.Len(t, m.sidebar.collectionRequests, 3)
 }
 
 func collectionIDs(collections []*domain.Collection) []string {
