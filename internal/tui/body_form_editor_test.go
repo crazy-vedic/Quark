@@ -61,12 +61,12 @@ func TestBodyType_CycleSavesEachType(t *testing.T) {
 	m, st := bodyFormTestModel(t, req)
 
 	var got []string
-	for range 4 {
+	for range 5 {
 		m = callUpdate(t, m, bodyFormKey('T'))
 		got = append(got, m.ActiveRequest().BodyType)
 		assert.Equal(t, "Body type: "+m.ActiveRequest().BodyType, m.StatusSuccess())
 	}
-	assert.Equal(t, []string{"json", "form-urlencoded", "none", "raw"}, got)
+	assert.Equal(t, []string{"json", "form-urlencoded", "graphql", "none", "raw"}, got)
 	assert.Equal(t, "raw", savedRequest(t, st, req.ID).BodyType)
 }
 

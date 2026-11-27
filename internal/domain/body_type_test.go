@@ -29,11 +29,11 @@ func TestNormalizeBodyType(t *testing.T) {
 func TestNextBodyType_CyclesAllTypes(t *testing.T) {
 	current := domain.BodyTypeNone
 	var seen []string
-	for range 4 {
+	for range 5 {
 		current = domain.NextBodyType(current)
 		seen = append(seen, current)
 	}
-	assert.Equal(t, []string{"raw", "json", "form-urlencoded", "none"}, seen)
+	assert.Equal(t, []string{"raw", "json", "form-urlencoded", "graphql", "none"}, seen)
 	assert.Equal(t, "none", domain.NextBodyType("bogus"))
 	assert.Equal(t, "json", domain.NextBodyType(""), "blank is raw, so the next is json")
 }

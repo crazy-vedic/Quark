@@ -725,6 +725,15 @@ func (m Model) requestBodyPreviewContent(parent ...*timing.Span) string {
 	switch requestBodyType(m.activeRequest) {
 	case domain.BodyTypeNone:
 		return "  No body is sent (body type is none)"
+	case domain.BodyTypeGraphQL:
+		graphQL, err := domain.ParseGraphQLBody(m.activeRequest.Body)
+		if err == nil {
+			lines := strings.Split(domain.GraphQLEditorText(graphQL), "\n")
+			for i := range lines {
+				lines[i] = "  " + lines[i]
+			}
+			return strings.Join(lines, "\n")
+		}
 	case domain.BodyTypeFormURLEncoded:
 		if m.activeRequest.Body != "" {
 			var lines []string

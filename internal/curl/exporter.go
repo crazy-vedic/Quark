@@ -69,8 +69,20 @@ func ExportRequest(req *domain.Request) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("export request body: %w", err)
 	}
-	// A body type of none sends no body, so none is exported.
-	if body := req.Body; bodyType != domain.BodyTypeNone && body != "" {
+	// A body type of none sends no body, so none is exported. A graphql body
+	// is exported as the payload that is sent.
+	body := req.Body
+	switch bodyType {
+	case domain.BodyTypeNone:
+		body = ""
+	case domain.BodyTypeGraphQL:
+		payload, err := domain.GraphQLRequestPayload(req.Body)
+		if err != nil {
+			return "", fmt.Errorf("export graphql body: %w", err)
+		}
+		body = payload
+	}
+	if body != "" {
 		if ct := domain.DefaultBodyContentType(
 			bodyType,
 		); ct != "" &&

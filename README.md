@@ -199,7 +199,7 @@ can include credentials from the saved request.
 
 ### Request body types
 
-Press `T` in the request pane to cycle the body type: `none` (no body is sent), `raw` (sent as written), `json` (sent as written, with `Content-Type: application/json` unless the request sets one) and `form-urlencoded`. In a form body, press `b` to edit the fields as name/value rows. Names and values are encoded when saved, and `{{variables}}` in a value are escaped when the request is sent. Curl and Postman imports of urlencoded bodies set the form type.
+Press `T` in the request pane to cycle the body type: `none` (no body is sent), `raw` (sent as written), `json` (sent as written, with `Content-Type: application/json` unless the request sets one), `form-urlencoded` and `graphql`. In a form body, press `b` to edit the fields as name/value rows. A GraphQL body is edited as text in `b`: the query, then a line `# --- variables ---` and the variables as a JSON object. It is sent as `{"query": ..., "variables": {...}}` with `Content-Type: application/json`; variables that are not a JSON object are an error before the send. Names and values are encoded when saved, and `{{variables}}` in a value are escaped when the request is sent. Curl and Postman imports of urlencoded bodies set the form type.
 
 ### Text Selection & Editing
 

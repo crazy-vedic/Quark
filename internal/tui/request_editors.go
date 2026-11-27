@@ -40,8 +40,19 @@ func (m Model) beginBodyEdit() Model {
 	if requestBodyType(m.activeRequest) == domain.BodyTypeFormURLEncoded {
 		return m.beginBodyFormEdit()
 	}
-	m.preEditBody = m.activeRequest.Body
-	m.bodyTextarea.SetValue(m.activeRequest.Body)
+	text := m.activeRequest.Body
+	if requestBodyType(m.activeRequest) == domain.BodyTypeGraphQL {
+		graphQL, err := domain.ParseGraphQLBody(m.activeRequest.Body)
+		if err != nil {
+			return m.status(
+				"error",
+				"This request's stored GraphQL body is not valid; refusing to edit and overwrite it",
+			)
+		}
+		text = domain.GraphQLEditorText(graphQL)
+	}
+	m.preEditBody = text
+	m.bodyTextarea.SetValue(text)
 	m.bodyTextarea.Focus()
 	m.bodySelection.Collapse(0)
 	m.activeField = bodyField
@@ -153,6 +164,18 @@ func (m Model) finishURLEdit() (Model, tea.Cmd) {
 func (m Model) finishBodyEdit() Model {
 	body := m.bodyTextarea.Value()
 	statusMsg := "Body updated"
+
+	if requestBodyType(m.activeRequest) == domain.BodyTypeGraphQL {
+		// The editor text is the query and variables; store them as the body.
+		stored, err := domain.MarshalGraphQLBody(domain.GraphQLFromEditorText(body))
+		if err != nil {
+			return m.status("error", "Could not save GraphQL body: "+err.Error())
+		}
+		m.activeRequest.Body = stored
+		m.bodyTextarea.Blur()
+		m.activeField = noneField
+		return m.status("success", statusMsg)
+	}
 
 	// Format JSON if enabled and the body is valid JSON.
 	if m.cfg.Format.JSONOnSave {

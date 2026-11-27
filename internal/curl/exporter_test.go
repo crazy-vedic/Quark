@@ -219,3 +219,23 @@ func TestExportRequest_BodyTypes(t *testing.T) {
 	_, err = curl.ExportRequest(&domain.Request{URL: "https://example.test/", BodyType: "xml"})
 	assert.ErrorContains(t, err, `unsupported body type "xml"`)
 }
+
+func TestExportRequest_GraphQLBody(t *testing.T) {
+	t.Parallel()
+
+	body, err := domain.MarshalGraphQLBody(
+		domain.GraphQLBody{Query: "{ me { id } }", Variables: `{"a":1}`},
+	)
+	require.NoError(t, err)
+	got, err := curl.ExportRequest(&domain.Request{
+		Method:   "POST",
+		URL:      "https://example.test/graphql",
+		Body:     body,
+		BodyType: domain.BodyTypeGraphQL,
+	})
+	require.NoError(t, err)
+	assert.Equal(t,
+		`curl -X 'POST' -H 'Content-Type: application/json' `+
+			`--data-raw '{"query":"{ me { id } }","variables":{"a":1}}' 'https://example.test/graphql'`,
+		got)
+}
