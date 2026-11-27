@@ -3,7 +3,6 @@ package tui
 import (
 	"context"
 	"errors"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -52,9 +51,10 @@ func TestStartupRestoresLastRequest(t *testing.T) {
 		URL:          "https://last.example",
 	}
 	reader := startupRequestReader{requests: map[string][]*domain.Request{second.ID: {last}}}
-	cfg := config.Default(t.TempDir())
+	dir := t.TempDir()
+	cfg := config.Default(dir)
 	cfg.UI.LastRequestID = last.ID
-	m := New(Deps{Reader: reader, Config: cfg, ConfigDir: filepath.Dir(cfg.Logging.File)})
+	m := New(Deps{Reader: reader, Config: cfg, ConfigDir: dir})
 
 	updated, cmd := m.Update(collectionsLoadedMsg{collections: []*domain.Collection{first, second}})
 	m = requireModel(t, updated)
