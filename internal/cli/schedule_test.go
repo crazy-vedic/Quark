@@ -469,3 +469,143 @@ func TestRunDue_SkipsRunClaimedByAnotherProcess(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, domain.ScheduledRunRunning, got.Status, "the other process still owns the run")
 }
+
+func runScheduleCmd(t *testing.T, st ScheduleStore, args ...string) (string, error) {
+	t.Helper()
+	now := time.Date(2026, 6, 25, 15, 0, 0, 0, time.UTC)
+	cmd := NewScheduleCmd(st, nil, func() time.Time { return now })
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(new(bytes.Buffer))
+	cmd.SetArgs(args)
+	cmd.SetContext(context.Background())
+	err := cmd.Execute()
+	return out.String(), err
+}
+
+func TestNewScheduleCmd_ListShowsRequestPath(t *testing.T) {
+	st := newFakeScheduleStore()
+	st.runs["run-1"] = &domain.ScheduledRun{
+		ID:        "run-1",
+		RequestID: "req-1",
+		RunAt:     time.Date(2026, 6, 25, 16, 0, 0, 0, time.UTC),
+		Status:    domain.ScheduledRunPending,
+	}
+
+	out, err := runScheduleCmd(t, st, "list")
+	require.NoError(t, err)
+	assert.Contains(t, out, "Payments/List")
+	assert.NotContains(t, out, "request=")
+	assert.NotContains(t, out, "req-1")
+}
+
+func TestNewScheduleCmd_ListShowsNestedRequestPath(t *testing.T) {
+	ctx := context.Background()
+	st, err := store.New(filepath.Join(t.TempDir(), "quark.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = st.Close() })
+
+	require.NoError(t, st.SaveCollection(ctx, &domain.Collection{ID: "parent", Name: "Parent"}))
+	require.NoError(t, st.SaveCollection(ctx, &domain.Collection{
+		ID: "child", Name: "Child", ParentID: "parent",
+	}))
+	require.NoError(t, st.SaveRequest(ctx, &domain.Request{
+		ID: "nested-req", CollectionID: "child", Name: "Ping",
+		Method: http.MethodGet, URL: "https://example.test/ping",
+	}))
+	require.NoError(t, st.SaveScheduledRun(ctx, &domain.ScheduledRun{
+		ID: "abcdef0123456789", RequestID: "nested-req",
+		RunAt: time.Date(2026, 6, 25, 16, 0, 0, 0, time.UTC),
+	}))
+
+	out, err := runScheduleCmd(t, st, "list")
+	require.NoError(t, err)
+	assert.Contains(t, out, "abcdef01")
+	assert.Contains(t, out, "Parent/Child/Ping")
+}
+
+func TestNewScheduleCmd_CancelPendingRunPreventsRunDue(t *testing.T) {
+	st := newFakeScheduleStore()
+	st.runs["run-1"] = &domain.ScheduledRun{
+		ID:        "run-1",
+		RequestID: "req-1",
+		RunAt:     time.Date(2026, 6, 25, 14, 0, 0, 0, time.UTC),
+		Status:    domain.ScheduledRunPending,
+	}
+
+	out, err := runScheduleCmd(t, st, "cancel", "run-1")
+	require.NoError(t, err)
+	assert.Contains(t, out, "Cancelled run-1")
+	assert.Equal(t, domain.ScheduledRunCancelled, st.runs["run-1"].Status)
+
+	out, err = runScheduleCmd(t, st, "run-due")
+	require.NoError(t, err)
+	assert.Contains(t, out, "No due scheduled runs.")
+	assert.Equal(t, domain.ScheduledRunCancelled, st.runs["run-1"].Status)
+}
+
+func TestNewScheduleCmd_CancelByUniquePrefix(t *testing.T) {
+	st := newFakeScheduleStore()
+	st.runs["0123456789abcdef"] = &domain.ScheduledRun{
+		ID: "0123456789abcdef", RequestID: "req-1", Status: domain.ScheduledRunPending,
+	}
+	st.runs["fedcba9876543210"] = &domain.ScheduledRun{
+		ID: "fedcba9876543210", RequestID: "req-1", Status: domain.ScheduledRunPending,
+	}
+
+	out, err := runScheduleCmd(t, st, "cancel", "01234567")
+	require.NoError(t, err)
+	assert.Contains(t, out, "Cancelled 01234567")
+	assert.Equal(t, domain.ScheduledRunCancelled, st.runs["0123456789abcdef"].Status)
+	assert.Equal(t, domain.ScheduledRunPending, st.runs["fedcba9876543210"].Status)
+}
+
+func TestNewScheduleCmd_CancelRejectsAmbiguousPrefix(t *testing.T) {
+	st := newFakeScheduleStore()
+	st.runs["0123456789aaaaaa"] = &domain.ScheduledRun{
+		ID: "0123456789aaaaaa", RequestID: "req-1", Status: domain.ScheduledRunPending,
+	}
+	st.runs["0123456789bbbbbb"] = &domain.ScheduledRun{
+		ID: "0123456789bbbbbb", RequestID: "req-1", Status: domain.ScheduledRunPending,
+	}
+
+	_, err := runScheduleCmd(t, st, "cancel", "01234567")
+	require.ErrorContains(t, err, "ambiguous")
+	assert.Equal(t, domain.ScheduledRunPending, st.runs["0123456789aaaaaa"].Status)
+	assert.Equal(t, domain.ScheduledRunPending, st.runs["0123456789bbbbbb"].Status)
+}
+
+func TestNewScheduleCmd_CancelRejectsShortPrefixAndUnknownRun(t *testing.T) {
+	st := newFakeScheduleStore()
+	st.runs["0123456789abcdef"] = &domain.ScheduledRun{
+		ID: "0123456789abcdef", RequestID: "req-1", Status: domain.ScheduledRunPending,
+	}
+
+	_, err := runScheduleCmd(t, st, "cancel", "0123")
+	require.ErrorContains(t, err, "not found")
+	_, err = runScheduleCmd(t, st, "cancel", "missing-run")
+	require.ErrorContains(t, err, "not found")
+	assert.Equal(t, domain.ScheduledRunPending, st.runs["0123456789abcdef"].Status)
+}
+
+func TestNewScheduleCmd_CancelRejectsFinishedRun(t *testing.T) {
+	st := newFakeScheduleStore()
+	st.runs["run-done"] = &domain.ScheduledRun{
+		ID: "run-done", RequestID: "req-1", Status: domain.ScheduledRunCompleted,
+	}
+
+	_, err := runScheduleCmd(t, st, "cancel", "run-done")
+	require.ErrorContains(t, err, "only pending runs can be cancelled")
+	assert.Equal(t, domain.ScheduledRunCompleted, st.runs["run-done"].Status)
+}
+
+func TestNewScheduleCmd_CancelAlreadyCancelledIsNoop(t *testing.T) {
+	st := newFakeScheduleStore()
+	st.runs["run-1"] = &domain.ScheduledRun{
+		ID: "run-1", RequestID: "req-1", Status: domain.ScheduledRunCancelled,
+	}
+
+	out, err := runScheduleCmd(t, st, "cancel", "run-1")
+	require.NoError(t, err)
+	assert.Contains(t, out, "Already cancelled run-1")
+}

@@ -17,6 +17,7 @@ quark run <Collection/Request>
 quark search <query>
 quark schedule add <Collection/Request> --at <time>
 quark schedule list
+quark schedule cancel <run-id>
 quark schedule run-due
 quark import curl <curl-command> [--collection <id>] [--name <name>]
 quark import-postman <file|dir> [--collection-name <name>] [--on-duplicate <action>] [--include-disabled]
@@ -104,6 +105,8 @@ Fuzzy search across all collections. Uses `internal/search.Searcher`.
 
 - `quark schedule run-due` is invoked (e.g. via cron), or
 - The TUI's in-app timer fires
+
+`quark schedule cancel <run-id>` marks a pending run `cancelled` so it never fires. It accepts the full ID or the 8+ character prefix that `schedule list` prints. Only pending runs can be cancelled.
 
 ## import
 
