@@ -186,8 +186,9 @@ or bulk export directory; `i` opens the cURL importer. Existing collection names
 are imported as numbered copies. The same import is available with
 `quark import-postman <file-or-directory>`.
 
-Use `quark collection rename <collection> <new-name>` and
-`quark collection delete <collection>` to manage collections from scripts.
+Use `quark collection rename <collection> <new-name>`, `quark collection move
+<collection> <new-parent|/>` and `quark collection delete <collection>` to manage
+collections from scripts.
 `quark cert list`, `quark cert set <host> --file <path>`, and
 `quark cert delete <host>` manage host-scoped TLS client certificates. For
 PKCS#12 files, prefer `--password-env` to keep passwords out of shell history.
