@@ -160,7 +160,8 @@ func TestRunEntrypointAndLazyCommands(t *testing.T) {
 	completions, _ = exportCmd.ValidArgsFunction(exportCmd, nil, "Main/")
 	require.Empty(t, completions, "a failing runtime offers no completions")
 
-	exportCmd = lazyRequestCmd(rtf).Commands()[0]
+	exportCmd, _, err = lazyRequestCmd(rtf).Find([]string{"export-curl"})
+	require.NoError(t, err)
 	require.Equal(t, "export-curl", exportCmd.Name())
 	exportCmd.SetContext(context.Background())
 	completions, _ = exportCmd.ValidArgsFunction(exportCmd, nil, "Main/")

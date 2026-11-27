@@ -188,6 +188,9 @@ are imported as numbered copies. The same import is available with
 
 Use `quark collection rename <collection> <new-name>` and
 `quark collection delete <collection>` to manage collections from scripts.
+`quark request create|show|rename|delete <Collection/Request>` manage saved
+requests the same way; `create` takes `--method` and `--url`, and `delete` needs
+`--yes`.
 `quark cert list`, `quark cert set <host> --file <path>`, and
 `quark cert delete <host>` manage host-scoped TLS client certificates. For
 PKCS#12 files, prefer `--password-env` to keep passwords out of shell history.
