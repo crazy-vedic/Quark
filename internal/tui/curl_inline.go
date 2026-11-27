@@ -8,7 +8,6 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/crazy-vedic/quark/internal/curl"
-	"github.com/crazy-vedic/quark/internal/domain"
 )
 
 // isCurlCommand reports whether the URL text is a curl command rather than a URL.
@@ -91,10 +90,10 @@ func (m Model) confirmCurlReplace() (Model, tea.Cmd) {
 	req.URL = result.URL
 	req.Headers = string(headersJSON)
 	req.Body = result.Body
-	// The curl result carries no auth settings (credentials arrive as headers),
-	// so the previous request's auth must not apply to the new request.
-	req.AuthType = domain.AuthTypeNone
-	req.AuthConfig = ""
+	// The previous request's auth must not apply to the new request. Most curl
+	// credentials arrive as headers; only --digest sets request auth.
+	req.AuthType = result.AuthType
+	req.AuthConfig = result.AuthConfig
 
 	m.method = result.Method
 	m.preEditURL = result.URL

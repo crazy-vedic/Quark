@@ -7,6 +7,32 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestParse_DigestUserBecomesDigestAuth(t *testing.T) {
+	t.Parallel()
+
+	for _, command := range []string{
+		`curl --digest -u 'alice:pa:ss' https://example.test/a`,
+		`curl -u 'alice:pa:ss' --digest https://example.test/a`,
+	} {
+		result, err := NewImporter().Parse(strings.NewReader(command))
+		require.NoError(t, err, command)
+		require.Equal(t, "digest", result.AuthType, command)
+		require.JSONEq(t, `{"username":"alice","password":"pa:ss"}`, result.AuthConfig, command)
+		require.Empty(t, result.Headers.Get("Authorization"), command)
+	}
+
+	// Without --digest, -u stays a Basic header.
+	result, err := NewImporter().Parse(strings.NewReader(`curl -u a:b https://example.test`))
+	require.NoError(t, err)
+	require.Empty(t, result.AuthType)
+	require.Equal(t, "Basic YTpi", result.Headers.Get("Authorization"))
+
+	// --digest alone carries no credentials and changes nothing.
+	result, err = NewImporter().Parse(strings.NewReader(`curl --digest https://example.test`))
+	require.NoError(t, err)
+	require.Empty(t, result.AuthType)
+}
+
 func TestAppendQueryPreservesFragment(t *testing.T) {
 	got := appendQuery("https://example.com/path#fragment", "a=1")
 	if want := "https://example.com/path?a=1#fragment"; got != want {

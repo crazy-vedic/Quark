@@ -38,6 +38,11 @@ type ImportResult struct {
 	Body        string
 	Security    SecurityLevel
 	Certificate *CertificateSpec
+	// AuthType and AuthConfig carry request auth that cannot be expressed as
+	// a header (today only `--digest`). Empty means credentials, if any, are
+	// already in Headers.
+	AuthType   string
+	AuthConfig string
 	// Warnings is sorted lexicographically before return.
 	// Tests must use assert.Equal, not assert.ElementsMatch.
 	Warnings []string

@@ -46,7 +46,7 @@ func (e authEditor) rows() []authRowID {
 	switch e.authType {
 	case domain.AuthTypeBearer:
 		rows = append(rows, authRowToken)
-	case domain.AuthTypeBasic:
+	case domain.AuthTypeBasic, domain.AuthTypeDigest:
 		rows = append(rows, authRowUsername, authRowPassword)
 	case domain.AuthTypeAPIKey:
 		rows = append(rows, authRowAPIKeyIn, authRowAPIKeyName, authRowAPIKeyValue)
@@ -85,6 +85,7 @@ func (e *authEditor) cycleType(delta int) {
 		domain.AuthTypeBearer,
 		domain.AuthTypeBasic,
 		domain.AuthTypeAPIKey,
+		domain.AuthTypeDigest,
 	}
 	cur := 0
 	for i, authType := range types {
@@ -142,7 +143,7 @@ func (e authEditor) config() domain.AuthConfig {
 	switch e.authType {
 	case domain.AuthTypeBearer:
 		return domain.AuthConfig{Token: e.tokenInput.Value()}
-	case domain.AuthTypeBasic:
+	case domain.AuthTypeBasic, domain.AuthTypeDigest:
 		return domain.AuthConfig{
 			Username: e.usernameInput.Value(),
 			Password: e.passwordInput.Value(),
@@ -160,6 +161,8 @@ func (e authEditor) config() domain.AuthConfig {
 
 func (e authEditor) summary() string {
 	switch e.authType {
+	case domain.AuthTypeDigest:
+		return "Digest"
 	case domain.AuthTypeBearer:
 		return "Bearer"
 	case domain.AuthTypeBasic:
@@ -179,6 +182,8 @@ func (e authEditor) valueForRow(row authRowID, editing bool, muted lipgloss.Styl
 	switch row {
 	case authRowType:
 		switch e.authType {
+		case domain.AuthTypeDigest:
+			return "Digest"
 		case domain.AuthTypeBearer:
 			return "Bearer"
 		case domain.AuthTypeBasic:

@@ -2027,6 +2027,8 @@ func (m Model) handleImportKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					URL:          m.importPreview.URL,
 					Headers:      string(headersJSON),
 					Body:         m.importPreview.Body,
+					AuthType:     m.importPreview.AuthType,
+					AuthConfig:   m.importPreview.AuthConfig,
 				}
 				m.debugCurl(
 					"confirm save name=%q method=%s url=%q header_names=%q body_len=%d",

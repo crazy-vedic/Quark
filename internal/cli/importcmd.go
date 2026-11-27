@@ -103,6 +103,8 @@ func newImportCurlCmd(
 				URL:          result.URL,
 				Headers:      string(headersJSON),
 				Body:         result.Body,
+				AuthType:     result.AuthType,
+				AuthConfig:   result.AuthConfig,
 			}
 			if err := w.SaveRequest(cmd.Context(), req); err != nil {
 				return fmt.Errorf("import curl: save: %w", err)

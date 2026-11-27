@@ -34,6 +34,13 @@ func applyRequestAuth(httpReq *http.Request, req *domain.Request) error {
 		creds := base64.StdEncoding.EncodeToString([]byte(cfg.Username + ":" + cfg.Password))
 		httpReq.Header.Set("Authorization", "Basic "+creds)
 		return nil
+	case domain.AuthTypeDigest:
+		// The first send carries no credentials: the Authorization header
+		// depends on the server's 401 challenge (see retryWithDigest).
+		if cfg.Username == "" && cfg.Password == "" {
+			return fmt.Errorf("invalid auth config: digest username or password is required")
+		}
+		return nil
 	case domain.AuthTypeAPIKey:
 		if cfg.Name == "" {
 			return fmt.Errorf("invalid auth config: api key name is required")

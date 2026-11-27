@@ -115,6 +115,49 @@ func TestImporter_HeadersAndAuth(t *testing.T) {
 	assert.Equal(t, postman.Dangerous, result.Security)
 }
 
+func TestImporter_DigestAuthBecomesRequestAuth(t *testing.T) {
+	json := `{
+		"info": {"name": "Digest", "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"},
+		"item": [
+			{
+				"name": "Private",
+				"request": {
+					"method": "GET",
+					"url": {"raw": "https://api.example.com/private"},
+					"auth": {"type": "digest", "digest": [
+						{"key": "username", "value": "alice"},
+						{"key": "password", "value": "{{PASS}}"},
+						{"key": "algorithm", "value": "MD5"},
+						{"key": "realm", "value": "ignored"}
+					]}
+				}
+			},
+			{
+				"name": "Empty",
+				"request": {
+					"method": "GET",
+					"url": {"raw": "https://api.example.com/private"},
+					"auth": {"type": "digest", "digest": []}
+				}
+			}
+		]
+	}`
+
+	result, err := postman.NewImporter().Parse(strings.NewReader(json))
+	require.NoError(t, err)
+	require.Len(t, result.Requests, 2)
+	req := result.Requests[0]
+	assert.Equal(t, "digest", req.AuthType)
+	assert.JSONEq(t, `{"username":"alice","password":"{{PASS}}"}`, req.AuthConfig)
+	assert.NotContains(t, req.Headers, "Authorization")
+
+	assert.Empty(t, result.Requests[1].AuthType)
+	assert.Contains(t, result.Warnings, "digest auth has no username or password; auth not set")
+	for _, w := range result.Warnings {
+		assert.NotContains(t, w, "unsupported auth type")
+	}
+}
+
 func TestImporter_InvalidJSON(t *testing.T) {
 	im := postman.NewImporter()
 	_, err := im.Parse(strings.NewReader("not json"))

@@ -47,6 +47,8 @@ func ExportRequest(req *domain.Request) (string, error) {
 			args = append(args, "-H", shellQuote("Authorization: Bearer "+cfg.Token))
 		case domain.AuthTypeBasic:
 			args = append(args, "-u", shellQuote(cfg.Username+":"+cfg.Password))
+		case domain.AuthTypeDigest:
+			args = append(args, "--digest", "-u", shellQuote(cfg.Username+":"+cfg.Password))
 		case domain.AuthTypeAPIKey:
 			if domain.NormalizeAPIKeyIn(cfg.In) == domain.AuthAPIKeyInQuery {
 				parsed, err := url.Parse(requestURL)

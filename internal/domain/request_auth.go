@@ -10,6 +10,10 @@ const (
 	AuthTypeBearer = "bearer"
 	AuthTypeBasic  = "basic"
 	AuthTypeAPIKey = "api_key"
+	// AuthTypeDigest is HTTP Digest authentication (RFC 7616). The request is
+	// sent once without credentials; a 401 Digest challenge is answered with a
+	// single retry that carries the computed Authorization header.
+	AuthTypeDigest = "digest"
 
 	AuthAPIKeyInHeader = "header"
 	AuthAPIKeyInQuery  = "query"
@@ -34,6 +38,8 @@ func NormalizeAuthType(authType string) string {
 		return AuthTypeBasic
 	case AuthTypeAPIKey:
 		return AuthTypeAPIKey
+	case AuthTypeDigest:
+		return AuthTypeDigest
 	default:
 		return strings.ToLower(strings.TrimSpace(authType))
 	}

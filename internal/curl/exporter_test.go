@@ -73,6 +73,14 @@ func TestExportRequest(t *testing.T) {
 			want: "curl -X 'GET' -u 'api:p'\\''ass' 'https://example.test'",
 		},
 		{
+			name: "digest authorization",
+			request: &domain.Request{
+				URL: "https://example.test", AuthType: domain.AuthTypeDigest,
+				AuthConfig: `{"username":"api","password":"pw"}`,
+			},
+			want: "curl -X 'GET' --digest -u 'api:pw' 'https://example.test'",
+		},
+		{
 			name: "API key defaults to header",
 			request: &domain.Request{
 				URL: "https://example.test", AuthType: domain.AuthTypeAPIKey,
@@ -119,10 +127,10 @@ func TestExportRequest(t *testing.T) {
 			name: "unsupported authorization type",
 			request: &domain.Request{
 				URL:        "https://example.test",
-				AuthType:   "digest",
+				AuthType:   "ntlm",
 				AuthConfig: `{}`,
 			},
-			wantErr: `unsupported authorization type "digest"`,
+			wantErr: `unsupported authorization type "ntlm"`,
 		},
 	}
 

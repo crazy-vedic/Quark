@@ -31,6 +31,7 @@ type ImportResult struct {
     Headers  map[string]string
     Body     string
     Security SecurityLevel  // safe, caution, dangerous
+    AuthType, AuthConfig string // set only for -u ... --digest (Digest request auth)
     Warnings []string       // sorted
 }
 ```
@@ -97,7 +98,7 @@ Interactive TTY may prompt when flag not set and duplicate detected.
 Maps Postman collection items to Quark requests:
 
 - Methods, URLs, headers, bodies
-- Auth types (with warnings for unsupported modes)
+- Auth types (with warnings for unsupported modes). Bearer, Basic and header API keys become headers; `digest` becomes request auth (`AuthType: digest`, username/password only — realm/nonce come from the server)
 - Folder structure → flat request list with names
 
 **Limitations** (warnings emitted):

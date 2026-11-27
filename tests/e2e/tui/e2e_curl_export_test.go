@@ -189,9 +189,9 @@ func TestE2E_CurlExportRejectsInvalidPersistedRequests(t *testing.T) {
 		{
 			name:    "unsupported auth type",
 			url:     "https://example.test",
-			auth:    "digest",
+			auth:    "ntlm",
 			config:  `{}`,
-			wantErr: `unsupported authorization type "digest"`,
+			wantErr: `unsupported authorization type "ntlm"`,
 		},
 		{
 			name:    "invalid URL for query API key",

@@ -246,6 +246,26 @@ func TestCtrlVClipboardErrorLeavesFieldAlone(t *testing.T) {
 	assert.Equal(t, "keep", m2.URLValue())
 }
 
+func TestCurlReplaceAppliesDigestAuth(t *testing.T) {
+	req := existingRequest()
+	req.AuthType = domain.AuthTypeBearer
+	req.AuthConfig = `{"token":"old-token"}`
+	m := newModelWithCurl().
+		WithFocus(tui.RequestPane).
+		WithActiveRequest(req).
+		WithURLEdit().
+		WithURLValue(`curl --digest -u alice:pw https://api.example.com/items`)
+
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	require.Equal(t, tui.ImportMode, m.Mode())
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	require.Equal(t, tui.NormalMode, m.Mode())
+
+	assert.Equal(t, domain.AuthTypeDigest, req.AuthType)
+	assert.JSONEq(t, `{"username":"alice","password":"pw"}`, req.AuthConfig)
+	assert.NotContains(t, req.Headers, "Authorization")
+}
+
 func TestCurlReplaceClearsPreviousAuth(t *testing.T) {
 	req := existingRequest()
 	req.AuthType = domain.AuthTypeBearer
