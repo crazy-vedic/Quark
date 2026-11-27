@@ -123,7 +123,7 @@ There is no encryption at rest.
 
 ### URL Scheme Restriction
 
-Only `http://` and `https://` URLs are allowed for execution. Prevents SSRF-style attacks via `file://`, etc.
+Only `http://` and `https://` URLs are allowed for execution. Prevents SSRF-style attacks via `file://`, etc. WebSocket sessions accept only `ws://` and `wss://`, which map to the same HTTP handshake target (`http`/`https`) and nothing else.
 
 ### Single DB Connection
 

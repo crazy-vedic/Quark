@@ -53,6 +53,7 @@ const (
 	scheduleMode
 	clientCertMode
 	postmanImportMode
+	wsMode
 )
 
 // promptType identifies which collection prompt is active.
@@ -291,6 +292,11 @@ type Model struct {
 	// --- In-flight request ---
 	cancel  context.CancelFunc
 	loading bool
+	// wsDialCtx is the context of the latest send. A WebSocket handshake that
+	// returns under another context was superseded and is closed.
+	wsDialCtx context.Context
+	// ws is the open WebSocket session shown in wsMode.
+	ws wsState
 
 	// --- Error / success state ---
 	err                   error             // unexpected / fatal error
@@ -948,11 +954,7 @@ func saveRequestCmdWithRollback(
 // Closes over immutable values only — never a *Model pointer.
 func dispatchCmd(ctx context.Context, executor RequestExecutor, req *domain.Request) tea.Cmd {
 	return func() tea.Msg {
-		result, err := executor.Execute(ctx, req)
-		if err != nil {
-			return httpErrMsg{requestID: req.ID, err: err}
-		}
-		return httpResponseMsg{requestID: req.ID, result: result}
+		return dispatchRequest(ctx, executor, req)
 	}
 }
 
@@ -1211,6 +1213,7 @@ func (m Model) startRequest(req *domain.Request) (Model, tea.Cmd) {
 	}
 	ctx, cancel := context.WithCancel(m.ctx)
 	m.cancel = cancel
+	m.wsDialCtx = ctx
 	m.loading = true
 	m.err = nil
 	m.statusErr = ""
@@ -1228,6 +1231,7 @@ func (m Model) startRawRequest(req *domain.Request) (Model, tea.Cmd) {
 	}
 	ctx, cancel := context.WithCancel(m.ctx)
 	m.cancel = cancel
+	m.wsDialCtx = ctx
 	m.loading = true
 	m.err = nil
 	m.statusErr = ""

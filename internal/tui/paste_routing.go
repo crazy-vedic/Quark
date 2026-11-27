@@ -80,6 +80,7 @@ var textWidgets = [...]namedWidget{
 	}},
 	{"envEditor.editKey", func(m *Model) TextWidget { return &m.envEditor.editKey }},
 	{"envEditor.editVal", func(m *Model) TextWidget { return &m.envEditor.editVal }},
+	{"ws.input", func(m *Model) TextWidget { return &m.ws.input }},
 }
 
 // The mask has 32 bits; a longer list would silently lose widgets.

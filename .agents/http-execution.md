@@ -65,7 +65,7 @@ For saved requests (`req.ID != ""`), history is written **synchronously inside `
 
 ## URL Validation
 
-`buildHTTPRequest` rejects non-HTTP schemes:
+`buildHTTPRequest` rejects non-HTTP schemes. `OpenWebSocket` (`internal/exec/websocket.go`) accepts only `ws`/`wss` and hands the handshake to `buildHTTPRequest` as `http`/`https`:
 
 ```go
 // Only http and https allowed — rejects file://, gopher://, etc.
@@ -84,6 +84,16 @@ Large bodies (over `maxResponseSize`):
 - Full body still persisted to SQLite via `executionBody()` before `Execute` returns
 - Caller **must** call `ExecuteResult.Cleanup()` to remove temp file
 - TUI cleans up old temp files on new response (BUG-007); orphans after crashes are harmless
+
+## WebSocket Sessions (`websocket.go`)
+
+`OpenWebSocket(ctx, req)` performs the handshake for a `ws://` or `wss://` request using `github.com/coder/websocket`, through the executor's transport. Stored headers, auth and client certificates apply to the handshake exactly as they do for HTTP. The request must have no body.
+
+- `WSSession.Receive()` returns one data message (`WSMessage`: `Binary`, `Data`, `At`). After the connection closes it returns an error wrapping `ErrWebSocketClosed`; a peer close frame adds its code and reason.
+- `WSSession.SendText(ctx, text)` writes one text message. `Close(code, reason)` sends a close frame and releases the connection. It can wait for the peer's reply, so call it off the UI goroutine.
+- The handshake is bounded by the executor timeout. The session then lives until `Close`, or until `ctx` is cancelled.
+- The handshake is recorded in execution history for saved requests (status 101). Messages are not recorded.
+- Incoming messages are capped at 16 MiB; a larger frame closes the connection.
 
 ## Variable Interpolation (`variables.go`)
 

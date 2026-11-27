@@ -73,6 +73,7 @@ ConfigDir       string
 | Env | `e` | Esc | Manage environment variables |
 | Schedule | schedule key | Esc | View/manage scheduled runs |
 | Auth editor | auth key | Esc | Configure request auth |
+| WebSocket | send a `ws://`/`wss://` request | Esc (closes the session) | Message log, send text, scroll (`internal/tui/websocket.go`) |
 
 Exact keys are configurable — see keybindings section.
 
@@ -174,5 +175,6 @@ with `quark --dim wide|narrow|tiny|absurd` (ignores size for mode selection).
 - Postman import: CLI only (`import-postman`)
 - Keybinding changes: CLI only (`keybindings set`)
 - `env active`: CLI persists active env used by both TUI and `quark run`
+- WebSocket sessions: TUI only. `quark run` rejects `ws://` and `wss://` URLs
 
 See also: [cli-commands.md](cli-commands.md), [http-execution.md](http-execution.md), [testing.md](testing.md), [caveats.md](caveats.md).

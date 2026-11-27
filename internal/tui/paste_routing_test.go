@@ -304,6 +304,12 @@ var routingCases = []routeCase{
 		value:   tui.Model.ImportInputValue,
 	},
 	{
+		name:    "ws.input",
+		open:    func(*testing.T) tui.Model { return pasteFixture("").WithWSInputEdit("") },
+		deliver: deliver,
+		value:   tui.Model.WSInputValue,
+	},
+	{
 		name:    "headerKeyInput",
 		open:    func(*testing.T) tui.Model { return pasteFixture("").WithHeaderPairEdit("", "") },
 		deliver: deliver,

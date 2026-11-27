@@ -92,7 +92,7 @@ Never reorder or remove entries in `internal/store/migrations.go`. Add new migra
 ## HTTP Execution
 
 - 4xx/5xx responses are **success** from `Execute()` — check `StatusCode`
-- Only `http`/`https` schemes allowed
+- `Execute()` allows only `http`/`https`; `OpenWebSocket()` allows only `ws`/`wss`
 - Malformed headers JSON → warn and proceed without headers
 - Post-response hook errors → logged, not returned
 
