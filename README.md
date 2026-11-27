@@ -148,6 +148,9 @@ retry_after_failure = "1h"         # Retry interval on failure (default 1h)
 
 [format]
 json_on_save = false               # Disable JSON auto-formatting (default: enabled)
+
+[http]
+cookie_jar = true                  # Keep response cookies for the TUI session (default: false)
 ```
 
 JSON formatting preserves the existing indent style (2-space, 4-space, tabs) and is applied when you save a request body that parses as valid JSON. Invalid JSON or non-JSON text is left unchanged.
@@ -196,6 +199,14 @@ PKCS#12 files, prefer `--password-env` to keep passwords out of shell history.
 summary. Valid JSON is pretty-printed and syntax-highlighted in a terminal.
 Add `--verbose` to print request details and response headers to stderr; this
 can include credentials from the saved request.
+
+### Cookies
+
+A request's cookies are its `Cookie` header, edited as name/value rows. Press `c` in the request pane to open the cookie editor: `a` adds a row, `e` edits it, `d` deletes it, `Enter` saves and `Esc` cancels. Saving replaces only the `Cookie` header, so other headers are unchanged. Cookies are saved with the request, so `quark run` sends them too.
+
+Cookies that a response sets are listed above its raw headers in the Headers tab, with their domain, path, expiry and flags.
+
+Set `cookie_jar = true` in the `[http]` table to keep cookies from responses and send them on later requests in the same TUI session. The jar lives only in memory: quitting Quark discards it, and nothing is written to disk. Press `X` in the request pane to clear it. The jar is off by default, so requests behave as before unless you enable it. `quark run` is a single process per invocation, so the jar only applies to the requests of one invocation.
 
 ### Text Selection & Editing
 

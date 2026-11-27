@@ -41,11 +41,14 @@ type UI struct {
 	LastRequestID string `toml:"last_request_id,omitempty"` // last request opened in the TUI
 }
 
-// HTTP configures request defaults.
+// HTTP configures request defaults. CookieJar, when true, keeps cookies set by
+// responses for the life of the TUI process and sends them on later requests.
+// The jar is never written to disk.
 type HTTP struct {
 	Timeout            duration            `toml:"timeout"`
 	FollowRedirects    bool                `toml:"follow_redirects"`
 	MaxRedirects       int                 `toml:"max_redirects"`
+	CookieJar          bool                `toml:"cookie_jar"`
 	ClientCertificates []ClientCertificate `toml:"client_certificates"`
 }
 
@@ -181,6 +184,9 @@ func Load(configDir string) (Config, error) {
 	}
 	if md.IsDefined("http", "max_redirects") {
 		cfg.HTTP.MaxRedirects = override.HTTP.MaxRedirects
+	}
+	if md.IsDefined("http", "cookie_jar") {
+		cfg.HTTP.CookieJar = override.HTTP.CookieJar
 	}
 	if md.IsDefined("http", "client_certificates") {
 		cfg.HTTP.ClientCertificates = override.HTTP.ClientCertificates

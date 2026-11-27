@@ -36,6 +36,22 @@ func TestLoad_MissingFile_ReturnsDefaults(t *testing.T) {
 	assert.Equal(t, 30*time.Second, cfg.Timeout())
 }
 
+func TestLoad_CookieJarIsOffByDefaultAndCanBeEnabled(t *testing.T) {
+	dir := t.TempDir()
+	cfg, err := config.Load(dir)
+	require.NoError(t, err)
+	assert.False(t, cfg.HTTP.CookieJar, "the session cookie jar is opt-in")
+
+	require.NoError(t, os.WriteFile(
+		filepath.Join(dir, "config.toml"),
+		[]byte("[http]\ncookie_jar = true\n"), 0o600,
+	))
+	cfg, err = config.Load(dir)
+	require.NoError(t, err)
+	assert.True(t, cfg.HTTP.CookieJar)
+	assert.True(t, cfg.HTTP.FollowRedirects, "other http defaults are kept")
+}
+
 func TestLoad_ValidFile_OverridesDefaults(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, os.MkdirAll(dir, 0o700))

@@ -59,6 +59,8 @@ var helpActionLabels = map[string]string{
 	keybindings.ActionEditBody:      "edit body",
 	keybindings.ActionEditHeaders:   "edit headers",
 	"edit_auth":                     "edit auth",
+	keybindings.ActionEditCookies:   "edit cookies",
+	keybindings.ActionClearCookies:  "clear session cookies",
 	keybindings.ActionScheduleRun:   "schedule request",
 	keybindings.ActionExportCurl:    "copy as curl",
 	"response_down":                 "next history item",
@@ -425,7 +427,11 @@ func (m Model) requestTitleRightChromeWidth() int {
 func (m Model) viewHeadersPreview(w int) string {
 	var preview strings.Builder
 	if m.headerEditing {
-		preview.WriteString("Key:\n")
+		if m.cookieEditing {
+			preview.WriteString("Name:\n")
+		} else {
+			preview.WriteString("Key:\n")
+		}
 		keyDisplay := textedit.RenderInput(
 			&m.headerKeyInput, m.headerKeySelection, m.styles.selectionStyle,
 		)
@@ -455,7 +461,11 @@ func (m Model) viewHeadersPreview(w int) string {
 	} else {
 		if len(m.headerPairs) == 0 {
 			var msg strings.Builder
-			msg.WriteString("  No headers. Press ")
+			if m.cookieEditing {
+				msg.WriteString("  No cookies. Press ")
+			} else {
+				msg.WriteString("  No headers. Press ")
+			}
 			msg.WriteString(m.renderHintKeys([]string{"header_add"}, false))
 			msg.WriteString(" to add.\n")
 			preview.WriteString(m.styles.mutedStyle.Render(msg.String()))
@@ -465,7 +475,11 @@ func (m Model) viewHeadersPreview(w int) string {
 				if i == m.headerCursor {
 					cursor = "▸ "
 				}
-				plain := truncate(cursor+p.Key+": "+p.Value, w-4)
+				separator := ": "
+				if m.cookieEditing {
+					separator = "="
+				}
+				plain := truncate(cursor+p.Key+separator+p.Value, w-4)
 				var line string
 				if i == m.headerCursor {
 					line = lipgloss.NewStyle().Bold(true).Render(plain)
@@ -1307,6 +1321,7 @@ func (m Model) viewExecutionHeaders(ex *domain.Execution) string {
 
 func (m Model) renderHTTPHeaders(headers http.Header) string {
 	var sb strings.Builder
+	sb.WriteString(m.renderSetCookies(headers))
 	for _, k := range sortedHeaderKeys(headers) {
 		vals := headers[k]
 		for _, v := range vals {

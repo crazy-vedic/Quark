@@ -127,6 +127,13 @@ Applied after variable interpolation, before dispatch:
 
 Auth config stored as JSON in `Request.AuthConfig`.
 
+## Cookies (`cookies.go`)
+
+- A request's cookies are its stored `Cookie` header (no schema column). The TUI cookie editor (`edit_cookies`, default `c`) reads and rewrites only that header, so cookies persist with the saved request and `quark run` sends them.
+- `WithCookieJar(jar)` sets `http.Client.Jar`. `main.go` passes a `*SessionJar` only when `[http] cookie_jar = true`. The jar is in memory, never persisted, and is shared by every request of the process.
+- `Executor.ClearSessionCookies()` empties a `*SessionJar` and returns false when no jar is configured. Bound to `clear_cookies` (default `X`).
+- `ResponseCookies(headers)` parses `Set-Cookie` for display (TUI response Headers tab).
+
 ## Exec Hooks (`hooks.go`)
 
 ```go

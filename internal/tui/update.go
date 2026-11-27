@@ -913,6 +913,10 @@ func (m Model) handleRequestAction(action string) (tea.Model, tea.Cmd) {
 		return m.beginAuthEdit(), nil
 	case keybindings.ActionEditHeaders:
 		return m.beginHeadersEdit(), nil
+	case keybindings.ActionEditCookies:
+		return m.beginCookiesEdit(), nil
+	case keybindings.ActionClearCookies:
+		return m.clearSessionCookies(), nil
 	}
 	return m, nil
 }
@@ -1442,6 +1446,8 @@ var commandPaletteItems = []commandPaletteItem{
 	{Title: "Edit request body", Action: keybindings.ActionEditBody},
 	{Title: "Edit request headers", Action: keybindings.ActionEditHeaders},
 	{Title: "Edit request authorization", Action: keybindings.ActionEditAuth},
+	{Title: "Edit request cookies", Action: keybindings.ActionEditCookies},
+	{Title: "Clear session cookies", Action: keybindings.ActionClearCookies},
 	{Title: "Next HTTP method", Action: keybindings.ActionMethodNext},
 	{Title: "Previous HTTP method", Action: keybindings.ActionMethodPrev},
 	{Title: "Delete selected request", Action: keybindings.ActionDeleteRequest},
@@ -1549,7 +1555,9 @@ func (m Model) executeSelectedCommand() (tea.Model, tea.Cmd) {
 		keybindings.ActionEditHeaders,
 		keybindings.ActionMethodNext,
 		keybindings.ActionMethodPrev,
-		keybindings.ActionEditAuth:
+		keybindings.ActionEditAuth,
+		keybindings.ActionEditCookies,
+		keybindings.ActionClearCookies:
 		m.focus = requestPane
 		return m.dispatchNormalAction(action)
 	case keybindings.ActionEnvOpen, keybindings.ActionEnvNext, keybindings.ActionEnvPrev:
@@ -2403,7 +2411,8 @@ func (m Model) handleHeaderFieldEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	if msg.Type == tea.KeyTab {
 		if m.headerKeyInput.Focused() {
-			if suggestion := headerNameSuggestion(m.headerKeyInput.Value()); suggestion != "" {
+			suggestion := headerNameSuggestion(m.headerKeyInput.Value())
+			if suggestion != "" && !m.cookieEditing {
 				m.headerKeyInput.SetValue(suggestion)
 				m.headerKeyInput.SetCursor(len([]rune(suggestion)))
 				m.headerKeySelection.Collapse(len([]rune(suggestion)))
@@ -2411,7 +2420,9 @@ func (m Model) handleHeaderFieldEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			m.headerKeyInput.Blur()
 			m.headerValueInput.Focus()
-		} else if suggestion := headerValueSuggestion(m.headerKeyInput.Value(), m.headerValueInput.Value()); suggestion != "" {
+		} else if suggestion := headerValueSuggestion(
+			m.headerKeyInput.Value(), m.headerValueInput.Value(),
+		); suggestion != "" && !m.cookieEditing {
 			m.headerValueInput.SetValue(suggestion)
 			m.headerValueInput.SetCursor(len([]rune(suggestion)))
 			m.headerValueSelection.Collapse(len([]rune(suggestion)))
@@ -2433,6 +2444,9 @@ func (m Model) handleHeaderFieldEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) saveHeaders() (Model, tea.Cmd) {
+	if m.cookieEditing {
+		return m.saveCookies()
+	}
 	if m.activeRequest == nil {
 		return m, nil
 	}

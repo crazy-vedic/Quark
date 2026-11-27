@@ -45,6 +45,7 @@ Loaded with merge semantics: only explicitly-set TOML fields override defaults (
 | `timeout` | `30s` | Request timeout (Go duration syntax) |
 | `follow_redirects` | `true` | Follow HTTP redirects |
 | `max_redirects` | `10` | Max redirect hops |
+| `cookie_jar` | `false` | Keep response cookies in memory for the TUI session and send them on later requests. Never written to disk |
 
 #### `[logging]`
 

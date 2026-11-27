@@ -608,6 +608,7 @@ func (m Model) ActiveRequest() *domain.Request { return m.activeRequest }
 func (m Model) BodyValue() string              { return m.bodyTextarea.Value() }
 func (m Model) HeaderPairs() []headerPair      { return m.headerPairs }
 func (m Model) HeaderEditing() bool            { return m.headerEditing }
+func (m Model) CookieEditing() bool            { return m.cookieEditing }
 func (m Model) AuthEditor() authEditor         { return m.authEditor }
 
 // AuthCursor returns the index of the auth field that has focus.

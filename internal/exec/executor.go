@@ -31,6 +31,7 @@ type Executor struct {
 	postResponseHooks []PostResponseHook
 	variableResolver  VariableResolver
 	executionWriter   ExecutionWriter
+	cookieJar         http.CookieJar
 }
 
 // New constructs an Executor with the given transport and options.
@@ -40,7 +41,7 @@ func New(transport http.RoundTripper, opts ...Option) *Executor {
 	for _, opt := range opts {
 		opt.apply(&o)
 	}
-	client := &http.Client{Transport: transport}
+	client := &http.Client{Transport: transport, Jar: o.cookieJar}
 	client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
 		if !o.followRedirects || o.maxRedirects <= 0 || len(via) > o.maxRedirects {
 			return http.ErrUseLastResponse
@@ -56,7 +57,20 @@ func New(transport http.RoundTripper, opts ...Option) *Executor {
 		postResponseHooks: o.postResponseHooks,
 		variableResolver:  o.variableResolver,
 		executionWriter:   o.executionWriter,
+		cookieJar:         o.cookieJar,
 	}
+}
+
+// ClearSessionCookies empties the cookie jar when it is a *SessionJar. It
+// reports false when no such jar is configured, so callers can tell the user
+// that nothing was cleared.
+func (e *Executor) ClearSessionCookies() bool {
+	jar, ok := e.cookieJar.(*SessionJar)
+	if !ok {
+		return false
+	}
+	jar.Clear()
+	return true
 }
 
 // Execute dispatches the request and returns a structured result.
