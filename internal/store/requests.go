@@ -15,22 +15,15 @@ import (
 // Returns nil, ErrNotFound if no request exists.
 func (s *Store) GetRequest(ctx context.Context, id string) (*domain.Request, error) {
 	row := s.db.QueryRowContext(ctx,
-		`SELECT id, collection_id, name, method, url, headers, auth_type, auth_config, body,
-		        sort_order, enabled, created_at, updated_at
-		 FROM requests WHERE id = ?`, id)
+		`SELECT `+requestColumns+` FROM requests WHERE id = ?`, id)
 
-	r := &domain.Request{}
-	var body sql.NullString
-	err := row.Scan(&r.ID, &r.CollectionID, &r.Name, &r.Method, &r.URL,
-		&r.Headers, &r.AuthType, &r.AuthConfig, &body, &r.SortOrder, &r.Enabled,
-		&r.CreatedAt, &r.UpdatedAt)
+	r, err := scanRequest(row)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, fmt.Errorf("store: get request %q: %w", id, ErrNotFound)
 		}
 		return nil, fmt.Errorf("store: get request %q: %w", id, err)
 	}
-	r.Body = body.String
 	return r, nil
 }
 
@@ -51,8 +44,7 @@ func (s *Store) ListRequests(ctx context.Context, collectionID string) ([]*domai
 	}
 
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, collection_id, name, method, url, headers, auth_type, auth_config, body,
-		        sort_order, enabled, created_at, updated_at
+		`SELECT `+requestColumns+`
 		 FROM requests
 		 WHERE collection_id = ?
 		 ORDER BY sort_order ASC, created_at ASC, id ASC`, collectionID)
@@ -63,14 +55,10 @@ func (s *Store) ListRequests(ctx context.Context, collectionID string) ([]*domai
 
 	var result []*domain.Request
 	for rows.Next() {
-		r := &domain.Request{}
-		var body sql.NullString
-		if err := rows.Scan(&r.ID, &r.CollectionID, &r.Name, &r.Method, &r.URL,
-			&r.Headers, &r.AuthType, &r.AuthConfig, &body, &r.SortOrder, &r.Enabled,
-			&r.CreatedAt, &r.UpdatedAt); err != nil {
+		r, err := scanRequest(rows)
+		if err != nil {
 			return nil, fmt.Errorf("store: list requests scan: %w", err)
 		}
-		r.Body = body.String
 		result = append(result, r)
 	}
 	if err := rows.Err(); err != nil {
@@ -118,8 +106,8 @@ func (s *Store) SaveRequest(ctx context.Context, req *domain.Request) error {
 	}
 	_, err := s.db.ExecContext(
 		ctx,
-		`INSERT INTO requests (id, collection_id, name, method, url, headers, auth_type, auth_config, body, sort_order, enabled)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`INSERT INTO requests (id, collection_id, name, method, url, headers, auth_type, auth_config, body, sort_order, enabled, extractions)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(id) DO UPDATE SET
 		   collection_id=excluded.collection_id,
 		   name=excluded.name,
@@ -131,6 +119,7 @@ func (s *Store) SaveRequest(ctx context.Context, req *domain.Request) error {
 		   body=excluded.body,
 		   sort_order=excluded.sort_order,
 		   enabled=excluded.enabled,
+		   extractions=excluded.extractions,
 		   updated_at=CURRENT_TIMESTAMP`,
 		req.ID,
 		req.CollectionID,
@@ -143,6 +132,7 @@ func (s *Store) SaveRequest(ctx context.Context, req *domain.Request) error {
 		req.Body,
 		req.SortOrder,
 		req.Enabled,
+		storedExtractions(req.Extractions),
 	)
 	if err != nil {
 		if isSQLiteUnique(err) {
@@ -176,4 +166,29 @@ func (s *Store) DeleteRequest(ctx context.Context, id string) error {
 		return fmt.Errorf("store: delete request %q: %w", id, ErrNotFound)
 	}
 	return nil
+}
+
+// requestColumns lists the request columns in the order scanRequest reads them.
+const requestColumns = `id, collection_id, name, method, url, headers, auth_type, auth_config, body,
+		        sort_order, enabled, created_at, updated_at, extractions`
+
+// scanRequest reads one row selected with requestColumns.
+func scanRequest(row rowScanner) (*domain.Request, error) {
+	r := &domain.Request{}
+	var body sql.NullString
+	if err := row.Scan(&r.ID, &r.CollectionID, &r.Name, &r.Method, &r.URL,
+		&r.Headers, &r.AuthType, &r.AuthConfig, &body, &r.SortOrder, &r.Enabled,
+		&r.CreatedAt, &r.UpdatedAt, &r.Extractions); err != nil {
+		return nil, err
+	}
+	r.Body = body.String
+	return r, nil
+}
+
+// storedExtractions normalizes an empty rule list to the column default.
+func storedExtractions(raw string) string {
+	if raw == "" {
+		return "[]"
+	}
+	return raw
 }

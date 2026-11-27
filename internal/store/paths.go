@@ -2,7 +2,6 @@ package store
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"sort"
 	"strings"
@@ -40,7 +39,7 @@ func (s *Store) ResolveRequestPath(ctx context.Context, reference string) (*doma
 	}
 	rows, err := s.db.QueryContext(
 		ctx,
-		`SELECT id, collection_id, name, method, url, headers, auth_type, auth_config, body, sort_order, enabled, created_at, updated_at FROM requests`,
+		`SELECT `+requestColumns+` FROM requests`,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("store: resolve request: %w", err)
@@ -49,26 +48,10 @@ func (s *Store) ResolveRequestPath(ctx context.Context, reference string) (*doma
 	var matches []*domain.Request
 	var paths []string
 	for rows.Next() {
-		r := &domain.Request{}
-		var body sql.NullString
-		if err := rows.Scan(
-			&r.ID,
-			&r.CollectionID,
-			&r.Name,
-			&r.Method,
-			&r.URL,
-			&r.Headers,
-			&r.AuthType,
-			&r.AuthConfig,
-			&body,
-			&r.SortOrder,
-			&r.Enabled,
-			&r.CreatedAt,
-			&r.UpdatedAt,
-		); err != nil {
+		r, err := scanRequest(rows)
+		if err != nil {
 			return nil, err
 		}
-		r.Body = body.String
 		p, ok := pathCache[r.CollectionID]
 		if !ok {
 			return nil, fmt.Errorf("store: request collection %q: %w", r.CollectionID, ErrNotFound)

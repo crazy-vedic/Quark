@@ -78,6 +78,8 @@ var textWidgets = [...]namedWidget{
 	{"authEditor.apiKeyValueInput", func(m *Model) TextWidget {
 		return &m.authEditor.apiKeyValueInput
 	}},
+	{"extract.varInput", func(m *Model) TextWidget { return &m.extract.varInput }},
+	{"extract.srcInput", func(m *Model) TextWidget { return &m.extract.srcInput }},
 	{"envEditor.editKey", func(m *Model) TextWidget { return &m.envEditor.editKey }},
 	{"envEditor.editVal", func(m *Model) TextWidget { return &m.envEditor.editVal }},
 }

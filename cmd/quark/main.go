@@ -156,6 +156,9 @@ func runWithArgs(args []string) error {
 			exec.WithTimeout(cfg.Timeout()),
 			exec.WithRedirects(cfg.HTTP.FollowRedirects, cfg.HTTP.MaxRedirects),
 			exec.WithExecutionWriter(st),
+			exec.WithPostResponseHooks([]exec.PostResponseHook{
+				exec.NewExtractionHook(st),
+			}),
 		)
 		importer := curl.NewImporter()
 		searcher := search.New(st)

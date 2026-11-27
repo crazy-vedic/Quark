@@ -73,6 +73,7 @@ ConfigDir       string
 | Env | `e` | Esc | Manage environment variables |
 | Schedule | schedule key | Esc | View/manage scheduled runs |
 | Auth editor | auth key | Esc | Configure request auth |
+| Extraction editor | `X` (request pane) | Esc | Edit extraction rules |
 
 Exact keys are configurable — see keybindings section.
 

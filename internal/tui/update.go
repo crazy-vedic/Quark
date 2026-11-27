@@ -602,6 +602,15 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, cmd
 	}
+	if m.activeField == extractField && m.extract.editing {
+		var cmd tea.Cmd
+		if m.extract.varInput.Focused() {
+			m.extract.varInput, cmd = m.extract.varInput.Update(msg)
+		} else {
+			m.extract.srcInput, cmd = m.extract.srcInput.Update(msg)
+		}
+		return m, cmd
+	}
 	if m.activeField == headersField && m.headerEditing {
 		var cmd tea.Cmd
 		if m.headerKeyInput.Focused() {
@@ -639,6 +648,10 @@ func (m Model) handleEsc() Model {
 		m.cancel()
 		m.cancel = nil
 		m.loading = false
+	}
+	// Esc closes one open rule row and keeps the rule list.
+	if m.activeField == extractField && m.extract.editing {
+		return m.cancelExtractRuleEdit()
 	}
 	// Blur active inline field and revert changes.
 	return m.cancelActiveFieldEdit()
@@ -913,6 +926,8 @@ func (m Model) handleRequestAction(action string) (tea.Model, tea.Cmd) {
 		return m.beginAuthEdit(), nil
 	case keybindings.ActionEditHeaders:
 		return m.beginHeadersEdit(), nil
+	case keybindings.ActionEditExtract:
+		return m.beginExtractEdit(), nil
 	}
 	return m, nil
 }
@@ -1088,6 +1103,8 @@ func (m Model) handleRequestKey(_ string, msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleAuthFieldKey(msg)
 	case headersField:
 		return m.handleHeadersFieldKey(msg)
+	case extractField:
+		return m.handleExtractFieldKey(msg)
 	}
 
 	// Alt+Enter (macOS cmd+enter) sends request.
@@ -1442,6 +1459,7 @@ var commandPaletteItems = []commandPaletteItem{
 	{Title: "Edit request body", Action: keybindings.ActionEditBody},
 	{Title: "Edit request headers", Action: keybindings.ActionEditHeaders},
 	{Title: "Edit request authorization", Action: keybindings.ActionEditAuth},
+	{Title: "Edit request extraction rules", Action: keybindings.ActionEditExtract},
 	{Title: "Next HTTP method", Action: keybindings.ActionMethodNext},
 	{Title: "Previous HTTP method", Action: keybindings.ActionMethodPrev},
 	{Title: "Delete selected request", Action: keybindings.ActionDeleteRequest},
@@ -1549,7 +1567,8 @@ func (m Model) executeSelectedCommand() (tea.Model, tea.Cmd) {
 		keybindings.ActionEditHeaders,
 		keybindings.ActionMethodNext,
 		keybindings.ActionMethodPrev,
-		keybindings.ActionEditAuth:
+		keybindings.ActionEditAuth,
+		keybindings.ActionEditExtract:
 		m.focus = requestPane
 		return m.dispatchNormalAction(action)
 	case keybindings.ActionEnvOpen, keybindings.ActionEnvNext, keybindings.ActionEnvPrev:
@@ -2158,6 +2177,11 @@ func (m Model) handleHTTPResponse(msg httpResponseMsg) (tea.Model, tea.Cmd) {
 	m.response = msg.result
 	m.responseTab = bodyTab
 	m.focus = responsePane
+	if msg.result != nil {
+		if kind, text := extractionStatus(msg.result.Extracted); text != "" {
+			m = m.status(kind, text)
+		}
+	}
 	if msg.requestID == "" {
 		return m, nil
 	}

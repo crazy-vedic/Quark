@@ -40,6 +40,7 @@ func DefaultKeybindings() Keybindings {
 		RequestDelete: "d",
 		ExportCurl:    "x",
 		EditAuth:      "a",
+		EditExtract:   "X",
 		ScheduleRun:   "S",
 		EnvOpen:       "e",
 		ClientCerts:   "C",
@@ -83,6 +84,16 @@ func DefaultKeybindings() Keybindings {
 		HeaderSave:        KeyEnter,
 		HeaderCancel:      "esc",
 		HeaderSwitchField: "ctrl+e",
+
+		// Extraction editor
+		ExtractDown:        "j",
+		ExtractUp:          "k",
+		ExtractAdd:         "a",
+		ExtractDelete:      "d",
+		ExtractEdit:        "e",
+		ExtractSave:        KeyEnter,
+		ExtractCancel:      "esc",
+		ExtractSwitchField: "ctrl+e",
 
 		// Auth editor
 		AuthDown:       "j",

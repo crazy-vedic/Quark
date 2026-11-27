@@ -543,19 +543,6 @@ func mergeEnvironmentVars(
 
 // copyRequest returns a shallow copy of req. The string fields are immutable.
 func copyRequest(req *domain.Request) *domain.Request {
-	return &domain.Request{
-		ID:           req.ID,
-		CollectionID: req.CollectionID,
-		Name:         req.Name,
-		Method:       req.Method,
-		URL:          req.URL,
-		Headers:      req.Headers,
-		AuthType:     req.AuthType,
-		AuthConfig:   req.AuthConfig,
-		Body:         req.Body,
-		SortOrder:    req.SortOrder,
-		Enabled:      req.Enabled,
-		CreatedAt:    req.CreatedAt,
-		UpdatedAt:    req.UpdatedAt,
-	}
+	cp := *req
+	return &cp
 }

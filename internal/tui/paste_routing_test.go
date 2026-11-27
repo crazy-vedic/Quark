@@ -316,6 +316,20 @@ var routingCases = []routeCase{
 		value:   tui.Model.HeaderValueValue,
 	},
 	{
+		name:    "extract.varInput",
+		open:    func(*testing.T) tui.Model { return pasteFixture("").WithExtractRowEdit("", "") },
+		deliver: deliver,
+		value:   tui.Model.ExtractVarValue,
+	},
+	{
+		name: "extract.srcInput",
+		open: func(*testing.T) tui.Model {
+			return pasteFixture("").WithExtractRowEdit("", "").WithExtractSourceFocused()
+		},
+		deliver: deliver,
+		value:   tui.Model.ExtractSourceValue,
+	},
+	{
 		name:    "authEditor.tokenInput",
 		open:    func(*testing.T) tui.Model { return pasteFixture("").WithAuthFieldEdit("bearer", 1, "") },
 		deliver: deliver,

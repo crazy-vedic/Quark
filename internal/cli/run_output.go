@@ -42,6 +42,7 @@ func printRunResult(
 	// The status block goes to stderr so stdout carries only the response body.
 	fmt.Fprintf(cmd.ErrOrStderr(), "Status: %s\nSize:   %d bytes\nTime:   %v\n",
 		result.Status, result.Size, result.Duration.Round(time.Millisecond))
+	printExtractions(cmd.ErrOrStderr(), result.Extracted)
 	if result.Size == 0 {
 		return nil
 	}
@@ -96,6 +97,23 @@ func printRunResult(
 		return err
 	}
 	return writeResponseBody(out, result.Body, contentType, terminal)
+}
+
+// printExtractions reports each extraction rule: the variable and the
+// environment it was written to, or why it was not written. Values are not
+// printed because they are often credentials.
+func printExtractions(w io.Writer, outcomes []exec.ExtractionOutcome) {
+	for _, o := range outcomes {
+		name := safeText(w, o.Variable)
+		switch {
+		case o.Err == nil:
+			fmt.Fprintf(w, "Extracted: %s -> %s\n", name, safeText(w, o.Environment))
+		case errors.Is(o.Err, exec.ErrExtractionSkipped):
+			fmt.Fprintf(w, "Extract skipped: %s (%s)\n", name, safeText(w, o.Err.Error()))
+		default:
+			fmt.Fprintf(w, "Extract failed: %s: %s\n", name, safeText(w, o.Err.Error()))
+		}
+	}
 }
 
 func printRequestDetails(w io.Writer, req *domain.Request) {

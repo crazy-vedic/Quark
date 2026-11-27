@@ -120,6 +120,7 @@ const (
 	BodyField    = bodyField
 	HeadersField = headersField
 	AuthField    = authField
+	ExtractField = extractField
 )
 
 func (m Model) WithDebugLog(f *os.File) Model { m.debugLog = f; return m }
@@ -791,3 +792,40 @@ func BlurredModelForTest() Model {
 // PasteTargetForTest returns the value that identifies the input receiving keys.
 // Two models with equal values route keys to the same input.
 func (m Model) PasteTargetForTest() any { return m.pasteTargetOf() }
+
+// ExtractRules returns the extraction rules open in the request pane editor.
+func (m Model) ExtractRules() []domain.Extraction { return m.extract.rules }
+
+// ExtractEditing reports whether one extraction rule row is being edited.
+func (m Model) ExtractEditing() bool { return m.extract.editing }
+
+// ExtractError returns the validation error for the open rule row, if any.
+func (m Model) ExtractError() string { return m.extract.err }
+
+// ExtractVarValue returns the variable input of the open rule row.
+func (m Model) ExtractVarValue() string { return m.extract.varInput.Value() }
+
+// ExtractSourceValue returns the source input of the open rule row.
+func (m Model) ExtractSourceValue() string { return m.extract.srcInput.Value() }
+
+// WithExtractRowEdit opens the extraction editor with one rule row in edit
+// mode, its variable input focused and holding name.
+func (m Model) WithExtractRowEdit(name, source string) Model {
+	m.extract = extractEditor{
+		rules:   []domain.Extraction{{}},
+		editing: true,
+	}
+	m.extract.varInput, m.extract.srcInput = newExtractInputs()
+	m.extract.varInput.SetValue(name)
+	m.extract.srcInput.SetValue(source)
+	m.extract.varInput.Focus()
+	m.activeField = extractField
+	return m
+}
+
+// WithExtractSourceFocused moves focus to the source input of the open row.
+func (m Model) WithExtractSourceFocused() Model {
+	m.extract.varInput.Blur()
+	m.extract.srcInput.Focus()
+	return m
+}

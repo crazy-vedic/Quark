@@ -116,8 +116,10 @@ If `*Store` stops implementing any interface, **this file fails to compile**.
 ## Exec Hooks
 
 `internal/exec` defines optional `PreRequestHook` / `PostResponseHook` interfaces and
-`WithPreRequestHooks` / `WithPostResponseHooks` options. Production `main.go` does not
-register any hooks today; the extension point remains for future wiring in the DI seam.
+`WithPreRequestHooks` / `WithPostResponseHooks` options. Production `main.go` registers
+`exec.NewExtractionHook(st)` as the post-response hook. It applies a request's extraction
+rules (`domain.Extraction`, stored as JSON in `requests.extractions`) into the active
+environment. The TUI and `quark run` share that executor, so both apply rules.
 
 ## Transactions
 

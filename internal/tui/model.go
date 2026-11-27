@@ -90,6 +90,7 @@ const (
 	bodyField
 	headersField
 	authField
+	extractField
 )
 
 // responseTabID identifies which tab is active in the response pane.
@@ -353,6 +354,7 @@ type Model struct {
 	headerKeyInput   textinput.Model
 	headerValueInput textinput.Model
 	authEditor       authEditor
+	extract          extractEditor
 
 	// --- Text selection state (keyboard and mouse) ---
 	urlSelection         textedit.Selection // selection in URL input
@@ -522,6 +524,7 @@ func New(deps Deps) Model {
 	bodyTA.Placeholder = "Enter request body..."
 	bodyTA.SetHeight(5)
 
+	extractVarInput, extractSrcInput := newExtractInputs()
 	headerKeyInput := textinput.New()
 	headerKeyInput.Placeholder = "Header key"
 	headerKeyInput.CharLimit = 128
@@ -540,26 +543,30 @@ func New(deps Deps) Model {
 	}
 
 	m := Model{
-		lister:                  deps.Lister,
-		reader:                  deps.Reader,
-		writer:                  deps.Writer,
-		colWriter:               deps.ColWriter,
-		executionReader:         deps.ExecutionReader,
-		executor:                deps.Executor,
-		searcher:                deps.Searcher,
-		importer:                deps.Importer,
-		postmanImporter:         deps.PostmanImporter,
-		cfg:                     deps.Config,
-		ctx:                     rootCtx,
-		method:                  deps.Config.UI.DefaultMethod,
-		urlInput:                urlInput,
-		searchInput:             searchInput,
-		viewerFind:              viewerFind,
-		importName:              importName,
-		postmanPath:             postmanPath,
-		importInput:             importTA,
-		promptInput:             promptInput,
-		bodyTextarea:            bodyTA,
+		lister:          deps.Lister,
+		reader:          deps.Reader,
+		writer:          deps.Writer,
+		colWriter:       deps.ColWriter,
+		executionReader: deps.ExecutionReader,
+		executor:        deps.Executor,
+		searcher:        deps.Searcher,
+		importer:        deps.Importer,
+		postmanImporter: deps.PostmanImporter,
+		cfg:             deps.Config,
+		ctx:             rootCtx,
+		method:          deps.Config.UI.DefaultMethod,
+		urlInput:        urlInput,
+		searchInput:     searchInput,
+		viewerFind:      viewerFind,
+		importName:      importName,
+		postmanPath:     postmanPath,
+		importInput:     importTA,
+		promptInput:     promptInput,
+		bodyTextarea:    bodyTA,
+		extract: extractEditor{
+			varInput: extractVarInput,
+			srcInput: extractSrcInput,
+		},
 		requestText:             scrollableText{cache: &scrollableTextCache{}},
 		responseText:            scrollableText{cache: &scrollableTextCache{}},
 		viewerText:              scrollableText{cache: &scrollableTextCache{}},
