@@ -208,3 +208,23 @@ func TestMapper_FormDataBody(t *testing.T) {
 	assert.NoError(t, json.Unmarshal([]byte(result.Requests[0].Headers), &headers))
 	assert.Equal(t, "multipart/form-data; boundary=quark-postman-boundary", headers["Content-Type"])
 }
+
+func TestMapper_AtPrefixedValuesStoredEscaped(t *testing.T) {
+	collection := `{
+		"info": {"name": "c", "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"},
+		"item": [{
+			"name": "notify",
+			"request": {
+				"method": "POST",
+				"url": "https://example.test/notify",
+				"header": [{"key": "X-User", "value": "@alice"}],
+				"body": {"mode": "raw", "raw": "@channel deploy done"}
+			}
+		}]
+	}`
+	result, err := NewImporter().Parse(strings.NewReader(collection))
+	assert.NoError(t, err)
+	assert.Len(t, result.Requests, 1)
+	assert.Contains(t, result.Requests[0].Headers, `"X-User":"@@alice"`)
+	assert.Equal(t, "@@channel deploy done", result.Requests[0].Body)
+}

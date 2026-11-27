@@ -9,18 +9,19 @@ import (
 	"github.com/crazy-vedic/quark/internal/exec"
 )
 
-// NewRequestCmd returns the 'quark request' subcommand tree.
-func NewRequestCmd(r SearchStore) *cobra.Command {
+// NewRequestCmd returns the 'quark request' subcommand tree. configDir is the
+// base that relative @file references resolve against, as in the TUI.
+func NewRequestCmd(r SearchStore, configDir string) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "request",
 		Short: "Manage requests",
 	}
 	cmd.AddCommand(newRequestListCmd(r))
-	cmd.AddCommand(newRequestExportCurlCmd(r))
+	cmd.AddCommand(newRequestExportCurlCmd(r, configDir))
 	return cmd
 }
 
-func newRequestExportCurlCmd(r SearchStore) *cobra.Command {
+func newRequestExportCurlCmd(r SearchStore, configDir string) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "export-curl <Collection/Request>",
 		Short: "Print a saved request as a curl command",
@@ -49,7 +50,7 @@ func newRequestExportCurlCmd(r SearchStore) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("request export-curl: interpolate: %w", err)
 			}
-			command, err := curl.ExportRequest(prepared)
+			command, err := curl.ExportRequest(prepared, curl.WithFileBaseDir(configDir))
 			if err != nil {
 				return fmt.Errorf("request export-curl: %w", err)
 			}

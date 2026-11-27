@@ -397,6 +397,16 @@ or header value. Quark reads the file when the request is sent, so the saved
 request keeps the reference and picks up later file changes. Files are limited
 to 10 MiB; missing or unreadable files fail before any network request is made.
 
+A relative path is resolved from Quark's config directory (`~/.quark` by
+default, or the directory given with `--config`), not from the directory you
+run Quark in, so the TUI, `quark run` and `quark schedule run-due` read the
+same file. `~/` expands to your home directory. Copy as curl writes the same
+references (`--data-binary @file`, and `$(cat file)` for headers).
+
+To send a value that starts with `@` as literal text, double the first `@`:
+`@@channel deploy done` sends `@channel deploy done`, and `@@alice` sends
+`@alice`.
+
 `Host`, `Content-Length`, `Transfer-Encoding`, and `Connection` headers are
 applied to their corresponding HTTP request fields. JSON content types
 (`application/json` and `*+json`) are validated and formatted when saved or

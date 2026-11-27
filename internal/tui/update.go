@@ -896,7 +896,7 @@ func (m Model) handleRequestAction(action string) (tea.Model, tea.Cmd) {
 		if m.activeRequest == nil {
 			return m.status("error", "Select a request first"), nil
 		}
-		command, err := curl.ExportRequest(m.activeRequest)
+		command, err := curl.ExportRequest(m.activeRequest, curl.WithFileBaseDir(m.configDir))
 		if err != nil {
 			return m.status("error", "Export curl: "+err.Error()), nil
 		}

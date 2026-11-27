@@ -84,7 +84,16 @@ func TestImporter_DataRawKeepsAtPrefixLiteral(t *testing.T) {
 		`curl --data-raw @payload.json https://api.example.com`,
 	))
 	require.NoError(t, err)
-	assert.Equal(t, "@payload.json", result.Body)
+	// Stored escaped: a bare "@payload.json" would be read as a file on send.
+	assert.Equal(t, "@@payload.json", result.Body)
+}
+
+func TestImporter_HeaderAtValueIsStoredLiteral(t *testing.T) {
+	result, err := curl.NewImporter().Parse(strings.NewReader(
+		`curl -H 'X-User: @alice' https://api.example.com`,
+	))
+	require.NoError(t, err)
+	assert.Equal(t, "@@alice", result.Headers.Get("X-User"))
 }
 
 func TestImporter_PEMKeyAndCA(t *testing.T) {

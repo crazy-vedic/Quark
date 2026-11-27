@@ -156,6 +156,7 @@ func runWithArgs(args []string) error {
 			exec.WithTimeout(cfg.Timeout()),
 			exec.WithRedirects(cfg.HTTP.FollowRedirects, cfg.HTTP.MaxRedirects),
 			exec.WithExecutionWriter(st),
+			exec.WithFileBaseDir(configDir),
 		)
 		importer := curl.NewImporter()
 		searcher := search.New(st)
@@ -167,6 +168,7 @@ func runWithArgs(args []string) error {
 			transport: httpTransport,
 			importer:  importer,
 			searcher:  searcher,
+			configDir: configDir,
 		}
 		return rt, nil
 	}
@@ -240,6 +242,7 @@ type runtime struct {
 	transport *transport.Manager
 	importer  *curl.Importer
 	searcher  *search.Searcher
+	configDir string
 }
 
 type tuiPostmanImporter struct {

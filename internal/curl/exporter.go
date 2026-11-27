@@ -9,8 +9,28 @@ import (
 	"github.com/crazy-vedic/quark/internal/domain"
 )
 
+// ExportOption configures ExportRequest.
+type ExportOption func(*exportOptions)
+
+type exportOptions struct {
+	fileBaseDir string
+}
+
+// WithFileBaseDir sets the directory relative @file references are resolved
+// against, so the exported command names the same file Quark sends.
+func WithFileBaseDir(dir string) ExportOption {
+	return func(o *exportOptions) { o.fileBaseDir = dir }
+}
+
 // ExportRequest formats a saved request as a POSIX-shell-safe curl command.
-func ExportRequest(req *domain.Request) (string, error) {
+// Body and header values follow Quark's send rules (domain.ParseFileRef): an
+// @file body becomes --data-binary @file, an @file header value is read with
+// $(cat file), and an escaped "@@..." value is exported as the literal text.
+func ExportRequest(req *domain.Request, opts ...ExportOption) (string, error) {
+	var o exportOptions
+	for _, opt := range opts {
+		opt(&o)
+	}
 	if req == nil {
 		return "", fmt.Errorf("request is required")
 	}
@@ -34,7 +54,14 @@ func ExportRequest(req *domain.Request) (string, error) {
 	sort.Strings(keys)
 	for _, key := range keys {
 		for _, value := range headers[key] {
-			args = append(args, "-H", shellQuote(key+": "+value))
+			path, isFile, literal := domain.ParseFileRef(value)
+			if isFile {
+				resolved := domain.ResolveFileRefPath(o.fileBaseDir, path)
+				args = append(args, "-H",
+					shellQuote(key+": ")+`"$(cat `+shellQuote(resolved)+`)"`)
+				continue
+			}
+			args = append(args, "-H", shellQuote(key+": "+literal))
 		}
 	}
 	if strings.TrimSpace(req.AuthType) != "" {
@@ -65,7 +92,13 @@ func ExportRequest(req *domain.Request) (string, error) {
 		}
 	}
 	if req.Body != "" {
-		args = append(args, "--data-raw", shellQuote(req.Body))
+		path, isFile, literal := domain.ParseFileRef(req.Body)
+		if isFile {
+			resolved := domain.ResolveFileRefPath(o.fileBaseDir, path)
+			args = append(args, "--data-binary", shellQuote("@"+resolved))
+		} else {
+			args = append(args, "--data-raw", shellQuote(literal))
+		}
 	}
 	args = append(args, shellQuote(requestURL))
 	return strings.Join(args, " "), nil

@@ -183,6 +183,13 @@ func mapRequest(
 		)
 	}
 
+	// A stored "@..." value is a file reference (see domain.ParseFileRef);
+	// Postman sends it as literal text, so escape it to keep that meaning.
+	for key, value := range headersMap {
+		headersMap[key] = domain.EscapeFileRef(value)
+	}
+	body = domain.EscapeFileRef(body)
+
 	headersJSON := "{}"
 	if len(headersMap) > 0 {
 		b, _ := json.Marshal(headersMap)

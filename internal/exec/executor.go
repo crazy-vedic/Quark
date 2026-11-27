@@ -31,6 +31,7 @@ type Executor struct {
 	postResponseHooks []PostResponseHook
 	variableResolver  VariableResolver
 	executionWriter   ExecutionWriter
+	fileBaseDir       string
 }
 
 // New constructs an Executor with the given transport and options.
@@ -56,6 +57,7 @@ func New(transport http.RoundTripper, opts ...Option) *Executor {
 		postResponseHooks: o.postResponseHooks,
 		variableResolver:  o.variableResolver,
 		executionWriter:   o.executionWriter,
+		fileBaseDir:       o.fileBaseDir,
 	}
 }
 
@@ -108,7 +110,7 @@ func (e *Executor) Execute(ctx context.Context, req *domain.Request) (*ExecuteRe
 		req = interpolated
 	}
 
-	httpReq, err := buildHTTPRequest(ctx, req)
+	httpReq, err := buildHTTPRequest(ctx, req, e.fileBaseDir)
 	if err != nil {
 		// BUG-003: buildHTTPRequest already wraps ErrInvalidURL; don't double-wrap.
 		// errors.Is(err, ErrInvalidURL) still works via chain.
@@ -160,7 +162,12 @@ func (e *Executor) Execute(ctx context.Context, req *domain.Request) (*ExecuteRe
 }
 
 // buildHTTPRequest constructs a *http.Request from a domain.Request.
-func buildHTTPRequest(ctx context.Context, req *domain.Request) (*http.Request, error) {
+// Relative @file references are resolved against fileBaseDir.
+func buildHTTPRequest(
+	ctx context.Context,
+	req *domain.Request,
+	fileBaseDir string,
+) (*http.Request, error) {
 	// Validate scheme before handing to http.Client — reject file://, gopher://, etc.
 	parsed, err := url.Parse(req.URL)
 	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") {
@@ -187,7 +194,7 @@ func buildHTTPRequest(ctx context.Context, req *domain.Request) (*http.Request, 
 		}
 		for key, values := range parsedHeaders {
 			for _, value := range values {
-				value, err := resolveHeaderFile(value)
+				value, err := resolveHeaderFile(value, fileBaseDir)
 				if err != nil {
 					return nil, fmt.Errorf("exec: header %q: %w", key, err)
 				}
@@ -196,7 +203,7 @@ func buildHTTPRequest(ctx context.Context, req *domain.Request) (*http.Request, 
 		}
 	}
 
-	body, err := requestBodyValue(req.Body)
+	body, err := requestBodyValue(req.Body, fileBaseDir)
 	if err != nil {
 		return nil, err
 	}
@@ -228,34 +235,36 @@ func buildHTTPRequest(ctx context.Context, req *domain.Request) (*http.Request, 
 
 const maxRequestFileSize = 10 << 20
 
-// requestBodyReader expands the exact @path form used by the Body editor.
-// Keeping the reference in domain.Request means saved requests remain small
-// and continue to follow changes to the referenced file.
-func requestBodyValue(body string) (string, error) {
-	if body == "" {
-		return "", nil
+// requestBodyValue expands the exact @path form used by the Body editor and
+// unescapes a literal "@@..." body (see domain.ParseFileRef). Keeping the
+// reference in domain.Request means saved requests remain small and continue
+// to follow changes to the referenced file.
+func requestBodyValue(body, fileBaseDir string) (string, error) {
+	path, isFile, literal := domain.ParseFileRef(body)
+	if !isFile {
+		// The body is sent exactly as stored. Re-formatting or validating it
+		// here would change the bytes on the wire and block deliberately
+		// malformed payloads. Pretty-printing is an editor concern (see the
+		// TUI save path).
+		return literal, nil
 	}
-	if strings.HasPrefix(body, "@") && len(body) > 1 {
-		path := strings.TrimPrefix(body, "@")
-		data, err := readRequestFile(path)
-		if err != nil {
-			return "", fmt.Errorf("exec: read body file %q: %w", path, err)
-		}
-		body = string(data)
+	resolved := domain.ResolveFileRefPath(fileBaseDir, path)
+	data, err := readRequestFile(resolved)
+	if err != nil {
+		return "", fmt.Errorf("exec: read body file %q: %w", resolved, err)
 	}
-	// The body is sent exactly as stored. Re-formatting or validating it here
-	// would change the bytes on the wire and block deliberately malformed
-	// payloads. Pretty-printing is an editor concern (see the TUI save path).
-	return body, nil
+	return string(data), nil
 }
 
-func resolveHeaderFile(value string) (string, error) {
-	if !strings.HasPrefix(value, "@") || len(value) == 1 {
-		return value, nil
+func resolveHeaderFile(value, fileBaseDir string) (string, error) {
+	path, isFile, literal := domain.ParseFileRef(value)
+	if !isFile {
+		return literal, nil
 	}
-	data, err := readRequestFile(strings.TrimPrefix(value, "@"))
+	resolved := domain.ResolveFileRefPath(fileBaseDir, path)
+	data, err := readRequestFile(resolved)
 	if err != nil {
-		return "", fmt.Errorf("read file %q: %w", strings.TrimPrefix(value, "@"), err)
+		return "", fmt.Errorf("read file %q: %w", resolved, err)
 	}
 	return string(data), nil
 }
