@@ -43,6 +43,7 @@ func TestLazyCommandsExposeExactlyTheRealCommands(t *testing.T) {
 		"collection":     {lazyCollectionCmd},
 		"request":        {lazyRequestCmd},
 		"run":            {lazyRunCmd},
+		"history":        {lazyHistoryCmd},
 		"search":         {lazySearchCmd},
 		"schedule":       {lazyScheduleCmd},
 		"import":         {lazyImportCmd},
@@ -72,6 +73,7 @@ func TestLazyCommandDoesNotBuildTheRuntimeUntilItRuns(t *testing.T) {
 	root.AddCommand(
 		lazyCollectionCmd(rt), lazyRequestCmd(rt), lazyRunCmd(rt), lazySearchCmd(rt),
 		lazyScheduleCmd(rt), lazyImportCmd(rt), lazyImportPostmanCmd(rt), lazyEnvCmd(rt),
+		lazyHistoryCmd(rt),
 	)
 	require.Zero(t, calls, "building the tree")
 
