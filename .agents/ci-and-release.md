@@ -98,6 +98,7 @@ Trigger: push to `main`/`master`.
    - .deb packages: Unsigned (with signing support via environment variable)
    - .pkg: macOS universal
    - SHA256SUMS file
+   - winget manifests under `dist/winget/` (generated only, not uploaded; see DISTRIBUTION.md)
 7. Copies install scripts; publishes GitHub Release via `softprops/action-gh-release@v2`
 8. **Triggers distribution workflows:**
    - `publish-apt.yml` — publishes .deb packages to apt repository (gh-pages)

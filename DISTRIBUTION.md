@@ -287,7 +287,7 @@ Not automated: there is no release job for it.
 - winget approval is not yet complete (Microsoft review in progress)
 - Manual submission allows full control over timing and manifest tuning
 - See DISTRIBUTION.md (Manual Submission Steps) or WINGET-AGENT-PLAN.md for guided steps
-- To automate later: upgrade GoReleaser to v1.27+ and enable the `wingets` section in `.goreleaser.yaml`
+- GoReleaser v2 writes the manifests to `dist/winget/` on each release (the `winget` section of `.goreleaser.yaml`, `skip_upload: true`). Submission stays manual; to automate it, give `repository.token` a PAT that can push to the fork and set `skip_upload` to `auto`
 
 ---
 

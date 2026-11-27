@@ -289,7 +289,7 @@ jobs:
         uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
         with:
           install-only: true
-          version: v1.26.2
+          version: v2.20.3
 
       - name: Validate GoReleaser config
         run: goreleaser check

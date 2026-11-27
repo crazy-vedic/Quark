@@ -1,4 +1,4 @@
-version: 1
+version: 2
 
 project_name: quark
 
@@ -28,17 +28,15 @@ builds:
 
 archives:
   - id: unix
-    builds:
+    ids:
       - quark
-    format: tar.gz
+    formats:
+      - tar.gz
     format_overrides:
       - goos: windows
-        format: zip
-    name_template: >-
-      {{- .ProjectName }}-{{ .Os }}-{{ .Arch -}}
-      {{- if eq .Os "darwin" -}}
-        {{- else -}}
-        {{- end -}}
+        formats:
+          - zip
+    name_template: "{{ .ProjectName }}-{{ .Os }}-{{ .Arch }}"
     wrap_in_directory: false
     files:
       - src: .completions/*
@@ -53,7 +51,7 @@ source:
   enabled: false
 
 snapshot:
-  name_template: "{{ incpatch .Version }}-dev"
+  version_template: "{{ incpatch .Version }}-dev"
 
 release:
   github:
@@ -78,20 +76,39 @@ nfpms:
         type: file
     file_name_template: "{{ .PackageName }}_{{ .Version }}_{{ .Arch }}"
 
-# Winget support: requires GoReleaser v1.27+ (currently on v1.26.2)
-# Uncomment and enable once GoReleaser is upgraded
-# wingets:
-#   - id: quark-winget
-#     publisher: Quark
-#     package_identifier: Quark.Quark
-#     name: Quark
-#     homepage: https://github.com/crazy-vedic/Quark
-#     license: MIT
-#     description: "A local-first, keyboard-driven HTTP client"
-#     installer_template: .winget/installer.yaml.tmpl
-#     skip_upload: auto
-
-artifactories: []
+# Generates the Quark.Quark winget manifests (dist/winget/...) from the
+# Windows zip. skip_upload keeps submission manual (DISTRIBUTION.md): to have
+# GoReleaser open the winget-pkgs PR, give repository.token a PAT that can push
+# to the fork and set skip_upload to auto.
+winget:
+  - name: Quark
+    publisher: Quark
+    package_identifier: Quark.Quark
+    publisher_url: https://github.com/crazy-vedic/Quark
+    homepage: https://github.com/crazy-vedic/Quark
+    license: MIT
+    license_url: https://github.com/crazy-vedic/Quark/blob/master/LICENSE
+    short_description: "A local-first, keyboard-driven HTTP client"
+    description: "Quark is a terminal-native HTTP client that keeps everything in a local SQLite database, with a scriptable CLI for automation and CI."
+    tags:
+      - api
+      - cli
+      - http
+      - rest
+      - tui
+    ids:
+      - unix
+    skip_upload: true
+    repository:
+      owner: crazy-vedic
+      name: winget-pkgs
+      branch: "Quark.Quark-{{ .Version }}"
+      pull_request:
+        enabled: true
+        base:
+          owner: microsoft
+          name: winget-pkgs
+          branch: master
 
 announce:
   skip: true
