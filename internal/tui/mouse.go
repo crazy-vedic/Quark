@@ -412,6 +412,15 @@ func (m Model) handleRequestClick(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 
 	m.focus = requestPane
 
+	// While the method is being typed, clicks on the badge keep the input open
+	// and clicks anywhere else cancel the edit, as Esc does.
+	if m.activeField == methodField {
+		if chrome.methodBadge.contains(msg.X, msg.Y) {
+			return m, nil
+		}
+		m = m.cancelActiveFieldEdit()
+	}
+
 	switch {
 	case chrome.sendButton.contains(msg.X, msg.Y):
 		return m.handleRequestAction(keybindings.ActionSendRequest)

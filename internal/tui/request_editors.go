@@ -102,6 +102,10 @@ func (m Model) cancelActiveFieldEdit() Model {
 		m.urlInput.SetValue(m.preEditURL)
 		m.urlInput.Blur()
 		m.urlSelection.Collapse(0)
+	case methodField:
+		m.activeField = noneField
+		m.methodInput.Blur()
+		m.methodSelection.Collapse(0)
 	case bodyField:
 		m.activeField = noneField
 		m.bodyTextarea.Blur()

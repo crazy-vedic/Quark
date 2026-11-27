@@ -230,6 +230,10 @@ All keyboard shortcuts match the behavior of standard text editors (VS Code, Pos
 
 Pasting a curl command into the URL field (`Ctrl+V`, or pressing `Enter` on a field that already holds one) opens the **Replace request with curl command** dialog instead of inserting the text. Multi-line curl commands pasted into the URL field open the same dialog. The dialog shows the pasted command; press `Ctrl+S` to parse it, review the preview, press `Enter` to replace the active request, or `Esc` to cancel.
 
+#### HTTP methods
+
+In the request pane, `m` and `M` cycle through the common methods (`GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `HEAD`, `OPTIONS`). Press `t` to type any other method, such as `PROPFIND`, `SEARCH` or `MKCOL`. The typed value is upper-cased and must be an HTTP token (letters, digits, and `!#$%&'*+-.^_`|~`); an empty or invalid value is refused and the field stays open. Enter saves the method to the request, and Esc restores the previous one. The keys are `edit_method`, `method_next` and `method_prev` in the `[keybindings]` table.
+
 #### Text editing keys in config
 
 Text-field keys can be remapped in the `[keybindings]` table of `~/.quark/config.toml`. Only values that differ from the defaults below take effect. Example:

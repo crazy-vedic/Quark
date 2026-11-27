@@ -572,6 +572,11 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.urlInput, cmd = m.urlInput.Update(msg)
 		return m, cmd
 	}
+	if m.activeField == methodField {
+		var cmd tea.Cmd
+		m.methodInput, cmd = m.methodInput.Update(msg)
+		return m, cmd
+	}
 	if m.mode == importMode && m.importPreview == nil {
 		var cmd tea.Cmd
 		m.importInput, cmd = m.importInput.Update(msg)
@@ -884,6 +889,8 @@ func (m Model) handleRequestAction(action string) (tea.Model, tea.Cmd) {
 		return m.cycleMethod(nextMethod)
 	case keybindings.ActionMethodPrev:
 		return m.cycleMethod(prevMethod)
+	case keybindings.ActionEditMethod:
+		return m.beginMethodEdit()
 	case keybindings.ActionSendRequest:
 		if m.loading || m.executor == nil {
 			return m, nil
@@ -1081,6 +1088,22 @@ func (m Model) handleRequestKey(_ string, msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			return m.finishURLEdit()
 		}
+		return m, cmd
+	case methodField:
+		if msg.Type == tea.KeyEnter {
+			return m.finishMethodEdit()
+		}
+		ed := m.newTextEditor()
+		b := textedit.Input(&m.methodInput)
+		if cmd, handled := ed.HandleKey(&m.methodSelection, b, msg); handled {
+			return m, cmd
+		}
+		if m.textKeys().Copy.Match(msg.String()) {
+			return m.ctrlCNoSelection(), nil
+		}
+		var cmd tea.Cmd
+		m.methodInput, cmd = m.methodInput.Update(msg)
+		ed.Sync(&m.methodSelection, b)
 		return m, cmd
 	case bodyField:
 		return m.handleBodyFieldKey(msg)
@@ -1444,6 +1467,7 @@ var commandPaletteItems = []commandPaletteItem{
 	{Title: "Edit request authorization", Action: keybindings.ActionEditAuth},
 	{Title: "Next HTTP method", Action: keybindings.ActionMethodNext},
 	{Title: "Previous HTTP method", Action: keybindings.ActionMethodPrev},
+	{Title: "Type an HTTP method", Action: keybindings.ActionEditMethod},
 	{Title: "Delete selected request", Action: keybindings.ActionDeleteRequest},
 	{Title: "Schedule request", Action: keybindings.ActionScheduleRun},
 	{Title: "Copy request as curl", Action: keybindings.ActionExportCurl},
@@ -1549,6 +1573,7 @@ func (m Model) executeSelectedCommand() (tea.Model, tea.Cmd) {
 		keybindings.ActionEditHeaders,
 		keybindings.ActionMethodNext,
 		keybindings.ActionMethodPrev,
+		keybindings.ActionEditMethod,
 		keybindings.ActionEditAuth:
 		m.focus = requestPane
 		return m.dispatchNormalAction(action)

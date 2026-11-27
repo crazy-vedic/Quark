@@ -50,3 +50,17 @@ func TestParse_IgnoresHarmlessCurlFlags(t *testing.T) {
 		require.Equal(t, "GET", result.Method, command)
 	}
 }
+
+// A custom method given with -X is kept, upper-cased, so the imported request
+// sends the same verb the command did.
+func TestParse_KeepsCustomMethodFromDashX(t *testing.T) {
+	for command, want := range map[string]string{
+		"curl -X PROPFIND https://example.test/dav":    "PROPFIND",
+		"curl --request search https://example.test/q": "SEARCH",
+		"curl -X MKCOL https://example.test/new":       "MKCOL",
+	} {
+		result, err := NewImporter().Parse(strings.NewReader(command))
+		require.NoError(t, err, command)
+		require.Equal(t, want, result.Method, command)
+	}
+}

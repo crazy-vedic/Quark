@@ -280,6 +280,12 @@ func deliver(t *testing.T, m tui.Model, cmd tea.Cmd) tui.Model {
 
 var routingCases = []routeCase{
 	{
+		name:    "methodInput",
+		open:    func(*testing.T) tui.Model { return pasteFixture("").WithMethodEdit() },
+		deliver: deliver,
+		value:   tui.Model.MethodInputValue,
+	},
+	{
 		name:    "urlInput",
 		open:    func(*testing.T) tui.Model { return pasteFixture("") },
 		deliver: deliver,

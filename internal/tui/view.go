@@ -55,6 +55,7 @@ var helpActionLabels = map[string]string{
 	keybindings.ActionEditURL:       "edit url",
 	keybindings.ActionMethodNext:    "next method",
 	keybindings.ActionMethodPrev:    "prev method",
+	keybindings.ActionEditMethod:    "edit method",
 	keybindings.ActionSendRequest:   "send request",
 	keybindings.ActionEditBody:      "edit body",
 	keybindings.ActionEditHeaders:   "edit headers",
@@ -394,6 +395,13 @@ func (m Model) renderMethodBadge(method string) string {
 	return m.styles.methodStyle.Render(fmt.Sprintf(" %s ", method))
 }
 
+// renderMethodInput draws the typed method in the badge slot.
+func (m Model) renderMethodInput() string {
+	in := m.methodInput
+	in.Width = methodInputWidth
+	return m.styles.methodStyle.Render(" " + in.View() + " ")
+}
+
 func (m Model) renderSendButton() string {
 	return m.styles.sendButtonStyle.Render(requestSendButtonLabel)
 }
@@ -510,6 +518,9 @@ func (m Model) viewRequestPane(w, h int) string {
 
 	// Method badge + URL on one line — truncate URL to available width.
 	badge := m.renderMethodBadge(m.method)
+	if m.activeField == methodField {
+		badge = m.renderMethodInput()
+	}
 	badgeW := lipgloss.Width(badge)
 	urlAvail := w - badgeW - 4 // padding around badge/url
 	if urlAvail < 1 {
