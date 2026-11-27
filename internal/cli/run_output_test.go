@@ -189,3 +189,18 @@ func TestRunOutput_StdoutIsExactlyTheBody(t *testing.T) {
 		"stdout must hold the body and nothing else (a single trailing newline is allowed)")
 	assert.Contains(t, stderr.String(), "Status: 200 OK")
 }
+
+func TestPrintAssertionsAndExitStatus(t *testing.T) {
+	var out bytes.Buffer
+	results := []exec.AssertionResult{
+		{Rule: "status = 200", Passed: true},
+		{Rule: "time < 1ms", Passed: false, Reason: "took 5ms, limit 1ms"},
+	}
+	printAssertions(&out, results)
+	assert.Equal(t, "Assert PASS: status = 200\n"+
+		"Assert FAIL: time < 1ms (took 5ms, limit 1ms)\n", out.String())
+
+	require.EqualError(t, assertionsError(results), "run: 1 of 2 assertions failed")
+	assert.NoError(t, assertionsError(results[:1]))
+	assert.NoError(t, assertionsError(nil))
+}

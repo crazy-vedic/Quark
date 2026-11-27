@@ -190,6 +190,9 @@ func finishRun(
 	if err := printRunResult(cmd, req, result, verbose); err != nil {
 		return err
 	}
+	if err := assertionsError(result.Assertions); err != nil {
+		return err
+	}
 	if fail && result.StatusCode >= 400 {
 		return fmt.Errorf("run: HTTP %s", result.Status)
 	}

@@ -38,6 +38,7 @@ type Keybindings struct {
 	ExportCurl    string `toml:"export_curl"`
 	EditAuth      string `toml:"edit_auth"`
 	EditExtract   string `toml:"edit_extract"`
+	EditAssert    string `toml:"edit_assert"`
 	ScheduleRun   string `toml:"schedule_run"`
 	EnvOpen       string `toml:"env_open"`
 	ClientCerts   string `toml:"client_certificates"`
@@ -91,6 +92,15 @@ type Keybindings struct {
 	ExtractSave        string `toml:"extract_save"`
 	ExtractCancel      string `toml:"extract_cancel"`
 	ExtractSwitchField string `toml:"extract_switch_field"`
+
+	// Assertion editor
+	AssertDown   string `toml:"assert_down"`
+	AssertUp     string `toml:"assert_up"`
+	AssertAdd    string `toml:"assert_add"`
+	AssertDelete string `toml:"assert_delete"`
+	AssertEdit   string `toml:"assert_edit"`
+	AssertSave   string `toml:"assert_save"`
+	AssertCancel string `toml:"assert_cancel"`
 
 	// Auth editor
 	AuthDown       string `toml:"auth_down"`
@@ -188,6 +198,7 @@ type Resolver struct {
 	collection  map[string]string
 	auth        map[string]string
 	extract     map[string]string
+	assert      map[string]string
 	certificate map[string]string
 }
 
@@ -251,6 +262,7 @@ func NewResolver(binds Keybindings) *Resolver {
 		binds.ExportCurl:    ActionExportCurl,
 		binds.EditAuth:      ActionEditAuth,
 		binds.EditExtract:   ActionEditExtract,
+		binds.EditAssert:    ActionEditAssert,
 		binds.ScheduleRun:   ActionScheduleRun,
 	}
 	addAlias(request, "alt+enter", ActionSendRequest)
@@ -379,6 +391,21 @@ func NewResolver(binds Keybindings) *Resolver {
 	addAlias(extract, "tab", "switch_field")
 	addAlias(extract, "ctrl+s", "save")
 
+	// Assertion editor
+	assert := map[string]string{
+		binds.AssertDown:   ActionNavigateDown,
+		binds.AssertUp:     ActionNavigateUp,
+		binds.AssertAdd:    "add_rule",
+		binds.AssertDelete: "delete_rule",
+		binds.AssertEdit:   "edit_rule",
+		binds.AssertSave:   "save",
+		binds.AssertCancel: ActionCancel,
+	}
+	addAlias(assert, "down", ActionNavigateDown)
+	addAlias(assert, "up", ActionNavigateUp)
+	addAlias(assert, "enter", "save")
+	addAlias(assert, "ctrl+s", "save")
+
 	certificate := map[string]string{
 		binds.CertDown: "navigate_down", binds.CertUp: "navigate_up",
 		binds.CertAdd: "add", binds.CertEdit: "edit", binds.CertDelete: "delete",
@@ -403,18 +430,19 @@ func NewResolver(binds Keybindings) *Resolver {
 		collection:  collection,
 		auth:        auth,
 		extract:     extract,
+		assert:      assert,
 		certificate: certificate,
 	}
 }
 
 // Resolve returns the action name for a given key in a given mode.
-// mode: 0=normal, 1=search, 2=help, 3=import, 4=body, 5=header, 6=env, 7=collection prompt, 8=auth, 9=certificate, 10=extraction rules
+// mode: 0=normal, 1=search, 2=help, 3=import, 4=body, 5=header, 6=env, 7=collection prompt, 8=auth, 9=certificate, 10=extraction rules, 11=assertion rules
 // pane: 0=sidebar, 1=request, 2=response (only used in normal mode)
 func (r *Resolver) Resolve(mode, pane int, msg tea.KeyMsg) (string, bool) {
 	key := msg.String()
 
 	// Validate mode.
-	if mode < 0 || mode > 10 {
+	if mode < 0 || mode > 11 {
 		return "", false
 	}
 
@@ -497,6 +525,10 @@ func (r *Resolver) lookupOverlay(mode int, key string) (string, bool) {
 		if action, ok := r.extract[key]; ok {
 			return action, true
 		}
+	case 11:
+		if action, ok := r.assert[key]; ok {
+			return action, true
+		}
 	}
 	return "", false
 }
@@ -540,7 +572,7 @@ func Validate(binds Keybindings) map[string][]string {
 			{binds.EditBody, ActionEditBody}, {binds.EditHeaders, ActionEditHeaders},
 			{binds.RequestDelete, ActionDeleteRequest},
 			{binds.EditAuth, ActionEditAuth}, {binds.ScheduleRun, ActionScheduleRun},
-			{binds.EditExtract, ActionEditExtract},
+			{binds.EditExtract, ActionEditExtract}, {binds.EditAssert, ActionEditAssert},
 			{binds.ExportCurl, ActionExportCurl}},
 		{{binds.ResponseDown, "response_down"}, {binds.ResponseUp, "response_up"},
 			{binds.ResponseRetry, "response_retry"},
@@ -575,6 +607,10 @@ func Validate(binds Keybindings) map[string][]string {
 			{binds.AuthEdit, "auth_edit"}, {binds.AuthSave, "auth_save"},
 			{binds.AuthCancel, "auth_cancel"}, {binds.AuthOptionNext, "auth_option_next"},
 			{binds.AuthOptionPrev, "auth_option_prev"}},
+		{{binds.AssertDown, "assert_down"}, {binds.AssertUp, "assert_up"},
+			{binds.AssertAdd, "assert_add"}, {binds.AssertDelete, "assert_delete"},
+			{binds.AssertEdit, "assert_edit"}, {binds.AssertSave, "assert_save"},
+			{binds.AssertCancel, "assert_cancel"}},
 		{{binds.ExtractDown, "extract_down"}, {binds.ExtractUp, "extract_up"},
 			{binds.ExtractAdd, "extract_add"}, {binds.ExtractDelete, "extract_delete"},
 			{binds.ExtractEdit, "extract_edit"}, {binds.ExtractSave, "extract_save"},

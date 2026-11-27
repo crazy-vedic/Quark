@@ -34,6 +34,9 @@ type ExecuteResult struct {
 	// Extracted holds one outcome per extraction rule, filled by
 	// ExtractionHook. Empty when the request has no rules.
 	Extracted []ExtractionOutcome
+	// Assertions holds one result per assertion, filled by AssertionHook.
+	// Empty when the request has no assertions.
+	Assertions []AssertionResult
 }
 
 // IsStreamed reports whether the response body was written to a temp file.

@@ -91,6 +91,7 @@ const (
 	headersField
 	authField
 	extractField
+	assertField
 )
 
 // responseTabID identifies which tab is active in the response pane.
@@ -355,6 +356,7 @@ type Model struct {
 	headerValueInput textinput.Model
 	authEditor       authEditor
 	extract          extractEditor
+	assert           assertEditor
 
 	// --- Text selection state (keyboard and mouse) ---
 	urlSelection         textedit.Selection // selection in URL input
@@ -567,6 +569,7 @@ func New(deps Deps) Model {
 			varInput: extractVarInput,
 			srcInput: extractSrcInput,
 		},
+		assert:                  assertEditor{input: newAssertInput()},
 		requestText:             scrollableText{cache: &scrollableTextCache{}},
 		responseText:            scrollableText{cache: &scrollableTextCache{}},
 		viewerText:              scrollableText{cache: &scrollableTextCache{}},

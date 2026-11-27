@@ -330,6 +330,12 @@ var routingCases = []routeCase{
 		value:   tui.Model.ExtractSourceValue,
 	},
 	{
+		name:    "assert.input",
+		open:    func(*testing.T) tui.Model { return pasteFixture("").WithAssertRowEdit("") },
+		deliver: deliver,
+		value:   tui.Model.AssertInputValue,
+	},
+	{
 		name:    "authEditor.tokenInput",
 		open:    func(*testing.T) tui.Model { return pasteFixture("").WithAuthFieldEdit("bearer", 1, "") },
 		deliver: deliver,

@@ -120,6 +120,8 @@ If `*Store` stops implementing any interface, **this file fails to compile**.
 `exec.NewExtractionHook(st)` as the post-response hook. It applies a request's extraction
 rules (`domain.Extraction`, stored as JSON in `requests.extractions`) into the active
 environment. The TUI and `quark run` share that executor, so both apply rules.
+`exec.NewAssertionHook()` evaluates a request's assertions (`requests.assertions`) and fills
+`ExecuteResult.Assertions`; `quark run` exits non-zero when one fails.
 
 ## Transactions
 

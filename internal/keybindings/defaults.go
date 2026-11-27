@@ -41,6 +41,7 @@ func DefaultKeybindings() Keybindings {
 		ExportCurl:    "x",
 		EditAuth:      "a",
 		EditExtract:   "X",
+		EditAssert:    "A",
 		ScheduleRun:   "S",
 		EnvOpen:       "e",
 		ClientCerts:   "C",
@@ -94,6 +95,15 @@ func DefaultKeybindings() Keybindings {
 		ExtractSave:        KeyEnter,
 		ExtractCancel:      "esc",
 		ExtractSwitchField: "ctrl+e",
+
+		// Assertion editor
+		AssertDown:   "j",
+		AssertUp:     "k",
+		AssertAdd:    "a",
+		AssertDelete: "d",
+		AssertEdit:   "e",
+		AssertSave:   KeyEnter,
+		AssertCancel: "esc",
 
 		// Auth editor
 		AuthDown:       "j",

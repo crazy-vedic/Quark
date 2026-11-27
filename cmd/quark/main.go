@@ -158,6 +158,7 @@ func runWithArgs(args []string) error {
 			exec.WithExecutionWriter(st),
 			exec.WithPostResponseHooks([]exec.PostResponseHook{
 				exec.NewExtractionHook(st),
+				exec.NewAssertionHook(),
 			}),
 		)
 		importer := curl.NewImporter()

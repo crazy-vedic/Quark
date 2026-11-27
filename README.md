@@ -422,6 +422,34 @@ quark run "API/me"      # sends the stored token in Authorization
 Non-2xx responses extract nothing. A rule that cannot be applied (missing path
 or header, or a body that is not JSON) is reported and does not stop the request.
 
+### Assertions
+
+Each request can carry assertions that check the response. Press `A` in the
+request pane (or choose "Edit request assertions" in the command palette) to
+edit them, one per row, in this form:
+
+```
+status = 200
+time < 500ms
+$.data.id exists
+$.data.name = "Ada"
+header Content-Type contains json
+header X-Env = prod
+```
+
+- `status = N` checks the status code.
+- `time < D` checks the response time (a Go duration such as `500ms` or `2s`).
+- `$.path exists` and `$.path = value` check a JSON body value. Quoted values
+  are unquoted; numbers, booleans and `null` are compared as written.
+- `header Name exists`, `header Name = value` and `header Name contains text`
+  check a response header (names are case-insensitive).
+
+The TUI status line reports how many assertions passed, with the first
+failure. `quark run` prints `Assert PASS:` or `Assert FAIL:` for each one and
+exits non-zero when any fails, so a saved request can gate a script or CI job.
+Failure messages never print response values, because they are often
+credentials.
+
 ### File-backed request values
 
 In the TUI Body or Headers editor, enter `@path/to/file` as the complete body
