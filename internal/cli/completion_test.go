@@ -186,7 +186,7 @@ func TestEnvCommandCompletesCollectionThenEnvironment(t *testing.T) {
 
 func TestRequestListRegistersCollectionFlagCompletion(t *testing.T) {
 	st := newCompletionTestStore()
-	cmd := NewRequestCmd(st)
+	cmd := NewRequestCmd(st, "")
 
 	var listCmd *cobra.Command
 	for _, sub := range cmd.Commands() {

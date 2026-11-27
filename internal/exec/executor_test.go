@@ -1096,3 +1096,67 @@ func TestExecutor_RequestAuth_APIKeyQueryKeepsExistingQuery(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "z=1&a=2&filter=a%20b,c&api+key=s%26cret", rawQuery)
 }
+
+func TestExecutor_EscapedAtSendsLiteralText(t *testing.T) {
+	var receivedBody, receivedHeader string
+	transport := roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+		body, err := io.ReadAll(r.Body)
+		require.NoError(t, err)
+		receivedBody = string(body)
+		receivedHeader = r.Header.Get("X-User")
+		return &http.Response{
+			StatusCode: 200,
+			Status:     "200 OK",
+			Header:     make(http.Header),
+			Body:       io.NopCloser(strings.NewReader("ok")),
+			Request:    r,
+		}, nil
+	})
+
+	req := &domain.Request{
+		Method:  http.MethodPost,
+		URL:     "https://example.test/notify",
+		Body:    "@@channel deploy done",
+		Headers: `{"X-User":"@@alice"}`,
+	}
+	_, err := newTestExecutor(transport).Execute(context.Background(), req)
+	require.NoError(t, err)
+	assert.Equal(t, "@channel deploy done", receivedBody)
+	assert.Equal(t, "@alice", receivedHeader)
+	assert.Equal(t, "@@channel deploy done", req.Body, "the stored form keeps the escape")
+}
+
+func TestExecutor_RelativeFileRefsResolveFromBaseDir(t *testing.T) {
+	base := t.TempDir()
+	require.NoError(t,
+		os.WriteFile(filepath.Join(base, "payload.json"), []byte(`{"from":"base"}`), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(base, "token.txt"), []byte("base-token"), 0o600))
+
+	var receivedBody, receivedHeader string
+	transport := roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+		body, err := io.ReadAll(r.Body)
+		require.NoError(t, err)
+		receivedBody = string(body)
+		receivedHeader = r.Header.Get("X-Token")
+		return &http.Response{
+			StatusCode: 200,
+			Status:     "200 OK",
+			Header:     make(http.Header),
+			Body:       io.NopCloser(strings.NewReader("ok")),
+			Request:    r,
+		}, nil
+	})
+
+	req := &domain.Request{
+		Method:  http.MethodPost,
+		URL:     "https://example.test/upload",
+		Body:    "@payload.json",
+		Headers: `{"X-Token":"@token.txt"}`,
+	}
+	_, err := newTestExecutor(transport, exec.WithFileBaseDir(base)).
+		Execute(context.Background(), req)
+	require.NoError(t, err)
+	assert.Equal(t, `{"from":"base"}`, receivedBody)
+	assert.Equal(t, "base-token", receivedHeader)
+	assert.Equal(t, "@payload.json", req.Body, "the saved request keeps the relative reference")
+}

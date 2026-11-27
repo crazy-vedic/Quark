@@ -15,6 +15,8 @@ import (
 	"strings"
 
 	"mvdan.cc/sh/v3/syntax"
+
+	"github.com/crazy-vedic/quark/internal/domain"
 )
 
 type optionKind uint8
@@ -539,7 +541,8 @@ func parseCommand(command string) (*ImportResult, error) {
 			contentType,
 		)
 	} else {
-		result.Body = strings.Join(bodyParts, "&")
+		// A stored "@..." body is a file reference; curl sends it as literal text.
+		result.Body = domain.EscapeFileRef(strings.Join(bodyParts, "&"))
 		if result.Body != "" {
 			contentType := "application/x-www-form-urlencoded"
 			if bodyMode == "json" {
@@ -780,7 +783,8 @@ func applyHeader(result *ImportResult, suppressed map[string]bool, value string)
 		return nil
 	}
 	delete(suppressed, strings.ToLower(key))
-	result.Headers.Add(key, strings.TrimSpace(headerValue))
+	// A stored "@..." header value is a file reference; curl sends it as literal text.
+	result.Headers.Add(key, domain.EscapeFileRef(strings.TrimSpace(headerValue)))
 	classifyHeader(key, result)
 	return nil
 }

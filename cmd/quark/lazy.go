@@ -184,7 +184,9 @@ func lazyCollectionCmd(rt func() (*runtime, error)) *cobra.Command {
 }
 
 func lazyRequestCmd(rt func() (*runtime, error)) *cobra.Command {
-	return lazyCommand(rt, func(r *runtime) *cobra.Command { return cli.NewRequestCmd(r.st) })
+	return lazyCommand(rt, func(r *runtime) *cobra.Command {
+		return cli.NewRequestCmd(r.st, r.configDir)
+	})
 }
 
 func lazyRunCmd(rt func() (*runtime, error)) *cobra.Command {

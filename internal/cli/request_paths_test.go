@@ -49,7 +49,7 @@ func TestRequestListBranches(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cmd := NewRequestCmd(tt.store)
+			cmd := NewRequestCmd(tt.store, "")
 			var out bytes.Buffer
 			cmd.SetOut(&out)
 			cmd.SetArgs(tt.args)

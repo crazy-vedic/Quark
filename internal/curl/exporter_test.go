@@ -2,6 +2,7 @@ package curl_test
 
 import (
 	"encoding/json"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -176,4 +177,26 @@ func TestExportRequest_RoundTripsImportedHeaders(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Equal(t, "curl -X 'GET' -H 'Accept: application/json' 'https://example.test'", got)
+}
+
+func TestExportRequest_FileRefsAndEscapes(t *testing.T) {
+	base := t.TempDir()
+	got, err := curl.ExportRequest(&domain.Request{
+		Method:  "POST",
+		URL:     "https://example.test/notify",
+		Headers: `{"X-User":"@@alice","X-Token":"@token.txt"}`,
+		Body:    "@payload.json",
+	}, curl.WithFileBaseDir(base))
+	require.NoError(t, err)
+	require.Contains(t, got, `-H 'X-User: @alice'`)
+	require.Contains(t, got, `-H 'X-Token: '"$(cat '`+filepath.Join(base, "token.txt")+`')"`)
+	require.Contains(t, got, `--data-binary '@`+filepath.Join(base, "payload.json")+`'`)
+
+	literal, err := curl.ExportRequest(&domain.Request{
+		Method: "POST",
+		URL:    "https://example.test/notify",
+		Body:   "@@channel deploy done",
+	})
+	require.NoError(t, err)
+	require.Contains(t, literal, `--data-raw '@channel deploy done'`)
 }

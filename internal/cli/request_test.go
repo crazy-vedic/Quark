@@ -26,7 +26,7 @@ func TestRequestList_ShortIDDoesNotPanic(t *testing.T) {
 		ID: "r1", CollectionID: "col1", Name: "Short", Method: "GET", URL: "https://example.test",
 	}))
 
-	cmd := NewRequestCmd(st)
+	cmd := NewRequestCmd(st, "")
 	var out bytes.Buffer
 	cmd.SetOut(&out)
 	cmd.SetArgs([]string{"list", "--collection", "API"})
@@ -50,7 +50,7 @@ func (s resolverStore) ResolveRequestPath(context.Context, string) (*domain.Requ
 }
 
 func TestRequestExportCurlNeedsAResolvingStore(t *testing.T) {
-	cmd := newRequestExportCurlCmd(noResolverStore{})
+	cmd := newRequestExportCurlCmd(noResolverStore{}, "")
 	cmd.SetContext(context.Background())
 	err := cmd.RunE(cmd, []string{"API/Anything"})
 	require.ErrorContains(t, err, "cannot resolve request paths")
@@ -62,7 +62,7 @@ type resolverNoEnvStore struct{ resolverStore }
 func TestRequestExportCurlNeedsEnvironments(t *testing.T) {
 	cmd := newRequestExportCurlCmd(resolverNoEnvStore{resolverStore{req: &domain.Request{
 		Method: "GET", URL: "https://example.test/x",
-	}}})
+	}}}, "")
 	cmd.SetContext(context.Background())
 	err := cmd.RunE(cmd, []string{"API/X"})
 	require.ErrorContains(t, err, "cannot resolve environments")
@@ -87,7 +87,7 @@ func TestRequestExportCurlPrintsOneCommandPerRequest(t *testing.T) {
 	}
 	require.NoError(t, st.SaveRequest(ctx, req))
 
-	cmd := newRequestExportCurlCmd(st)
+	cmd := newRequestExportCurlCmd(st, "")
 	cmd.SetContext(ctx)
 	var out bytes.Buffer
 	cmd.SetOut(&out)

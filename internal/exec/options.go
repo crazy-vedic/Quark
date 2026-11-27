@@ -15,6 +15,7 @@ type options struct {
 	executionWriter   ExecutionWriter
 	followRedirects   bool
 	maxRedirects      int
+	fileBaseDir       string
 }
 
 func defaultOptions() options {
@@ -106,3 +107,12 @@ func (o executionWriterOption) apply(opts *options) { opts.executionWriter = o.w
 func WithExecutionWriter(w ExecutionWriter) executionWriterOption {
 	return executionWriterOption{w}
 }
+
+type fileBaseDirOption string
+
+func (o fileBaseDirOption) apply(opts *options) { opts.fileBaseDir = string(o) }
+
+// WithFileBaseDir sets the directory that relative @file references in
+// request bodies and header values are resolved against. Without it they
+// resolve against the process working directory.
+func WithFileBaseDir(dir string) fileBaseDirOption { return fileBaseDirOption(dir) }
