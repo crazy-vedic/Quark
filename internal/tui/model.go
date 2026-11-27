@@ -600,11 +600,15 @@ func New(deps Deps) Model {
 	if os.Getenv("TMUX") != "" {
 		m.tmuxDetected = true
 		m.showTmuxWarning = true // BUG-010: show briefly on startup
-		m.tmuxWarning = "tmux detected: some Ctrl+w bindings may be intercepted"
+		m.tmuxWarning = "tmux detected: some " + m.keyLabelOr(
+			keybindings.ActionDeleteWord, "key",
+		) + " bindings may be intercepted"
 	} else if os.Getenv("STY") != "" {
 		m.tmuxDetected = true
 		m.showTmuxWarning = true
-		m.tmuxWarning = "GNU screen detected: some Ctrl+w bindings may be intercepted"
+		m.tmuxWarning = "GNU screen detected: some " + m.keyLabelOr(
+			keybindings.ActionDeleteWord, "key",
+		) + " bindings may be intercepted"
 	}
 
 	m.cacheTextKeys()
@@ -812,7 +816,10 @@ func (m Model) status(level, msg string) Model {
 // ctrlCNoSelection is the Ctrl+C result when there is nothing to copy. Ctrl+C
 // never quits, so the hint names the key that does.
 func (m Model) ctrlCNoSelection() Model {
-	return m.status("warn", "Press q to quit")
+	if key := m.keyLabel(keybindings.ActionQuit); key != "" {
+		return m.status("warn", "Press "+key+" to quit")
+	}
+	return m.status("warn", "Nothing to copy")
 }
 
 // unsavedRequestKey is the validation-error map key used for the request

@@ -232,7 +232,7 @@ Pasting a curl command into the URL field (`Ctrl+V`, or pressing `Enter` on a fi
 
 #### Text editing keys in config
 
-Text-field keys can be remapped in the `[keybindings]` table of `~/.quark/config.toml`. Only values that differ from the defaults below take effect. Example:
+Text-field keys can be remapped in the `[keybindings]` table of `~/.quark/config.toml`. Only values that differ from the defaults below take effect. Hints in panes and dialogs show the remapped key. Example:
 
 ```toml
 [keybindings]

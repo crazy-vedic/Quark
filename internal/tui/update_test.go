@@ -1808,6 +1808,38 @@ func TestBodyCtrlJInsertsNewline(t *testing.T) {
 	assert.Equal(t, "ab\n", m.BodyValue())
 }
 
+// The quit hint names the key the user actually bound to quit.
+func TestCtrlCNoSelectionQuitHintFollowsRebinding(t *testing.T) {
+	cfg := defaultConfig()
+	cfg.Keybindings.Quit = "x"
+	m := newModel(cfg)
+	updated := callUpdate(t, m, tea.KeyMsg{Type: tea.KeyCtrlC})
+	assert.Equal(t, "Press x to quit", updated.StatusErr())
+}
+
+// With no quit binding, the hint must not name a key that does nothing.
+func TestCtrlCNoSelectionQuitHintOmitsUnboundKey(t *testing.T) {
+	cfg := defaultConfig()
+	cfg.Keybindings.Quit = ""
+	m := tui.New(tui.Deps{
+		Config:   cfg,
+		Resolver: keybindings.NewResolver(cfg.Keybindings),
+	})
+	updated := callUpdate(t, m, tea.KeyMsg{Type: tea.KeyCtrlC})
+	assert.NotContains(t, updated.StatusErr(), "Press")
+	assert.NotEmpty(t, updated.StatusErr())
+}
+
+// The tmux warning names the key bound to delete_word, not a fixed Ctrl+w.
+func TestTmuxWarningFollowsDeleteWordBinding(t *testing.T) {
+	t.Setenv("TMUX", "/tmp/tmux-test,1,0")
+	cfg := defaultConfig()
+	cfg.Keybindings.DeleteWord = "ctrl+k"
+	m := tui.New(tui.Deps{Config: cfg})
+	assert.Equal(t, "tmux detected: some Ctrl+K bindings may be intercepted", m.TmuxWarning())
+	assert.Contains(t, m.ViewStatusBarForTest(""), "tmux: Ctrl+K intercepted")
+}
+
 // Ctrl+C with nothing to copy must not be silent: it points the user at q.
 func TestCtrlCNoSelectionShowsQuitHint(t *testing.T) {
 	cases := map[string]tui.Model{
