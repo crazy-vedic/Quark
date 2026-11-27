@@ -29,8 +29,18 @@ import (
 func TestE2E_StartupRestoresRequestAndHistory(t *testing.T) {
 	col := &domain.Collection{ID: uuid.NewString(), Name: "Startup"}
 	st := setupStore(t, col)
-	first := &domain.Request{ID: uuid.NewString(), Name: "First", Method: "GET", URL: "https://first.example"}
-	last := &domain.Request{ID: uuid.NewString(), Name: "Last", Method: "GET", URL: "https://last.example"}
+	first := &domain.Request{
+		ID:     uuid.NewString(),
+		Name:   "First",
+		Method: "GET",
+		URL:    "https://first.example",
+	}
+	last := &domain.Request{
+		ID:     uuid.NewString(),
+		Name:   "Last",
+		Method: "GET",
+		URL:    "https://last.example",
+	}
 	seedRequests(t, st, col.ID, first, last)
 	require.NoError(t, st.SaveExecution(context.Background(), &domain.Execution{
 		ID:              uuid.NewString(),
@@ -87,12 +97,14 @@ func TestE2E_TUIFileBodyHeaderAndJSONReachHTTPServer(t *testing.T) {
 	col := &domain.Collection{ID: uuid.NewString(), Name: "Files"}
 	st := setupStore(t, col)
 	req := &domain.Request{
-		ID:      uuid.NewString(),
-		Name:    "File request",
-		Method:  "POST",
-		URL:     srv.URL,
-		Body:    "@" + e2e.EscapePathForJSON(payloadPath),
-		Headers: `{"Content-Type":"application/json; charset=utf-8","X-Token":"@` + e2e.EscapePathForJSON(headerPath) + `","Host":"e2e.example"}`,
+		ID:     uuid.NewString(),
+		Name:   "File request",
+		Method: "POST",
+		URL:    srv.URL,
+		Body:   "@" + e2e.EscapePathForJSON(payloadPath),
+		Headers: `{"Content-Type":"application/json; charset=utf-8","X-Token":"@` + e2e.EscapePathForJSON(
+			headerPath,
+		) + `","Host":"e2e.example"}`,
 	}
 	seedRequests(t, st, col.ID, req)
 

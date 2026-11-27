@@ -6,6 +6,9 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/crazy-vedic/quark/internal/domain"
 )
 
 func TestMapper_ContentTypeFromBodyLanguage(t *testing.T) {
@@ -207,4 +210,24 @@ func TestMapper_FormDataBody(t *testing.T) {
 	var headers map[string]string
 	assert.NoError(t, json.Unmarshal([]byte(result.Requests[0].Headers), &headers))
 	assert.Equal(t, "multipart/form-data; boundary=quark-postman-boundary", headers["Content-Type"])
+}
+
+func TestMapper_BodyTypes(t *testing.T) {
+	jsonBody := `{
+		"info": {"name": "Test", "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"},
+		"item": [
+			{"name": "Form", "request": {"method": "POST", "url": "https://example.com/a",
+				"body": {"mode": "urlencoded", "urlencoded": [{"key": "a", "value": "1"}]}}},
+			{"name": "Raw", "request": {"method": "POST", "url": "https://example.com/b",
+				"body": {"mode": "raw", "raw": "{\"x\":1}", "options": {"raw": {"language": "json"}}}}},
+			{"name": "Empty", "request": {"method": "GET", "url": "https://example.com/c"}}
+		]
+	}`
+	result, err := NewImporter().Parse(strings.NewReader(jsonBody))
+	require.NoError(t, err)
+	require.Len(t, result.Requests, 3)
+	assert.Equal(t, domain.BodyTypeFormURLEncoded, result.Requests[0].BodyType)
+	assert.Equal(t, "a=1", result.Requests[0].Body)
+	assert.Equal(t, domain.BodyTypeRaw, result.Requests[1].BodyType)
+	assert.Equal(t, domain.BodyTypeRaw, result.Requests[2].BodyType)
 }

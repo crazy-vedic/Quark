@@ -188,8 +188,16 @@ func InterpolateRequestWithOverrides(
 		return nil, fmt.Errorf("interpolate URL: %w", err)
 	}
 
-	// Body
-	out.Body, err = substitute(out.Body, resolver)
+	// Body. A form body is urlencoded text, so each substituted value is
+	// escaped: a value with '&' or a space must not change the fields.
+	bodyResolver := resolver
+	if out.BodyType == domain.BodyTypeFormURLEncoded {
+		bodyResolver = func(expr string) (string, bool) {
+			value, ok := resolver(expr)
+			return domain.EncodeFormValue(value), ok
+		}
+	}
+	out.Body, err = substitute(out.Body, bodyResolver)
 	if err != nil {
 		return nil, fmt.Errorf("interpolate body: %w", err)
 	}
@@ -553,6 +561,7 @@ func copyRequest(req *domain.Request) *domain.Request {
 		AuthType:     req.AuthType,
 		AuthConfig:   req.AuthConfig,
 		Body:         req.Body,
+		BodyType:     req.BodyType,
 		SortOrder:    req.SortOrder,
 		Enabled:      req.Enabled,
 		CreatedAt:    req.CreatedAt,

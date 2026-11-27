@@ -70,11 +70,13 @@ func TestCLI_RunSendsFileBackedHeaderAndBodyWithTransportHeaders(t *testing.T) {
 	srv, got := newCapturingServer(t)
 
 	seedRequest(t, home, colID, &domain.Request{
-		Name:    "Transport",
-		Method:  http.MethodPost,
-		URL:     srv.URL + "/echo",
-		Headers: `{"Host":["api.internal.test"],"X-Trace":["@` + e2e.EscapePathForJSON(traceFile) + `"],"Transfer-Encoding":["chunked"],"Connection":["close"],"Content-Type":["application/json"]}`,
-		Body:    "@" + e2e.EscapePathForJSON(bodyFile),
+		Name:   "Transport",
+		Method: http.MethodPost,
+		URL:    srv.URL + "/echo",
+		Headers: `{"Host":["api.internal.test"],"X-Trace":["@` + e2e.EscapePathForJSON(
+			traceFile,
+		) + `"],"Transfer-Encoding":["chunked"],"Connection":["close"],"Content-Type":["application/json"]}`,
+		Body: "@" + e2e.EscapePathForJSON(bodyFile),
 	})
 
 	out, errOut, code := runQuarkWithHome(t, home, "run", "API/Transport")
@@ -210,9 +212,11 @@ func TestCLI_ImportCurlRejectsUnsafeBodyFiles(t *testing.T) {
 			want:    "read body file",
 		},
 		{
-			name:    "oversized file",
-			command: "curl -X POST 'https://example.test' --data-binary @" + e2e.EscapePathForJSON(big),
-			want:    "exceeds",
+			name: "oversized file",
+			command: "curl -X POST 'https://example.test' --data-binary @" + e2e.EscapePathForJSON(
+				big,
+			),
+			want: "exceeds",
 		},
 	}
 	for _, tc := range cases {

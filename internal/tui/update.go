@@ -602,7 +602,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, cmd
 	}
-	if m.activeField == headersField && m.headerEditing {
+	if (m.activeField == headersField || m.activeField == bodyFormField) && m.headerEditing {
 		var cmd tea.Cmd
 		if m.headerKeyInput.Focused() {
 			m.headerKeyInput, cmd = m.headerKeyInput.Update(msg)
@@ -913,6 +913,8 @@ func (m Model) handleRequestAction(action string) (tea.Model, tea.Cmd) {
 		return m.beginAuthEdit(), nil
 	case keybindings.ActionEditHeaders:
 		return m.beginHeadersEdit(), nil
+	case keybindings.ActionBodyTypeNext:
+		return m.cycleBodyType()
 	}
 	return m, nil
 }
@@ -1088,6 +1090,8 @@ func (m Model) handleRequestKey(_ string, msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleAuthFieldKey(msg)
 	case headersField:
 		return m.handleHeadersFieldKey(msg)
+	case bodyFormField:
+		return m.handleBodyFormKey(msg)
 	}
 
 	// Alt+Enter (macOS cmd+enter) sends request.
@@ -1440,6 +1444,7 @@ var commandPaletteItems = []commandPaletteItem{
 	{Title: "Send request", Action: keybindings.ActionSendRequest},
 	{Title: "Edit request URL", Action: keybindings.ActionEditURL},
 	{Title: "Edit request body", Action: keybindings.ActionEditBody},
+	{Title: "Cycle body type", Action: keybindings.ActionBodyTypeNext},
 	{Title: "Edit request headers", Action: keybindings.ActionEditHeaders},
 	{Title: "Edit request authorization", Action: keybindings.ActionEditAuth},
 	{Title: "Next HTTP method", Action: keybindings.ActionMethodNext},
@@ -1547,6 +1552,7 @@ func (m Model) executeSelectedCommand() (tea.Model, tea.Cmd) {
 	case keybindings.ActionEditURL,
 		keybindings.ActionEditBody,
 		keybindings.ActionEditHeaders,
+		keybindings.ActionBodyTypeNext,
 		keybindings.ActionMethodNext,
 		keybindings.ActionMethodPrev,
 		keybindings.ActionEditAuth:
@@ -2027,6 +2033,7 @@ func (m Model) handleImportKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					URL:          m.importPreview.URL,
 					Headers:      string(headersJSON),
 					Body:         m.importPreview.Body,
+					BodyType:     m.importPreview.BodyType,
 				}
 				m.debugCurl(
 					"confirm save name=%q method=%s url=%q header_names=%q body_len=%d",
@@ -2401,6 +2408,17 @@ func (m Model) handleHeaderFieldEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.ctrlCNoSelection(), nil
 	}
 
+	if msg.Type == tea.KeyTab && m.activeField == bodyFormField {
+		// Form fields have no name/value suggestions: Tab only switches field.
+		if m.headerKeyInput.Focused() {
+			m.headerKeyInput.Blur()
+			m.headerValueInput.Focus()
+		} else {
+			m.headerValueInput.Blur()
+			m.headerKeyInput.Focus()
+		}
+		return m, nil
+	}
 	if msg.Type == tea.KeyTab {
 		if m.headerKeyInput.Focused() {
 			if suggestion := headerNameSuggestion(m.headerKeyInput.Value()); suggestion != "" {

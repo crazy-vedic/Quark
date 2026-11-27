@@ -58,6 +58,7 @@ var helpActionLabels = map[string]string{
 	keybindings.ActionSendRequest:   "send request",
 	keybindings.ActionEditBody:      "edit body",
 	keybindings.ActionEditHeaders:   "edit headers",
+	keybindings.ActionBodyTypeNext:  "cycle body type",
 	"edit_auth":                     "edit auth",
 	keybindings.ActionScheduleRun:   "schedule request",
 	keybindings.ActionExportCurl:    "copy as curl",
@@ -431,7 +432,7 @@ func (m Model) viewHeadersPreview(w int) string {
 		)
 		preview.WriteString(keyDisplay)
 		preview.WriteString("\n\n")
-		if m.headerKeyInput.Focused() {
+		if m.headerKeyInput.Focused() && m.activeField == headersField {
 			if suggestion := headerNameSuggestion(m.headerKeyInput.Value()); suggestion != "" {
 				preview.WriteString(m.styles.mutedStyle.Render("  Tab → " + suggestion))
 				preview.WriteString("\n")
@@ -592,6 +593,8 @@ func (m Model) viewRequestPane(w, h int) string {
 		content = ""
 	case m.activeField == headersField && m.activeRequest != nil:
 		content = m.viewHeadersPreview(w)
+	case m.activeField == bodyFormField && m.activeRequest != nil:
+		content = m.viewBodyFormPreview(w)
 	case m.activeRequest != nil:
 		// The read-only preview is formatted lazily by requestText below.
 		content = ""
@@ -718,6 +721,18 @@ func (m Model) requestBodyPreviewContent(parent ...*timing.Span) string {
 	}()
 	if m.activeRequest == nil {
 		return ""
+	}
+	switch requestBodyType(m.activeRequest) {
+	case domain.BodyTypeNone:
+		return "  No body is sent (body type is none)"
+	case domain.BodyTypeFormURLEncoded:
+		if m.activeRequest.Body != "" {
+			var lines []string
+			for _, f := range domain.ParseFormBody(m.activeRequest.Body) {
+				lines = append(lines, "  "+f.Key+" = "+f.Value)
+			}
+			return strings.Join(lines, "\n")
+		}
 	}
 	if m.activeRequest.Body != "" {
 		lines := strings.Split(m.activeRequest.Body, "\n")
@@ -984,7 +999,7 @@ func (m Model) requestBodyPreviewSourceKey() string {
 	// The active request is edited in place, so identity alone is not enough to
 	// invalidate the formatted preview cache. Keep the key bounded while making
 	// body/header edits visible on the next render.
-	source := m.activeRequest.Body + "\x00" + m.activeRequest.Headers
+	source := m.activeRequest.Body + "\x00" + m.activeRequest.BodyType + "\x00" + m.activeRequest.Headers
 	digest := sha256.Sum256([]byte(source))
 	return fmt.Sprintf("request:%p:%s:%x", m.activeRequest, m.activeRequest.ID, digest[:8])
 }

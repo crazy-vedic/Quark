@@ -13,6 +13,7 @@ type Request struct {
 	AuthType     string
 	AuthConfig   string // JSON object keyed by auth type needs
 	Body         string
+	BodyType     string // one of the BodyType constants; "" means raw
 	SortOrder    int
 	Enabled      bool
 	CreatedAt    time.Time

@@ -2,6 +2,7 @@ package curl
 
 import (
 	"fmt"
+	"net/http"
 	"net/url"
 	"sort"
 	"strings"
@@ -64,8 +65,19 @@ func ExportRequest(req *domain.Request) (string, error) {
 			return "", fmt.Errorf("unsupported authorization type %q", req.AuthType)
 		}
 	}
-	if req.Body != "" {
-		args = append(args, "--data-raw", shellQuote(req.Body))
+	bodyType, err := domain.NormalizeBodyType(req.BodyType)
+	if err != nil {
+		return "", fmt.Errorf("export request body: %w", err)
+	}
+	// A body type of none sends no body, so none is exported.
+	if body := req.Body; bodyType != domain.BodyTypeNone && body != "" {
+		if ct := domain.DefaultBodyContentType(
+			bodyType,
+		); ct != "" &&
+			!hasHeader(headers, "Content-Type") {
+			args = append(args, "-H", shellQuote("Content-Type: "+ct))
+		}
+		args = append(args, "--data-raw", shellQuote(body))
 	}
 	args = append(args, shellQuote(requestURL))
 	return strings.Join(args, " "), nil
@@ -73,4 +85,14 @@ func ExportRequest(req *domain.Request) (string, error) {
 
 func shellQuote(value string) string {
 	return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'"
+}
+
+// hasHeader reports whether headers has key, ignoring case.
+func hasHeader(headers http.Header, key string) bool {
+	for name := range headers {
+		if strings.EqualFold(name, key) {
+			return true
+		}
+	}
+	return false
 }

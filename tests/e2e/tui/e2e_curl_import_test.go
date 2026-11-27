@@ -46,7 +46,11 @@ func TestE2E_CurlImportPersistsThroughModelAndSQLite(t *testing.T) {
 
 	// Import mode deliberately owns the input path; mouse input must not mutate it.
 	before := m.View()
-	m = callUpdate(t, m, tea.MouseMsg{X: 10, Y: 10, Action: tea.MouseActionPress, Button: tea.MouseButtonLeft})
+	m = callUpdate(
+		t,
+		m,
+		tea.MouseMsg{X: 10, Y: 10, Action: tea.MouseActionPress, Button: tea.MouseButtonLeft},
+	)
 	require.Equal(t, before, m.View())
 }
 
@@ -74,5 +78,10 @@ func TestE2E_CurlImportCtrlVPastesIntoInputField(t *testing.T) {
 	require.Equal(t, command, m.ImportInputValue(), "paste into an empty import field")
 
 	m = paste(m)
-	require.Equal(t, command+command, m.ImportInputValue(), "paste into a non-empty import field inserts at the cursor")
+	require.Equal(
+		t,
+		command+command,
+		m.ImportInputValue(),
+		"paste into a non-empty import field inserts at the cursor",
+	)
 }

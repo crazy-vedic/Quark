@@ -152,6 +152,7 @@ func mapRequest(
 
 	// Body
 	body := ""
+	bodyType := domain.BodyTypeRaw
 	switch req.Body.Mode {
 	case "raw":
 		body = req.Body.Raw
@@ -164,6 +165,7 @@ func mapRequest(
 		}
 	case "urlencoded":
 		body = encodeURLEncodedBody(req.Body.URLEncoded)
+		bodyType = domain.BodyTypeFormURLEncoded
 		if _, ok := headersMap["Content-Type"]; !ok {
 			headersMap["Content-Type"] = "application/x-www-form-urlencoded"
 		}
@@ -196,6 +198,7 @@ func mapRequest(
 		URL:       requestURL,
 		Headers:   headersJSON,
 		Body:      body,
+		BodyType:  bodyType,
 		SortOrder: sortOrder,
 	}, warnings
 }

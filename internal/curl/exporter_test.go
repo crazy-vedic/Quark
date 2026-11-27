@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/crazy-vedic/quark/internal/curl"
@@ -176,4 +177,45 @@ func TestExportRequest_RoundTripsImportedHeaders(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Equal(t, "curl -X 'GET' -H 'Accept: application/json' 'https://example.test'", got)
+}
+
+func TestExportRequest_BodyTypes(t *testing.T) {
+	t.Parallel()
+
+	form := &domain.Request{
+		Method:   "POST",
+		URL:      "https://example.test/token",
+		Body:     "grant_type=client+credentials&token={{tok}}",
+		BodyType: domain.BodyTypeFormURLEncoded,
+	}
+	got, err := curl.ExportRequest(form)
+	require.NoError(t, err)
+	assert.Contains(t, got, `-H 'Content-Type: application/x-www-form-urlencoded'`)
+	assert.Contains(t, got, `--data-raw 'grant_type=client+credentials&token={{tok}}'`)
+
+	none := &domain.Request{
+		Method:   "POST",
+		URL:      "https://example.test/",
+		Body:     "stale",
+		BodyType: domain.BodyTypeNone,
+	}
+	got, err = curl.ExportRequest(none)
+	require.NoError(t, err)
+	assert.NotContains(t, got, "--data-raw")
+	assert.NotContains(t, got, "Content-Type")
+
+	jsonBody := &domain.Request{
+		Method:   "POST",
+		URL:      "https://example.test/",
+		Headers:  `{"Content-Type":["application/vnd.api+json"]}`,
+		Body:     `{"a":1}`,
+		BodyType: domain.BodyTypeJSON,
+	}
+	got, err = curl.ExportRequest(jsonBody)
+	require.NoError(t, err)
+	assert.Contains(t, got, `application/vnd.api+json`)
+	assert.NotContains(t, got, "Content-Type: application/json")
+
+	_, err = curl.ExportRequest(&domain.Request{URL: "https://example.test/", BodyType: "xml"})
+	assert.ErrorContains(t, err, `unsupported body type "xml"`)
 }

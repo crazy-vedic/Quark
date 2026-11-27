@@ -309,7 +309,11 @@ func TestE2E_CollectionMgmt_NoSelection(t *testing.T) {
 	// 'A' (new collection) must clear the stale error from 'a'.
 	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'A'}})
 	assert.Equal(t, tui.CollectionPromptMode, m.Mode())
-	assert.Empty(t, m.StatusErr(), "new-collection prompt must not show stale select-collection error")
+	assert.Empty(
+		t,
+		m.StatusErr(),
+		"new-collection prompt must not show stale select-collection error",
+	)
 	assert.NotContains(t, m.View(), "Select a collection first")
 }
 
