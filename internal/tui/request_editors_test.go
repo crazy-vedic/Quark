@@ -18,6 +18,7 @@ import (
 	"github.com/crazy-vedic/quark/internal/store"
 	"github.com/crazy-vedic/quark/internal/tui"
 	"github.com/crazy-vedic/quark/internal/tui/textedit"
+	"github.com/crazy-vedic/quark/internal/tuitest"
 )
 
 func TestRequestEditors_HeaderKeyOpensHeaderEditor(t *testing.T) {
@@ -146,4 +147,93 @@ func TestHeaderEditorRendersHeaderNotURL(t *testing.T) {
 	out := m.View()
 	assert.Contains(t, out, "Zzz-Custom", "header key shows in the header editor")
 	assert.Contains(t, out, "value-here", "header value shows in the header editor")
+}
+
+func TestRequestEditors_DuplicateRequestCopiesFieldsWithUniqueNames(t *testing.T) {
+	col := &domain.Collection{Name: "API"}
+	st := tuitest.SetupStore(t, col)
+	src := &domain.Request{
+		Name: "List", Method: "PUT", URL: "https://example.com/items",
+		Headers:  `{"X-Trace":"1"}`,
+		AuthType: "bearer", AuthConfig: `{"bearer":{"token":"t"}}`,
+		Body: `{"a":1}`,
+	}
+	tuitest.SeedRequests(t, st, col.ID, src)
+	ctx := context.Background()
+
+	m := tuitest.NewModel(t, st, &tuitest.MockExecutor{})
+	m = callUpdate(t, m, tea.WindowSizeMsg{Width: 100, Height: 30})
+	m = callUpdate(t, m, tui.CollectionsLoadedMsg([]*domain.Collection{col}))
+	m = callUpdate(t, m, tui.RequestsLoadedMsg(col.ID, []*domain.Request{src}))
+	m = m.WithActiveRequest(src).WithFocus(tui.RequestPane)
+
+	m, cmd := callUpdateWithCmd(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("c")})
+	require.NotNil(t, cmd, "duplicating saves the copy")
+	assert.Equal(t, `Duplicated as "List copy"`, m.StatusSuccess())
+	first := m.ActiveRequest()
+	require.NotEqual(t, src.ID, first.ID, "the copy has its own ID")
+	m = callUpdate(t, m, cmd())
+
+	got, err := st.GetRequest(ctx, first.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "List copy", got.Name)
+	assert.Equal(t, src.Method, got.Method)
+	assert.Equal(t, src.URL, got.URL)
+	assert.Equal(t, src.Headers, got.Headers)
+	assert.Equal(t, src.AuthType, got.AuthType)
+	assert.Equal(t, src.AuthConfig, got.AuthConfig)
+	assert.Equal(t, src.Body, got.Body)
+
+	// A second duplicate of the source takes the next free name.
+	m = m.WithActiveRequest(src)
+	m, cmd = callUpdateWithCmd(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("c")})
+	require.NotNil(t, cmd)
+	assert.Equal(t, `Duplicated as "List copy 2"`, m.StatusSuccess())
+	_ = callUpdate(t, m, cmd())
+
+	list, err := st.ListRequests(ctx, col.ID)
+	require.NoError(t, err)
+	names := make([]string, 0, len(list))
+	for _, r := range list {
+		names = append(names, r.Name)
+	}
+	assert.ElementsMatch(t, []string{"List", "List copy", "List copy 2"}, names)
+}
+
+func TestRequestEditors_DuplicateRequestNeedsSelectionAndStore(t *testing.T) {
+	m := newModel(defaultConfig()).WithFocus(tui.RequestPane)
+	m, cmd := callUpdateWithCmd(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("c")})
+	assert.Nil(t, cmd)
+	assert.Equal(t, "Select a saved request first", m.StatusErr())
+
+	req := &domain.Request{ID: "r1", Name: "keep", Method: "GET", URL: "https://example.com"}
+	m = newModel(defaultConfig()).WithFocus(tui.RequestPane).WithActiveRequest(req)
+	m, cmd = callUpdateWithCmd(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("c")})
+	assert.Nil(t, cmd)
+	assert.Equal(t, "Cannot save: no store is open", m.StatusErr())
+}
+
+func TestRequestEditors_DuplicateFromSidebarCopiesSelectedRequest(t *testing.T) {
+	col := &domain.Collection{Name: "API"}
+	st := tuitest.SetupStore(t, col)
+	src := &domain.Request{Name: "Ping", Method: "GET", URL: "https://example.com/ping"}
+	tuitest.SeedRequests(t, st, col.ID, src)
+
+	m := tuitest.NewModel(t, st, &tuitest.MockExecutor{})
+	m = callUpdate(t, m, tea.WindowSizeMsg{Width: 100, Height: 30})
+	m = callUpdate(t, m, tui.CollectionsLoadedMsg([]*domain.Collection{col}))
+	m = callUpdate(t, m, tui.RequestsLoadedMsg(col.ID, []*domain.Request{src}))
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("1")})
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
+	require.Equal(t, 0, m.ReqCursor(), "the first request is selected in the sidebar")
+
+	m, cmd := callUpdateWithCmd(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("c")})
+	require.NotNil(t, cmd)
+	assert.Equal(t, `Duplicated as "Ping copy"`, m.StatusSuccess())
+	m = callUpdate(t, m, cmd())
+
+	list, err := st.ListRequests(context.Background(), col.ID)
+	require.NoError(t, err)
+	assert.Len(t, list, 2)
+	assert.Contains(t, m.View(), "Ping copy")
 }

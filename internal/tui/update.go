@@ -793,7 +793,7 @@ func (m Model) dispatchNormalAction(action string) (tea.Model, tea.Cmd) {
 // handleSidebarAction is the action-based version of handleSidebarKey.
 func (m Model) handleSidebarAction(action string) (tea.Model, tea.Cmd) {
 	switch action {
-	case keybindings.ActionDeleteRequest:
+	case keybindings.ActionDeleteRequest, keybindings.ActionDuplicateRequest:
 		return m.handleRequestAction(action)
 	case "cursor_down":
 		return m.sidebarDown()
@@ -878,6 +878,12 @@ func (m Model) handleRequestAction(action string) (tea.Model, tea.Cmd) {
 		m, cmd := m.enterCollectionPrompt(promptDeleteTiny, req.ID)
 		m.promptTargetCollectionID = req.CollectionID
 		return m, cmd
+	case keybindings.ActionDuplicateRequest:
+		req := m.selectedStoredRequest()
+		if req == nil || req.ID == "" {
+			return m.status("error", "Select a saved request first"), nil
+		}
+		return m.duplicateRequest(req)
 	case keybindings.ActionEditURL:
 		return m.beginURLEdit()
 	case keybindings.ActionMethodNext:
@@ -1445,6 +1451,7 @@ var commandPaletteItems = []commandPaletteItem{
 	{Title: "Next HTTP method", Action: keybindings.ActionMethodNext},
 	{Title: "Previous HTTP method", Action: keybindings.ActionMethodPrev},
 	{Title: "Delete selected request", Action: keybindings.ActionDeleteRequest},
+	{Title: "Duplicate selected request", Action: keybindings.ActionDuplicateRequest},
 	{Title: "Schedule request", Action: keybindings.ActionScheduleRun},
 	{Title: "Copy request as curl", Action: keybindings.ActionExportCurl},
 	{Title: "Open environment editor", Action: keybindings.ActionEnvOpen},
@@ -1557,7 +1564,7 @@ func (m Model) executeSelectedCommand() (tea.Model, tea.Cmd) {
 	case "add", "add_request", actionRename, deleteToken:
 		m.focus = sidebarPane
 		return m.dispatchNormalAction(action)
-	case keybindings.ActionDeleteRequest:
+	case keybindings.ActionDeleteRequest, keybindings.ActionDuplicateRequest:
 		m.focus = requestPane
 		return m.dispatchNormalAction(action)
 	}

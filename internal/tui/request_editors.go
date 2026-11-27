@@ -1,10 +1,13 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/google/uuid"
 
 	"github.com/crazy-vedic/quark/internal/domain"
 	"github.com/crazy-vedic/quark/internal/format"
@@ -175,4 +178,45 @@ func (m Model) finishAuthEdit() Model {
 	m.activeField = noneField
 	m.authEditor = authEditor{}
 	return m.status("success", "Auth updated")
+}
+
+// selectedStoredRequest returns the saved request the user is acting on: the
+// sidebar selection when the sidebar has focus, otherwise the active request.
+func (m Model) selectedStoredRequest() *domain.Request {
+	if m.focus == sidebarPane && m.reqCursor >= 0 {
+		colID := m.activeCollectionID()
+		if requests := m.collectionRequests[colID]; m.reqCursor < len(requests) {
+			return requests[m.reqCursor]
+		}
+		return nil
+	}
+	return m.activeRequest
+}
+
+// duplicateRequest saves a copy of src under the next free name in its
+// collection ("<name> copy", "<name> copy 2", ...) with a new ID. Method, URL,
+// headers, auth, body and the disabled flag are copied as stored. The copy
+// becomes the active request. Names are checked against the requests loaded
+// for the collection; the store's unique name constraint is the backstop.
+func (m Model) duplicateRequest(src *domain.Request) (Model, tea.Cmd) {
+	if m.writer == nil {
+		return m.status("error", "Cannot save: no store is open"), nil
+	}
+	taken := make(map[string]bool)
+	for _, r := range m.collectionRequests[src.CollectionID] {
+		if r != nil {
+			taken[r.Name] = true
+		}
+	}
+	copied := *src
+	copied.ID = uuid.NewString()
+	copied.Name = domain.CopyName(src.Name, func(name string) bool { return taken[name] })
+	copied.CreatedAt = time.Time{}
+	copied.UpdatedAt = time.Time{}
+	// selectRequest also returns a history load. A new request has no history,
+	// so that load is not needed.
+	m, _ = m.selectRequest(&copied)
+	saved := copied
+	return m.status("success", fmt.Sprintf("Duplicated as %q", copied.Name)),
+		saveRequestCmd(m.ctx, m.writer, m.reader, &saved)
 }

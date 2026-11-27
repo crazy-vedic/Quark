@@ -28,29 +28,30 @@ type Keybindings struct {
 	SidebarImportPostman string `toml:"sidebar_import_postman"`
 
 	// Request pane
-	EditURL       string `toml:"edit_url"`
-	MethodNext    string `toml:"method_next"`
-	MethodPrev    string `toml:"method_prev"`
-	SendRequest   string `toml:"send_request"`
-	EditBody      string `toml:"edit_body"`
-	EditHeaders   string `toml:"edit_headers"`
-	RequestDelete string `toml:"request_delete"`
-	ExportCurl    string `toml:"export_curl"`
-	EditAuth      string `toml:"edit_auth"`
-	ScheduleRun   string `toml:"schedule_run"`
-	EnvOpen       string `toml:"env_open"`
-	ClientCerts   string `toml:"client_certificates"`
-	CertDown      string `toml:"cert_down"`
-	CertUp        string `toml:"cert_up"`
-	CertAdd       string `toml:"cert_add"`
-	CertEdit      string `toml:"cert_edit"`
-	CertDelete    string `toml:"cert_delete"`
-	CertClose     string `toml:"cert_close"`
-	CertNextField string `toml:"cert_next_field"`
-	CertPrevField string `toml:"cert_prev_field"`
-	CertSave      string `toml:"cert_save"`
-	EnvNext       string `toml:"env_next"`
-	EnvPrev       string `toml:"env_prev"`
+	EditURL          string `toml:"edit_url"`
+	MethodNext       string `toml:"method_next"`
+	MethodPrev       string `toml:"method_prev"`
+	SendRequest      string `toml:"send_request"`
+	EditBody         string `toml:"edit_body"`
+	EditHeaders      string `toml:"edit_headers"`
+	RequestDelete    string `toml:"request_delete"`
+	DuplicateRequest string `toml:"duplicate_request"`
+	ExportCurl       string `toml:"export_curl"`
+	EditAuth         string `toml:"edit_auth"`
+	ScheduleRun      string `toml:"schedule_run"`
+	EnvOpen          string `toml:"env_open"`
+	ClientCerts      string `toml:"client_certificates"`
+	CertDown         string `toml:"cert_down"`
+	CertUp           string `toml:"cert_up"`
+	CertAdd          string `toml:"cert_add"`
+	CertEdit         string `toml:"cert_edit"`
+	CertDelete       string `toml:"cert_delete"`
+	CertClose        string `toml:"cert_close"`
+	CertNextField    string `toml:"cert_next_field"`
+	CertPrevField    string `toml:"cert_prev_field"`
+	CertSave         string `toml:"cert_save"`
+	EnvNext          string `toml:"env_next"`
+	EnvPrev          string `toml:"env_prev"`
 
 	// Env editor
 	EnvSave            string `toml:"env_save"`
@@ -219,6 +220,7 @@ func NewResolver(binds Keybindings) *Resolver {
 		binds.SidebarAddRequest:    "add_request",
 		binds.SidebarImportPostman: ActionImportPostman,
 		binds.RequestDelete:        ActionDeleteRequest,
+		binds.DuplicateRequest:     ActionDuplicateRequest,
 	}
 	// Arrow-key aliases mirror the hardcoded fallbacks in handleSidebarKey.
 	addAlias(sidebar, "down", "cursor_down")
@@ -229,16 +231,17 @@ func NewResolver(binds Keybindings) *Resolver {
 
 	// Request pane
 	request := map[string]string{
-		binds.EditURL:       ActionEditURL,
-		binds.MethodNext:    ActionMethodNext,
-		binds.MethodPrev:    ActionMethodPrev,
-		binds.SendRequest:   ActionSendRequest,
-		binds.EditBody:      ActionEditBody,
-		binds.EditHeaders:   ActionEditHeaders,
-		binds.RequestDelete: ActionDeleteRequest,
-		binds.ExportCurl:    ActionExportCurl,
-		binds.EditAuth:      ActionEditAuth,
-		binds.ScheduleRun:   ActionScheduleRun,
+		binds.EditURL:          ActionEditURL,
+		binds.MethodNext:       ActionMethodNext,
+		binds.MethodPrev:       ActionMethodPrev,
+		binds.SendRequest:      ActionSendRequest,
+		binds.EditBody:         ActionEditBody,
+		binds.EditHeaders:      ActionEditHeaders,
+		binds.RequestDelete:    ActionDeleteRequest,
+		binds.ExportCurl:       ActionExportCurl,
+		binds.EditAuth:         ActionEditAuth,
+		binds.ScheduleRun:      ActionScheduleRun,
+		binds.DuplicateRequest: ActionDuplicateRequest,
 	}
 	addAlias(request, "alt+enter", ActionSendRequest)
 
@@ -499,13 +502,14 @@ func Validate(binds Keybindings) map[string][]string {
 			},
 			{binds.SidebarAddRequest, "sidebar_add_request"},
 			{binds.SidebarImportPostman, ActionImportPostman},
+			{binds.DuplicateRequest, ActionDuplicateRequest},
 		},
 		{{binds.EditURL, ActionEditURL}, {binds.MethodNext, ActionMethodNext},
 			{binds.MethodPrev, ActionMethodPrev}, {binds.SendRequest, ActionSendRequest},
 			{binds.EditBody, ActionEditBody}, {binds.EditHeaders, ActionEditHeaders},
 			{binds.RequestDelete, ActionDeleteRequest},
 			{binds.EditAuth, ActionEditAuth}, {binds.ScheduleRun, ActionScheduleRun},
-			{binds.ExportCurl, ActionExportCurl}},
+			{binds.ExportCurl, ActionExportCurl}, {binds.DuplicateRequest, ActionDuplicateRequest}},
 		{{binds.ResponseDown, "response_down"}, {binds.ResponseUp, "response_up"},
 			{binds.ResponseRetry, "response_retry"},
 			{binds.TabBody, "tab_body"}, {binds.TabHeaders, "tab_headers"},

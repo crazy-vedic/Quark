@@ -609,3 +609,17 @@ func TestRecordBinding_TextSelectionConflictRejected(t *testing.T) {
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "conflict")
 }
+
+func TestResolver_DuplicateRequestBinding(t *testing.T) {
+	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("c")}
+	r := NewResolver(DefaultKeybindings())
+	got, ok := r.Resolve(0, 1, msg)
+	assert.True(t, ok)
+	assert.Equal(t, ActionDuplicateRequest, got, "request pane")
+	got, ok = r.Resolve(0, 0, msg)
+	assert.True(t, ok)
+	assert.Equal(t, ActionDuplicateRequest, got, "sidebar")
+	_, ok = r.Resolve(0, 2, msg)
+	assert.False(t, ok, "response pane does not duplicate requests")
+	assert.Empty(t, Validate(DefaultKeybindings()), "the default key must not clash")
+}
