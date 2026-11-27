@@ -124,7 +124,7 @@ Flags:
 
 ## import-postman
 
-**Source:** `internal/cli/import_postman.go`
+**Source:** `internal/cli/import_postman.go` (command); import logic in `internal/postmanimport/`
 
 ```
 quark import-postman <collection.json|directory>

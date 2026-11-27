@@ -658,7 +658,7 @@ func TestUpdateMessageDispatchBranches(t *testing.T) {
 	messages := []tea.Msg{
 		themeWatchTickMsg{},
 		textedit.PasteResultMsg{Err: errors.New("clipboard")},
-		postmanImportResultMsg{output: " imported ", err: errors.New("import failed")},
+		postmanImportResultMsg{err: errors.New("import failed")},
 		tea.WindowSizeMsg{Width: 80, Height: 24},
 		softWindowSizeMsg{Width: 90, Height: 30},
 		collectionsLoadedMsg{collections: []*domain.Collection{collection}},
@@ -701,7 +701,7 @@ func TestUpdateMessageDispatchBranches(t *testing.T) {
 	postmanModel := base
 	postmanModel.mode = postmanImportMode
 	postmanModel.postmanBusy = true
-	updated, cmd := postmanModel.Update(postmanImportResultMsg{output: " done "})
+	updated, cmd := postmanModel.Update(postmanImportResultMsg{})
 	require.False(t, updatedCertificateModel(t, updated).postmanBusy)
 	require.Nil(t, cmd)
 

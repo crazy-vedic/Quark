@@ -42,7 +42,7 @@ Quark is **not** a web app, API server, or multi-user system. It is a terminal t
 | [domain-and-store.md](domain-and-store.md) | Domain types, schema, migrations, backups | `internal/domain/`, `internal/store/` |
 | [http-execution.md](http-execution.md) | Executor pipeline, variables, auth, streaming | `internal/exec/` |
 | [tui.md](tui.md) | Model/Update/View, modes, keybindings, test harness | `internal/tui/`, `internal/keybindings/`, `internal/tuitest/` |
-| [imports.md](imports.md) | cURL and Postman import behavior and limits | `internal/curl/`, `internal/postman/`, `internal/cli/import*.go` |
+| [imports.md](imports.md) | cURL and Postman import behavior and limits | `internal/curl/`, `internal/postman/`, `internal/postmanimport/`, `internal/cli/import*.go` |
 | [config-and-data.md](config-and-data.md) | config.toml, data dirs, env vars, security | `internal/config/config.go` |
 | [testing.md](testing.md) | Unit/integration/e2e, Makefile targets, build tags | `Makefile`, `tests/e2e/` |
 | [ci-and-release.md](ci-and-release.md) | CI jobs, semver release, PR checklist | `.github/workflows/`, `.golangci.yaml` |

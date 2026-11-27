@@ -4,7 +4,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -26,6 +25,7 @@ import (
 	"github.com/crazy-vedic/quark/internal/curl"
 	"github.com/crazy-vedic/quark/internal/exec"
 	"github.com/crazy-vedic/quark/internal/keybindings"
+	"github.com/crazy-vedic/quark/internal/postmanimport"
 	"github.com/crazy-vedic/quark/internal/search"
 	"github.com/crazy-vedic/quark/internal/store"
 	"github.com/crazy-vedic/quark/internal/theme"
@@ -242,25 +242,19 @@ type runtime struct {
 	searcher  *search.Searcher
 }
 
+// tuiPostmanImporter adapts the Postman import service to the TUI. The TUI
+// never prompts, so name conflicts always import a suffixed duplicate.
 type tuiPostmanImporter struct {
-	st cli.ImportPostmanStore
+	st postmanimport.Store
 }
 
-func (i tuiPostmanImporter) ImportPostman(ctx context.Context, path string) (string, error) {
-	command := cli.NewImportPostmanCmd(i.st, cli.NewDebugLogger(nil))
-	command.SilenceUsage = true
-	command.SilenceErrors = true
-	command.SetArgs([]string{path, "--on-duplicate", "duplicate"})
-	command.SetIn(strings.NewReader(""))
-	var output, diagnostics bytes.Buffer
-	command.SetOut(&output)
-	command.SetErr(&diagnostics)
-	err := command.ExecuteContext(ctx)
-	combined := output.String()
-	if diagnostics.Len() > 0 {
-		combined += diagnostics.String()
-	}
-	return combined, err
+func (i tuiPostmanImporter) ImportPostman(
+	ctx context.Context,
+	path string,
+) (postmanimport.Result, error) {
+	return postmanimport.New(i.st, nil).Import(ctx, path, postmanimport.Options{
+		OnDuplicate: postmanimport.ActionDuplicate,
+	})
 }
 
 func saveRuntimeImportedCertificate(r *runtime, spec *curl.CertificateSpec, rawURL string) error {
