@@ -219,3 +219,35 @@ func TestExportRequest_BodyTypes(t *testing.T) {
 	_, err = curl.ExportRequest(&domain.Request{URL: "https://example.test/", BodyType: "xml"})
 	assert.ErrorContains(t, err, `unsupported body type "xml"`)
 }
+
+func TestExportRequest_MultipartParts(t *testing.T) {
+	t.Parallel()
+
+	body, err := domain.MarshalMultipartParts([]domain.MultipartPart{
+		{Name: "title", Value: "@literal"},
+		{Name: "upload", File: "/data/doc.txt", Filename: "doc.txt", ContentType: "text/plain"},
+	})
+	require.NoError(t, err)
+	req := &domain.Request{
+		Method:   "POST",
+		URL:      "https://example.test/upload",
+		Headers:  `{"Content-Type":["multipart/form-data; boundary=stale"],"X-Trace":["1"]}`,
+		Body:     body,
+		BodyType: domain.BodyTypeMultipart,
+	}
+	got, err := curl.ExportRequest(req)
+	require.NoError(t, err)
+	assert.Equal(t,
+		`curl -X 'POST' -H 'X-Trace: 1' --form-string 'title=@literal' `+
+			`-F 'upload=@/data/doc.txt;type=text/plain;filename=doc.txt' 'https://example.test/upload'`,
+		got)
+
+	_, err = curl.ExportRequest(
+		&domain.Request{
+			URL:      "https://example.test/",
+			BodyType: domain.BodyTypeMultipart,
+			Body:     "x",
+		},
+	)
+	assert.ErrorContains(t, err, "export multipart body")
+}

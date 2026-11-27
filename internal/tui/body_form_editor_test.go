@@ -61,12 +61,12 @@ func TestBodyType_CycleSavesEachType(t *testing.T) {
 	m, st := bodyFormTestModel(t, req)
 
 	var got []string
-	for range 4 {
+	for range 5 {
 		m = callUpdate(t, m, bodyFormKey('T'))
 		got = append(got, m.ActiveRequest().BodyType)
 		assert.Equal(t, "Body type: "+m.ActiveRequest().BodyType, m.StatusSuccess())
 	}
-	assert.Equal(t, []string{"json", "form-urlencoded", "none", "raw"}, got)
+	assert.Equal(t, []string{"json", "form-urlencoded", "multipart", "none", "raw"}, got)
 	assert.Equal(t, "raw", savedRequest(t, st, req.ID).BodyType)
 }
 
@@ -159,4 +159,60 @@ func TestBodyType_NoneShowsNoBodyAndEditsText(t *testing.T) {
 	assert.Contains(t, m.View(), "No body is sent")
 	m = callUpdate(t, m, bodyFormKey('b'))
 	assert.Equal(t, tui.BodyField, m.ActiveField(), "none edits the plain body text")
+}
+
+func TestBodyMultipart_RowsAreTextAndFileParts(t *testing.T) {
+	body, err := domain.MarshalMultipartParts([]domain.MultipartPart{
+		{Name: "title", Value: "x"},
+		{Name: "upload", File: "/tmp/a.txt"},
+		{Name: "tag", Value: "@literal"},
+	})
+	require.NoError(t, err)
+	req := &domain.Request{
+		URL:      "https://api.test/upload",
+		Body:     body,
+		BodyType: domain.BodyTypeMultipart,
+	}
+	m, st := bodyFormTestModel(t, req)
+
+	assert.Contains(t, m.View(), "upload = @/tmp/a.txt", "file parts show their path")
+
+	m = callUpdate(t, m, bodyFormKey('b'))
+	require.Equal(t, tui.BodyFormField, m.ActiveField())
+	pairs := m.HeaderPairs()
+	require.Len(t, pairs, 3)
+	assert.Equal(t, "@/tmp/a.txt", pairs[1].Value)
+	assert.Equal(t, "@@literal", pairs[2].Value, "a text value starting with @ is escaped")
+
+	m = callUpdate(t, m, bodyFormKey('a'))
+	m = bodyFormType(t, m, "note")
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyTab})
+	m = bodyFormType(t, m, "@@hi")
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+
+	m, cmd := callUpdateWithCmd(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	require.NotNil(t, cmd)
+	cmd()
+	assert.Equal(t, "Multipart body updated", m.StatusSuccess())
+	parts, err := domain.ParseMultipartParts(savedRequest(t, st, req.ID).Body)
+	require.NoError(t, err)
+	assert.Equal(t, []domain.MultipartPart{
+		{Name: "title", Value: "x"},
+		{Name: "upload", File: "/tmp/a.txt"},
+		{Name: "tag", Value: "@literal"},
+		{Name: "note", Value: "@hi"},
+	}, parts)
+}
+
+func TestBodyMultipart_InvalidStoredBodyRefused(t *testing.T) {
+	req := &domain.Request{
+		URL:      "https://api.test/",
+		Body:     "not json",
+		BodyType: domain.BodyTypeMultipart,
+	}
+	m, _ := bodyFormTestModel(t, req)
+
+	m = callUpdate(t, m, bodyFormKey('b'))
+	assert.Equal(t, tui.NoneField, m.ActiveField())
+	assert.Contains(t, m.StatusErr(), "not valid")
 }

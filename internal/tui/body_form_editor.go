@@ -34,11 +34,49 @@ func (m Model) cycleBodyType() (Model, tea.Cmd) {
 	return m, saveRequestCmd(m.ctx, m.writer, m.reader, m.activeRequest)
 }
 
+// The rows of a multipart body are its parts. A row whose value starts with
+// '@' is a file part, and the rest of the value is its path (as in curl -F).
+// A text value that starts with '@' is written with one more '@' in front.
+
+// multipartRowValue shows a stored part as a row value.
+func multipartRowValue(part domain.MultipartPart) string {
+	if part.File != "" {
+		return "@" + part.File
+	}
+	if strings.HasPrefix(part.Value, "@") {
+		return "@" + part.Value
+	}
+	return part.Value
+}
+
+// multipartPartFromRow reads a row value back as a part.
+func multipartPartFromRow(name, value string) domain.MultipartPart {
+	if strings.HasPrefix(value, "@@") {
+		return domain.MultipartPart{Name: name, Value: value[1:]}
+	}
+	if strings.HasPrefix(value, "@") {
+		return domain.MultipartPart{Name: name, File: value[1:]}
+	}
+	return domain.MultipartPart{Name: name, Value: value}
+}
+
 func (m Model) beginBodyFormEdit() Model {
-	fields := domain.ParseFormBody(m.activeRequest.Body)
-	pairs := make([]headerPair, 0, len(fields))
-	for _, f := range fields {
-		pairs = append(pairs, headerPair{Key: f.Key, Value: f.Value})
+	var pairs []headerPair
+	if requestBodyType(m.activeRequest) == domain.BodyTypeMultipart {
+		parts, err := domain.ParseMultipartParts(m.activeRequest.Body)
+		if err != nil {
+			return m.status(
+				"error",
+				"This request's stored multipart body is not valid; refusing to edit and overwrite it",
+			)
+		}
+		for _, part := range parts {
+			pairs = append(pairs, headerPair{Key: part.Name, Value: multipartRowValue(part)})
+		}
+	} else {
+		for _, f := range domain.ParseFormBody(m.activeRequest.Body) {
+			pairs = append(pairs, headerPair{Key: f.Key, Value: f.Value})
+		}
 	}
 	m.headerPairs = pairs
 	m.headerCursor = 0
@@ -61,14 +99,33 @@ func (m Model) saveBodyForm() (Model, tea.Cmd) {
 	if m.activeRequest == nil {
 		return m, nil
 	}
-	fields := make([]domain.FormField, 0, len(m.headerPairs))
-	for _, p := range m.headerPairs {
-		fields = append(fields, domain.FormField{Key: p.Key, Value: p.Value})
+	if requestBodyType(m.activeRequest) == domain.BodyTypeMultipart {
+		parts := make([]domain.MultipartPart, 0, len(m.headerPairs))
+		for _, p := range m.headerPairs {
+			if p.Key == "" && p.Value == "" {
+				continue
+			}
+			parts = append(parts, multipartPartFromRow(p.Key, p.Value))
+		}
+		body, err := domain.MarshalMultipartParts(parts)
+		if err != nil {
+			return m.status("error", "Could not save multipart body: "+err.Error()), nil
+		}
+		m.activeRequest.Body = body
+	} else {
+		fields := make([]domain.FormField, 0, len(m.headerPairs))
+		for _, p := range m.headerPairs {
+			fields = append(fields, domain.FormField{Key: p.Key, Value: p.Value})
+		}
+		m.activeRequest.Body = domain.EncodeFormBody(fields)
 	}
-	m.activeRequest.Body = domain.EncodeFormBody(fields)
 	m.headerPairs = nil
 	m.activeField = noneField
-	m = m.status("success", "Form body updated")
+	if requestBodyType(m.activeRequest) == domain.BodyTypeMultipart {
+		m = m.status("success", "Multipart body updated")
+	} else {
+		m = m.status("success", "Form body updated")
+	}
 	return m, saveRequestCmd(m.ctx, m.writer, m.reader, m.activeRequest)
 }
 

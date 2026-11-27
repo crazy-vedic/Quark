@@ -1,10 +1,6 @@
 package curl_test
 
 import (
-	"errors"
-	"io"
-	"mime"
-	"mime/multipart"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -15,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/crazy-vedic/quark/internal/curl"
+	"github.com/crazy-vedic/quark/internal/domain"
 )
 
 const iamMTLSCommand = `curl 'https://access.dev.wealthcareadmin.com/access/connect/token' \
@@ -103,22 +100,39 @@ func TestImporter_MultipartRepeatedFields(t *testing.T) {
 		`curl -F tag=one --form 'tag=two words' -F active=true https://example.com`,
 	))
 	require.NoError(t, err)
-	mediaType, params, err := mime.ParseMediaType(result.Headers.Get("Content-Type"))
+	assert.Equal(t, domain.BodyTypeMultipart, result.BodyType)
+	assert.Empty(
+		t,
+		result.Headers.Get("Content-Type"),
+		"the send sets the Content-Type and boundary",
+	)
+	parts, err := domain.ParseMultipartParts(result.Body)
 	require.NoError(t, err)
-	assert.Equal(t, "multipart/form-data", mediaType)
-	reader := multipart.NewReader(strings.NewReader(result.Body), params["boundary"])
-	var fields [][2]string
-	for {
-		part, partErr := reader.NextPart()
-		if errors.Is(partErr, io.EOF) {
-			break
-		}
-		require.NoError(t, partErr)
-		value, readErr := io.ReadAll(part)
-		require.NoError(t, readErr)
-		fields = append(fields, [2]string{part.FormName(), string(value)})
-	}
-	assert.Equal(t, [][2]string{{"tag", "one"}, {"tag", "two words"}, {"active", "true"}}, fields)
+	assert.Equal(t, []domain.MultipartPart{
+		{Name: "tag", Value: "one"},
+		{Name: "tag", Value: "two words"},
+		{Name: "active", Value: "true"},
+	}, parts)
+}
+
+func TestImporter_MultipartFileFields(t *testing.T) {
+	result, err := curl.NewImporter().Parse(strings.NewReader(
+		`curl -F 'doc=@/tmp/report.pdf;type=application/pdf;filename=q1.pdf' -F note=hi https://example.com`,
+	))
+	require.NoError(t, err)
+	parts, err := domain.ParseMultipartParts(result.Body)
+	require.NoError(t, err)
+	assert.Equal(t, []domain.MultipartPart{
+		{Name: "doc", File: "/tmp/report.pdf", Filename: "q1.pdf", ContentType: "application/pdf"},
+		{Name: "note", Value: "hi"},
+	}, parts)
+
+	_, err = curl.NewImporter().
+		Parse(strings.NewReader(`curl -F 'doc=<notes.txt' https://example.com`))
+	assert.ErrorContains(t, err, "read from a file")
+	_, err = curl.NewImporter().
+		Parse(strings.NewReader(`curl -F 'doc=@a.txt;encoder=base64' https://example.com`))
+	assert.ErrorContains(t, err, `"encoder" is not imported`)
 }
 
 func TestImporter_JSONGetAndPlatformContinuations(t *testing.T) {

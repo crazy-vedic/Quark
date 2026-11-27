@@ -1,14 +1,10 @@
 package curl
 
 import (
-	"bytes"
-	"crypto/sha256"
 	"encoding/base64"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
-	"mime/multipart"
 	"net/http"
 	"net/url"
 	"os"
@@ -351,6 +347,10 @@ var supportedOptions = map[string]optionDefinition{
 type formField struct {
 	name  string
 	value string
+	// file is set for a name=@path field; the other fields then describe it.
+	file        string
+	filename    string
+	contentType string
 }
 
 //nolint:gocyclo // curl's option grammar is intentionally handled in one pass.
@@ -529,17 +529,12 @@ func parseCommand(command string) (*ImportResult, error) {
 		if useGet {
 			return nil, errors.New("curl: --get cannot be combined with multipart form data")
 		}
-		body, contentType, formErr := buildMultipartBody(command, fields)
+		body, formErr := multipartBody(fields)
 		if formErr != nil {
 			return nil, formErr
 		}
 		result.Body = body
-		autoContentType = setDefaultHeader(
-			result.Headers,
-			suppressedHeaders,
-			"Content-Type",
-			contentType,
-		)
+		result.BodyType = domain.BodyTypeMultipart
 	} else {
 		result.Body = strings.Join(bodyParts, "&")
 		if result.Body != "" {
@@ -591,7 +586,8 @@ func parseCommand(command string) (*ImportResult, error) {
 	if err := validateRequest(result); err != nil {
 		return nil, err
 	}
-	if result.Body != "" && isURLEncodedContentType(result.Headers.Get("Content-Type")) {
+	if result.BodyType == "" && result.Body != "" &&
+		isURLEncodedContentType(result.Headers.Get("Content-Type")) {
 		result.BodyType = domain.BodyTypeFormURLEncoded
 	}
 	return result, nil
@@ -820,29 +816,58 @@ func parseFormField(value string, literal bool) (formField, error) {
 	if !found || strings.TrimSpace(name) == "" {
 		return formField{}, fmt.Errorf("curl: invalid multipart form field %q", value)
 	}
-	if !literal && (strings.HasPrefix(fieldValue, "@") || strings.HasPrefix(fieldValue, "<")) {
-		return formField{}, errors.New("curl: file-backed multipart fields are not imported")
+	if literal {
+		return formField{name: name, value: fieldValue}, nil
 	}
-	return formField{name: name, value: fieldValue}, nil
-}
-
-func buildMultipartBody(command string, fields []formField) (string, string, error) {
-	var body bytes.Buffer
-	writer := multipart.NewWriter(&body)
-	digest := sha256.Sum256([]byte(command))
-	boundary := "quark-" + hex.EncodeToString(digest[:12])
-	if err := writer.SetBoundary(boundary); err != nil {
-		return "", "", fmt.Errorf("curl: multipart boundary: %w", err)
+	if strings.HasPrefix(fieldValue, "<") {
+		return formField{}, errors.New(
+			"curl: multipart fields read from a file (<) are not imported",
+		)
 	}
-	for _, field := range fields {
-		if err := writer.WriteField(field.name, field.value); err != nil {
-			return "", "", fmt.Errorf("curl: multipart field %q: %w", field.name, err)
+	if !strings.HasPrefix(fieldValue, "@") {
+		return formField{name: name, value: fieldValue}, nil
+	}
+	// name=@path[;type=mime][;filename=name]
+	options := strings.Split(fieldValue[1:], ";")
+	field := formField{name: name, file: options[0]}
+	if field.file == "" {
+		return formField{}, fmt.Errorf("curl: multipart file field %q has no path", name)
+	}
+	for _, option := range options[1:] {
+		key, optionValue, _ := strings.Cut(option, "=")
+		switch strings.ToLower(strings.TrimSpace(key)) {
+		case "type":
+			field.contentType = optionValue
+		case "filename":
+			field.filename = optionValue
+		default:
+			return formField{}, fmt.Errorf("curl: multipart option %q is not imported", key)
 		}
 	}
-	if err := writer.Close(); err != nil {
-		return "", "", fmt.Errorf("curl: finalize multipart body: %w", err)
+	return field, nil
+}
+
+// multipartBody encodes -F fields as the parts of a multipart body. File
+// fields keep their path, which is read when the request is sent.
+func multipartBody(fields []formField) (string, error) {
+	parts := make([]domain.MultipartPart, 0, len(fields))
+	for _, field := range fields {
+		if field.file != "" {
+			parts = append(parts, domain.MultipartPart{
+				Name:        field.name,
+				File:        field.file,
+				Filename:    field.filename,
+				ContentType: field.contentType,
+			})
+			continue
+		}
+		parts = append(parts, domain.MultipartPart{Name: field.name, Value: field.value})
 	}
-	return body.String(), writer.FormDataContentType(), nil
+	body, err := domain.MarshalMultipartParts(parts)
+	if err != nil {
+		return "", fmt.Errorf("curl: multipart body: %w", err)
+	}
+	return body, nil
 }
 
 func setDefaultHeader(headers http.Header, suppressed map[string]bool, key, value string) bool {

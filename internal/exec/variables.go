@@ -197,7 +197,11 @@ func InterpolateRequestWithOverrides(
 			return domain.EncodeFormValue(value), ok
 		}
 	}
-	out.Body, err = substitute(out.Body, bodyResolver)
+	if out.BodyType == domain.BodyTypeMultipart {
+		out.Body, err = substituteMultipartBody(out.Body, resolver)
+	} else {
+		out.Body, err = substitute(out.Body, bodyResolver)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("interpolate body: %w", err)
 	}
@@ -284,6 +288,29 @@ func substitute(s string, resolve placeholderResolver) (string, error) {
 }
 
 // substituteHeaders parses the JSON header map, substitutes values, and re-serializes.
+// substituteMultipartBody substitutes {{variables}} in each text of a
+// multipart body: field names and values, file paths and file names. The
+// texts are not escaped, since multipart bodies are not urlencoded.
+func substituteMultipartBody(stored string, resolve placeholderResolver) (string, error) {
+	parts, err := domain.ParseMultipartParts(stored)
+	if err != nil {
+		return "", err
+	}
+	if len(parts) == 0 {
+		return stored, nil
+	}
+	for i := range parts {
+		for _, field := range []*string{
+			&parts[i].Name, &parts[i].Value, &parts[i].File, &parts[i].Filename, &parts[i].ContentType,
+		} {
+			if *field, err = substitute(*field, resolve); err != nil {
+				return "", err
+			}
+		}
+	}
+	return domain.MarshalMultipartParts(parts)
+}
+
 func substituteHeaders(headersJSON string, resolve placeholderResolver) (string, error) {
 	if headersJSON == "" || headersJSON == "{}" {
 		return headersJSON, nil

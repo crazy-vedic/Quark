@@ -23,6 +23,10 @@ func ExportRequest(req *domain.Request) (string, error) {
 		method = "GET"
 	}
 	requestURL := req.URL
+	bodyType, err := domain.NormalizeBodyType(req.BodyType)
+	if err != nil {
+		return "", fmt.Errorf("export request body: %w", err)
+	}
 	headers, err := domain.ParseHeaders(req.Headers)
 	if err != nil {
 		return "", fmt.Errorf("parse request headers: %w", err)
@@ -34,6 +38,10 @@ func ExportRequest(req *domain.Request) (string, error) {
 	}
 	sort.Strings(keys)
 	for _, key := range keys {
+		if bodyType == domain.BodyTypeMultipart && strings.EqualFold(key, "Content-Type") {
+			// The send sets the Content-Type, with its boundary.
+			continue
+		}
 		for _, value := range headers[key] {
 			args = append(args, "-H", shellQuote(key+": "+value))
 		}
@@ -65,19 +73,23 @@ func ExportRequest(req *domain.Request) (string, error) {
 			return "", fmt.Errorf("unsupported authorization type %q", req.AuthType)
 		}
 	}
-	bodyType, err := domain.NormalizeBodyType(req.BodyType)
-	if err != nil {
-		return "", fmt.Errorf("export request body: %w", err)
-	}
 	// A body type of none sends no body, so none is exported.
-	if body := req.Body; bodyType != domain.BodyTypeNone && body != "" {
+	switch {
+	case bodyType == domain.BodyTypeNone:
+	case bodyType == domain.BodyTypeMultipart:
+		multipartArgs, err := multipartExportArgs(req.Body)
+		if err != nil {
+			return "", err
+		}
+		args = append(args, multipartArgs...)
+	case req.Body != "":
 		if ct := domain.DefaultBodyContentType(
 			bodyType,
 		); ct != "" &&
 			!hasHeader(headers, "Content-Type") {
 			args = append(args, "-H", shellQuote("Content-Type: "+ct))
 		}
-		args = append(args, "--data-raw", shellQuote(body))
+		args = append(args, "--data-raw", shellQuote(req.Body))
 	}
 	args = append(args, shellQuote(requestURL))
 	return strings.Join(args, " "), nil
@@ -95,4 +107,30 @@ func hasHeader(headers http.Header, key string) bool {
 		}
 	}
 	return false
+}
+
+// multipartExportArgs returns the curl options for a multipart body. Text
+// parts use --form-string so that a value starting with '@' or '<' is not read
+// as a file; file parts use -F with their path.
+func multipartExportArgs(stored string) ([]string, error) {
+	parts, err := domain.ParseMultipartParts(stored)
+	if err != nil {
+		return nil, fmt.Errorf("export multipart body: %w", err)
+	}
+	var args []string
+	for _, part := range parts {
+		if part.File == "" {
+			args = append(args, "--form-string", shellQuote(part.Name+"="+part.Value))
+			continue
+		}
+		field := part.Name + "=@" + part.File
+		if part.ContentType != "" {
+			field += ";type=" + part.ContentType
+		}
+		if part.Filename != "" {
+			field += ";filename=" + part.Filename
+		}
+		args = append(args, "-F", shellQuote(field))
+	}
+	return args, nil
 }

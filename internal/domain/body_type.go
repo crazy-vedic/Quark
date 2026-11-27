@@ -22,6 +22,9 @@ const (
 	// application/x-www-form-urlencoded string. It is set to that
 	// Content-Type when the request has none.
 	BodyTypeFormURLEncoded = "form-urlencoded"
+	// BodyTypeMultipart sends Request.Body, a JSON list of MultipartPart, as
+	// multipart/form-data. File parts are read when the request is sent.
+	BodyTypeMultipart = "multipart"
 )
 
 // NormalizeBodyType returns the canonical body type for s. Blank means raw,
@@ -36,6 +39,8 @@ func NormalizeBodyType(s string) (BodyType, error) {
 		return BodyTypeJSON, nil
 	case BodyTypeFormURLEncoded:
 		return BodyTypeFormURLEncoded, nil
+	case BodyTypeMultipart:
+		return BodyTypeMultipart, nil
 	}
 	return "", fmt.Errorf("unsupported body type %q", s)
 }
@@ -43,7 +48,13 @@ func NormalizeBodyType(s string) (BodyType, error) {
 // NextBodyType returns the body type after current, in the order the TUI
 // cycles through them. An unknown current value starts at none.
 func NextBodyType(current BodyType) BodyType {
-	order := []BodyType{BodyTypeNone, BodyTypeRaw, BodyTypeJSON, BodyTypeFormURLEncoded}
+	order := []BodyType{
+		BodyTypeNone,
+		BodyTypeRaw,
+		BodyTypeJSON,
+		BodyTypeFormURLEncoded,
+		BodyTypeMultipart,
+	}
 	normalized, err := NormalizeBodyType(current)
 	if err != nil {
 		return order[0]

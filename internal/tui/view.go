@@ -733,6 +733,15 @@ func (m Model) requestBodyPreviewContent(parent ...*timing.Span) string {
 			}
 			return strings.Join(lines, "\n")
 		}
+	case domain.BodyTypeMultipart:
+		parts, err := domain.ParseMultipartParts(m.activeRequest.Body)
+		if err == nil {
+			var lines []string
+			for _, part := range parts {
+				lines = append(lines, "  "+part.Name+" = "+multipartRowValue(part))
+			}
+			return strings.Join(lines, "\n")
+		}
 	}
 	if m.activeRequest.Body != "" {
 		lines := strings.Split(m.activeRequest.Body, "\n")
