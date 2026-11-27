@@ -38,6 +38,7 @@ func DefaultKeybindings() Keybindings {
 		EditBody:      "b",
 		EditHeaders:   "h",
 		EditParams:    "p",
+		EditPath:      "P",
 		RequestDelete: "d",
 		ExportCurl:    "x",
 		EditAuth:      "a",

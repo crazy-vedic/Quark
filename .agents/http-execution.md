@@ -34,6 +34,7 @@ Production uses a custom `http.Transport` with `ResponseHeaderTimeout` matching 
 
 `Executor.Execute(ctx, req) (*ExecuteResult, error)` runs in order:
 
+0. **Path params** — `:name` URL segments filled from `Params.path_values` (`exec.ApplyPathParams`); stored params that do not parse abort the send
 1. **Pre-request hooks** — registration order; any error aborts (recorded in history)
 2. **Variable substitution** — if `VariableResolver` configured
 3. **Build HTTP request** — validate URL scheme, apply headers + auth

@@ -75,6 +75,15 @@ func (e *Executor) Execute(ctx context.Context, req *domain.Request) (*ExecuteRe
 		e.recordExecution(ctx, snapshot, result, execErr, startedAt, time.Now())
 	}
 
+	// 0. Fill path placeholders (such as :id) so hooks and the send see the real URL.
+	prepared, err := ApplyPathParams(req)
+	if err != nil {
+		wrapped := fmt.Errorf("exec: %w", err)
+		record(req, nil, wrapped)
+		return nil, wrapped
+	}
+	req = prepared
+
 	// 1. Pre-request hook chain.
 	for _, h := range e.preRequestHooks {
 		var err error

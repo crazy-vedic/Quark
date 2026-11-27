@@ -91,6 +91,7 @@ const (
 	headersField
 	authField
 	paramsField // query params; shares the header pair editor state
+	pathField   // URL path placeholder values; shares the header pair editor state
 )
 
 // responseTabID identifies which tab is active in the response pane.

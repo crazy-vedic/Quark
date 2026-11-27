@@ -199,6 +199,10 @@ func (m Model) handleHeaderEditClick(msg tea.MouseMsg) (Model, tea.Cmd) {
 
 	switch msg.Y {
 	case ll.headerKeyInputY:
+		if m.activeField == pathField {
+			// Path placeholder names are fixed.
+			return m, nil
+		}
 		relX := msg.X - content.left
 		if relX < 0 {
 			relX = 0

@@ -17,10 +17,11 @@ import (
 // time it opens. Disabled params cannot live in the URL, so they are kept in
 // Request.Params.
 
-// pairEditorActive reports whether the pair editor (headers or query params)
-// owns the request pane.
+// pairEditorActive reports whether the pair editor (headers, query params or
+// path params) owns the request pane.
 func (m Model) pairEditorActive() bool {
-	return m.activeField == headersField || m.activeField == paramsField
+	return m.activeField == headersField || m.activeField == paramsField ||
+		m.activeField == pathField
 }
 
 func (m Model) beginParamsEdit() Model {

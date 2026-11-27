@@ -85,8 +85,13 @@ func (m Model) beginHeaderPairEdit(pair headerPair) (Model, tea.Cmd) {
 func (m Model) finishHeaderPairEdit() Model {
 	if m.headerCursor < len(m.headerPairs) {
 		prev := m.headerPairs[m.headerCursor]
+		key := m.headerKeyInput.Value()
+		if m.activeField == pathField {
+			// A path placeholder's name comes from the URL and cannot be renamed here.
+			key = prev.Key
+		}
 		m.headerPairs[m.headerCursor] = headerPair{
-			Key:      m.headerKeyInput.Value(),
+			Key:      key,
 			Value:    m.headerValueInput.Value(),
 			Disabled: prev.Disabled,
 			raw:      prev.raw,
@@ -116,7 +121,7 @@ func (m Model) cancelActiveFieldEdit() Model {
 	case authField:
 		m.activeField = noneField
 		m.authEditor = authEditor{}
-	case headersField, paramsField:
+	case headersField, paramsField, pathField:
 		if m.activeField == paramsField {
 			m.urlInput.SetValue(m.preEditURL)
 		}
