@@ -36,10 +36,10 @@ func (c *ResizeCoalescer) Filter(m tea.Model, msg tea.Msg) tea.Msg {
 	if !ok {
 		return msg
 	}
-	if tm.Width() == 0 || tm.Height() == 0 {
+	if tm.width == 0 || tm.height == 0 {
 		return ws
 	}
-	if ws.Width == tm.Width() && ws.Height == tm.Height() {
+	if ws.Width == tm.width && ws.Height == tm.height {
 		return nil
 	}
 
@@ -49,7 +49,7 @@ func (c *ResizeCoalescer) Filter(m tea.Model, msg tea.Msg) tea.Msg {
 
 	// Height changes, width growth, or density-tier changes must go through
 	// WindowSizeMsg so the renderer clears its line cache (layout morphs).
-	if ws.Height != tm.Height() || ws.Width > tm.Width() || dimChanging {
+	if ws.Height != tm.height || ws.Width > tm.width || dimChanging {
 		return ws
 	}
 

@@ -34,6 +34,15 @@ Test output logged to `test-output.log` (used by `show-slow`).
 
 Uses `gotestsum` if installed, else plain `go test`.
 
+### `quarktest` build tag
+
+`internal/tui/test_api.go` and `internal/tuitest/` are built only with
+`-tags quarktest`, so release builds (`go build ./cmd/quark`) do not ship them.
+Every Makefile test/vet target and `.golangci.yaml` pass the tag. Running
+`go test` by hand needs it too: `go test -tags quarktest ./...` (plain
+`go test ./...` fails to compile `internal/tui` tests with undefined `tui.*`
+helpers). For editors, set gopls `buildFlags` to `["-tags=quarktest,e2e"]`.
+
 ## Unit Tests
 
 - Colocated with source: `internal/*/**_test.go`
@@ -54,7 +63,7 @@ Uses `gotestsum` if installed, else plain `go test`.
 Build tag: `integration`
 
 ```bash
-go test -tags integration ./...
+go test -tags integration,quarktest ./...
 ```
 
 Cross-package tests that need real SQLite or multi-component wiring. Example: `internal/integration_test.go`.
@@ -68,7 +77,7 @@ Build tag: `e2e`
 Harness: `internal/tuitest/harness.go`
 
 ```bash
-go test -tags e2e ./tests/e2e/tui/...
+go test -tags e2e,quarktest ./tests/e2e/tui/...
 ```
 
 ### Harness Capabilities
@@ -97,7 +106,7 @@ saved config, custom-theme file reload, overlays, and 256-color output. Run the
 focused checks with:
 
 ```bash
-go test -tags e2e ./tests/e2e/tui -run 'Test(E2E_Theme|E2E_CustomTheme|ThemeScreenReader)' -count=1
+go test -tags e2e,quarktest ./tests/e2e/tui -run 'Test(E2E_Theme|E2E_CustomTheme|ThemeScreenReader)' -count=1
 ```
 
 ### TUI Regression Tests

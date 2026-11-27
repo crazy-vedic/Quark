@@ -1,6 +1,6 @@
 # E2E Tests
 
-Run all e2e tests with: `go test -tags e2e ./tests/e2e/...`
+Run all e2e tests with: `go test -tags e2e,quarktest ./tests/e2e/...`
 
 ## Structure
 

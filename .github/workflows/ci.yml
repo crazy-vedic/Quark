@@ -612,12 +612,12 @@ jobs:
         run: go build -o bin/quark.exe ./cmd/quark
 
       - name: Run CLI e2e tests
-        run: gotestsum --format pkgname -- -tags e2e -v ./tests/e2e/cli/...
+        run: gotestsum --format pkgname -- -tags e2e,quarktest -v ./tests/e2e/cli/...
         env:
           QUARK_BINARY: ${{ github.workspace }}/bin/quark.exe
 
       - name: Run TUI e2e tests
-        run: gotestsum --format pkgname -- -tags e2e -v ./tests/e2e/tui/...
+        run: gotestsum --format pkgname -- -tags e2e,quarktest -v ./tests/e2e/tui/...
 
       - name: Upload binary on failure
         if: failure()
@@ -691,12 +691,12 @@ jobs:
         run: go build -o bin/quark ./cmd/quark
 
       - name: Run CLI e2e tests
-        run: gotestsum --format pkgname -- -tags e2e -v ./tests/e2e/cli/...
+        run: gotestsum --format pkgname -- -tags e2e,quarktest -v ./tests/e2e/cli/...
         env:
           QUARK_BINARY: ${{ github.workspace }}/bin/quark
 
       - name: Run TUI e2e tests
-        run: gotestsum --format pkgname -- -tags e2e -v ./tests/e2e/tui/...
+        run: gotestsum --format pkgname -- -tags e2e,quarktest -v ./tests/e2e/tui/...
 
       - name: Upload binary on failure
         if: failure()

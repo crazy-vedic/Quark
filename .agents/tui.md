@@ -15,7 +15,7 @@ The interactive terminal UI is built with bubbletea (Elm architecture: Model / U
 | `env_mode.go` | Environment variable management |
 | `list_viewport.go` | Scrollable list component |
 | `interfaces.go` | Narrow interfaces for executor, searcher, importer |
-| `test_api.go` | Test-only helpers exported for harness |
+| `test_api.go` | Test-only helpers exported for harness; behind the `quarktest` build tag so release builds omit it |
 | `mouse.go` | Normal-mode mouse hit-testing and handlers |
 | `layout.go` | Shared pane geometry for view + mouse |
 | `overflow_debug.go` | Visual overflow detection + `--debug` logging |

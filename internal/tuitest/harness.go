@@ -1,3 +1,5 @@
+//go:build quarktest
+
 package tuitest
 
 import (
