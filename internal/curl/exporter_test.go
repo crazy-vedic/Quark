@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/crazy-vedic/quark/internal/curl"
@@ -177,3 +178,68 @@ func TestExportRequest_RoundTripsImportedHeaders(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "curl -X 'GET' -H 'Accept: application/json' 'https://example.test'", got)
 }
+
+func TestExportRequest_WritesRequestOptionsAndRoundTrips(t *testing.T) {
+	follow := true
+	req := &domain.Request{
+		Method:  "GET",
+		URL:     "https://api.example.com/items",
+		Headers: "{}",
+		Options: domain.RequestOptions{
+			TimeoutMS:       2500,
+			FollowRedirects: &follow,
+			MaxRedirects:    intPtrForExport(4),
+			Proxy:           "http://proxy.internal:3128",
+			SkipTLSVerify:   true,
+		},
+	}
+	command, err := curl.ExportRequest(req)
+	require.NoError(t, err)
+	require.Contains(t, command, "-k")
+	require.Contains(t, command, "-L")
+	require.Contains(t, command, "--max-redirs 4")
+	require.Contains(t, command, "--max-time 2.5")
+	require.Contains(t, command, "-x 'http://proxy.internal:3128'")
+
+	parsed, err := curl.NewImporter().Parse(strings.NewReader(command))
+	require.NoError(t, err)
+	assert.Equal(t, req.Options.TimeoutMS, parsed.Options.TimeoutMS)
+	assert.True(t, parsed.Options.SkipTLSVerify)
+	require.NotNil(t, parsed.Options.FollowRedirects)
+	assert.True(t, *parsed.Options.FollowRedirects)
+	require.NotNil(t, parsed.Options.MaxRedirects)
+	assert.Equal(t, 4, *parsed.Options.MaxRedirects)
+	assert.Equal(t, req.Options.Proxy, parsed.Options.Proxy)
+}
+
+func TestExportRequest_NoRedirectsStaysNoRedirects(t *testing.T) {
+	off := false
+	req := &domain.Request{
+		Method:  "GET",
+		URL:     "https://api.example.com/items",
+		Headers: "{}",
+		Options: domain.RequestOptions{FollowRedirects: &off},
+	}
+	command, err := curl.ExportRequest(req)
+	require.NoError(t, err)
+
+	parsed, err := curl.NewImporter().Parse(strings.NewReader(command))
+	require.NoError(t, err)
+	require.NotNil(t, parsed.Options.MaxRedirects)
+	assert.Zero(t, *parsed.Options.MaxRedirects,
+		"the exported form must follow no redirects, as the saved request did")
+}
+
+func TestExportRequest_DefaultRequestHasNoOptionFlags(t *testing.T) {
+	command, err := curl.ExportRequest(&domain.Request{
+		Method:  "GET",
+		URL:     "https://api.example.com",
+		Headers: "{}",
+	})
+	require.NoError(t, err)
+	for _, flag := range []string{" -k", " -L", "--max-redirs", "--max-time", " -x "} {
+		require.NotContains(t, command, flag)
+	}
+}
+
+func intPtrForExport(v int) *int { return &v }

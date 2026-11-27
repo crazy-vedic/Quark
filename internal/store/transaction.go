@@ -70,10 +70,17 @@ func (t *Transaction) SaveRequest(ctx context.Context, req *domain.Request) erro
 	if authConfig == "" {
 		authConfig = "{}"
 	}
-	_, err := t.tx.ExecContext(
+	if err := req.Options.Validate(); err != nil {
+		return fmt.Errorf("store: save request %q: %w", req.ID, err)
+	}
+	optionsJSON, err := req.Options.JSON()
+	if err != nil {
+		return fmt.Errorf("store: save request %q: encode options: %w", req.ID, err)
+	}
+	_, err = t.tx.ExecContext(
 		ctx,
-		`INSERT INTO requests (id, collection_id, name, method, url, headers, auth_type, auth_config, body, sort_order, enabled)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`INSERT INTO requests (id, collection_id, name, method, url, headers, auth_type, auth_config, body, sort_order, enabled, options)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(id) DO UPDATE SET
 		   name=excluded.name,
 		   method=excluded.method,
@@ -84,6 +91,7 @@ func (t *Transaction) SaveRequest(ctx context.Context, req *domain.Request) erro
 		   body=excluded.body,
 		   sort_order=excluded.sort_order,
 		   enabled=excluded.enabled,
+		   options=excluded.options,
 		   updated_at=CURRENT_TIMESTAMP`,
 		req.ID,
 		req.CollectionID,
@@ -96,6 +104,7 @@ func (t *Transaction) SaveRequest(ctx context.Context, req *domain.Request) erro
 		req.Body,
 		req.SortOrder,
 		req.Enabled,
+		optionsJSON,
 	)
 	if err != nil {
 		if isSQLiteUnique(err) {

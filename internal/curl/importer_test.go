@@ -243,21 +243,20 @@ var corpus = []corpusCase{
 		wantSecurity: curl.Review,
 	},
 	// --- Follow redirects ---
+	// -L is mapped to the request's redirect option, so it no longer warns.
 	{
-		name:            "follow redirects -L",
-		input:           `curl -L https://api.example.com`,
-		wantMethod:      "GET",
-		wantURL:         baseURL,
-		wantSecurity:    curl.Review,
-		wantWarnContain: "redirect behavior",
+		name:         "follow redirects -L",
+		input:        `curl -L https://api.example.com`,
+		wantMethod:   "GET",
+		wantURL:      baseURL,
+		wantSecurity: curl.Safe,
 	},
 	{
-		name:            "follow redirects --location",
-		input:           `curl --location https://api.example.com`,
-		wantMethod:      "GET",
-		wantURL:         baseURL,
-		wantSecurity:    curl.Review,
-		wantWarnContain: "redirect behavior",
+		name:         "follow redirects --location",
+		input:        `curl --location https://api.example.com`,
+		wantMethod:   "GET",
+		wantURL:      baseURL,
+		wantSecurity: curl.Safe,
 	},
 	// --- data-urlencode ---
 	{
@@ -479,11 +478,11 @@ func TestImporter_Corpus(t *testing.T) {
 func TestImporter_WarningSorted(t *testing.T) {
 	importer := curl.NewImporter()
 	result, err := importer.Parse(
-		strings.NewReader(`curl --proxy http://proxy -L https://api.example.com`),
+		strings.NewReader(`curl --connect-timeout 5 --interface eth0 https://api.example.com`),
 	)
 	require.NoError(t, err)
 	assert.Equal(t, []string{
-		"proxy configuration is not imported",
-		"redirect behavior is not imported; Quark's configured redirect policy applies",
+		"interface binding is not imported",
+		"timeout behavior is not imported",
 	}, result.Warnings)
 }

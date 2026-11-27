@@ -73,6 +73,7 @@ ConfigDir       string
 | Env | `e` | Esc | Manage environment variables |
 | Schedule | schedule key | Esc | View/manage scheduled runs |
 | Auth editor | auth key | Esc | Configure request auth |
+| Options editor | options key (`o`) | Esc | Timeout, redirects, proxy and TLS verify (`options_editor.go`); resolver mode 10 |
 
 Exact keys are configurable — see keybindings section.
 

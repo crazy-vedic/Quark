@@ -40,6 +40,7 @@ func DefaultKeybindings() Keybindings {
 		RequestDelete: "d",
 		ExportCurl:    "x",
 		EditAuth:      "a",
+		EditOptions:   "o",
 		ScheduleRun:   "S",
 		EnvOpen:       "e",
 		ClientCerts:   "C",
@@ -92,6 +93,15 @@ func DefaultKeybindings() Keybindings {
 		AuthCancel:     "esc",
 		AuthOptionNext: KeyRight,
 		AuthOptionPrev: KeyLeft,
+
+		// Options editor
+		OptionsDown:       "j",
+		OptionsUp:         "k",
+		OptionsEdit:       "e",
+		OptionsSave:       KeyEnter,
+		OptionsCancel:     "esc",
+		OptionsOptionNext: KeyRight,
+		OptionsOptionPrev: KeyLeft,
 
 		// Response pane
 		ResponseDown:  "j",

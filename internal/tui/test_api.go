@@ -120,6 +120,7 @@ const (
 	BodyField    = bodyField
 	HeadersField = headersField
 	AuthField    = authField
+	OptionsField = optionsField
 )
 
 func (m Model) WithDebugLog(f *os.File) Model { m.debugLog = f; return m }
@@ -609,6 +610,43 @@ func (m Model) BodyValue() string              { return m.bodyTextarea.Value() }
 func (m Model) HeaderPairs() []headerPair      { return m.headerPairs }
 func (m Model) HeaderEditing() bool            { return m.headerEditing }
 func (m Model) AuthEditor() authEditor         { return m.authEditor }
+func (m Model) OptionsEditor() optionsEditor   { return m.optionsEditor }
+func (m Model) OptionsError() string           { return m.optionsEditor.err }
+func (m Model) OptionsCursor() int             { return m.optionsEditor.cursor }
+func (m Model) OptionsEditing() bool           { return m.optionsEditor.editing }
+
+// Row indexes for the options editor, for tests.
+const (
+	OptionRowTimeout      = int(optionRowTimeout)
+	OptionRowMaxRedirects = int(optionRowMaxRedirects)
+	OptionRowProxy        = int(optionRowProxy)
+)
+
+// WithOptionsFieldEdit opens the options editor on one row with its text input
+// in edit mode, the way a user reaches it.
+func (m Model) WithOptionsFieldEdit(row int, value string) Model {
+	m.activeField = optionsField
+	m.optionsEditor = newOptionsEditor(&domain.Request{})
+	m.optionsEditor.cursor = row
+	_, in := m.optionsEditor.input(m.optionsEditor.currentRow())
+	in.SetValue(value)
+	m.optionsEditor.beginEdit()
+	return m
+}
+
+// OptionsTimeoutValue, OptionsMaxRedirectsValue and OptionsProxyValue return the
+// text inputs of the options editor.
+func (m Model) OptionsTimeoutValue() string {
+	return m.optionsEditor.timeoutInput.Value()
+}
+
+func (m Model) OptionsMaxRedirectsValue() string {
+	return m.optionsEditor.maxRedirectsInput.Value()
+}
+
+func (m Model) OptionsProxyValue() string {
+	return m.optionsEditor.proxyInput.Value()
+}
 
 // AuthCursor returns the index of the auth field that has focus.
 func (m Model) AuthCursor() int                      { return m.authEditor.cursor }
@@ -779,6 +817,7 @@ func BlurredModelForTest() Model {
 	// The auth and env editors build their inputs only when opened, so build
 	// them here the same way the editors do.
 	m.authEditor = newAuthEditor(&domain.Request{AuthType: "bearer"})
+	m.optionsEditor = newOptionsEditor(&domain.Request{})
 	m.envEditor.editKey = textinput.New()
 	m.envEditor.editVal = textinput.New()
 	for _, w := range textWidgets {

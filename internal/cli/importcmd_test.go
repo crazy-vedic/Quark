@@ -161,3 +161,33 @@ func TestImportCurl_CollectionByNameAndPartialFlagsAreErrors(t *testing.T) {
 	partial.SetContext(ctx)
 	require.Error(t, partial.Execute(), "--collection without --name must not be a silent dry run")
 }
+
+func TestImportCurl_RequestOptionsAreShownAndSaved(t *testing.T) {
+	ctx := context.Background()
+	st, err := store.New(filepath.Join(t.TempDir(), "quark.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = st.Close() })
+	require.NoError(t, st.SaveCollection(ctx, &domain.Collection{ID: "col-1", Name: "API"}))
+
+	dryRun := NewImportCmd(st, curl.NewImporter())
+	var preview bytes.Buffer
+	dryRun.SetOut(&preview)
+	dryRun.SetArgs([]string{"curl", "curl -k -m 2 https://example.test/ping"})
+	dryRun.SetContext(ctx)
+	require.NoError(t, dryRun.Execute())
+	assert.Contains(t, preview.String(), "Options:  timeout 2s, TLS verification off",
+		"the dry run must show that TLS verification is switched off")
+
+	save := NewImportCmd(st, curl.NewImporter())
+	save.SetOut(new(bytes.Buffer))
+	save.SetArgs([]string{"curl", "--collection", "API", "--name", "Ping",
+		"curl -k -m 2 https://example.test/ping"})
+	save.SetContext(ctx)
+	require.NoError(t, save.Execute())
+
+	reqs, err := st.ListRequests(ctx, "col-1")
+	require.NoError(t, err)
+	require.Len(t, reqs, 1)
+	assert.True(t, reqs[0].Options.SkipTLSVerify)
+	assert.Equal(t, 2000, reqs[0].Options.TimeoutMS)
+}

@@ -552,6 +552,7 @@ func copyRequest(req *domain.Request) *domain.Request {
 		Headers:      req.Headers,
 		AuthType:     req.AuthType,
 		AuthConfig:   req.AuthConfig,
+		Options:      req.Options,
 		Body:         req.Body,
 		SortOrder:    req.SortOrder,
 		Enabled:      req.Enabled,

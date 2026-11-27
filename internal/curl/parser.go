@@ -8,13 +8,17 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"mime/multipart"
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 
 	"mvdan.cc/sh/v3/syntax"
+
+	"github.com/crazy-vedic/quark/internal/domain"
 )
 
 type optionKind uint8
@@ -41,6 +45,11 @@ const (
 	optionGet
 	optionUserAgent
 	optionReferer
+	optionFollowRedirects
+	optionMaxRedirects
+	optionInsecure
+	optionProxy
+	optionMaxTime
 	optionIgnore
 )
 
@@ -90,14 +99,15 @@ var supportedOptions = map[string]optionDefinition{
 	"-e":               {kind: optionReferer, hasValue: true},
 	"--referer":        {kind: optionReferer, hasValue: true},
 
-	"-L": {
-		kind:    optionIgnore,
-		warning: "redirect behavior is not imported; Quark's configured redirect policy applies",
-	},
-	"--location": {
-		kind:    optionIgnore,
-		warning: "redirect behavior is not imported; Quark's configured redirect policy applies",
-	},
+	"-L":           {kind: optionFollowRedirects},
+	"--location":   {kind: optionFollowRedirects},
+	"--max-redirs": {kind: optionMaxRedirects, hasValue: true},
+	"-k":           {kind: optionInsecure},
+	"--insecure":   {kind: optionInsecure},
+	"-x":           {kind: optionProxy, hasValue: true},
+	"--proxy":      {kind: optionProxy, hasValue: true},
+	"-m":           {kind: optionMaxTime, hasValue: true},
+	"--max-time":   {kind: optionMaxTime, hasValue: true},
 	"--location-trusted": {
 		kind:    optionIgnore,
 		warning: "trusted redirect behavior is not imported",
@@ -142,24 +152,6 @@ var supportedOptions = map[string]optionDefinition{
 		kind:    optionIgnore,
 		warning: "curl verbose output behavior is not imported",
 	},
-	"-k": {
-		kind:    optionIgnore,
-		warning: "TLS verification override is not imported",
-	},
-	"--insecure": {
-		kind:    optionIgnore,
-		warning: "TLS verification override is not imported",
-	},
-	"-x": {
-		kind:     optionIgnore,
-		hasValue: true,
-		warning:  "proxy configuration is not imported",
-	},
-	"--proxy": {
-		kind:     optionIgnore,
-		hasValue: true,
-		warning:  "proxy configuration is not imported",
-	},
 	"--resolve": {
 		kind:     optionIgnore,
 		hasValue: true,
@@ -186,16 +178,6 @@ var supportedOptions = map[string]optionDefinition{
 		warning:  "retry behavior is not imported",
 	},
 	"--connect-timeout": {
-		kind:     optionIgnore,
-		hasValue: true,
-		warning:  "timeout behavior is not imported",
-	},
-	"-m": {
-		kind:     optionIgnore,
-		hasValue: true,
-		warning:  "timeout behavior is not imported",
-	},
-	"--max-time": {
 		kind:     optionIgnore,
 		hasValue: true,
 		warning:  "timeout behavior is not imported",
@@ -339,11 +321,6 @@ var supportedOptions = map[string]optionDefinition{
 		hasValue: true,
 		warning:  "writing response headers to a file is not imported",
 	},
-	"--max-redirs": {
-		kind:     optionIgnore,
-		hasValue: true,
-		warning:  "redirect limit is not imported; Quark's configured redirect policy applies",
-	},
 }
 
 type formField struct {
@@ -372,6 +349,7 @@ func parseCommand(command string) (*ImportResult, error) {
 	suppressedHeaders := make(map[string]bool)
 	cert := CertificateSpec{}
 	hasCertOptions := false
+	var options domain.RequestOptions
 
 	for i := 0; i < len(tokens); i++ {
 		token := tokens[i]
@@ -513,6 +491,35 @@ func parseCommand(command string) (*ImportResult, error) {
 			result.Headers.Set("User-Agent", value)
 		case optionReferer:
 			result.Headers.Set("Referer", value)
+		case optionFollowRedirects:
+			options.FollowRedirects = boolPtr(true)
+		case optionMaxRedirects:
+			limit, convErr := strconv.Atoi(strings.TrimSpace(value))
+			if convErr != nil || limit < -1 {
+				return nil, fmt.Errorf("curl: --max-redirs needs a number, got %q", value)
+			}
+			if limit < 0 {
+				addWarning(result, "unlimited redirects (--max-redirs -1) is not imported; "+
+					"Quark's configured redirect limit applies")
+			} else {
+				options.MaxRedirects = &limit
+			}
+		case optionInsecure:
+			options.SkipTLSVerify = true
+			upgradeSecurityTo(result)
+		case optionProxy:
+			proxy, proxyErr := domain.NormalizeProxyURL(value)
+			if proxyErr != nil {
+				return nil, fmt.Errorf("curl: --proxy: %w", proxyErr)
+			}
+			options.Proxy = proxy
+			upgradeSecurityTo(result)
+		case optionMaxTime:
+			timeoutMS, timeErr := parseMaxTime(value)
+			if timeErr != nil {
+				return nil, timeErr
+			}
+			options.TimeoutMS = timeoutMS
 		case optionIgnore:
 			addWarning(result, definition.warning)
 		}
@@ -586,11 +593,27 @@ func parseCommand(command string) (*ImportResult, error) {
 		finalizeCertificate(&cert, result)
 		result.Certificate = &cert
 	}
+	result.Options = options
 	if err := validateRequest(result); err != nil {
 		return nil, err
 	}
 	return result, nil
 }
+
+// parseMaxTime converts curl's --max-time seconds (decimals allowed) to
+// milliseconds. Zero means no limit in curl, which is Quark's default too.
+func parseMaxTime(value string) (int, error) {
+	seconds, err := strconv.ParseFloat(strings.TrimSpace(value), 64)
+	if err != nil || math.IsNaN(seconds) || math.IsInf(seconds, 0) || seconds < 0 {
+		return 0, fmt.Errorf("curl: --max-time needs a number of seconds, got %q", value)
+	}
+	if seconds == 0 {
+		return 0, nil
+	}
+	return max(1, int(math.Round(seconds*1000))), nil
+}
+
+func boolPtr(v bool) *bool { return &v }
 
 func shellWords(command string) ([]string, error) {
 	command = strings.TrimSpace(normalizeContinuations(command))

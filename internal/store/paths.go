@@ -40,7 +40,7 @@ func (s *Store) ResolveRequestPath(ctx context.Context, reference string) (*doma
 	}
 	rows, err := s.db.QueryContext(
 		ctx,
-		`SELECT id, collection_id, name, method, url, headers, auth_type, auth_config, body, sort_order, enabled, created_at, updated_at FROM requests`,
+		`SELECT id, collection_id, name, method, url, headers, auth_type, auth_config, body, sort_order, enabled, created_at, updated_at, options FROM requests`,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("store: resolve request: %w", err)
@@ -51,6 +51,7 @@ func (s *Store) ResolveRequestPath(ctx context.Context, reference string) (*doma
 	for rows.Next() {
 		r := &domain.Request{}
 		var body sql.NullString
+		var optionsJSON string
 		if err := rows.Scan(
 			&r.ID,
 			&r.CollectionID,
@@ -65,10 +66,14 @@ func (s *Store) ResolveRequestPath(ctx context.Context, reference string) (*doma
 			&r.Enabled,
 			&r.CreatedAt,
 			&r.UpdatedAt,
+			&optionsJSON,
 		); err != nil {
 			return nil, err
 		}
 		r.Body = body.String
+		if r.Options, err = parseStoredOptions(r.ID, optionsJSON); err != nil {
+			return nil, err
+		}
 		p, ok := pathCache[r.CollectionID]
 		if !ok {
 			return nil, fmt.Errorf("store: request collection %q: %w", r.CollectionID, ErrNotFound)

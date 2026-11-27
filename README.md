@@ -197,6 +197,20 @@ summary. Valid JSON is pretty-printed and syntax-highlighted in a terminal.
 Add `--verbose` to print request details and response headers to stderr; this
 can include credentials from the saved request.
 
+### Per-request Options
+
+Each request can override the global HTTP settings for itself. Press `o` in the request pane to edit:
+
+- **Timeout** — a duration such as `30s` or `1500ms`; empty uses `[http] timeout`
+- **Follow redirects** — default, follow, or do not follow
+- **Max redirects** — a whole number; empty uses `[http] max_redirects`
+- **Proxy** — `http`, `https`, `socks5` or `socks5h` URL; empty uses the environment proxy settings
+- **Skip TLS verify** — turns off certificate checks for this request only
+
+The options are saved with the request and applied by both the TUI and `quark run`. Empty rows keep the defaults. `Enter` saves, and an invalid row keeps the editor open with the reason shown.
+
+A cURL command imports `-k`/`--insecure`, `-L`/`--location`, `--max-redirs`, `-x`/`--proxy` and `-m`/`--max-time` into these options. "Copy as curl" writes them back out. Other requests are unaffected.
+
 ### Text Selection & Editing
 
 Edit URLs, request headers, bodies, and auth fields with familiar keyboard shortcuts:

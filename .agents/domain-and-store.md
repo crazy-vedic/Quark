@@ -14,12 +14,15 @@ type Request struct {
     Headers                  string  // JSON object
     AuthType                 string
     AuthConfig               string  // JSON AuthConfig
+    Options                  RequestOptions // per-request timeout, redirects, proxy, TLS verify
     Body                     string
     SortOrder                int
     Enabled                  bool
     CreatedAt, UpdatedAt     time.Time
 }
 ```
+
+`RequestOptions` (`request_options.go`) is stored as JSON in `requests.options` (migration 10). Every zero field means "use the configured default". `ParseRequestOptions` rejects unknown fields and out-of-range values; the store refuses to save invalid options and fails to load stored options it cannot apply, so a request is never sent differently from how it was saved.
 
 Unique constraint: `(collection_id, name)`.
 
@@ -139,8 +142,11 @@ Config directory and backup files use restrictive permissions (`0700` dir, `0600
 | 4 | `add_executions` | `executions` table |
 | 5 | `add_request_auth` | `auth_type`, `auth_config` columns on requests |
 | 6 | `add_scheduled_runs` | `scheduled_runs` table |
+| 10 | `request_options` | `options` column on requests (per-request HTTP settings) |
 
-Migrations are idempotent and applied in transactions. To add schema changes: append a new `migration{version: 7, ...}` entry.
+Migrations 7 to 9 (empty request IDs, nested collections, canonical global environment) are listed in `migrations.go`.
+
+Migrations are idempotent and applied in transactions. To add schema changes: append a new `migration{version: 11, ...}` entry.
 
 ### Key Store Files
 

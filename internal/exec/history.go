@@ -18,12 +18,13 @@ type ExecutionWriter interface {
 }
 
 type requestSnapshot struct {
-	Method     string `json:"method"`
-	URL        string `json:"url"`
-	Headers    string `json:"headers"`
-	AuthType   string `json:"auth_type,omitempty"`
-	AuthConfig string `json:"auth_config,omitempty"`
-	Body       string `json:"body"`
+	Method     string                 `json:"method"`
+	URL        string                 `json:"url"`
+	Headers    string                 `json:"headers"`
+	AuthType   string                 `json:"auth_type,omitempty"`
+	AuthConfig string                 `json:"auth_config,omitempty"`
+	Body       string                 `json:"body"`
+	Options    *domain.RequestOptions `json:"options,omitempty"`
 }
 
 func (e *Executor) recordExecution(
@@ -55,6 +56,12 @@ func buildExecution(
 	execErr error,
 	startedAt, completedAt time.Time,
 ) (*domain.Execution, error) {
+	// Record the options only when set, so history for default requests keeps
+	// its existing shape. The snapshot shows what was sent.
+	var options *domain.RequestOptions
+	if !req.Options.IsZero() {
+		options = &req.Options
+	}
 	snapshotBytes, err := json.Marshal(requestSnapshot{
 		Method:     req.Method,
 		URL:        req.URL,
@@ -62,6 +69,7 @@ func buildExecution(
 		AuthType:   req.AuthType,
 		AuthConfig: req.AuthConfig,
 		Body:       req.Body,
+		Options:    options,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("marshal request snapshot: %w", err)
