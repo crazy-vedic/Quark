@@ -18,17 +18,7 @@ func TestCLI_CurlImportPersistsAndExecutesRequest(t *testing.T) {
 	home, colID := setupHomeWithCollection(t)
 	command := `curl -X POST 'https://example.test/token' --header 'Content-Type: application/x-www-form-urlencoded' --header 'X-Trace: first' --header 'X-Trace: second' --data-urlencode 'user_id=abc==' --data-urlencode 'scope=offline_access openid'`
 
-	out, errOut, code := runQuarkWithHome(
-		t,
-		home,
-		"import",
-		"curl",
-		command,
-		"--collection",
-		colID,
-		"--name",
-		"IAM token",
-	)
+	out, errOut, code := runQuarkWithHome(t, home, "import", "curl", command, "--collection", colID, "--name", "IAM token")
 	require.Equal(t, 0, code, "import failed: %s", errOut)
 	require.NotContains(t, out, "offline_access")
 
@@ -47,12 +37,6 @@ func TestCLI_CurlImportPersistsAndExecutesRequest(t *testing.T) {
 
 	// The request is executable by the production binary after import.
 	out, errOut, code = runQuarkWithHome(t, home, "run", "API/IAM token")
-	require.NotEqual(
-		t,
-		0,
-		code,
-		"example.test should not be reachable; command must still resolve the imported request: %s",
-		errOut,
-	)
+	require.NotEqual(t, 0, code, "example.test should not be reachable; command must still resolve the imported request: %s", errOut)
 	require.NotContains(t, out+errOut, "request not found")
 }

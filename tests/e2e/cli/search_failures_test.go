@@ -39,10 +39,7 @@ func TestCLI_SearchReportsCollectionThatCouldNotBeSearched(t *testing.T) {
 	// Make the row unscannable: sort_order is an integer column.
 	db, err := sql.Open("sqlite", dbPath)
 	require.NoError(t, err)
-	_, err = db.Exec(
-		`UPDATE requests SET sort_order = 'not-a-number' WHERE collection_id = ?`,
-		brokenID,
-	)
+	_, err = db.Exec(`UPDATE requests SET sort_order = 'not-a-number' WHERE collection_id = ?`, brokenID)
 	require.NoError(t, err)
 	require.NoError(t, db.Close())
 

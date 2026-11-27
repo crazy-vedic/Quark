@@ -18,10 +18,7 @@ import (
 // importDisabledHeaderFixture imports a collection with an active header, one
 // with "disabled": false, one with "disabled": true and an empty-valued
 // disabled one, and returns the command output and the stored headers.
-func importDisabledHeaderFixture(
-	t *testing.T,
-	flags ...string,
-) (out string, headers map[string]any) {
+func importDisabledHeaderFixture(t *testing.T, flags ...string) (out string, headers map[string]any) {
 	t.Helper()
 	home := t.TempDir()
 	dbPath := createQuarkDBPath(t, home)
@@ -90,12 +87,7 @@ func TestE2E_PostmanImport_SkipsDisabledHeadersAndSaysSo(t *testing.T) {
 	assert.Contains(t, out, `header "X-Switched-Off" is disabled in Postman and was not imported`)
 	assert.Contains(t, out, "--include-disabled", "the warning names the flag that imports it")
 	assert.NotContains(t, out, "stale-secret-value", "a header value is never printed")
-	assert.NotContains(
-		t,
-		out,
-		"X-Off-And-Empty",
-		"an empty header would not have been imported anyway",
-	)
+	assert.NotContains(t, out, "X-Off-And-Empty", "an empty header would not have been imported anyway")
 	assert.NotContains(t, out, "X-Active", "only disabled headers are mentioned")
 }
 
@@ -107,11 +99,7 @@ func TestE2E_PostmanImport_IncludeDisabledImportsAndSaysSo(t *testing.T) {
 	assert.Contains(t, got, "X-Active")
 	assert.Equal(t, "stale-secret-value", got["X-Switched-Off"], "the disabled header is imported")
 
-	assert.Contains(
-		t,
-		out,
-		`header "X-Switched-Off" is disabled in Postman but was imported as an active header`,
-	)
+	assert.Contains(t, out, `header "X-Switched-Off" is disabled in Postman but was imported as an active header`)
 	assert.NotContains(t, out, "was not imported", "nothing was dropped")
 	assert.NotContains(t, out, "stale-secret-value", "a header value is never printed")
 }

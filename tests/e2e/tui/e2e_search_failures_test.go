@@ -37,10 +37,7 @@ func TestE2E_SearchTellsUserWhenACollectionWasSkipped(t *testing.T) {
 	// Make the broken collection's rows unscannable: sort_order is an integer column.
 	db, err := sql.Open("sqlite", dbPath)
 	require.NoError(t, err)
-	_, err = db.Exec(
-		`UPDATE requests SET sort_order = 'not-a-number' WHERE collection_id = ?`,
-		broken.ID,
-	)
+	_, err = db.Exec(`UPDATE requests SET sort_order = 'not-a-number' WHERE collection_id = ?`, broken.ID)
 	require.NoError(t, err)
 	require.NoError(t, db.Close())
 

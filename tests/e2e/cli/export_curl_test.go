@@ -109,10 +109,7 @@ func TestCLI_RequestExportCurlRefusesBadInput(t *testing.T) {
 		Name: "NotJSON", Method: http.MethodGet, URL: "https://example.test/a", Headers: `{broken`,
 	})
 	seedRequest(t, home, colID, &domain.Request{
-		Name:    "WrongType",
-		Method:  http.MethodGet,
-		URL:     "https://example.test/b",
-		Headers: `{"X-Count":5}`,
+		Name: "WrongType", Method: http.MethodGet, URL: "https://example.test/b", Headers: `{"X-Count":5}`,
 	})
 
 	tests := []struct {
@@ -121,20 +118,13 @@ func TestCLI_RequestExportCurlRefusesBadInput(t *testing.T) {
 		want string
 	}{
 		{"headers are not JSON", []string{"API/NotJSON"}, "parse request headers"},
-		{
-			"a header value is not a string",
-			[]string{"API/WrongType"},
-			`header "X-Count": value must be a string or string array`,
-		},
+		{"a header value is not a string", []string{"API/WrongType"}, `header "X-Count": value must be a string or string array`},
 		{"the request does not exist", []string{"API/Missing"}, "resolve request"},
 		{"no request given", nil, "accepts 1 arg"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			out, errOut, code := runQuarkWithHome(
-				t,
-				home,
-				append([]string{"request", "export-curl"}, tc.args...)...)
+			out, errOut, code := runQuarkWithHome(t, home, append([]string{"request", "export-curl"}, tc.args...)...)
 			assert.NotEqual(t, 0, code)
 			assert.Contains(t, out+errOut, tc.want)
 			assert.NotContains(t, out, "curl -X", "nothing is printed on failure")

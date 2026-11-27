@@ -34,11 +34,7 @@ func TestE2E_TUISendAPIKeyInQueryKeepsTheUsersQuery(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	tests := []struct{ name, path, want string }{
-		{
-			"appended after the existing query",
-			"/p?zeta=1&alpha=a%20b",
-			"zeta=1&alpha=a%20b&api_key=s3cret%26x",
-		},
+		{"appended after the existing query", "/p?zeta=1&alpha=a%20b", "zeta=1&alpha=a%20b&api_key=s3cret%26x"},
 		{"replaces a parameter of the same name", "/p?api_key=old&b=2", "api_key=s3cret%26x&b=2"},
 	}
 	for _, tc := range tests {

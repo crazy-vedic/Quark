@@ -123,21 +123,9 @@ func TestE2E_ThemeColorsCoverEveryPaneAndCell(t *testing.T) {
 								screen.assertTextColor(t, "Response", wantAccent)
 							}
 							if size.allVisible {
-								screen.assertTextColor(
-									t,
-									"https://example.test/widgets",
-									terminalForeground(t, selected.Foreground),
-								)
-								screen.assertTextColor(
-									t,
-									"[ Send ]",
-									terminalForeground(t, selected.Success),
-								)
-								screen.assertTextColor(
-									t,
-									"200 OK",
-									terminalForeground(t, selected.Success),
-								)
+								screen.assertTextColor(t, "https://example.test/widgets", terminalForeground(t, selected.Foreground))
+								screen.assertTextColor(t, "[ Send ]", terminalForeground(t, selected.Success))
+								screen.assertTextColor(t, "200 OK", terminalForeground(t, selected.Success))
 							}
 						})
 					}
@@ -303,21 +291,13 @@ func TestE2E_ThemeOverlaysAndANSI256KeepUniformBackground(t *testing.T) {
 			check()
 			m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'f'}})
 			m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("needle")})
-			themeFrame(
-				t,
-				m,
-			).assertBackgroundOutsideReverse(t, terminalBackground(t, selected.Background))
+			themeFrame(t, m).assertBackgroundOutsideReverse(t, terminalBackground(t, selected.Background))
 		})
 	}
 }
 
 func TestThemeScreenReaderTracksNestedResets(t *testing.T) {
-	s := renderThemeScreen(
-		t,
-		"\x1b[48;2;1;2;3mA\x1b[0mB\x1b[48;2;1;2;3m\x1b[38;2;4;5;6m\x1b[7mC",
-		3,
-		1,
-	)
+	s := renderThemeScreen(t, "\x1b[48;2;1;2;3mA\x1b[0mB\x1b[48;2;1;2;3m\x1b[38;2;4;5;6m\x1b[7mC", 3, 1)
 	require.Equal(t, "#010203", s.rows[0][0].bg)
 	require.Empty(t, s.rows[0][1].bg)
 	require.Equal(t, "#040506", s.rows[0][2].bg)

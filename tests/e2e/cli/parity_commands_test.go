@@ -119,15 +119,7 @@ func TestCLI_ClientCertificatesSetListAndDelete(t *testing.T) {
 	caPath := filepath.Join(home, "root.pem")
 	require.NoError(t, os.WriteFile(caPath, testCertificatePEM(t), 0600))
 
-	out, stderr, code := runQuarkWithHome(
-		t,
-		home,
-		"cert",
-		"set",
-		"API.Example",
-		"--ca-file",
-		caPath,
-	)
+	out, stderr, code := runQuarkWithHome(t, home, "cert", "set", "API.Example", "--ca-file", caPath)
 	require.Equal(t, 0, code, "%s", stderr)
 	assert.Contains(t, out, "Saved client certificate for api.example")
 

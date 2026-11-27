@@ -135,10 +135,7 @@ func TestE2E_RedirectOptionsAndStoreBackupRetention(t *testing.T) {
 	)
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, defaultStore.Close()) })
-	require.NoError(
-		t,
-		defaultStore.SaveCollection(ctx, &domain.Collection{ID: "Default", Name: "Default"}),
-	)
+	require.NoError(t, defaultStore.SaveCollection(ctx, &domain.Collection{ID: "Default", Name: "Default"}))
 }
 
 type failingActiveEnvironmentStore struct {
@@ -493,11 +490,7 @@ func TestE2E_OverlayMode_ImportBindings(t *testing.T) {
 	m := newE2EModelWithBindings(t, keybindings.DefaultKeybindings())
 	m = callUpdate(t, m, tea.WindowSizeMsg{Width: 120, Height: 40})
 	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'i'}})
-	m = callUpdate(
-		t,
-		m,
-		tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("curl https://example.com"), Paste: true},
-	)
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("curl https://example.com"), Paste: true})
 	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyCtrlS})
 	require.Equal(t, tui.ImportMode, m.Mode(), "curl paste must trigger import mode")
 

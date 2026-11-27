@@ -57,30 +57,9 @@ func seedTUIEnvironmentFixture(t *testing.T, st *store.Store) tuiEnvironmentFixt
 	require.NoError(t, err)
 	fixture.childDefault, err = st.GetEnvironmentByName(ctx, fixture.child.ID, "default")
 	require.NoError(t, err)
-	fixture.rootActive = saveTUIEnvironment(
-		t,
-		st,
-		"tui-root-dev",
-		fixture.root.ID,
-		"dev",
-		map[string]string{"root_active": "root-dev-secret"},
-	)
-	fixture.parentActive = saveTUIEnvironment(
-		t,
-		st,
-		"tui-parent-dev",
-		fixture.parent.ID,
-		"dev",
-		map[string]string{"parent_active": "parent-dev-secret"},
-	)
-	fixture.childActive = saveTUIEnvironment(
-		t,
-		st,
-		"tui-child-dev",
-		fixture.child.ID,
-		"dev",
-		map[string]string{"child_active": "child-dev-secret"},
-	)
+	fixture.rootActive = saveTUIEnvironment(t, st, "tui-root-dev", fixture.root.ID, "dev", map[string]string{"root_active": "root-dev-secret"})
+	fixture.parentActive = saveTUIEnvironment(t, st, "tui-parent-dev", fixture.parent.ID, "dev", map[string]string{"parent_active": "parent-dev-secret"})
+	fixture.childActive = saveTUIEnvironment(t, st, "tui-child-dev", fixture.child.ID, "dev", map[string]string{"child_active": "child-dev-secret"})
 	require.NoError(t, st.SetActiveEnvironment(ctx, fixture.child.ID, fixture.childActive.ID))
 	return fixture
 }
@@ -98,12 +77,7 @@ func saveTUIEnvironment(
 	return environment
 }
 
-func setTUIEnvironmentVars(
-	t *testing.T,
-	st *store.Store,
-	environment *domain.Environment,
-	vars map[string]string,
-) {
+func setTUIEnvironmentVars(t *testing.T, st *store.Store, environment *domain.Environment, vars map[string]string) {
 	t.Helper()
 	environment.SetVars(vars)
 	require.NoError(t, st.SaveEnvironment(context.Background(), environment))
@@ -134,18 +108,8 @@ func TestE2E_EnvEditor_NestedTabsAreReadOnlyAndDoNotChangeChildActive(t *testing
 	fixture := seedTUIEnvironmentFixture(t, st)
 	setTUIEnvironmentVars(t, st, fixture.global, map[string]string{"global_key": "global-secret"})
 	setTUIEnvironmentVars(t, st, fixture.rootDefault, map[string]string{"root_key": "root-secret"})
-	setTUIEnvironmentVars(
-		t,
-		st,
-		fixture.parentDefault,
-		map[string]string{"parent_key": "parent-secret"},
-	)
-	setTUIEnvironmentVars(
-		t,
-		st,
-		fixture.childDefault,
-		map[string]string{"child_key": "child-secret"},
-	)
+	setTUIEnvironmentVars(t, st, fixture.parentDefault, map[string]string{"parent_key": "parent-secret"})
+	setTUIEnvironmentVars(t, st, fixture.childDefault, map[string]string{"child_key": "child-secret"})
 
 	m := openNestedEnvironmentEditor(t, st, fixture, fixture.childActive.ID)
 	assert.Equal(t, 6, m.EnvEditorTabIdx(), "active child env must be selected")
@@ -203,34 +167,19 @@ func TestE2E_EnvEditor_CopyOnEditFromEveryInheritedScope(t *testing.T) {
 		{
 			name: "Global", tabIndex: 0, key: "from_global", value: "global-copy-secret",
 			configure: func(t *testing.T, st *store.Store, f tuiEnvironmentFixture) {
-				setTUIEnvironmentVars(
-					t,
-					st,
-					f.global,
-					map[string]string{"from_global": "global-copy-secret"},
-				)
+				setTUIEnvironmentVars(t, st, f.global, map[string]string{"from_global": "global-copy-secret"})
 			},
 		},
 		{
 			name: "root", tabIndex: 1, key: "from_root", value: "root-copy-secret",
 			configure: func(t *testing.T, st *store.Store, f tuiEnvironmentFixture) {
-				setTUIEnvironmentVars(
-					t,
-					st,
-					f.rootDefault,
-					map[string]string{"from_root": "root-copy-secret"},
-				)
+				setTUIEnvironmentVars(t, st, f.rootDefault, map[string]string{"from_root": "root-copy-secret"})
 			},
 		},
 		{
 			name: "parent", tabIndex: 3, key: "from_parent", value: "parent-copy-secret",
 			configure: func(t *testing.T, st *store.Store, f tuiEnvironmentFixture) {
-				setTUIEnvironmentVars(
-					t,
-					st,
-					f.parentDefault,
-					map[string]string{"from_parent": "parent-copy-secret"},
-				)
+				setTUIEnvironmentVars(t, st, f.parentDefault, map[string]string{"from_parent": "parent-copy-secret"})
 			},
 		},
 	}
@@ -275,18 +224,8 @@ func TestE2E_EnvEditor_CopyOnEditFromEveryInheritedScope(t *testing.T) {
 func TestE2E_EnvEditor_CopyOnEditCollisionDoesNotCopySwitchOrLeakValue(t *testing.T) {
 	st := setupStore(t)
 	fixture := seedTUIEnvironmentFixture(t, st)
-	setTUIEnvironmentVars(
-		t,
-		st,
-		fixture.parentDefault,
-		map[string]string{"collision": "parent-collision-secret"},
-	)
-	setTUIEnvironmentVars(
-		t,
-		st,
-		fixture.childDefault,
-		map[string]string{"collision": "child-collision-secret"},
-	)
+	setTUIEnvironmentVars(t, st, fixture.parentDefault, map[string]string{"collision": "parent-collision-secret"})
+	setTUIEnvironmentVars(t, st, fixture.childDefault, map[string]string{"collision": "child-collision-secret"})
 	m := openNestedEnvironmentEditor(t, st, fixture, "")
 	for m.EnvEditorTabIdx() < 3 {
 		m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRight})
@@ -295,11 +234,7 @@ func TestE2E_EnvEditor_CopyOnEditCollisionDoesNotCopySwitchOrLeakValue(t *testin
 	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}})
 	assert.Equal(t, 3, m.EnvEditorTabIdx())
 	assert.False(t, m.EnvEditorEditing())
-	assert.Equal(
-		t,
-		`Key "collision" already exists in env "Root/Parent/Child/default"`,
-		m.StatusErr(),
-	)
+	assert.Equal(t, `Key "collision" already exists in env "Root/Parent/Child/default"`, m.StatusErr())
 	assert.NotContains(t, m.StatusErr(), "parent-collision-secret")
 	assert.NotContains(t, m.StatusErr(), "child-collision-secret")
 	childDefault, err := st.GetEnvironment(context.Background(), fixture.childDefault.ID)
@@ -370,12 +305,7 @@ func TestE2E_EnvEditor_PerTabDraftsSurviveNavigationWithoutPersisting(t *testing
 func TestE2E_EnvEditor_StaleHierarchySaveCanOnlyWriteChild(t *testing.T) {
 	st := setupStore(t)
 	fixture := seedTUIEnvironmentFixture(t, st)
-	setTUIEnvironmentVars(
-		t,
-		st,
-		fixture.parentDefault,
-		map[string]string{"protected": "parent-secret"},
-	)
+	setTUIEnvironmentVars(t, st, fixture.parentDefault, map[string]string{"protected": "parent-secret"})
 	m := openNestedEnvironmentEditor(t, st, fixture, "")
 	for m.EnvEditorTabIdx() < 5 {
 		m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRight})
@@ -419,22 +349,11 @@ func TestE2E_TUIDirectSend_UsesNestedInheritanceAndBlocksResolutionFailure(t *te
 	setTUIEnvironmentVars(t, st, fixture.global, map[string]string{"shared": "global"})
 	setTUIEnvironmentVars(t, st, fixture.rootDefault, map[string]string{"shared": "root-default"})
 	setTUIEnvironmentVars(t, st, fixture.rootActive, map[string]string{"shared": "root-dev"})
-	setTUIEnvironmentVars(
-		t,
-		st,
-		fixture.parentDefault,
-		map[string]string{"shared": "parent-default"},
-	)
+	setTUIEnvironmentVars(t, st, fixture.parentDefault, map[string]string{"shared": "parent-default"})
 	setTUIEnvironmentVars(t, st, fixture.parentActive, map[string]string{"shared": "parent-dev"})
 	setTUIEnvironmentVars(t, st, fixture.childDefault, map[string]string{"shared": "child-default"})
 	setTUIEnvironmentVars(t, st, fixture.childActive, map[string]string{"shared": "child-dev"})
-	req := &domain.Request{
-		ID:           "tui-send",
-		CollectionID: fixture.child.ID,
-		Name:         "Send",
-		Method:       "GET",
-		URL:          srv.URL + "/tui/{{shared}}",
-	}
+	req := &domain.Request{ID: "tui-send", CollectionID: fixture.child.ID, Name: "Send", Method: "GET", URL: srv.URL + "/tui/{{shared}}"}
 	require.NoError(t, st.SaveRequest(context.Background(), req))
 	transport := &http.Transport{}
 	t.Cleanup(transport.CloseIdleConnections)
@@ -477,21 +396,10 @@ func TestE2E_TUIScheduledSend_UsesNestedInheritanceAndPersistsFailure(t *testing
 	st := setupStore(t)
 	fixture := seedTUIEnvironmentFixture(t, st)
 	setTUIEnvironmentVars(t, st, fixture.rootDefault, map[string]string{"shared": "root-default"})
-	setTUIEnvironmentVars(
-		t,
-		st,
-		fixture.parentDefault,
-		map[string]string{"shared": "parent-default"},
-	)
+	setTUIEnvironmentVars(t, st, fixture.parentDefault, map[string]string{"shared": "parent-default"})
 	setTUIEnvironmentVars(t, st, fixture.childDefault, map[string]string{"shared": "child-default"})
 	setTUIEnvironmentVars(t, st, fixture.childActive, map[string]string{"shared": "child-dev"})
-	req := &domain.Request{
-		ID:           "tui-scheduled",
-		CollectionID: fixture.child.ID,
-		Name:         "Scheduled",
-		Method:       "GET",
-		URL:          srv.URL + "/scheduled/{{shared}}",
-	}
+	req := &domain.Request{ID: "tui-scheduled", CollectionID: fixture.child.ID, Name: "Scheduled", Method: "GET", URL: srv.URL + "/scheduled/{{shared}}"}
 	require.NoError(t, st.SaveRequest(ctx, req))
 	fixedNow := time.Date(2026, 9, 2, 12, 0, 0, 0, time.UTC)
 	require.NoError(t, st.SaveScheduledRun(ctx, &domain.ScheduledRun{
@@ -544,32 +452,16 @@ func TestE2E_TUIScheduledSend_UsesNestedInheritanceAndPersistsFailure(t *testing
 func TestE2E_EnvEditor_HighScaleUnicodeHierarchyFitsEveryLayout(t *testing.T) {
 	st := setupStore(t)
 	root := &domain.Collection{ID: "scale-root", Name: "根-Extremely-Long-Root-Collection"}
-	parent := &domain.Collection{
-		ID:       "scale-parent",
-		Name:     "父-Extremely-Long-Parent-Collection",
-		ParentID: root.ID,
-	}
-	child := &domain.Collection{
-		ID:       "scale-child",
-		Name:     "子-Extremely-Long-Child-Collection",
-		ParentID: parent.ID,
-	}
+	parent := &domain.Collection{ID: "scale-parent", Name: "父-Extremely-Long-Parent-Collection", ParentID: root.ID}
+	child := &domain.Collection{ID: "scale-child", Name: "子-Extremely-Long-Child-Collection", ParentID: parent.ID}
 	for _, collection := range []*domain.Collection{root, parent, child} {
 		require.NoError(t, st.SaveCollection(context.Background(), collection))
 	}
 	for _, collection := range []*domain.Collection{root, parent, child} {
 		for i := 0; i < 24; i++ {
-			saveTUIEnvironment(
-				t,
-				st,
-				fmt.Sprintf("%s-env-%02d", collection.ID, i),
-				collection.ID,
-				fmt.Sprintf(
-					"环境-%02d-with-a-long-name",
-					i,
-				),
-				map[string]string{"marker": fmt.Sprintf("value-%02d", i)},
-			)
+			saveTUIEnvironment(t, st,
+				fmt.Sprintf("%s-env-%02d", collection.ID, i), collection.ID,
+				fmt.Sprintf("环境-%02d-with-a-long-name", i), map[string]string{"marker": fmt.Sprintf("value-%02d", i)})
 		}
 	}
 	parentDefault, err := st.GetEnvironmentByName(context.Background(), parent.ID, "default")

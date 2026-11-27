@@ -168,14 +168,7 @@ func (s themeScreen) assertBackground(t *testing.T, want string, entireFrame boo
 			}
 			seen++
 			if cell.bg != want {
-				t.Fatalf(
-					"background mismatch at (%d,%d) on %q: got %q, want %q",
-					x,
-					y,
-					cell.char,
-					cell.bg,
-					want,
-				)
+				t.Fatalf("background mismatch at (%d,%d) on %q: got %q, want %q", x, y, cell.char, cell.bg, want)
 			}
 		}
 	}
@@ -199,13 +192,7 @@ func (s themeScreen) assertBackgroundOutsideReverse(t *testing.T, want string) {
 				continue
 			}
 			if cell.bg != want {
-				t.Fatalf(
-					"background mismatch outside reverse highlight at (%d,%d): got %q, want %q",
-					x,
-					y,
-					cell.bg,
-					want,
-				)
+				t.Fatalf("background mismatch outside reverse highlight at (%d,%d): got %q, want %q", x, y, cell.bg, want)
 			}
 		}
 	}
@@ -231,14 +218,7 @@ func (s themeScreen) assertTextColor(t *testing.T, label, want string) (int, int
 			}
 			for i := range needle {
 				if row[x+i].fg != want {
-					t.Fatalf(
-						"%q foreground at (%d,%d): got %q, want %q",
-						label,
-						x+i,
-						y,
-						row[x+i].fg,
-						want,
-					)
+					t.Fatalf("%q foreground at (%d,%d): got %q, want %q", label, x+i, y, row[x+i].fg, want)
 				}
 			}
 			return x, y

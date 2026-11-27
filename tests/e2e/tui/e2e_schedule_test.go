@@ -217,11 +217,7 @@ func TestE2E_ScheduledRunsStuckRunningAreRecovered(t *testing.T) {
 	col := &domain.Collection{ID: "col-recover", Name: "Payments"}
 	st := setupStore(t, col)
 	seedRequests(t, st, col.ID, &domain.Request{
-		ID:           "req-recover",
-		CollectionID: col.ID,
-		Name:         "List",
-		Method:       "GET",
-		URL:          "http://example.invalid",
+		ID: "req-recover", CollectionID: col.ID, Name: "List", Method: "GET", URL: "http://example.invalid",
 	})
 	for _, run := range []*domain.ScheduledRun{
 		{ID: "stuck", RequestID: "req-recover", RunAt: time.Now(), Status: domain.ScheduledRunRunning},

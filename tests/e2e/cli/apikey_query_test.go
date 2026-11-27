@@ -32,11 +32,7 @@ func TestCLI_RunAPIKeyInQueryKeepsTheUsersQuery(t *testing.T) {
 		path string
 		want string
 	}{
-		{
-			"appended after the existing query",
-			"/p?zeta=1&alpha=a%20b",
-			"zeta=1&alpha=a%20b&api_key=s3cret%26x",
-		},
+		{"appended after the existing query", "/p?zeta=1&alpha=a%20b", "zeta=1&alpha=a%20b&api_key=s3cret%26x"},
 		{"added to a URL with no query", "/p", "api_key=s3cret%26x"},
 		{"replaces a parameter of the same name", "/p?api_key=old&b=2", "api_key=s3cret%26x&b=2"},
 	}
