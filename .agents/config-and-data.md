@@ -78,6 +78,8 @@ cfg.BackupDir(dataDir) string                // → dataDir/backup
 
 Load failure (unreadable file) logs `slog.Warn` and falls back to defaults in `main.go`.
 
+In the TUI, config.toml writes (theme, keybindings, client certificates) run in a `tea.Cmd` and report back with `configSavedMsg`. Set `m.configSaving` while one is pending. Other config writes are refused until it finishes. The `saveMu` lock in `config` serializes the read-modify-write cycles.
+
 ## Environment Variables
 
 | Variable | Used by | Purpose |

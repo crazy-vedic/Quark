@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"sync"
 	"time"
 
 	"github.com/BurntSushi/toml"
@@ -235,9 +236,16 @@ func Load(configDir string) (Config, error) {
 	return cfg, nil
 }
 
+// saveMu serializes the read-modify-write cycles below. The TUI runs some
+// saves in background commands, so two of them must not interleave and drop
+// each other's changes.
+var saveMu sync.Mutex
+
 // SaveLastRequestID persists the request opened most recently in the TUI,
 // preserving all other config.toml sections and values.
 func SaveLastRequestID(configDir, requestID string) error {
+	saveMu.Lock()
+	defer saveMu.Unlock()
 	if err := os.MkdirAll(configDir, 0o700); err != nil {
 		return err
 	}
@@ -274,6 +282,8 @@ func mergeKeybindings(dst, src keybindings.Keybindings) keybindings.Keybindings 
 // SaveKeybindings writes only the [keybindings] section to configDir/config.toml,
 // preserving all other sections.
 func SaveKeybindings(configDir string, binds keybindings.Keybindings) error {
+	saveMu.Lock()
+	defer saveMu.Unlock()
 	if err := os.MkdirAll(configDir, 0o700); err != nil {
 		return err
 	}
@@ -306,6 +316,8 @@ func SaveKeybindings(configDir string, binds keybindings.Keybindings) error {
 // writes a temporary file before replacement so a failed encode cannot truncate
 // a working configuration containing credentials or keybindings.
 func SaveTheme(configDir, name string) error {
+	saveMu.Lock()
+	defer saveMu.Unlock()
 	if err := os.MkdirAll(configDir, 0o700); err != nil {
 		return err
 	}
@@ -358,6 +370,8 @@ func writeConfigDoc(configDir string, doc map[string]any) error {
 // SaveClientCertificates writes only the HTTP client_certificates setting,
 // preserving all other sections in config.toml.
 func SaveClientCertificates(configDir string, certs []ClientCertificate) error {
+	saveMu.Lock()
+	defer saveMu.Unlock()
 	if err := os.MkdirAll(configDir, 0o700); err != nil {
 		return err
 	}

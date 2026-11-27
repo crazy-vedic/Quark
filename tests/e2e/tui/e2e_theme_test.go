@@ -191,7 +191,9 @@ func TestE2E_ThemePreviewCancelApplyAndRestart(t *testing.T) {
 	require.Equal(t, "auto", saved.UI.Theme, "preview/cancel must not persist a selection")
 
 	openLightPreview()
-	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	m, saveCmd := callUpdateWithCmd(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	// The write runs in a tea.Cmd; the runtime delivers its result to Update.
+	m = callUpdate(t, m, saveCmd())
 	require.Equal(t, tui.NormalMode, m.Mode())
 	check(light)
 	saved, err = config.Load(dir)

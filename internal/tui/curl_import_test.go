@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -198,9 +199,11 @@ func TestImportConfirmationPersistsHeadersBodyAndCertificate(t *testing.T) {
 
 	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	m = requireImportModel(t, updated)
+	require.Equal(t, importMode, m.mode, "the modal stays open until config.toml is written")
+	m, saveCmd := finishConfigSave(t, m, cmd)
 	require.Equal(t, normalMode, m.mode)
-	require.NotNil(t, cmd)
-	cmd()
+	require.NotNil(t, saveCmd)
+	saveCmd()
 
 	require.NotNil(t, writer.request)
 	require.JSONEq(
@@ -229,4 +232,37 @@ func TestImportCancelDoesNotChangeCurrentURL(t *testing.T) {
 	m = requireImportModel(t, updated)
 	require.Equal(t, normalMode, m.mode)
 	require.Equal(t, "https://current.example", m.urlInput.Value())
+}
+
+func TestImportCertificateSaveFailureKeepsModalAndRestoresCertificates(t *testing.T) {
+	writer := &importedRequestWriter{}
+	manager := &importedCertificateManager{}
+	configDir := t.TempDir()
+	// A regular file where the config directory should be makes the config write fail.
+	badConfig := filepath.Join(t.TempDir(), "not-a-directory")
+	require.NoError(t, os.WriteFile(badConfig, []byte("file"), 0o600))
+	m := New(Deps{
+		Writer: writer, Importer: curl.NewImporter(), CertificateManager: manager,
+		Config: config.Default(configDir), ConfigDir: badConfig,
+	})
+	m.importColID = "collection-1"
+	m.importPreview = &curl.ImportResult{
+		Method: http.MethodGet,
+		URL:    "https://example.com/token",
+		Certificate: &curl.CertificateSpec{
+			File: filepath.Join(configDir, "client.p12"), Type: "P12",
+		},
+	}
+	m.mode = importMode
+
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = requireImportModel(t, updated)
+	m, next := finishConfigSave(t, m, cmd)
+	require.Nil(t, next, "no request is saved when the certificate write fails")
+	require.Nil(t, writer.request)
+	require.Equal(t, importMode, m.mode)
+	require.Contains(t, m.importError, "Certificate configuration failed")
+	require.False(t, m.configSaving)
+	require.Empty(t, manager.cfg.HTTP.ClientCertificates,
+		"certificate manager restored to the previous config")
 }

@@ -352,6 +352,10 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.err = fmt.Errorf("load: %w", msg.err)
 		return m, nil
 
+	case configSavedMsg:
+		m.configSaving = false
+		return msg.done(m, msg.err)
+
 	case searchResultsMsg:
 		m.searchResults = msg.hits
 		m.searchCursor = 0
@@ -1507,17 +1511,27 @@ func (m Model) executeSelectedCommand() (tea.Model, tea.Cmd) {
 		if err != nil {
 			return m.status("error", err.Error()), nil
 		}
-		if err := config.SaveTheme(m.configDir, item.ThemeName); err != nil {
-			return m.status("error", fmt.Sprintf("save theme: %v", err)), nil
+		if busy, ok := m.configBusy(); ok {
+			return busy, nil
 		}
-		m.cfg.UI.Theme = item.ThemeName
-		m.themePreviewBase = nil
-		m = m.useTheme(selected)
-		m = m.closeSearch().status("success", "Theme: "+item.ThemeName)
-		if !wasWatching && !theme.IsBuiltin(item.ThemeName) {
-			return m, themeWatchTick()
-		}
-		return m, nil
+		name, dir := item.ThemeName, m.configDir
+		m.configSaving = true
+		return m, saveConfigCmd(
+			func() error { return config.SaveTheme(dir, name) },
+			func(m Model, err error) (Model, tea.Cmd) {
+				if err != nil {
+					return m.status("error", fmt.Sprintf("save theme: %v", err)), nil
+				}
+				m.cfg.UI.Theme = name
+				m.themePreviewBase = nil
+				m = m.useTheme(selected)
+				m = m.closeSearch().status("success", "Theme: "+name)
+				if !wasWatching && !theme.IsBuiltin(name) {
+					return m, themeWatchTick()
+				}
+				return m, nil
+			},
+		)
 	}
 	action := item.Action
 	m = m.closeSearch()
@@ -1788,6 +1802,11 @@ func (m Model) handleHelpSearchKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleHelpKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Keys wait while a keybinding save is pending, so the state machine does
+	// not start a second write from the same state.
+	if busy, ok := m.configBusy(); ok {
+		return busy, nil
+	}
 	// Search is an inline, live filter over the keybinding reference.
 	if m.helpSearch {
 		return m.handleHelpSearchKey(msg)
@@ -1813,43 +1832,49 @@ func (m Model) handleHelpKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
-		// Persist.
-		if err := config.SaveKeybindings(m.configDir, newBinds); err != nil {
-			m.helpEditState = helpError
-			m.helpEditErrMsg = fmt.Sprintf("save failed: %v", err)
-			return m, nil
-		}
-
-		// Update config in model.
-		m.cfg.Keybindings = newBinds
-		// Rebuild resolver.
-		m.resolver = keybindings.NewResolver(newBinds)
-		action := m.helpEditAction
-		m.helpEditState = helpViewing
-		m.helpEditAction = ""
-		if key == "" {
-			m = m.status("success", fmt.Sprintf("Unbound %s", action))
-		} else {
-			m = m.status("success", fmt.Sprintf("Bound %s -> %s", action, key))
-		}
-		return m, nil
+		// Persist, then apply the change in memory once the write succeeds.
+		action, dir := m.helpEditAction, m.configDir
+		m.configSaving = true
+		return m, saveConfigCmd(
+			func() error { return config.SaveKeybindings(dir, newBinds) },
+			func(m Model, err error) (Model, tea.Cmd) {
+				if err != nil {
+					m.helpEditState = helpError
+					m.helpEditErrMsg = fmt.Sprintf("save failed: %v", err)
+					return m, nil
+				}
+				m.cfg.Keybindings = newBinds
+				m.resolver = keybindings.NewResolver(newBinds)
+				m.helpEditState = helpViewing
+				m.helpEditAction = ""
+				if key == "" {
+					return m.status("success", fmt.Sprintf("Unbound %s", action)), nil
+				}
+				return m.status("success", fmt.Sprintf("Bound %s -> %s", action, key)), nil
+			},
+		)
 	}
 
 	if m.helpEditState == helpConfirmResetAll {
 		if msg.Type == tea.KeyEnter {
-			defaults := keybindings.DefaultKeybindings()
-			if err := config.SaveKeybindings(m.configDir, defaults); err != nil {
-				m.helpEditState = helpError
-				m.helpEditErrMsg = fmt.Sprintf("save failed: %v", err)
-				return m, nil
-			}
-			m.cfg.Keybindings = defaults
-			m.resolver = keybindings.NewResolver(defaults)
-			m.helpEditState = helpViewing
-			m.helpCursor = 0
-			m.helpScrollOffset = 0
-			m = m.status("success", "Reset all keybindings to defaults")
-			return m, nil
+			defaults, dir := keybindings.DefaultKeybindings(), m.configDir
+			m.configSaving = true
+			return m, saveConfigCmd(
+				func() error { return config.SaveKeybindings(dir, defaults) },
+				func(m Model, err error) (Model, tea.Cmd) {
+					if err != nil {
+						m.helpEditState = helpError
+						m.helpEditErrMsg = fmt.Sprintf("save failed: %v", err)
+						return m, nil
+					}
+					m.cfg.Keybindings = defaults
+					m.resolver = keybindings.NewResolver(defaults)
+					m.helpEditState = helpViewing
+					m.helpCursor = 0
+					m.helpScrollOffset = 0
+					return m.status("success", "Reset all keybindings to defaults"), nil
+				},
+			)
 		}
 		if action, ok := m.resolver.Resolve(2, 0, msg); ok && action == keybindings.ActionClose {
 			m.helpEditState = helpViewing
@@ -1914,14 +1939,21 @@ func (m Model) handleHelpKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					m.helpEditErrMsg = err.Error()
 					return m, nil
 				}
-				if err := config.SaveKeybindings(m.configDir, newBinds); err != nil {
-					m.helpEditState = helpError
-					m.helpEditErrMsg = fmt.Sprintf("save failed: %v", err)
-					return m, nil
-				}
-				m.cfg.Keybindings = newBinds
-				m.resolver = keybindings.NewResolver(newBinds)
-				m = m.status("success", fmt.Sprintf("Reset %s to %s", action, key))
+				dir := m.configDir
+				m.configSaving = true
+				return m, saveConfigCmd(
+					func() error { return config.SaveKeybindings(dir, newBinds) },
+					func(m Model, err error) (Model, tea.Cmd) {
+						if err != nil {
+							m.helpEditState = helpError
+							m.helpEditErrMsg = fmt.Sprintf("save failed: %v", err)
+							return m, nil
+						}
+						m.cfg.Keybindings = newBinds
+						m.resolver = keybindings.NewResolver(newBinds)
+						return m.status("success", fmt.Sprintf("Reset %s to %s", action, key)), nil
+					},
+				)
 			}
 			return m, nil
 		case "reset_all":
@@ -1989,63 +2021,27 @@ func (m Model) handleImportKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			previousConfig := m.cfg
 			previousCerts := append([]config.ClientCertificate(nil), m.clientCerts...)
-			var saveCmd tea.Cmd
 			if m.importPreview.Certificate != nil {
+				if _, busy := m.configBusy(); busy {
+					m.importError = "Still saving config.toml, try again"
+					return m, nil
+				}
 				var certErr error
-				m, certErr = m.persistImportedCertificate(
+				var certCmd tea.Cmd
+				m, certCmd, certErr = m.persistImportedCertificate(
 					m.importPreview.Certificate,
 					m.importPreview.URL,
+					previousConfig,
+					previousCerts,
 				)
 				if certErr != nil {
 					m.importError = "Certificate configuration failed: " + certErr.Error()
 					m.debugCurl("confirm certificate failed: %v", certErr)
 					return m, nil
 				}
+				return m, certCmd
 			}
-			if m.writer != nil {
-				if m.importColID == "" {
-					m.importError = "No collection available for import. Please create a collection first."
-					m.debugCurl("confirm failed: no collection available")
-					return m, nil
-				}
-				name := strings.TrimSpace(m.importName.Value())
-				if name == "" {
-					name = m.importPreview.URL
-				}
-				headersJSON, err := json.Marshal(m.importPreview.Headers)
-				if err != nil {
-					m.debugCurl("confirm failed marshaling headers: %v", err)
-					return m.status(
-						"error",
-						"Failed to marshal imported headers: "+err.Error(),
-					), nil
-				}
-				req := &domain.Request{
-					CollectionID: m.importColID,
-					Name:         name,
-					Method:       m.importPreview.Method,
-					URL:          m.importPreview.URL,
-					Headers:      string(headersJSON),
-					Body:         m.importPreview.Body,
-				}
-				m.debugCurl(
-					"confirm save name=%q method=%s url=%q header_names=%q body_len=%d",
-					name,
-					req.Method,
-					req.URL,
-					debugHeaderKeys(m.importPreview.Headers),
-					len(req.Body),
-				)
-				saveCmd = saveRequestCmdWithRollback(m.ctx, m.writer, m.reader, req, func() {
-					_ = m.writer.DeleteRequest(m.ctx, req.ID)
-					_ = config.SaveClientCertificates(m.configDir, previousCerts)
-					if m.certificateManager != nil {
-						_ = m.certificateManager.Reload(previousConfig)
-					}
-				})
-			}
-			m.debugCurl("confirm complete")
-			return m.closeImport(), saveCmd
+			return m.confirmImportRequest(previousConfig, previousCerts)
 		case keybindings.ActionCancel:
 			m.debugCurl("cancel")
 			return m.closeImport(), nil
@@ -2085,20 +2081,27 @@ func (m Model) handleImportKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
+// persistImportedCertificate applies a certificate from a cURL import. It
+// updates the certificate manager now and writes config.toml in a tea.Cmd. The
+// command reports back through configSavedMsg. On success that message saves
+// the imported request. On failure it rolls the certificate manager back.
+// The returned error covers only the synchronous checks.
 func (m Model) persistImportedCertificate(
 	spec *curl.CertificateSpec,
 	rawURL string,
-) (Model, error) {
+	previousConfig config.Config,
+	previousCerts []config.ClientCertificate,
+) (Model, tea.Cmd, error) {
 	parsedURL, err := url.Parse(rawURL)
 	if err != nil || parsedURL.Hostname() == "" {
-		return m, fmt.Errorf("cannot determine request hostname")
+		return m, nil, fmt.Errorf("cannot determine request hostname")
 	}
 	certType := strings.ToUpper(strings.TrimSpace(spec.Type))
 	if certType != "" && certType != "P12" && certType != "PEM" {
-		return m, fmt.Errorf("unsupported certificate type %q", certType)
+		return m, nil, fmt.Errorf("unsupported certificate type %q", certType)
 	}
 	if spec.File == "" && spec.CAFile == "" {
-		return m, fmt.Errorf("certificate or CA file is required")
+		return m, nil, fmt.Errorf("certificate or CA file is required")
 	}
 	entry := config.ClientCertificate{
 		Host:     strings.ToLower(parsedURL.Hostname()),
@@ -2124,19 +2127,82 @@ func (m Model) persistImportedCertificate(
 	nextConfig.HTTP.ClientCertificates = next
 	if m.certificateManager != nil {
 		if err := m.certificateManager.Reload(nextConfig); err != nil {
-			return m, err
+			return m, nil, err
 		}
 	}
-	if err := config.SaveClientCertificates(m.configDir, next); err != nil {
-		if m.certificateManager != nil {
-			_ = m.certificateManager.Reload(m.cfg)
+	dir := m.configDir
+	m.configSaving = true
+	return m, saveConfigCmd(
+		func() error { return config.SaveClientCertificates(dir, next) },
+		func(m Model, err error) (Model, tea.Cmd) {
+			if err != nil {
+				if m.certificateManager != nil {
+					_ = m.certificateManager.Reload(m.cfg)
+				}
+				m.importError = "Certificate configuration failed: " + err.Error()
+				m.debugCurl("confirm certificate failed: %v", err)
+				return m, nil
+			}
+			m.cfg = nextConfig
+			m.cacheTextKeys()
+			m.clientCerts = append([]config.ClientCertificate(nil), next...)
+			return m.confirmImportRequest(previousConfig, previousCerts)
+		},
+	), nil
+}
+
+// confirmImportRequest saves the imported request and closes the import modal.
+// previousConfig and previousCerts restore the certificate state if that save
+// fails.
+func (m Model) confirmImportRequest(
+	previousConfig config.Config,
+	previousCerts []config.ClientCertificate,
+) (Model, tea.Cmd) {
+	var saveCmd tea.Cmd
+	if m.writer != nil {
+		if m.importColID == "" {
+			m.importError = "No collection available for import. Please create a collection first."
+			m.debugCurl("confirm failed: no collection available")
+			return m, nil
 		}
-		return m, err
+		name := strings.TrimSpace(m.importName.Value())
+		if name == "" {
+			name = m.importPreview.URL
+		}
+		headersJSON, err := json.Marshal(m.importPreview.Headers)
+		if err != nil {
+			m.debugCurl("confirm failed marshaling headers: %v", err)
+			return m.status(
+				"error",
+				"Failed to marshal imported headers: "+err.Error(),
+			), nil
+		}
+		req := &domain.Request{
+			CollectionID: m.importColID,
+			Name:         name,
+			Method:       m.importPreview.Method,
+			URL:          m.importPreview.URL,
+			Headers:      string(headersJSON),
+			Body:         m.importPreview.Body,
+		}
+		m.debugCurl(
+			"confirm save name=%q method=%s url=%q header_names=%q body_len=%d",
+			name,
+			req.Method,
+			req.URL,
+			debugHeaderKeys(m.importPreview.Headers),
+			len(req.Body),
+		)
+		saveCmd = saveRequestCmdWithRollback(m.ctx, m.writer, m.reader, req, func() {
+			_ = m.writer.DeleteRequest(m.ctx, req.ID)
+			_ = config.SaveClientCertificates(m.configDir, previousCerts)
+			if m.certificateManager != nil {
+				_ = m.certificateManager.Reload(previousConfig)
+			}
+		})
 	}
-	m.cfg = nextConfig
-	m.cacheTextKeys()
-	m.clientCerts = append([]config.ClientCertificate(nil), next...)
-	return m, nil
+	m.debugCurl("confirm complete")
+	return m.closeImport(), saveCmd
 }
 
 // --- HTTP response/error handlers ---

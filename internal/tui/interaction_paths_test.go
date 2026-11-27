@@ -339,14 +339,14 @@ func TestHelpKeyRecordingResetAndErrorBranches(t *testing.T) {
 	m = updatedCertificateModel(t, updated)
 	require.Equal(t, helpRecording, m.helpEditState)
 	m.helpEditAction = "quit"
-	updated, _ = m.handleHelpKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'Z'}})
-	m = updatedCertificateModel(t, updated)
+	updated, cmd := m.handleHelpKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'Z'}})
+	m, _ = finishConfigSave(t, updatedCertificateModel(t, updated), cmd)
 	require.Equal(t, helpViewing, m.helpEditState)
 
 	m.helpEditState = helpRecording
 	m.helpEditAction = "quit"
-	updated, _ = m.handleHelpKey(tea.KeyMsg{Type: tea.KeyBackspace})
-	m = updatedCertificateModel(t, updated)
+	updated, cmd = m.handleHelpKey(tea.KeyMsg{Type: tea.KeyBackspace})
+	m, _ = finishConfigSave(t, updatedCertificateModel(t, updated), cmd)
 	require.Equal(t, helpViewing, m.helpEditState)
 
 	m.helpEditState = helpRecording
@@ -363,16 +363,18 @@ func TestHelpKeyRecordingResetAndErrorBranches(t *testing.T) {
 	m.configDir = badConfig
 	m.helpEditState = helpRecording
 	m.helpEditAction = "help_close"
-	updated, _ = m.handleHelpKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'c'}})
-	require.Equal(t, helpError, updatedCertificateModel(t, updated).helpEditState)
+	updated, cmd = m.handleHelpKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'c'}})
+	m, _ = finishConfigSave(t, updatedCertificateModel(t, updated), cmd)
+	require.Equal(t, helpError, m.helpEditState)
 
 	m.configDir = configDir
 	m.helpEditState = helpConfirmResetAll
 	updated, _ = m.handleHelpKey(tea.KeyMsg{Type: tea.KeyEsc})
 	require.Equal(t, helpViewing, updatedCertificateModel(t, updated).helpEditState)
 	m.helpEditState = helpConfirmResetAll
-	updated, _ = m.handleHelpKey(tea.KeyMsg{Type: tea.KeyEnter})
-	require.Equal(t, helpViewing, updatedCertificateModel(t, updated).helpEditState)
+	updated, cmd = m.handleHelpKey(tea.KeyMsg{Type: tea.KeyEnter})
+	m, _ = finishConfigSave(t, updatedCertificateModel(t, updated), cmd)
+	require.Equal(t, helpViewing, m.helpEditState)
 }
 
 func TestNormalPaneActionBranches(t *testing.T) {

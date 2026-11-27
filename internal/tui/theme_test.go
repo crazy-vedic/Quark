@@ -42,12 +42,13 @@ func TestThemePreviewCancelAndSave(t *testing.T) {
 		t.Fatalf("cancel did not restore theme: %#v", m.theme)
 	}
 	m = selectThemeCommand(t, m, "light")
-	updated, _ := m.executeSelectedCommand()
+	updated, cmd := m.executeSelectedCommand()
 	var ok bool
 	m, ok = updated.(Model)
 	if !ok {
 		t.Fatalf("theme command returned %T, want Model", updated)
 	}
+	m, _ = finishConfigSave(t, m, cmd)
 	if m.theme.Name != "light" || m.mode != normalMode {
 		t.Fatalf("selection not applied: %#v", m.theme)
 	}
