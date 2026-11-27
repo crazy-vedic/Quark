@@ -148,13 +148,14 @@ func DefaultKeybindings() Keybindings {
 		DeleteWord:     "ctrl+w", // alt+backspace is also bound by the editor
 		Paste:          "ctrl+v",
 
-		FindOpen:    "ctrl+f", // cmd+f is also bound by the editor
-		FindNext:    KeyEnter,
-		FindPrev:    KeyShiftEnter, // shift+return and alt+enter are also bound
-		ViewerFind:  "f",
-		ViewerCopy:  "c",
-		ViewerClose: "esc", // tab and shift+tab are also bound
-		HistoryNext: "shift+pgdown",
-		HistoryPrev: "shift+pgup",
+		FindOpen:     "ctrl+f", // cmd+f is also bound by the editor
+		FindNext:     KeyEnter,
+		FindPrev:     KeyShiftEnter, // shift+return and alt+enter are also bound
+		ViewerFind:   "f",
+		ViewerCopy:   "c",
+		ViewerFilter: "|",
+		ViewerClose:  "esc", // tab and shift+tab are also bound
+		HistoryNext:  "shift+pgdown",
+		HistoryPrev:  "shift+pgup",
 	}
 }

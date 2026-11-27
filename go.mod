@@ -11,6 +11,7 @@ require (
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/google/uuid v1.6.0
+	github.com/itchyny/gojq v0.12.20
 	github.com/mattn/go-isatty v0.0.24
 	github.com/spf13/cobra v1.10.2
 	github.com/stretchr/testify v1.12.1
@@ -23,7 +24,10 @@ require (
 
 require github.com/Masterminds/semver/v3 v3.5.0
 
-require go.yaml.in/yaml/v3 v3.0.5 // indirect
+require (
+	github.com/itchyny/timefmt-go v0.1.9 // indirect
+	go.yaml.in/yaml/v3 v3.0.5 // indirect
+)
 
 require (
 	github.com/atotto/clipboard v0.1.4

@@ -281,6 +281,7 @@ type Model struct {
 	viewerFindOpen      bool
 	viewerLastMatch     int
 	viewerMatches       []int
+	viewerFilter        viewerFilterState
 	lastTextClick       time.Time
 	lastTextClickX      int
 	lastTextClickY      int
@@ -355,14 +356,15 @@ type Model struct {
 	authEditor       authEditor
 
 	// --- Text selection state (keyboard and mouse) ---
-	urlSelection         textedit.Selection // selection in URL input
-	bodySelection        textedit.Selection // selection in body textarea
-	bodyView             *bodyViewCache     // last rendered body view; shared by Model copies
-	headerKeySelection   textedit.Selection // selection in header key input
-	headerValueSelection textedit.Selection // selection in header value input
-	searchSelection      textedit.Selection // selection in search input
-	viewerFindSelection  textedit.Selection // selection in viewer find input
-	importInputSelection textedit.Selection // selection in import textarea
+	urlSelection          textedit.Selection // selection in URL input
+	bodySelection         textedit.Selection // selection in body textarea
+	bodyView              *bodyViewCache     // last rendered body view; shared by Model copies
+	headerKeySelection    textedit.Selection // selection in header key input
+	headerValueSelection  textedit.Selection // selection in header value input
+	searchSelection       textedit.Selection // selection in search input
+	viewerFindSelection   textedit.Selection // selection in viewer find input
+	viewerFilterSelection textedit.Selection // selection in viewer filter input
+	importInputSelection  textedit.Selection // selection in import textarea
 
 	// --- Misc ---
 	tmuxDetected    bool
@@ -480,6 +482,10 @@ func New(deps Deps) Model {
 	viewerFind.Placeholder = "find in text..."
 	viewerFind.CharLimit = 256
 
+	viewerFilterInput := textinput.New()
+	viewerFilterInput.Placeholder = "jq expression, e.g. .items[].id"
+	viewerFilterInput.CharLimit = 1024
+
 	importName := textinput.New()
 	importName.Placeholder = "request name"
 	importName.CharLimit = 128
@@ -555,6 +561,7 @@ func New(deps Deps) Model {
 		urlInput:                urlInput,
 		searchInput:             searchInput,
 		viewerFind:              viewerFind,
+		viewerFilter:            viewerFilterState{input: viewerFilterInput},
 		importName:              importName,
 		postmanPath:             postmanPath,
 		importInput:             importTA,

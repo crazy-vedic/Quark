@@ -26,6 +26,7 @@ type pasteTarget struct {
 	auth       int // -1 when not editing; else the auth field cursor
 	env        int // -1 when not editing; else 2*var + 1 if the value input has focus
 	viewerFind bool
+	viewerJQ   bool
 	help       bool
 	prompt     promptType
 	clientCert bool
@@ -54,6 +55,7 @@ type namedWidget struct {
 var textWidgets = [...]namedWidget{
 	{"urlInput", func(m *Model) TextWidget { return &m.urlInput }},
 	{"viewerFind", func(m *Model) TextWidget { return &m.viewerFind }},
+	{"viewerFilter.input", func(m *Model) TextWidget { return &m.viewerFilter.input }},
 	{"searchInput", func(m *Model) TextWidget { return &m.searchInput }},
 	{"importInput", func(m *Model) TextWidget { return &m.importInput }},
 	{"importName", func(m *Model) TextWidget { return &m.importName }},
@@ -107,6 +109,7 @@ func (m Model) pasteTargetOf() pasteTarget {
 		auth:       -1,
 		env:        -1,
 		viewerFind: m.viewerFindOpen,
+		viewerJQ:   m.viewerFilter.open,
 		help:       m.helpSearch,
 		prompt:     m.promptMode,
 		clientCert: m.clientCertEditing,
