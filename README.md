@@ -450,6 +450,21 @@ exits non-zero when any fails, so a saved request can gate a script or CI job.
 Failure messages never print response values, because they are often
 credentials.
 
+### Run a collection as tests
+
+`quark test <collection>` runs every request in a collection, in order: the
+collection's own requests by sort order, then each child collection depth
+first. Extraction rules and assertions apply, so a login request can feed a
+token to the requests after it. A request fails when an assertion fails or when
+it gets no response. The command exits non-zero if any request fails.
+
+```
+quark test API                          # text report
+quark test API --format junit > out.xml # JUnit XML for CI
+quark test API --format tap             # TAP version 13
+quark test API --bail                   # stop at the first failure
+```
+
 ### File-backed request values
 
 In the TUI Body or Headers editor, enter `@path/to/file` as the complete body

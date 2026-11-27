@@ -14,6 +14,7 @@ quark collection create <name>
 quark request list [--collection <id>]
 quark request export-curl <Collection/Request>
 quark run <Collection/Request>
+quark test <collection> [--format text|junit|tap] [--bail]
 quark search <query>
 quark schedule add <Collection/Request> --at <time>
 quark schedule list
@@ -59,7 +60,17 @@ Shell completion available for `--collection` via `CompleteCollectionIDs`.
 quark run <Collection/Request>
 ```
 
-Executes a saved request by path (collection name / request name). Uses `exec.Executor.Execute`. Prints status, headers, body (or temp file path for large bodies).
+Executes a saved request by path (collection name / request name). Uses `exec.Executor.Execute`. Prints status, headers, body (or temp file path for large bodies). Prints `Assert PASS/FAIL` lines and exits non-zero when an assertion fails.
+
+## test
+
+**Source:** `internal/cli/test.go`, `internal/runner/`
+
+```
+quark test <collection> [--format text|junit|tap] [--bail]
+```
+
+Runs every request of a collection in order (own requests by sort order, then child collections depth first) through `runner.Run`, so extraction and assertions apply. Environments are re-read for each request. `--format junit` writes JUnit XML with one testsuite per collection; `tap` writes TAP version 13. `--bail` stops after the first failure. The command exits non-zero when any request fails. The request `enabled` flag is not consulted yet.
 
 ### `quark request export-curl`
 

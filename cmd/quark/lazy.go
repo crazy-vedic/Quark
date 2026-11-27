@@ -222,3 +222,10 @@ func lazyImportPostmanCmd(rt func() (*runtime, error)) *cobra.Command {
 		return cli.NewImportPostmanCmd(r.st, cli.NewDebugLogger(nil))
 	})
 }
+
+func lazyTestCmd(rt func() (*runtime, error)) *cobra.Command {
+	return lazyCommand(
+		rt,
+		func(r *runtime) *cobra.Command { return cli.NewTestCmd(r.st, r.executor) },
+	)
+}
