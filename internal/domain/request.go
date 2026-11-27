@@ -13,6 +13,7 @@ type Request struct {
 	AuthType     string
 	AuthConfig   string // JSON object keyed by auth type needs
 	Body         string
+	Params       string // JSON RequestParams: editor state the URL cannot hold
 	SortOrder    int
 	Enabled      bool
 	CreatedAt    time.Time

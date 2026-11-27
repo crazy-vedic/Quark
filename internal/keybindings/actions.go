@@ -11,6 +11,8 @@ const (
 	ActionSendRequest     = "send_request"
 	ActionEditBody        = "edit_body"
 	ActionEditHeaders     = "edit_headers"
+	ActionEditParams      = "edit_params"
+	ActionTogglePair      = "toggle_pair"
 	ActionEditAuth        = "edit_auth"
 	ActionDeleteRequest   = "delete_request"
 	ActionScheduleRun     = "schedule_run"

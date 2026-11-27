@@ -37,6 +37,7 @@ func DefaultKeybindings() Keybindings {
 		SendRequest:   "s",
 		EditBody:      "b",
 		EditHeaders:   "h",
+		EditParams:    "p",
 		RequestDelete: "d",
 		ExportCurl:    "x",
 		EditAuth:      "a",
@@ -83,6 +84,7 @@ func DefaultKeybindings() Keybindings {
 		HeaderSave:        KeyEnter,
 		HeaderCancel:      "esc",
 		HeaderSwitchField: "ctrl+e",
+		ParamToggle:       "t",
 
 		// Auth editor
 		AuthDown:       "j",

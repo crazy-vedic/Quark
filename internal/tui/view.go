@@ -58,6 +58,7 @@ var helpActionLabels = map[string]string{
 	keybindings.ActionSendRequest:   "send request",
 	keybindings.ActionEditBody:      "edit body",
 	keybindings.ActionEditHeaders:   "edit headers",
+	keybindings.ActionEditParams:    "edit query params",
 	"edit_auth":                     "edit auth",
 	keybindings.ActionScheduleRun:   "schedule request",
 	keybindings.ActionExportCurl:    "copy as curl",
@@ -105,6 +106,7 @@ var helpActionLabels = map[string]string{
 	"header_save":                   "save headers",
 	"header_cancel":                 "cancel header edit",
 	"header_switch_field":           "switch field",
+	"param_toggle":                  "enable/disable query param",
 	"auth_down":                     helpLabelMoveDown,
 	"auth_up":                       helpLabelMoveUp,
 	"auth_edit":                     "edit auth row",
@@ -431,7 +433,7 @@ func (m Model) viewHeadersPreview(w int) string {
 		)
 		preview.WriteString(keyDisplay)
 		preview.WriteString("\n\n")
-		if m.headerKeyInput.Focused() {
+		if m.headerKeyInput.Focused() && m.activeField == headersField {
 			if suggestion := headerNameSuggestion(m.headerKeyInput.Value()); suggestion != "" {
 				preview.WriteString(m.styles.mutedStyle.Render("  Tab → " + suggestion))
 				preview.WriteString("\n")
@@ -592,6 +594,8 @@ func (m Model) viewRequestPane(w, h int) string {
 		content = ""
 	case m.activeField == headersField && m.activeRequest != nil:
 		content = m.viewHeadersPreview(w)
+	case m.activeField == paramsField && m.activeRequest != nil:
+		content = m.viewParamsPreview(w)
 	case m.activeRequest != nil:
 		// The read-only preview is formatted lazily by requestText below.
 		content = ""
@@ -656,6 +660,7 @@ func (m Model) viewRequestPane(w, h int) string {
 			{Label: "send", Actions: []string{keybindings.ActionSendRequest}, IncludeAliases: true},
 			{Label: "body", Actions: []string{keybindings.ActionEditBody}},
 			{Label: "headers", Actions: []string{keybindings.ActionEditHeaders}},
+			{Label: "params", Actions: []string{keybindings.ActionEditParams}},
 			{Label: "auth", Actions: []string{"edit_auth"}},
 			{Label: "env", Actions: []string{keybindings.ActionEnvOpen}},
 			{Label: "cycle env", Actions: []string{"env_prev", "env_next"}},

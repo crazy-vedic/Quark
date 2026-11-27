@@ -34,6 +34,7 @@ type Keybindings struct {
 	SendRequest   string `toml:"send_request"`
 	EditBody      string `toml:"edit_body"`
 	EditHeaders   string `toml:"edit_headers"`
+	EditParams    string `toml:"edit_params"`
 	RequestDelete string `toml:"request_delete"`
 	ExportCurl    string `toml:"export_curl"`
 	EditAuth      string `toml:"edit_auth"`
@@ -80,6 +81,7 @@ type Keybindings struct {
 	HeaderSave        string `toml:"header_save"`
 	HeaderCancel      string `toml:"header_cancel"`
 	HeaderSwitchField string `toml:"header_switch_field"`
+	ParamToggle       string `toml:"param_toggle"`
 
 	// Auth editor
 	AuthDown       string `toml:"auth_down"`
@@ -235,6 +237,7 @@ func NewResolver(binds Keybindings) *Resolver {
 		binds.SendRequest:   ActionSendRequest,
 		binds.EditBody:      ActionEditBody,
 		binds.EditHeaders:   ActionEditHeaders,
+		binds.EditParams:    ActionEditParams,
 		binds.RequestDelete: ActionDeleteRequest,
 		binds.ExportCurl:    ActionExportCurl,
 		binds.EditAuth:      ActionEditAuth,
@@ -322,6 +325,7 @@ func NewResolver(binds Keybindings) *Resolver {
 		binds.HeaderSave:        "save",
 		binds.HeaderCancel:      ActionCancel,
 		binds.HeaderSwitchField: "switch_field",
+		binds.ParamToggle:       ActionTogglePair,
 	}
 	addAlias(header, "down", ActionNavigateDown)
 	addAlias(header, "up", ActionNavigateUp)
@@ -503,6 +507,7 @@ func Validate(binds Keybindings) map[string][]string {
 		{{binds.EditURL, ActionEditURL}, {binds.MethodNext, ActionMethodNext},
 			{binds.MethodPrev, ActionMethodPrev}, {binds.SendRequest, ActionSendRequest},
 			{binds.EditBody, ActionEditBody}, {binds.EditHeaders, ActionEditHeaders},
+			{binds.EditParams, ActionEditParams},
 			{binds.RequestDelete, ActionDeleteRequest},
 			{binds.EditAuth, ActionEditAuth}, {binds.ScheduleRun, ActionScheduleRun},
 			{binds.ExportCurl, ActionExportCurl}},
@@ -526,7 +531,8 @@ func Validate(binds Keybindings) map[string][]string {
 			{binds.HeaderAdd, "header_add"}, {binds.HeaderDelete, "header_delete"},
 			{binds.HeaderEdit, "header_edit"}, {binds.HeaderSave, "header_save"},
 			{binds.HeaderCancel, "header_cancel"},
-			{binds.HeaderSwitchField, "header_switch_field"}},
+			{binds.HeaderSwitchField, "header_switch_field"},
+			{binds.ParamToggle, "param_toggle"}},
 		{{binds.EnvSave, "env_save"}, {binds.EnvCancel, "env_cancel"},
 			{binds.EnvCreate, "env_create"}, {binds.EnvTabNext, "env_tab_next"},
 			{binds.EnvTabPrev, "env_tab_prev"}, {binds.EnvDown, "env_down"},

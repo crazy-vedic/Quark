@@ -59,7 +59,7 @@ func (m Model) requestPaneLineLayout(layout normalLayout) requestPaneLineLayout 
 		editorContentH: max(1, content.bottom-2-(content.top+topLines)),
 	}
 
-	if m.activeField == headersField && m.headerEditing {
+	if m.pairEditorActive() && m.headerEditing {
 		ll.headerKeyInputY = ll.editorContentY + 1
 		ll.headerValInputY = ll.editorContentY + 4
 	}

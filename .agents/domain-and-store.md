@@ -15,6 +15,7 @@ type Request struct {
     AuthType                 string
     AuthConfig               string  // JSON AuthConfig
     Body                     string
+    Params                   string  // JSON RequestParams: disabled query params (see request_params.go)
     SortOrder                int
     Enabled                  bool
     CreatedAt, UpdatedAt     time.Time
@@ -139,8 +140,12 @@ Config directory and backup files use restrictive permissions (`0700` dir, `0600
 | 4 | `add_executions` | `executions` table |
 | 5 | `add_request_auth` | `auth_type`, `auth_config` columns on requests |
 | 6 | `add_scheduled_runs` | `scheduled_runs` table |
+| 7 | `repair_empty_request_ids` | repairs empty request ids |
+| 8 | `nested_collections` | `parent_id` on collections |
+| 9 | `canonical_global_environment` | canonical global environment row |
+| 10 | `add_request_params` | `params` column on requests (may need renumbering at merge) |
 
-Migrations are idempotent and applied in transactions. To add schema changes: append a new `migration{version: 7, ...}` entry.
+Migrations are idempotent and applied in transactions. To add schema changes: append a new `migration{version: 11, ...}` entry.
 
 ### Key Store Files
 

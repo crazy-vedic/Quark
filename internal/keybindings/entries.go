@@ -56,6 +56,7 @@ var groups = []struct {
 			ActionExportCurl,
 			ActionEditBody,
 			ActionEditHeaders,
+			ActionEditParams,
 			ActionDeleteRequest,
 			"edit_auth",
 		},
@@ -66,6 +67,7 @@ var groups = []struct {
 	{"Header Editor", []string{
 		"header_down", "header_up", "header_add", "header_delete",
 		"header_edit", "header_save", "header_cancel", "header_switch_field",
+		"param_toggle",
 	}},
 	{"Auth Editor", []string{
 		"auth_down", "auth_up", "auth_edit", "auth_save",
