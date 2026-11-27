@@ -202,6 +202,13 @@ ON collections(COALESCE(parent_id, ''), name);
 		version: 9,
 		name:    "canonical_global_environment",
 	},
+	{
+		// A request with no collection is a scratch request. Its collection_id
+		// is NULL, the same way Global environments have no collection. The
+		// table is rebuilt because SQLite cannot drop NOT NULL in place.
+		version: 10,
+		name:    "scratch_requests",
+	},
 }
 
 // migrate runs all pending migrations in order.
@@ -318,6 +325,9 @@ func (s *Store) applyMigration(m migration) error {
 	}
 	if m.version == 9 {
 		return s.applyCanonicalGlobalEnvironmentMigration(m)
+	}
+	if m.version == 10 {
+		return s.applyScratchRequestsMigration(m)
 	}
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -652,4 +662,65 @@ func (s *Store) ensureEnvSetup(ctx context.Context) error {
 		return err
 	}
 	return nil
+}
+
+// applyScratchRequestsMigration rebuilds requests so collection_id may be NULL.
+// Every existing row keeps its ID, so executions and scheduled runs that refer
+// to it still match. Foreign keys are off during the rebuild, so dropping the
+// old table does not cascade into those child tables.
+func (s *Store) applyScratchRequestsMigration(m migration) (err error) {
+	if _, err := s.db.Exec(
+		`PRAGMA foreign_keys = OFF; PRAGMA legacy_alter_table = ON`,
+	); err != nil {
+		return err
+	}
+	defer func() {
+		_, restoreErr := s.db.Exec(`PRAGMA legacy_alter_table = OFF; PRAGMA foreign_keys = ON`)
+		if err == nil && restoreErr != nil {
+			err = restoreErr
+		}
+	}()
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	statements := []string{
+		`CREATE TABLE requests_rebuilt (
+    id            TEXT PRIMARY KEY,
+    collection_id TEXT REFERENCES collections(id) ON DELETE CASCADE,
+    name          TEXT NOT NULL,
+    method        TEXT NOT NULL CHECK(method IN ('GET','POST','PUT','DELETE','PATCH','HEAD','OPTIONS')),
+    url           TEXT NOT NULL,
+    headers       TEXT DEFAULT '{}',
+    body          TEXT,
+    sort_order    INTEGER DEFAULT 0,
+    enabled       BOOLEAN DEFAULT 1,
+    created_at    DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at    DATETIME DEFAULT CURRENT_TIMESTAMP,
+    auth_type     TEXT NOT NULL DEFAULT '',
+    auth_config   TEXT NOT NULL DEFAULT '{}',
+    UNIQUE(collection_id, name)
+)`,
+		`INSERT INTO requests_rebuilt
+    (id, collection_id, name, method, url, headers, body, sort_order, enabled,
+     created_at, updated_at, auth_type, auth_config)
+ SELECT id, collection_id, name, method, url, headers, body, sort_order, enabled,
+     created_at, updated_at, auth_type, auth_config
+ FROM requests`,
+		`DROP TABLE requests`,
+		`ALTER TABLE requests_rebuilt RENAME TO requests`,
+		`CREATE INDEX idx_requests_collection ON requests(collection_id, sort_order)`,
+		// NULL never equals NULL in UNIQUE(collection_id, name), so scratch names
+		// need their own index.
+		`CREATE UNIQUE INDEX idx_requests_scratch_name ON requests(name) WHERE collection_id IS NULL`,
+		`INSERT INTO schema_versions (version) VALUES (` + fmt.Sprint(m.version) + `)`,
+	}
+	for _, stmt := range statements {
+		if _, err := tx.Exec(stmt); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }

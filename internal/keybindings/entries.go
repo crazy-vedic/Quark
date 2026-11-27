@@ -57,6 +57,7 @@ var groups = []struct {
 			ActionEditBody,
 			ActionEditHeaders,
 			ActionDeleteRequest,
+			ActionMoveRequest,
 			"edit_auth",
 		},
 	},

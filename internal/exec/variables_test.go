@@ -833,3 +833,18 @@ func TestErrUnresolvedVariable_ErrorIs(t *testing.T) {
 	err := fmt.Errorf("interpolate: %w: %q", exec.ErrUnresolvedVariable, "host")
 	assert.True(t, errors.Is(err, exec.ErrUnresolvedVariable))
 }
+
+// A scratch request has no collection. Only Global applies, and no collection
+// environment is read.
+func TestResolveEnvVars_ScratchUsesOnlyGlobal(t *testing.T) {
+	r := newHierarchyResolver()
+	r.addCollection("root", "", testEnvironment(
+		"root-default", "root", "default", map[string]string{"shared": "collection"},
+	))
+	r.global.SetVars(map[string]string{"shared": "global", "only-global": "yes"})
+
+	colEnv, globalEnv, err := exec.ResolveEnvVars(context.Background(), r, "")
+	require.NoError(t, err)
+	assert.Empty(t, colEnv)
+	assert.Equal(t, map[string]string{"shared": "global", "only-global": "yes"}, globalEnv)
+}

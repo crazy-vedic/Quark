@@ -176,3 +176,26 @@ func (m Model) finishAuthEdit() Model {
 	m.authEditor = authEditor{}
 	return m.status("success", "Auth updated")
 }
+
+// selectedStoredRequest returns the saved request the user is acting on: the
+// sidebar selection when the sidebar has focus, otherwise the active request.
+func (m Model) selectedStoredRequest() *domain.Request {
+	if m.focus == sidebarPane && m.reqCursor >= 0 {
+		colID := m.activeCollectionID()
+		if requests := m.collectionRequests[colID]; m.reqCursor < len(requests) {
+			return requests[m.reqCursor]
+		}
+		return nil
+	}
+	return m.activeRequest
+}
+
+// collectionNamed returns the collection with exactly this name, or nil.
+func (m Model) collectionNamed(name string) *domain.Collection {
+	for _, col := range m.collections {
+		if col != nil && col.Name == name {
+			return col
+		}
+	}
+	return nil
+}

@@ -240,7 +240,8 @@ func TestStore_SaveRequest_GeneratesIDWhenEmpty(t *testing.T) {
 	assert.Len(t, reqs, 2, "both requests should persist without overwriting")
 }
 
-func TestStore_SaveRequest_EmptyCollectionIDReturnsError(t *testing.T) {
+// An empty collection ID is a scratch request, not an error. See requests_test.go.
+func TestStore_SaveRequest_EmptyCollectionIDSavesScratchRequest(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
 
@@ -250,9 +251,11 @@ func TestStore_SaveRequest_EmptyCollectionIDReturnsError(t *testing.T) {
 		Method: "GET",
 		URL:    "http://example.com",
 	}
-	err := s.SaveRequest(ctx, req)
-	assert.Error(t, err)
-	assert.ErrorIs(t, err, store.ErrCollectionRequired)
+	require.NoError(t, s.SaveRequest(ctx, req))
+
+	got, err := s.GetRequest(ctx, req.ID)
+	require.NoError(t, err)
+	assert.Empty(t, got.CollectionID)
 }
 
 func TestStore_SaveRequest_NonExistentCollectionIDReturnsError(t *testing.T) {

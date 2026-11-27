@@ -13,6 +13,7 @@ const (
 	ActionEditHeaders     = "edit_headers"
 	ActionEditAuth        = "edit_auth"
 	ActionDeleteRequest   = "delete_request"
+	ActionMoveRequest     = "move_request"
 	ActionScheduleRun     = "schedule_run"
 	ActionEnvOpen         = "env_open"
 	ActionEnvNext         = "env_next"

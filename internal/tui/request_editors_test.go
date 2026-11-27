@@ -18,6 +18,7 @@ import (
 	"github.com/crazy-vedic/quark/internal/store"
 	"github.com/crazy-vedic/quark/internal/tui"
 	"github.com/crazy-vedic/quark/internal/tui/textedit"
+	"github.com/crazy-vedic/quark/internal/tuitest"
 )
 
 func TestRequestEditors_HeaderKeyOpensHeaderEditor(t *testing.T) {
@@ -146,4 +147,93 @@ func TestHeaderEditorRendersHeaderNotURL(t *testing.T) {
 	out := m.View()
 	assert.Contains(t, out, "Zzz-Custom", "header key shows in the header editor")
 	assert.Contains(t, out, "value-here", "header value shows in the header editor")
+}
+
+func TestScratchRequests_CreateFromSidebarSection(t *testing.T) {
+	col := &domain.Collection{Name: "API"}
+	st := tuitest.SetupStore(t, col)
+	m := tuitest.NewModel(t, st, &tuitest.MockExecutor{})
+	m = callUpdate(t, m, tea.WindowSizeMsg{Width: 100, Height: 30})
+	m = callUpdate(t, m, tui.CollectionsLoadedMsg([]*domain.Collection{col}))
+	assert.Contains(t, m.View(), "Scratch", "the scratch section is listed in the sidebar")
+
+	m = m.WithFocus(tui.SidebarPane).WithColCursor(1)
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
+	require.Equal(t, tui.PromptAddRequest, m.PromptMode())
+	m = m.WithPromptInputValue("loose")
+	m, cmd := callUpdateWithCmd(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	require.NotNil(t, cmd)
+	_ = callUpdate(t, m, cmd())
+
+	list, err := st.ListRequests(context.Background(), "")
+	require.NoError(t, err)
+	require.Len(t, list, 1)
+	assert.Equal(t, "loose", list[0].Name)
+	assert.Empty(t, list[0].CollectionID)
+}
+
+func TestScratchRequests_MoveToAndFromCollection(t *testing.T) {
+	col := &domain.Collection{Name: "API"}
+	st := tuitest.SetupStore(t, col)
+	req := &domain.Request{Name: "Ping", Method: "GET", URL: "https://example.com"}
+	tuitest.SeedRequests(t, st, col.ID, req)
+	ctx := context.Background()
+
+	m := tuitest.NewModel(t, st, &tuitest.MockExecutor{})
+	m = callUpdate(t, m, tea.WindowSizeMsg{Width: 100, Height: 30})
+	m = callUpdate(t, m, tui.CollectionsLoadedMsg([]*domain.Collection{col}))
+	m = callUpdate(t, m, tui.RequestsLoadedMsg(col.ID, []*domain.Request{req}))
+	m = m.WithActiveRequest(req).WithFocus(tui.RequestPane)
+
+	// Blank input moves the request out of its collection.
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("v")})
+	require.Equal(t, tui.PromptMoveRequest, m.PromptMode())
+	m, cmd := callUpdateWithCmd(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	require.NotNil(t, cmd)
+	m = callUpdate(t, m, cmd())
+	assert.Equal(t, tui.NormalMode, m.Mode(), "the prompt closes after the move")
+	assert.Contains(t, m.StatusSuccess(), `Moved "Ping" to no collection`)
+	got, err := st.GetRequest(ctx, req.ID)
+	require.NoError(t, err)
+	assert.Empty(t, got.CollectionID)
+	inCol, err := st.ListRequests(ctx, col.ID)
+	require.NoError(t, err)
+	assert.Empty(t, inCol)
+
+	// A collection name files the request back into that collection.
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("v")})
+	m = m.WithPromptInputValue("API")
+	m, cmd = callUpdateWithCmd(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	require.NotNil(t, cmd)
+	m = callUpdate(t, m, cmd())
+	assert.Contains(t, m.StatusSuccess(), `Moved "Ping" to "API"`)
+	got, err = st.GetRequest(ctx, req.ID)
+	require.NoError(t, err)
+	assert.Equal(t, col.ID, got.CollectionID)
+}
+
+func TestScratchRequests_MoveRejectsUnknownCollection(t *testing.T) {
+	req := &domain.Request{ID: "r1", Name: "Ping", Method: "GET", URL: "https://example.com"}
+	m := newModel(defaultConfig()).WithFocus(tui.RequestPane).WithActiveRequest(req)
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("v")})
+	m = m.WithPromptInputValue("Nope")
+	m, cmd := callUpdateWithCmd(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	assert.Nil(t, cmd)
+	assert.Equal(t, `No collection named "Nope"`, m.StatusErr())
+}
+
+func TestScratchRequests_SendUsesGlobalOnly(t *testing.T) {
+	st := tuitest.SetupStore(t)
+	ctx := context.Background()
+	req := &domain.Request{Name: "loose", Method: "GET", URL: "https://example.com/ping"}
+	require.NoError(t, st.SaveRequest(ctx, req))
+
+	m := tuitest.NewModel(t, st, &tuitest.MockExecutor{})
+	m = callUpdate(t, m, tea.WindowSizeMsg{Width: 100, Height: 30})
+	m = m.WithActiveRequest(req).WithFocus(tui.RequestPane)
+	m, cmd := callUpdateWithCmd(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("s")})
+	require.NotNil(t, cmd, "a scratch request can be sent")
+	m = callUpdate(t, m, cmd())
+	assert.Empty(t, m.StatusErr(), "sending does not fail on the missing collection")
+	require.NotNil(t, m.Response())
 }

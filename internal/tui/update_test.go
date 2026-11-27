@@ -454,8 +454,11 @@ func TestUpdate_SidebarJ_ClampedAtEnd(t *testing.T) {
 		WithFocus(tui.SidebarPane).
 		WithColCursor(0)
 
+	// The scratch section is the last sidebar row, at index 1.
 	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
-	assert.Equal(t, 0, m.ColCursor(), "cursor must not exceed collection count")
+	assert.Equal(t, 1, m.ColCursor(), "cursor moves onto the scratch section")
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
+	assert.Equal(t, 1, m.ColCursor(), "cursor must not go past the last sidebar row")
 }
 
 func TestUpdate_SidebarK_MovesCursorUp(t *testing.T) {

@@ -638,6 +638,10 @@ func (m Model) activeEnvName() string {
 	if colID == "" || m.envReader == nil {
 		return ""
 	}
+	if m.activeRequest != nil && m.activeRequest.ID != "" && m.activeRequest.CollectionID == "" {
+		// A scratch request sends with Global only, so no collection env applies.
+		return ""
+	}
 
 	// Return cached value if still valid.
 	if name, ok := m.envNameCache.get(colID); ok {

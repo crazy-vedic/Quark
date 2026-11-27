@@ -21,7 +21,7 @@ type Request struct {
 }
 ```
 
-Unique constraint: `(collection_id, name)`.
+Unique constraint: `(collection_id, name)`. A request with an empty `CollectionID` is a scratch request: stored with `collection_id` NULL (migration v10), listed by `ListRequests("")`, and unique among scratch requests by a partial index on `name`. `ResolveRequestPath` skips scratch requests.
 
 ### Collection (`collection.go`)
 

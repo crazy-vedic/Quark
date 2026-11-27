@@ -15,8 +15,8 @@ import (
 // Returns nil, ErrNotFound if no request exists.
 func (s *Store) GetRequest(ctx context.Context, id string) (*domain.Request, error) {
 	row := s.db.QueryRowContext(ctx,
-		`SELECT id, collection_id, name, method, url, headers, auth_type, auth_config, body,
-		        sort_order, enabled, created_at, updated_at
+		`SELECT id, COALESCE(collection_id, ''), name, method, url, headers,
+		        auth_type, auth_config, body, sort_order, enabled, created_at, updated_at
 		 FROM requests WHERE id = ?`, id)
 
 	r := &domain.Request{}
@@ -36,25 +36,33 @@ func (s *Store) GetRequest(ctx context.Context, id string) (*domain.Request, err
 
 // ListRequests returns all requests in a collection ordered by
 // sort_order ASC, created_at ASC, id ASC (deterministic tiebreaker).
+// The empty collectionID lists the scratch requests, which belong to no
+// collection.
 // Returns nil, nil when the collection exists but has no requests.
 // Returns nil, ErrNotFound if collectionID does not exist.
 func (s *Store) ListRequests(ctx context.Context, collectionID string) ([]*domain.Request, error) {
-	// First confirm the collection exists.
-	var exists int
-	row := s.db.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM collections WHERE id = ?`, collectionID)
-	if err := row.Scan(&exists); err != nil {
-		return nil, fmt.Errorf("store: list requests check collection %q: %w", collectionID, err)
-	}
-	if exists == 0 {
-		return nil, fmt.Errorf("store: list requests: collection %q: %w", collectionID, ErrNotFound)
+	if collectionID != "" {
+		// First confirm the collection exists.
+		var exists int
+		row := s.db.QueryRowContext(ctx,
+			`SELECT COUNT(*) FROM collections WHERE id = ?`, collectionID)
+		if err := row.Scan(&exists); err != nil {
+			return nil, fmt.Errorf(
+				"store: list requests check collection %q: %w", collectionID, err,
+			)
+		}
+		if exists == 0 {
+			return nil, fmt.Errorf(
+				"store: list requests: collection %q: %w", collectionID, ErrNotFound,
+			)
+		}
 	}
 
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, collection_id, name, method, url, headers, auth_type, auth_config, body,
-		        sort_order, enabled, created_at, updated_at
+		`SELECT id, COALESCE(collection_id, ''), name, method, url, headers,
+		        auth_type, auth_config, body, sort_order, enabled, created_at, updated_at
 		 FROM requests
-		 WHERE collection_id = ?
+		 WHERE COALESCE(collection_id, '') = ?
 		 ORDER BY sort_order ASC, created_at ASC, id ASC`, collectionID)
 	if err != nil {
 		return nil, fmt.Errorf("store: list requests for collection %q: %w", collectionID, err)
@@ -84,24 +92,23 @@ func (s *Store) ListRequests(ctx context.Context, collectionID string) ([]*domai
 	return result, nil
 }
 
-// SaveRequest inserts or updates a request.
-// Returns ErrCollectionRequired if CollectionID is empty.
-// Returns ErrCollectionNotFound if the collection does not exist.
+// SaveRequest inserts or updates a request. An empty CollectionID saves a
+// scratch request, which belongs to no collection. Setting CollectionID on an
+// existing request moves it.
+// Returns ErrCollectionNotFound if a non-empty CollectionID does not exist.
 func (s *Store) SaveRequest(ctx context.Context, req *domain.Request) error {
-	if req.CollectionID == "" {
-		return fmt.Errorf("store: save request: %w", ErrCollectionRequired)
-	}
-
-	// Verify collection exists
-	var exists int
-	row := s.db.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM collections WHERE id = ?`, req.CollectionID)
-	if err := row.Scan(&exists); err != nil {
-		return fmt.Errorf("store: save request %q: check collection: %w", req.ID, err)
-	}
-	if exists == 0 {
-		err := fmt.Errorf("collection %q: %w", req.CollectionID, ErrCollectionNotFound)
-		return fmt.Errorf("store: save request %q: %w", req.ID, err)
+	if req.CollectionID != "" {
+		// Verify collection exists
+		var exists int
+		row := s.db.QueryRowContext(ctx,
+			`SELECT COUNT(*) FROM collections WHERE id = ?`, req.CollectionID)
+		if err := row.Scan(&exists); err != nil {
+			return fmt.Errorf("store: save request %q: check collection: %w", req.ID, err)
+		}
+		if exists == 0 {
+			err := fmt.Errorf("collection %q: %w", req.CollectionID, ErrCollectionNotFound)
+			return fmt.Errorf("store: save request %q: %w", req.ID, err)
+		}
 	}
 
 	if req.ID == "" {
@@ -133,7 +140,7 @@ func (s *Store) SaveRequest(ctx context.Context, req *domain.Request) error {
 		   enabled=excluded.enabled,
 		   updated_at=CURRENT_TIMESTAMP`,
 		req.ID,
-		req.CollectionID,
+		collectionArg(req.CollectionID),
 		req.Name,
 		req.Method,
 		req.URL,
@@ -176,4 +183,13 @@ func (s *Store) DeleteRequest(ctx context.Context, id string) error {
 		return fmt.Errorf("store: delete request %q: %w", id, ErrNotFound)
 	}
 	return nil
+}
+
+// collectionArg stores the empty collection ID as NULL, which marks a scratch
+// request.
+func collectionArg(id string) any {
+	if id == "" {
+		return nil
+	}
+	return id
 }
