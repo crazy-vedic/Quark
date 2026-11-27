@@ -157,7 +157,7 @@ JSON formatting preserves the existing indent style (2-space, 4-space, tabs) and
 ## Features
 
 - **Local SQLite** — `~/.quark/quark.db`, WAL mode, no network
-- **Collections & requests** — Organise, sort, enable/disable
+- **Collections & requests** — Organise and sort. Press `c` on a request to duplicate it as "<name> copy" (then "<name> copy 2", ...), keeping its method, URL, headers, auth and body
 - **Import** — cURL and Postman Collection v2.1 from the CLI or TUI
 - **Response preview** — Syntax-highlighted JSON, streaming for large bodies
 - **Themes** — Terminal-aware dark and light palettes, local custom themes, live preview and reload
