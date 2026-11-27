@@ -15,6 +15,7 @@ type Keybindings struct {
 	PaneNext      string `toml:"pane_next"`
 	PanePrev      string `toml:"pane_prev"`
 	ImportCurl    string `toml:"import_curl"`
+	JumpMode      string `toml:"jump_mode"`
 
 	// Sidebar
 	SidebarDown          string `toml:"sidebar_down"`
@@ -201,6 +202,7 @@ func NewResolver(binds Keybindings) *Resolver {
 		binds.PaneNext:      "pane_next",
 		binds.PanePrev:      "pane_prev",
 		binds.ImportCurl:    ActionImportCurl,
+		binds.JumpMode:      ActionJumpMode,
 		binds.EnvOpen:       ActionEnvOpen,
 		binds.ClientCerts:   ActionClientCerts,
 		binds.EnvNext:       ActionEnvNext,
@@ -482,6 +484,7 @@ func Validate(binds Keybindings) map[string][]string {
 		{binds.FocusSidebar, ActionFocusSidebar}, {binds.FocusRequest, ActionFocusRequest},
 		{binds.FocusResponse, ActionFocusResponse}, {binds.PaneNext, "pane_next"},
 		{binds.PanePrev, "pane_prev"}, {binds.ImportCurl, ActionImportCurl},
+		{binds.JumpMode, ActionJumpMode},
 		{binds.ClientCerts, ActionClientCerts},
 	}
 	modes := [][]binding{

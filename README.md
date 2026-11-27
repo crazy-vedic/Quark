@@ -162,6 +162,7 @@ JSON formatting preserves the existing indent style (2-space, 4-space, tabs) and
 - **Response preview** — Syntax-highlighted JSON, streaming for large bodies
 - **Themes** — Terminal-aware dark and light palettes, local custom themes, live preview and reload
 - **Fuzzy search** — `/` to search across everything
+- **Jump mode** — `g` labels the panes, URL, body, response tabs and sidebar rows; type a label to focus it, `esc` cancels. The key is `jump_mode` in `[keybindings]`
 - **Auto-backup** — Last 10 backups in `~/.quark/backup/`
 - **Signal-aware** — SIGINT cancels in-flight, restores terminal
 - **Scheduling** — Persist due times with `quark schedule add`; Quark is **not** a background daemon. Runs fire when you invoke `quark schedule run-due` (cron/systemd/CI) or while the TUI is open (in-app timer)

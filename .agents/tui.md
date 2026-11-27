@@ -37,7 +37,7 @@ The TUI model holds:
 
 - **Navigation:** selected collection, request, sidebar scroll offset
 - **Panes:** sidebar (collections/requests), request editor, response viewer
-- **Modes:** normal, search, help, import, env, schedule, auth editing
+- **Modes:** normal, search, help, import, env, schedule, auth editing, jump (labels on focus targets from `jump_mode.go`; state in `Model.jump`, targets computed when the mode opens)
 - **Execution state:** in-flight request, last result, temp file path
 - **UI state:** error messages, tmux warning flag, search query/results
 

@@ -53,6 +53,7 @@ const (
 	scheduleMode
 	clientCertMode
 	postmanImportMode
+	jumpMode
 )
 
 // promptType identifies which collection prompt is active.
@@ -281,6 +282,7 @@ type Model struct {
 	viewerFindOpen      bool
 	viewerLastMatch     int
 	viewerMatches       []int
+	jump                jumpState
 	lastTextClick       time.Time
 	lastTextClickX      int
 	lastTextClickY      int
