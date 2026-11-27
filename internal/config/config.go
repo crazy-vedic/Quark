@@ -22,7 +22,6 @@ import (
 type Config struct {
 	UI          UI          `toml:"ui"`
 	HTTP        HTTP        `toml:"http"`
-	Logging     Logging     `toml:"logging"`
 	Backup      Backup      `toml:"backup"`
 	Updates     Updates     `toml:"updates"`
 	Format      Format      `toml:"format"`
@@ -62,13 +61,6 @@ type ClientCertificate struct {
 	PasswordEnv string `toml:"password_env,omitempty"`
 }
 
-// Logging configures the application log.
-type Logging struct {
-	Level   string `toml:"level"` // debug | info | warn | error
-	File    string `toml:"file"`
-	MaxSize string `toml:"max_size"`
-}
-
 // Backup configures auto-backup behaviour.
 type Backup struct {
 	AutoBackup bool `toml:"auto_backup"`
@@ -81,7 +73,6 @@ type Updates struct {
 	CheckInterval     duration `toml:"check_interval"`
 	RetryAfterFailure duration `toml:"retry_after_failure"`
 	Timeout           duration `toml:"timeout"`
-	AutoApply         bool     `toml:"auto_apply"` // Deferred: only applies to brew/winget channels
 }
 
 // Format configures formatting behavior for request bodies.
@@ -116,11 +107,6 @@ func Default(configDir string) Config {
 			FollowRedirects: true,
 			MaxRedirects:    10,
 		},
-		Logging: Logging{
-			Level:   "info",
-			File:    filepath.Join(configDir, "quark.log"),
-			MaxSize: "10MB",
-		},
 		Backup: Backup{
 			AutoBackup: true,
 			KeepLast:   10,
@@ -130,7 +116,6 @@ func Default(configDir string) Config {
 			CheckInterval:     duration{12 * time.Hour},
 			RetryAfterFailure: duration{1 * time.Hour},
 			Timeout:           duration{10 * time.Second},
-			AutoApply:         false,
 		},
 		Format: Format{
 			JSONOnSave: true,
@@ -185,12 +170,6 @@ func Load(configDir string) (Config, error) {
 	if md.IsDefined("http", "client_certificates") {
 		cfg.HTTP.ClientCertificates = override.HTTP.ClientCertificates
 	}
-	if md.IsDefined("logging", "level") {
-		cfg.Logging.Level = override.Logging.Level
-	}
-	if md.IsDefined("logging", "file") {
-		cfg.Logging.File = override.Logging.File
-	}
 	if md.IsDefined("backup", "auto_backup") {
 		cfg.Backup.AutoBackup = override.Backup.AutoBackup
 	}
@@ -208,9 +187,6 @@ func Load(configDir string) (Config, error) {
 	}
 	if md.IsDefined("updates", "timeout") {
 		cfg.Updates.Timeout = override.Updates.Timeout
-	}
-	if md.IsDefined("updates", "auto_apply") {
-		cfg.Updates.AutoApply = override.Updates.AutoApply
 	}
 	if md.IsDefined("format", "json_on_save") {
 		cfg.Format.JSONOnSave = override.Format.JSONOnSave

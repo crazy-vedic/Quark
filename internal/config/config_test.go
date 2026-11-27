@@ -24,7 +24,6 @@ func TestDefault_HasSensibleValues(t *testing.T) {
 	assert.True(t, cfg.HTTP.FollowRedirects)
 	assert.Equal(t, 10, cfg.Backup.KeepLast)
 	assert.True(t, cfg.Backup.AutoBackup)
-	assert.Equal(t, filepath.Join(dir, "quark.log"), cfg.Logging.File)
 	assert.True(t, cfg.Format.JSONOnSave, "json_on_save defaults to true")
 }
 
@@ -62,6 +61,35 @@ keep_last = 5
 	assert.Equal(t, "POST", cfg.UI.DefaultMethod)
 	assert.Equal(t, 60*time.Second, cfg.Timeout())
 	assert.Equal(t, 5, cfg.Backup.KeepLast)
+}
+
+// Keys removed from the config schema must not stop an existing config.toml
+// from loading: old [logging] and updates.auto_apply entries are ignored.
+func TestLoad_RemovedKeysStillLoad(t *testing.T) {
+	dir := t.TempDir()
+
+	content := `
+[logging]
+level = "debug"
+file = "/tmp/old.log"
+max_size = "1MB"
+
+[updates]
+check = false
+auto_apply = true
+
+[ui]
+theme = "dark"
+`
+	require.NoError(t, os.WriteFile(
+		filepath.Join(dir, "config.toml"),
+		[]byte(content), 0o600,
+	))
+
+	cfg, err := config.Load(dir)
+	require.NoError(t, err)
+	assert.Equal(t, "dark", cfg.UI.Theme)
+	assert.False(t, cfg.Updates.Check)
 }
 
 func TestLastRequestID_RoundTripsWithoutReplacingConfig(t *testing.T) {

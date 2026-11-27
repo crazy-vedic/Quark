@@ -15,7 +15,6 @@ Created with mode `0700` (owner-only) because it holds credentials.
 ├── config.toml       # Optional user configuration
 ├── themes/           # Optional custom theme TOML files
 ├── quark.db          # SQLite database (WAL mode)
-├── quark.log         # Application log (default path)
 └── backup/           # Auto-backup copies of quark.db
     └── quark.db.YYYY-MM-DD-NNN
 ```
@@ -45,14 +44,6 @@ Loaded with merge semantics: only explicitly-set TOML fields override defaults (
 | `timeout` | `30s` | Request timeout (Go duration syntax) |
 | `follow_redirects` | `true` | Follow HTTP redirects |
 | `max_redirects` | `10` | Max redirect hops |
-
-#### `[logging]`
-
-| Field | Default | Description |
-|---|---|---|
-| `level` | `info` | `debug`, `info`, `warn`, `error` |
-| `file` | `<config-dir>/quark.log` | Log file path |
-| `max_size` | `10MB` | Log rotation size |
 
 #### `[backup]`
 
