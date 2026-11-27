@@ -58,3 +58,20 @@ func TestKeybindingsResetRestoresDefaults(t *testing.T) {
 	require.NoError(t, list.Execute())
 	require.Contains(t, out.String(), "search               /")
 }
+
+func TestKeybindingsListWarnsOnUnknownKeysOnStderr(t *testing.T) {
+	configDir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(configDir, "config.toml"),
+		[]byte("[keybindings]\nquitt = \"q\"\n"), 0o600))
+
+	cmd := NewKeybindingsCmd(configDir)
+	var out, errOut bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&errOut)
+	cmd.SetArgs([]string{"list"})
+
+	require.NoError(t, cmd.Execute())
+	require.Contains(t, errOut.String(), `quark: warning: `)
+	require.Contains(t, errOut.String(), `"keybindings.quitt"`)
+	require.NotContains(t, out.String(), "quitt")
+}

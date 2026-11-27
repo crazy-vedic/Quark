@@ -150,6 +150,8 @@ retry_after_failure = "1h"         # Retry interval on failure (default 1h)
 json_on_save = false               # Disable JSON auto-formatting (default: enabled)
 ```
 
+Quark rejects invalid values (for example a negative `http.timeout` or a zero `updates.check_interval`) and exits with an error that names the file. Unknown keys are ignored with a warning.
+
 JSON formatting preserves the existing indent style (2-space, 4-space, tabs) and is applied when you save a request body that parses as valid JSON. Invalid JSON or non-JSON text is left unchanged.
 
 ---

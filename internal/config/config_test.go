@@ -1,9 +1,11 @@
 package config_test
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -221,4 +223,99 @@ func TestLoad_ParseErrorNamesTheFile(t *testing.T) {
 	_, err := config.Load(dir)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), path)
+}
+
+// writeConfig writes content as config.toml in a new directory and returns it.
+func writeConfig(t *testing.T, content string) string {
+	t.Helper()
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "config.toml"), []byte(content), 0o600))
+	return dir
+}
+
+func TestValidate_RejectsValuesThatCannotWork(t *testing.T) {
+	tests := []struct {
+		name, content, want string
+	}{
+		{"negative http timeout", "[http]\ntimeout = \"-1s\"\n", "http.timeout"},
+		{"negative max redirects", "[http]\nmax_redirects = -1\n", "http.max_redirects"},
+		{"negative keep_last", "[backup]\nkeep_last = -1\n", "backup.keep_last"},
+		{"zero check interval", "[updates]\ncheck_interval = \"0s\"\n", "updates.check_interval"},
+		{"negative retry", "[updates]\nretry_after_failure = \"-1m\"\n",
+			"updates.retry_after_failure"},
+		{"zero updates timeout", "[updates]\ntimeout = \"0s\"\n", "updates.timeout"},
+		{"empty default method", "[ui]\ndefault_method = \"\"\n", "ui.default_method"},
+		{"method with space", "[ui]\ndefault_method = \"GE T\"\n", "ui.default_method"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := config.Load(writeConfig(t, tt.content))
+			require.Error(t, err)
+			assert.ErrorContains(t, err, tt.want)
+		})
+	}
+}
+
+func TestValidate_AcceptsDefaultsAndZeroValues(t *testing.T) {
+	cfg := config.Default(t.TempDir())
+	require.NoError(t, cfg.Validate())
+
+	cfg.HTTP.MaxRedirects = 0
+	cfg.Backup.KeepLast = 0
+	require.NoError(t, cfg.Validate(), "max_redirects = 0 and keep_last = 0 are meaningful")
+}
+
+func TestLoad_ZeroHTTPTimeoutMeansNoTimeout(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "config.toml"),
+		[]byte("[http]\ntimeout = \"0s\"\n"), 0o600))
+
+	cfg, err := config.Load(dir)
+	require.NoError(t, err)
+	assert.Equal(t, time.Duration(0), cfg.Timeout())
+}
+
+func TestLoad_InvalidValueFailsAndNamesFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.toml")
+	require.NoError(t, os.WriteFile(path,
+		[]byte("[updates]\ncheck_interval = \"0s\"\n"), 0o600))
+
+	_, err := config.Load(dir)
+	require.Error(t, err)
+	assert.ErrorContains(t, err, path)
+	assert.ErrorContains(t, err, "updates.check_interval")
+}
+
+func TestLoadWithWarnings_ReportsUnknownKeysAndKeepsValues(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.toml")
+	require.NoError(t, os.WriteFile(path, []byte(`
+[ui]
+theme = "dark"
+themee = "light"
+
+[http]
+timout = "5s"
+`), 0o600))
+
+	cfg, warnings, err := config.LoadWithWarnings(dir)
+	require.NoError(t, err)
+	assert.Equal(t, "dark", cfg.UI.Theme)
+	assert.Equal(t, 30*time.Second, cfg.Timeout(), "misspelled key is ignored")
+	require.Len(t, warnings, 2)
+	joined := strings.Join(warnings, "\n")
+	assert.Contains(t, joined, `unknown setting "ui.themee"`)
+	assert.Contains(t, joined, `unknown setting "http.timout"`)
+	assert.Contains(t, joined, path)
+
+	var out bytes.Buffer
+	config.WriteWarnings(&out, warnings)
+	assert.Equal(t, 2, strings.Count(out.String(), "quark: warning: "))
+}
+
+func TestLoadWithWarnings_MissingFileHasNoWarnings(t *testing.T) {
+	_, warnings, err := config.LoadWithWarnings(t.TempDir())
+	require.NoError(t, err)
+	assert.Empty(t, warnings)
 }

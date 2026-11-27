@@ -46,6 +46,10 @@ var (
 	configDir  string
 	dimFlag    string
 	themeFlag  string
+
+	// configWarnings holds unknown-key warnings from config.toml. They are
+	// printed by runtimeOnce and shown in the TUI status bar.
+	configWarnings []string
 )
 
 func main() {
@@ -119,10 +123,12 @@ func runWithArgs(args []string) error {
 		}
 		// A missing config file means defaults. A config that exists but does
 		// not parse is an error: continuing would hide the user's settings.
-		cfg, err := config.Load(configDir)
+		cfg, warnings, err := config.LoadWithWarnings(configDir)
 		if err != nil {
 			return nil, fmt.Errorf("load config: %w", err)
 		}
+		configWarnings = warnings
+		config.WriteWarnings(os.Stderr, warnings)
 		if selected := os.Getenv("QUARK_THEME"); selected != "" {
 			cfg.UI.Theme = selected
 		}
@@ -383,6 +389,7 @@ func launchTUI(
 		ActiveEnvStore:     st,
 		Scheduler:          st,
 		Config:             cfg,
+		ConfigWarnings:     configWarnings,
 		Resolver:           keybindings.NewResolver(cfg.Keybindings),
 		Ctx:                ctx, // signal-aware context: TUI goroutines cancel on SIGINT/SIGTERM
 		DebugLog:           debugLog,

@@ -25,10 +25,11 @@ func NewClientCertificatesCmd(
 		Short: "List configured client certificates",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			cfg, err := config.Load(configDir())
+			cfg, warnings, err := config.LoadWithWarnings(configDir())
 			if err != nil {
 				return fmt.Errorf("cert list: load config: %w", err)
 			}
+			config.WriteWarnings(cmd.ErrOrStderr(), warnings)
 			if len(cfg.HTTP.ClientCertificates) == 0 {
 				fmt.Fprintln(cmd.OutOrStdout(), "No client certificates configured.")
 				return nil
@@ -80,10 +81,11 @@ func NewClientCertificatesCmd(
 				return fmt.Errorf("cert set: --key-file requires --file")
 			}
 
-			cfg, err := config.Load(configDir())
+			cfg, warnings, err := config.LoadWithWarnings(configDir())
 			if err != nil {
 				return fmt.Errorf("cert set: load config: %w", err)
 			}
+			config.WriteWarnings(cmd.ErrOrStderr(), warnings)
 			previous := cfg
 			next := append([]config.ClientCertificate(nil), cfg.HTTP.ClientCertificates...)
 			entry := config.ClientCertificate{
@@ -140,10 +142,11 @@ func NewClientCertificatesCmd(
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			host := strings.ToLower(strings.TrimSpace(args[0]))
-			cfg, err := config.Load(configDir())
+			cfg, warnings, err := config.LoadWithWarnings(configDir())
 			if err != nil {
 				return fmt.Errorf("cert delete: load config: %w", err)
 			}
+			config.WriteWarnings(cmd.ErrOrStderr(), warnings)
 			previous := cfg
 			next := make([]config.ClientCertificate, 0, len(cfg.HTTP.ClientCertificates))
 			found := false

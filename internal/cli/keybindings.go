@@ -27,10 +27,11 @@ func newKeybindingsListCmd(configDir string) *cobra.Command {
 		Use:   "list",
 		Short: "Show current keybindings",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			cfg, err := config.Load(configDir)
+			cfg, warnings, err := config.LoadWithWarnings(configDir)
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
 			}
+			config.WriteWarnings(cmd.ErrOrStderr(), warnings)
 
 			entries := keybindings.ListEntries(cfg.Keybindings)
 			var lastGroup string
@@ -59,10 +60,11 @@ func newKeybindingsSetCmd(configDir string) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			action, key := args[0], args[1]
 
-			cfg, err := config.Load(configDir)
+			cfg, warnings, err := config.LoadWithWarnings(configDir)
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
 			}
+			config.WriteWarnings(cmd.ErrOrStderr(), warnings)
 
 			// Validate action exists.
 			old := keybindings.GetAction(cfg.Keybindings, action)

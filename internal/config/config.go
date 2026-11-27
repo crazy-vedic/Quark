@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"time"
 
 	"github.com/BurntSushi/toml"
@@ -143,6 +144,15 @@ func Default(configDir string) Config {
 // onto the defaults. Absent fields retain their defaults; this avoids the
 // zero-value override problem for booleans (FollowRedirects, AutoBackup).
 func Load(configDir string) (Config, error) {
+	cfg, _, err := LoadWithWarnings(configDir)
+	return cfg, err
+}
+
+// LoadWithWarnings is Load that also returns one warning per key in
+// config.toml that Quark does not recognise (typos, removed settings). Those
+// keys are ignored, so warnings never stop loading. Values that fail Validate
+// are an error.
+func LoadWithWarnings(configDir string) (Config, []string, error) {
 	cfg := Default(configDir)
 
 	path := filepath.Join(configDir, "config.toml")
@@ -153,11 +163,11 @@ func Load(configDir string) (Config, error) {
 	if err != nil {
 		// File absent — not an error.
 		if errors.Is(err, fs.ErrNotExist) {
-			return cfg, nil
+			return cfg, nil, nil
 		}
 		// Name the file: the TOML error alone ("line 2: ...") does not say
 		// which file is broken.
-		return cfg, fmt.Errorf("%s: %w", path, err)
+		return cfg, nil, fmt.Errorf("%s: %w", path, err)
 	}
 
 	// Merge only fields that the user explicitly set in their config.toml.
@@ -232,7 +242,83 @@ func Load(configDir string) (Config, error) {
 		}
 	}
 
-	return cfg, nil
+	if err := cfg.Validate(); err != nil {
+		return cfg, nil, fmt.Errorf("%s: %w", path, err)
+	}
+
+	var warnings []string
+	for _, key := range md.Undecoded() {
+		warnings = append(warnings,
+			fmt.Sprintf("%s: unknown setting %q is ignored", path, key.String()))
+	}
+	return cfg, warnings, nil
+}
+
+// WriteWarnings prints each warning from LoadWithWarnings on its own line.
+func WriteWarnings(w io.Writer, warnings []string) {
+	for _, msg := range warnings {
+		fmt.Fprintf(w, "quark: warning: %s\n", msg)
+	}
+}
+
+// Validate reports values that cannot work and returns all of them joined, so
+// the user can fix every problem in one pass.
+//
+// A zero http.timeout is valid and means no timeout. The update-check durations
+// must be positive: zero would re-check on every launch, and a zero
+// updates.timeout would fail every check at once. max_redirects = 0 means
+// redirects are not followed, and keep_last = 0 keeps no backups; both are
+// accepted.
+func (c Config) Validate() error {
+	var errs []error
+	if !validMethod(c.UI.DefaultMethod) {
+		errs = append(errs,
+			fmt.Errorf("ui.default_method: %q is not an HTTP method", c.UI.DefaultMethod))
+	}
+	if c.HTTP.Timeout.Duration < 0 {
+		errs = append(errs, fmt.Errorf(
+			"http.timeout: must not be negative, got %s (use \"0s\" for no timeout)",
+			c.HTTP.Timeout.Duration))
+	}
+	if c.HTTP.MaxRedirects < 0 {
+		errs = append(errs, fmt.Errorf(
+			"http.max_redirects: must not be negative, got %d", c.HTTP.MaxRedirects))
+	}
+	if c.Backup.KeepLast < 0 {
+		errs = append(errs, fmt.Errorf(
+			"backup.keep_last: must not be negative, got %d", c.Backup.KeepLast))
+	}
+	positive := []struct {
+		key string
+		d   time.Duration
+	}{
+		{"updates.check_interval", c.Updates.CheckInterval.Duration},
+		{"updates.retry_after_failure", c.Updates.RetryAfterFailure.Duration},
+		{"updates.timeout", c.Updates.Timeout.Duration},
+	}
+	for _, p := range positive {
+		if p.d <= 0 {
+			errs = append(errs, fmt.Errorf("%s: must be greater than zero, got %s", p.key, p.d))
+		}
+	}
+	return errors.Join(errs...)
+}
+
+// validMethod reports whether s is a non-empty HTTP method token (RFC 9110
+// section 9.1). Custom methods are allowed, so the set is not fixed.
+func validMethod(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		switch {
+		case r >= 'A' && r <= 'Z', r >= 'a' && r <= 'z', r >= '0' && r <= '9':
+		case strings.ContainsRune("!#$%&'*+-.^_`|~", r):
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 // SaveLastRequestID persists the request opened most recently in the TUI,
