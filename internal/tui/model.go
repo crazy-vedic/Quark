@@ -250,17 +250,8 @@ type Model struct {
 	helpScrollOffset int
 	helpSearch       bool
 
-	// --- Sidebar state ---
-	collections   []*domain.Collection
-	colCursor     int
-	expanded      map[string]bool // collectionID → expanded
-	requests      []*domain.Request
-	reqCursor     int
-	sidebarOffset int // BUG-011: scroll offset for long collection lists
-	// collectionRequests stores loaded requests for all expanded collections.
-	// Key is collection ID; value is the list of requests.
-	collectionRequests      map[string][]*domain.Request
-	initialSelectionPending bool
+	// --- Sidebar state (collection tree, cursor, scroll) ---
+	sidebar sidebarState
 
 	// --- Request pane state ---
 	activeRequest *domain.Request // currently selected request (template)
@@ -540,60 +531,62 @@ func New(deps Deps) Model {
 	}
 
 	m := Model{
-		lister:                  deps.Lister,
-		reader:                  deps.Reader,
-		writer:                  deps.Writer,
-		colWriter:               deps.ColWriter,
-		executionReader:         deps.ExecutionReader,
-		executor:                deps.Executor,
-		searcher:                deps.Searcher,
-		importer:                deps.Importer,
-		postmanImporter:         deps.PostmanImporter,
-		cfg:                     deps.Config,
-		ctx:                     rootCtx,
-		method:                  deps.Config.UI.DefaultMethod,
-		urlInput:                urlInput,
-		searchInput:             searchInput,
-		viewerFind:              viewerFind,
-		importName:              importName,
-		postmanPath:             postmanPath,
-		importInput:             importTA,
-		promptInput:             promptInput,
-		bodyTextarea:            bodyTA,
-		requestText:             scrollableText{cache: &scrollableTextCache{}},
-		responseText:            scrollableText{cache: &scrollableTextCache{}},
-		viewerText:              scrollableText{cache: &scrollableTextCache{}},
-		headerKeyInput:          headerKeyInput,
-		headerValueInput:        headerValueInput,
-		expanded:                make(map[string]bool),
-		collectionRequests:      make(map[string][]*domain.Request),
-		initialSelectionPending: true,
-		requestValidationErrs:   make(map[string]string),
-		reqCursor:               -1, // start on collection, not on a request
-		focus:                   sidebarPane,
-		debugLog:                deps.DebugLog,
-		timing:                  collectorOrDefault(deps.Timing),
-		configDir:               deps.ConfigDir,
-		certificateManager:      deps.CertificateManager,
-		forceDim:                deps.ForceDim,
-		resolver:                resolverOrDefault(deps.Resolver, deps.Config),
-		envReader:               deps.EnvReader,
-		envNameCache:            &envNameCache{},
-		envWriter:               deps.EnvWriter,
-		activeEnvStore:          deps.ActiveEnvStore,
-		scheduler:               deps.Scheduler,
-		activeEnv:               make(map[string]string),
-		now:                     now,
-		bodyView:                &bodyViewCache{},
-		scheduleInput:           scheduleInput,
-		clientCertHost:          clientCertHost,
-		clientCertFile:          clientCertFile,
-		clientCertType:          clientCertType,
-		clientCertKeyFile:       clientCertKeyFile,
-		clientCertCAFile:        clientCertCAFile,
-		clientCertPassword:      clientCertPassword,
-		scheduleTimerSeq:        1,
-		version:                 deps.Version,
+		lister:                deps.Lister,
+		reader:                deps.Reader,
+		writer:                deps.Writer,
+		colWriter:             deps.ColWriter,
+		executionReader:       deps.ExecutionReader,
+		executor:              deps.Executor,
+		searcher:              deps.Searcher,
+		importer:              deps.Importer,
+		postmanImporter:       deps.PostmanImporter,
+		cfg:                   deps.Config,
+		ctx:                   rootCtx,
+		method:                deps.Config.UI.DefaultMethod,
+		urlInput:              urlInput,
+		searchInput:           searchInput,
+		viewerFind:            viewerFind,
+		importName:            importName,
+		postmanPath:           postmanPath,
+		importInput:           importTA,
+		promptInput:           promptInput,
+		bodyTextarea:          bodyTA,
+		requestText:           scrollableText{cache: &scrollableTextCache{}},
+		responseText:          scrollableText{cache: &scrollableTextCache{}},
+		viewerText:            scrollableText{cache: &scrollableTextCache{}},
+		headerKeyInput:        headerKeyInput,
+		headerValueInput:      headerValueInput,
+		requestValidationErrs: make(map[string]string),
+		sidebar: sidebarState{
+			expanded:                make(map[string]bool),
+			collectionRequests:      make(map[string][]*domain.Request),
+			initialSelectionPending: true,
+			reqCursor:               -1, // start on collection, not on a request
+		},
+		focus:              sidebarPane,
+		debugLog:           deps.DebugLog,
+		timing:             collectorOrDefault(deps.Timing),
+		configDir:          deps.ConfigDir,
+		certificateManager: deps.CertificateManager,
+		forceDim:           deps.ForceDim,
+		resolver:           resolverOrDefault(deps.Resolver, deps.Config),
+		envReader:          deps.EnvReader,
+		envNameCache:       &envNameCache{},
+		envWriter:          deps.EnvWriter,
+		activeEnvStore:     deps.ActiveEnvStore,
+		scheduler:          deps.Scheduler,
+		activeEnv:          make(map[string]string),
+		now:                now,
+		bodyView:           &bodyViewCache{},
+		scheduleInput:      scheduleInput,
+		clientCertHost:     clientCertHost,
+		clientCertFile:     clientCertFile,
+		clientCertType:     clientCertType,
+		clientCertKeyFile:  clientCertKeyFile,
+		clientCertCAFile:   clientCertCAFile,
+		clientCertPassword: clientCertPassword,
+		scheduleTimerSeq:   1,
+		version:            deps.Version,
 	}
 
 	// Detect tmux/screen keybinding conflicts.
@@ -1317,32 +1310,24 @@ func (m Model) selectRequest(req *domain.Request) (Model, tea.Cmd) {
 
 // activeCollectionID returns the ID of the currently cursor-selected collection.
 func (m Model) activeCollectionID() string {
-	if len(m.collections) == 0 || m.colCursor >= len(m.collections) {
+	if len(m.sidebar.collections) == 0 || m.sidebar.colCursor >= len(m.sidebar.collections) {
 		return ""
 	}
-	return m.collections[m.colCursor].ID
+	return m.sidebar.collections[m.sidebar.colCursor].ID
 }
 
 func (m Model) allCollectionIDs() []string {
-	if len(m.collections) == 0 {
+	if len(m.sidebar.collections) == 0 {
 		return nil
 	}
-	ids := make([]string, 0, len(m.collections))
-	for _, col := range m.collections {
+	ids := make([]string, 0, len(m.sidebar.collections))
+	for _, col := range m.sidebar.collections {
 		if col == nil || col.ID == "" {
 			continue
 		}
 		ids = append(ids, col.ID)
 	}
 	return ids
-}
-
-// selectedCollection returns the collection currently under the cursor, or nil.
-func (m Model) selectedCollection() *domain.Collection {
-	if len(m.collections) == 0 || m.colCursor >= len(m.collections) {
-		return nil
-	}
-	return m.collections[m.colCursor]
 }
 
 // sidebarVisible returns the number of sidebar tree rows reserved for the

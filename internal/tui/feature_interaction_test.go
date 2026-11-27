@@ -14,7 +14,7 @@ import (
 
 func TestRequestURLTabAcceptsLoadedURLSuggestion(t *testing.T) {
 	m := New(Deps{Config: config.Default(t.TempDir())})
-	m.collectionRequests = map[string][]*domain.Request{
+	m.sidebar.collectionRequests = map[string][]*domain.Request{
 		"collection": {{URL: "https://api.example.com/users"}},
 	}
 	m.activeField = urlField

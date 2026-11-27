@@ -140,18 +140,18 @@ func (m Model) WithBodyValue(v string) Model {
 }
 
 func (m Model) WithCollections(c []*domain.Collection) Model {
-	m.collections = c
+	m.sidebar.collections = c
 	return m
 }
 
-func (m Model) WithRequests(r []*domain.Request) Model { m.requests = r; return m }
+func (m Model) WithRequests(r []*domain.Request) Model { m.sidebar.requests = r; return m }
 
 func (m Model) WithCollectionRequests(c map[string][]*domain.Request) Model {
-	m.collectionRequests = c
+	m.sidebar.collectionRequests = c
 	return m
 }
 
-func (m Model) WithColCursor(n int) Model             { m.colCursor = n; return m }
+func (m Model) WithColCursor(n int) Model             { m.sidebar.colCursor = n; return m }
 func (m Model) WithMethod(s string) Model             { m.method = s; return m }
 func (m Model) WithResponseTab(t responseTabID) Model { m.responseTab = t; return m }
 func (m Model) WithActiveField(f requestField) Model  { m.activeField = f; return m }
@@ -241,29 +241,35 @@ func (m Model) ViewStatusBarForTest(
 ) string {
 	return m.viewStatusBar(override)
 }
-func (m Model) ViewRequestPaneForTest(w, h int) string           { return m.viewRequestPane(w, h) }
-func (m Model) ViewTabBarForTest(maxWidth int) string            { return m.viewTabBar(maxWidth) }
-func (m Model) ValidationErr() string                            { return m.activeValidationErr() }
-func (m Model) Response() *exec.ExecuteResult                    { return m.response }
-func (m Model) Executions() []*domain.Execution                  { return m.executions }
-func (m Model) ExecCursor() int                                  { return m.execCursor }
-func (m Model) Width() int                                       { return m.width }
-func (m Model) Height() int                                      { return m.height }
-func (m Model) Focus() paneID                                    { return m.focus }
-func (m Model) Mode() modeID                                     { return m.mode }
-func (m Model) ViewerFindOpen() bool                             { return m.viewerFindOpen }
-func (m Model) ViewerTextOffset() int                            { return m.viewerText.offset }
-func (m Model) ViewerMatchCount() int                            { return len(m.viewerMatches) }
-func (m Model) ForceDim() DimMode                                { return m.forceDim }
-func (m Model) EffectiveDim() DimMode                            { return m.effectiveDim() }
-func (m Model) WithForceDim(d DimMode) Model                     { m.forceDim = d; return m }
-func (m Model) Collections() []*domain.Collection                { return m.collections }
-func (m Model) Requests() []*domain.Request                      { return m.requests }
-func (m Model) CollectionRequests() map[string][]*domain.Request { return m.collectionRequests }
-func (m Model) IsExpanded(colID string) bool                     { return m.expanded[colID] }
-func (m Model) ColCursor() int                                   { return m.colCursor }
-func (m Model) ReqCursor() int                                   { return m.reqCursor }
-func (m Model) SidebarOffset() int                               { return m.sidebarOffset }
+func (m Model) ViewRequestPaneForTest(w, h int) string { return m.viewRequestPane(w, h) }
+func (m Model) ViewTabBarForTest(maxWidth int) string  { return m.viewTabBar(maxWidth) }
+func (m Model) ValidationErr() string                  { return m.activeValidationErr() }
+func (m Model) Response() *exec.ExecuteResult          { return m.response }
+func (m Model) Executions() []*domain.Execution        { return m.executions }
+func (m Model) ExecCursor() int                        { return m.execCursor }
+func (m Model) Width() int                             { return m.width }
+func (m Model) Height() int                            { return m.height }
+func (m Model) Focus() paneID                          { return m.focus }
+func (m Model) Mode() modeID                           { return m.mode }
+func (m Model) ViewerFindOpen() bool                   { return m.viewerFindOpen }
+func (m Model) ViewerTextOffset() int                  { return m.viewerText.offset }
+func (m Model) ViewerMatchCount() int                  { return len(m.viewerMatches) }
+func (m Model) ForceDim() DimMode                      { return m.forceDim }
+func (m Model) EffectiveDim() DimMode                  { return m.effectiveDim() }
+func (m Model) WithForceDim(d DimMode) Model           { m.forceDim = d; return m }
+func (m Model) Collections() []*domain.Collection      { return m.sidebar.collections }
+func (m Model) Requests() []*domain.Request            { return m.sidebar.requests }
+
+func (m Model) CollectionRequests() map[string][]*domain.Request { return m.sidebar.collectionRequests }
+
+func (m Model) IsExpanded(
+	colID string,
+) bool {
+	return m.sidebar.expanded[colID]
+}
+func (m Model) ColCursor() int     { return m.sidebar.colCursor }
+func (m Model) ReqCursor() int     { return m.sidebar.reqCursor }
+func (m Model) SidebarOffset() int { return m.sidebar.offset }
 
 // SidebarCollectionClickPos returns terminal coordinates for clicking a collection
 // row's name area (not the disclosure icon).

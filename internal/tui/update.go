@@ -253,17 +253,17 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Remember the selection so a reload (add, rename, delete, import)
 		// does not throw the user back to the top of the sidebar.
 		previousID := m.activeCollectionID()
-		m.collections = orderCollectionsTree(msg.collections)
-		m.colCursor = 0
-		m.reqCursor = -1
+		m.sidebar.collections = orderCollectionsTree(msg.collections)
+		m.sidebar.colCursor = 0
+		m.sidebar.reqCursor = -1
 		// If we're in import mode with no collection set, use the first collection.
-		if m.mode == importMode && m.importColID == "" && len(m.collections) > 0 {
-			m.importColID = m.collections[0].ID
+		if m.mode == importMode && m.importColID == "" && len(m.sidebar.collections) > 0 {
+			m.importColID = m.sidebar.collections[0].ID
 		}
 		if previousID != "" {
-			for idx, col := range m.collections {
+			for idx, col := range m.sidebar.collections {
 				if col != nil && col.ID == previousID {
-					m.colCursor = idx
+					m.sidebar.colCursor = idx
 					if m.reader == nil {
 						return m, nil
 					}
@@ -276,20 +276,20 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, loadLastRequestCmd(m.ctx, m.reader, m.cfg.UI.LastRequestID)
 		}
 		// Auto-load requests for the first collection.
-		if len(m.collections) > 0 && m.reader != nil {
-			id := m.collections[0].ID
-			m.expanded[id] = true
+		if len(m.sidebar.collections) > 0 && m.reader != nil {
+			id := m.sidebar.collections[0].ID
+			m.sidebar.expanded[id] = true
 			return m, loadRequestsCmd(m.ctx, m.reader, id)
 		}
 		return m, nil
 
 	case lastRequestLoadedMsg:
 		if msg.request != nil {
-			for idx, col := range m.collections {
+			for idx, col := range m.sidebar.collections {
 				if col != nil && col.ID == msg.request.CollectionID {
-					m.colCursor = idx
-					m.reqCursor = -1
-					m.expanded[col.ID] = true
+					m.sidebar.colCursor = idx
+					m.sidebar.reqCursor = -1
+					m.sidebar.expanded[col.ID] = true
 					return m, loadRequestsCmd(m.ctx, m.reader, col.ID)
 				}
 			}
@@ -297,33 +297,33 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// The remembered request may have been deleted. Start from the first
 		// visible collection and let requestsLoadedMsg choose its first request.
 		m.cfg.UI.LastRequestID = ""
-		if len(m.collections) > 0 && m.reader != nil {
-			id := m.collections[0].ID
-			m.expanded[id] = true
+		if len(m.sidebar.collections) > 0 && m.reader != nil {
+			id := m.sidebar.collections[0].ID
+			m.sidebar.expanded[id] = true
 			return m, loadRequestsCmd(m.ctx, m.reader, id)
 		}
 		return m, nil
 
 	case requestsLoadedMsg:
-		m.collectionRequests[msg.collectionID] = msg.requests
+		m.sidebar.collectionRequests[msg.collectionID] = msg.requests
 		var historyCmd tea.Cmd
-		// If this is the currently selected collection, also set m.requests
+		// If this is the currently selected collection, also set m.sidebar.requests
 		// for the Enter handler on a request.
 		if m.activeCollectionID() == msg.collectionID {
-			m.requests = msg.requests
-			if m.initialSelectionPending {
-				m.initialSelectionPending = false
+			m.sidebar.requests = msg.requests
+			if m.sidebar.initialSelectionPending {
+				m.sidebar.initialSelectionPending = false
 				if len(msg.requests) > 0 {
-					m.reqCursor = 0
+					m.sidebar.reqCursor = 0
 					if m.cfg.UI.LastRequestID != "" {
 						for idx, req := range msg.requests {
 							if req != nil && req.ID == m.cfg.UI.LastRequestID {
-								m.reqCursor = idx
+								m.sidebar.reqCursor = idx
 								break
 							}
 						}
 					}
-					m, historyCmd = m.selectRequest(msg.requests[m.reqCursor])
+					m, historyCmd = m.selectRequest(msg.requests[m.sidebar.reqCursor])
 				}
 			}
 			if m.activeRequest != nil {
@@ -412,10 +412,10 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					msg.Paste,
 					m.focus,
 					m.mode,
-					m.colCursor,
-					m.reqCursor,
-					len(m.requests),
-					m.expanded,
+					m.sidebar.colCursor,
+					m.sidebar.reqCursor,
+					len(m.sidebar.requests),
+					m.sidebar.expanded,
 				)
 			} else {
 				fmt.Fprintf(
@@ -431,10 +431,10 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					msg.Paste,
 					m.focus,
 					m.mode,
-					m.colCursor,
-					m.reqCursor,
-					len(m.requests),
-					m.expanded,
+					m.sidebar.colCursor,
+					m.sidebar.reqCursor,
+					len(m.sidebar.requests),
+					m.sidebar.expanded,
 				)
 			}
 		}
@@ -762,7 +762,7 @@ func (m Model) dispatchNormalAction(action string) (tea.Model, tea.Cmd) {
 		return m.openClientCertModal(), nil
 	case keybindings.ActionImportCurl:
 		// If no collections exist, create a default one before opening curl import.
-		if len(m.collections) == 0 {
+		if len(m.sidebar.collections) == 0 {
 			if m.colWriter != nil {
 				c := &domain.Collection{Name: "Imported"}
 				m = m.openCurlImport()
@@ -805,21 +805,21 @@ func (m Model) handleSidebarAction(action string) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		// If a request is selected, load it and shift focus.
-		if m.expanded[colID] && m.reqCursor >= 0 {
-			reqs := m.collectionRequests[colID]
-			if m.reqCursor < len(reqs) {
-				m.requests = reqs
+		if m.sidebar.expanded[colID] && m.sidebar.reqCursor >= 0 {
+			reqs := m.sidebar.collectionRequests[colID]
+			if m.sidebar.reqCursor < len(reqs) {
+				m.sidebar.requests = reqs
 				m.focus = requestPane
-				return m.selectRequest(reqs[m.reqCursor])
+				return m.selectRequest(reqs[m.sidebar.reqCursor])
 			}
 		}
 		// Otherwise toggle expand/collapse.
-		if m.expanded[colID] {
-			m.expanded[colID] = false
-			delete(m.collectionRequests, colID)
-			m.reqCursor = -1
+		if m.sidebar.expanded[colID] {
+			m.sidebar.expanded[colID] = false
+			delete(m.sidebar.collectionRequests, colID)
+			m.sidebar.reqCursor = -1
 		} else {
-			m.expanded[colID] = true
+			m.sidebar.expanded[colID] = true
 			if m.reader != nil {
 				return m, loadRequestsCmd(m.ctx, m.reader, colID)
 			}
@@ -828,8 +828,8 @@ func (m Model) handleSidebarAction(action string) (tea.Model, tea.Cmd) {
 	case "collapse":
 		colID := m.activeCollectionID()
 		if colID != "" {
-			m.collapseCollectionSubtree(colID)
-			m.reqCursor = -1
+			m.sidebar.collapseSubtree(colID)
+			m.sidebar.reqCursor = -1
 			m, _ = m.selectRequest(nil)
 		}
 		return m, nil
@@ -864,10 +864,12 @@ func (m Model) handleRequestAction(action string) (tea.Model, tea.Cmd) {
 	switch action {
 	case keybindings.ActionDeleteRequest:
 		var req *domain.Request
-		if m.focus == sidebarPane && m.reqCursor >= 0 {
+		if m.focus == sidebarPane && m.sidebar.reqCursor >= 0 {
 			colID := m.activeCollectionID()
-			if requests := m.collectionRequests[colID]; m.reqCursor < len(requests) {
-				req = requests[m.reqCursor]
+			if requests := m.sidebar.collectionRequests[colID]; m.sidebar.reqCursor < len(
+				requests,
+			) {
+				req = requests[m.sidebar.reqCursor]
 			}
 		} else {
 			req = m.activePaneRequest()
@@ -1013,7 +1015,7 @@ func (m Model) retryableRawRequest() (*domain.Request, error) {
 // sidebarDown moves cursor down through the full sidebar tree.
 // Navigation goes: collection → (if expanded) its requests → next collection.
 func (m Model) sidebarDown() (tea.Model, tea.Cmd) {
-	rows, selected := m.buildSidebarRows()
+	rows, selected := m.sidebar.buildRows()
 	if selected+1 >= len(rows) {
 		return m, nil
 	}
@@ -1023,7 +1025,7 @@ func (m Model) sidebarDown() (tea.Model, tea.Cmd) {
 // sidebarUp moves cursor up through the full sidebar tree.
 // Navigation goes: request → previous request (or collection) → previous collection's last request.
 func (m Model) sidebarUp() (tea.Model, tea.Cmd) {
-	rows, selected := m.buildSidebarRows()
+	rows, selected := m.sidebar.buildRows()
 	if selected <= 0 || len(rows) == 0 {
 		return m, nil
 	}
@@ -1031,14 +1033,7 @@ func (m Model) sidebarUp() (tea.Model, tea.Cmd) {
 }
 
 func (m Model) selectSidebarRow(row sidebarRow) Model {
-	m.colCursor = row.colIndex
-	m.reqCursor = -1
-	if row.kind == sidebarRequestRow {
-		m.reqCursor = row.reqIndex
-	}
-	if row.colIndex >= 0 && row.colIndex < len(m.collections) {
-		m.requests = m.collectionRequests[m.collections[row.colIndex].ID]
-	}
+	m.sidebar = m.sidebar.selectRow(row)
 	return m.ensureSidebarCollectionVisible()
 }
 
@@ -1647,9 +1642,9 @@ func (m Model) closeImport() Model {
 }
 
 func (m Model) ensureSidebarCollectionVisible() Model {
-	rows, selectedRow := m.buildSidebarRows()
-	m.sidebarOffset = adjustListViewport(listViewport{
-		Scroll:      m.sidebarOffset,
+	rows, selectedRow := m.sidebar.buildRows()
+	m.sidebar.offset = adjustListViewport(listViewport{
+		Scroll:      m.sidebar.offset,
 		SelectedRow: selectedRow,
 		TotalRows:   len(rows),
 		VisibleRows: m.sidebarVisible(),

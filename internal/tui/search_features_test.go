@@ -45,7 +45,7 @@ func TestOpenSearchDispatchesOptionalEmptyQueryAndPopulatesResults(t *testing.T)
 		Config:   config.Default(t.TempDir()),
 		Searcher: searcher,
 	})
-	m.collections = []*domain.Collection{
+	m.sidebar.collections = []*domain.Collection{
 		{ID: "billing", Name: "Billing"},
 		{ID: "accounts", Name: "Accounts"},
 	}

@@ -320,17 +320,18 @@ func (m Model) viewSidebar(w, h int) string {
 		row := rows[i]
 		switch row.kind {
 		case sidebarCollectionRow:
-			col := m.collections[row.colIndex]
+			col := m.sidebar.collections[row.colIndex]
 			indent := strings.Repeat("  ", row.depth)
 			branch := ""
 			if row.depth > 0 {
 				branch = "└─ "
 			}
 			cursor := indent + "  "
-			if row.colIndex == m.colCursor && m.reqCursor == -1 && m.focus == sidebarPane {
+			if row.colIndex == m.sidebar.colCursor && m.sidebar.reqCursor == -1 &&
+				m.focus == sidebarPane {
 				cursor = indent + "▸ "
 			}
-			expanded := m.expanded[col.ID]
+			expanded := m.sidebar.expanded[col.ID]
 			icon := "▶ "
 			if expanded {
 				icon = "▼ "
@@ -338,7 +339,7 @@ func (m Model) viewSidebar(w, h int) string {
 			innerW := max(1, w-2)
 			name := truncate(col.Name, innerW-4)
 			line := cursor + branch + icon + name
-			if row.colIndex == m.colCursor && m.reqCursor == -1 {
+			if row.colIndex == m.sidebar.colCursor && m.sidebar.reqCursor == -1 {
 				line = lipgloss.NewStyle().Foreground(m.styles.accent).Bold(true).Render(line)
 			} else {
 				line = lipgloss.NewStyle().Foreground(m.styles.foreground).Render(line)
@@ -346,9 +347,9 @@ func (m Model) viewSidebar(w, h int) string {
 			sb.WriteString(line)
 			sb.WriteString("\n")
 		case sidebarRequestRow:
-			col := m.collections[row.colIndex]
-			req := m.collectionRequests[col.ID][row.reqIndex]
-			isSelected := row.colIndex == m.colCursor && row.reqIndex == m.reqCursor
+			col := m.sidebar.collections[row.colIndex]
+			req := m.sidebar.collectionRequests[col.ID][row.reqIndex]
+			isSelected := row.colIndex == m.sidebar.colCursor && row.reqIndex == m.sidebar.reqCursor
 			cursor := strings.Repeat("  ", row.depth) + "  "
 			if isSelected {
 				cursor = strings.Repeat("  ", row.depth) + "▸ "
@@ -371,7 +372,7 @@ func (m Model) viewSidebar(w, h int) string {
 		sb.WriteString("\n")
 	}
 
-	if len(m.collections) == 0 {
+	if len(m.sidebar.collections) == 0 {
 		addCollection := m.renderHintKeys([]string{"sidebar_add"}, false)
 		sb.WriteString("\n")
 		sb.WriteString(m.styles.mutedStyle.Render(
@@ -1929,7 +1930,7 @@ func (m Model) collectionNameForSearchHit(hit *search.SearchHit) string {
 	if request == nil || request.CollectionID == "" {
 		return ""
 	}
-	for _, col := range m.collections {
+	for _, col := range m.sidebar.collections {
 		if col != nil && col.ID == request.CollectionID {
 			return col.Name
 		}
@@ -2819,14 +2820,14 @@ func (m Model) viewCollectionPromptModal() string {
 		// Tiny confirmation: repeat the request-delete key without text input.
 		name := m.promptTargetID
 		if m.promptTargetCollectionID == "" {
-			for _, col := range m.collections {
+			for _, col := range m.sidebar.collections {
 				if col != nil && col.ID == m.promptTargetID {
 					name = col.Name
 					break
 				}
 			}
 			if name == m.promptTargetID {
-				if col := m.selectedCollection(); col != nil {
+				if col := m.sidebar.selectedCollection(); col != nil {
 					name = col.Name
 				}
 			}

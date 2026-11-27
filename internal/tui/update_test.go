@@ -357,7 +357,7 @@ func TestUpdate_RequestsLoaded_StoresRequests(t *testing.T) {
 
 	// Requests are stored in collectionRequests for all expanded collections.
 	assert.Equal(t, 2, len(m.CollectionRequests()[col1]))
-	// And also in m.requests when the active collection matches.
+	// And also in m.sidebar.requests when the active collection matches.
 	assert.Equal(t, 2, len(m.Requests()))
 	assert.Equal(t, "List Users", m.Requests()[0].Name)
 }
