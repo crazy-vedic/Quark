@@ -59,7 +59,7 @@ Shell completion available for `--collection` via `CompleteCollectionIDs`.
 quark run <Collection/Request>
 ```
 
-Executes a saved request by path (collection name / request name). Uses `exec.Executor.Execute`. Prints status, headers, body (or temp file path for large bodies).
+Executes a saved request by path (collection name / request name). Uses `exec.Executor.Execute`. Prints status, headers, body (or temp file path for large bodies). A disabled request is refused with an error and is not sent.
 
 ### `quark request export-curl`
 
@@ -89,7 +89,7 @@ Fuzzy search across all collections. Uses `internal/search.Searcher`.
 
 | Subcommand | Args/Flags | Description |
 |---|---|---|
-| `add` | `<Collection/Request> --at <time>` | Schedule a future run |
+| `add` | `<Collection/Request> --at <time>` | Schedule a future run (refused for a disabled request) |
 | `list` | — | List scheduled runs |
 | `run-due` | — | Execute all pending runs due now |
 

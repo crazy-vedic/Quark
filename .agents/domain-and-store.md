@@ -16,7 +16,7 @@ type Request struct {
     AuthConfig               string  // JSON AuthConfig
     Body                     string
     SortOrder                int
-    Enabled                  bool
+    Disabled                 bool   // zero value = enabled; run, schedule and TUI-scheduled runs refuse disabled requests
     CreatedAt, UpdatedAt     time.Time
 }
 ```

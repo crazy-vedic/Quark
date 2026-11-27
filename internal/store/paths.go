@@ -40,7 +40,7 @@ func (s *Store) ResolveRequestPath(ctx context.Context, reference string) (*doma
 	}
 	rows, err := s.db.QueryContext(
 		ctx,
-		`SELECT id, collection_id, name, method, url, headers, auth_type, auth_config, body, sort_order, enabled, created_at, updated_at FROM requests`,
+		`SELECT id, collection_id, name, method, url, headers, auth_type, auth_config, body, sort_order, COALESCE(enabled, 1) = 0, created_at, updated_at FROM requests`,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("store: resolve request: %w", err)
@@ -62,7 +62,7 @@ func (s *Store) ResolveRequestPath(ctx context.Context, reference string) (*doma
 			&r.AuthConfig,
 			&body,
 			&r.SortOrder,
-			&r.Enabled,
+			&r.Disabled,
 			&r.CreatedAt,
 			&r.UpdatedAt,
 		); err != nil {

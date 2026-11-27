@@ -60,6 +60,7 @@ var helpActionLabels = map[string]string{
 	keybindings.ActionEditHeaders:   "edit headers",
 	"edit_auth":                     "edit auth",
 	keybindings.ActionScheduleRun:   "schedule request",
+	keybindings.ActionToggleRequest: "enable/disable request",
 	keybindings.ActionExportCurl:    "copy as curl",
 	"response_down":                 "next history item",
 	"response_up":                   "prev history item",
@@ -356,10 +357,19 @@ func (m Model) viewSidebar(w, h int) string {
 			innerW := max(1, w-2)
 			badge := m.methodBadge(req.Method)
 			nameWidth := innerW - lipgloss.Width(cursor) - lipgloss.Width(badge) - 1
-			line := cursor + badge + " " + truncate(req.Name, nameWidth)
-			if isSelected {
+			label := req.Name
+			if req.Disabled {
+				label += " (off)"
+			}
+			line := cursor + badge + " " + truncate(label, nameWidth)
+			switch {
+			case isSelected && req.Disabled:
+				line = lipgloss.NewStyle().Foreground(m.styles.info).Faint(true).Render(line)
+			case isSelected:
 				line = lipgloss.NewStyle().Foreground(m.styles.info).Render(line)
-			} else {
+			case req.Disabled:
+				line = m.styles.mutedStyle.Faint(true).Render(line)
+			default:
 				line = m.styles.mutedStyle.Render(line)
 			}
 			sb.WriteString(line)
@@ -499,6 +509,9 @@ func (m Model) viewRequestPane(w, h int) string {
 	titleLabel := requestTitleLabel
 	if m.activeRequest != nil && strings.TrimSpace(m.activeRequest.Name) != "" {
 		titleLabel = "Request " + truncate(m.activeRequest.Name, max(12, w/2))
+	}
+	if m.activeRequest != nil && m.activeRequest.Disabled {
+		titleLabel += " (disabled)"
 	}
 	titleLine := m.styles.titleStyle.Render(titleLabel)
 	rightChrome := m.renderRequestTitleRightChrome()

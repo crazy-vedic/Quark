@@ -95,7 +95,7 @@ func (t *Transaction) SaveRequest(ctx context.Context, req *domain.Request) erro
 		authConfig,
 		req.Body,
 		req.SortOrder,
-		req.Enabled,
+		!req.Disabled,
 	)
 	if err != nil {
 		if isSQLiteUnique(err) {

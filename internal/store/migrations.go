@@ -202,6 +202,14 @@ ON collections(COALESCE(parent_id, ''), name);
 		version: 9,
 		name:    "canonical_global_environment",
 	},
+	{
+		// Before v10 nothing set Request.Enabled, so every request Quark saved
+		// was stored with enabled = 0 although no user had disabled it. The
+		// flag is now read, so start every existing request as enabled.
+		version: 10,
+		name:    "reenable_requests",
+		upSQL:   `UPDATE requests SET enabled = 1;`,
+	},
 }
 
 // migrate runs all pending migrations in order.

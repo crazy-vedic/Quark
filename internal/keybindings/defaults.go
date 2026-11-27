@@ -41,6 +41,7 @@ func DefaultKeybindings() Keybindings {
 		ExportCurl:    "x",
 		EditAuth:      "a",
 		ScheduleRun:   "S",
+		ToggleRequest: "t",
 		EnvOpen:       "e",
 		ClientCerts:   "C",
 		CertDown:      "j",

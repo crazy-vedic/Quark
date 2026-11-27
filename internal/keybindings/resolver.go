@@ -38,6 +38,7 @@ type Keybindings struct {
 	ExportCurl    string `toml:"export_curl"`
 	EditAuth      string `toml:"edit_auth"`
 	ScheduleRun   string `toml:"schedule_run"`
+	ToggleRequest string `toml:"toggle_request"`
 	EnvOpen       string `toml:"env_open"`
 	ClientCerts   string `toml:"client_certificates"`
 	CertDown      string `toml:"cert_down"`
@@ -219,6 +220,7 @@ func NewResolver(binds Keybindings) *Resolver {
 		binds.SidebarAddRequest:    "add_request",
 		binds.SidebarImportPostman: ActionImportPostman,
 		binds.RequestDelete:        ActionDeleteRequest,
+		binds.ToggleRequest:        ActionToggleRequest,
 	}
 	// Arrow-key aliases mirror the hardcoded fallbacks in handleSidebarKey.
 	addAlias(sidebar, "down", "cursor_down")
@@ -239,6 +241,7 @@ func NewResolver(binds Keybindings) *Resolver {
 		binds.ExportCurl:    ActionExportCurl,
 		binds.EditAuth:      ActionEditAuth,
 		binds.ScheduleRun:   ActionScheduleRun,
+		binds.ToggleRequest: ActionToggleRequest,
 	}
 	addAlias(request, "alt+enter", ActionSendRequest)
 
@@ -499,13 +502,14 @@ func Validate(binds Keybindings) map[string][]string {
 			},
 			{binds.SidebarAddRequest, "sidebar_add_request"},
 			{binds.SidebarImportPostman, ActionImportPostman},
+			{binds.ToggleRequest, ActionToggleRequest},
 		},
 		{{binds.EditURL, ActionEditURL}, {binds.MethodNext, ActionMethodNext},
 			{binds.MethodPrev, ActionMethodPrev}, {binds.SendRequest, ActionSendRequest},
 			{binds.EditBody, ActionEditBody}, {binds.EditHeaders, ActionEditHeaders},
 			{binds.RequestDelete, ActionDeleteRequest},
 			{binds.EditAuth, ActionEditAuth}, {binds.ScheduleRun, ActionScheduleRun},
-			{binds.ExportCurl, ActionExportCurl}},
+			{binds.ExportCurl, ActionExportCurl}, {binds.ToggleRequest, ActionToggleRequest}},
 		{{binds.ResponseDown, "response_down"}, {binds.ResponseUp, "response_up"},
 			{binds.ResponseRetry, "response_retry"},
 			{binds.TabBody, "tab_body"}, {binds.TabHeaders, "tab_headers"},

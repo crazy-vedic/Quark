@@ -14,6 +14,7 @@ const (
 	ActionEditAuth        = "edit_auth"
 	ActionDeleteRequest   = "delete_request"
 	ActionScheduleRun     = "schedule_run"
+	ActionToggleRequest   = "toggle_request"
 	ActionEnvOpen         = "env_open"
 	ActionEnvNext         = "env_next"
 	ActionEnvPrev         = "env_prev"

@@ -157,7 +157,7 @@ JSON formatting preserves the existing indent style (2-space, 4-space, tabs) and
 ## Features
 
 - **Local SQLite** — `~/.quark/quark.db`, WAL mode, no network
-- **Collections & requests** — Organise, sort, enable/disable
+- **Collections & requests** — Organise and sort; press `t` on a request to enable or disable it. A disabled request stays in its collection, shows dimmed as `(off)` in the sidebar, and is refused by `quark run` and scheduled runs
 - **Import** — cURL and Postman Collection v2.1 from the CLI or TUI
 - **Response preview** — Syntax-highlighted JSON, streaming for large bodies
 - **Themes** — Terminal-aware dark and light palettes, local custom themes, live preview and reload
@@ -195,7 +195,8 @@ PKCS#12 files, prefer `--password-env` to keep passwords out of shell history.
 `quark run <Collection/Request>` prints the response body after its status
 summary. Valid JSON is pretty-printed and syntax-highlighted in a terminal.
 Add `--verbose` to print request details and response headers to stderr; this
-can include credentials from the saved request.
+can include credentials from the saved request. `quark run` and
+`quark schedule add` refuse a disabled request (enable it in the TUI first).
 
 ### Text Selection & Editing
 

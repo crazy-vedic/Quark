@@ -69,6 +69,9 @@ func newScheduleAddCmd(st ScheduleStore, now func() time.Time) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("schedule add: %w", err)
 			}
+			if err := req.CheckEnabled(); err != nil {
+				return fmt.Errorf("schedule add: %w", err)
+			}
 			runAt, err := schedule.ParseWhen(when, now())
 			if err != nil {
 				return fmt.Errorf("schedule add: %w", err)
@@ -159,6 +162,9 @@ func newScheduleRunDueCmd(st ScheduleStore, e *exec.Executor, now func() time.Ti
 				run.LastError = ""
 
 				req, err := st.GetRequest(cmd.Context(), run.RequestID)
+				if err == nil {
+					err = req.CheckEnabled()
+				}
 				if err != nil {
 					_ = markScheduledRunFailed(cmd.Context(), st, run, err)
 					fmt.Fprintf(cmd.OutOrStdout(), "failed %s: %v\n", shortScheduleID(run.ID), err)

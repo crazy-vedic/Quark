@@ -18,6 +18,7 @@ import (
 	"github.com/crazy-vedic/quark/internal/store"
 	"github.com/crazy-vedic/quark/internal/tui"
 	"github.com/crazy-vedic/quark/internal/tui/textedit"
+	"github.com/crazy-vedic/quark/internal/tuitest"
 )
 
 func TestRequestEditors_HeaderKeyOpensHeaderEditor(t *testing.T) {
@@ -146,4 +147,94 @@ func TestHeaderEditorRendersHeaderNotURL(t *testing.T) {
 	out := m.View()
 	assert.Contains(t, out, "Zzz-Custom", "header key shows in the header editor")
 	assert.Contains(t, out, "value-here", "header value shows in the header editor")
+}
+
+func TestRequestEditors_ToggleRequestPersistsAndMarksDisabled(t *testing.T) {
+	col := &domain.Collection{Name: "API"}
+	st := tuitest.SetupStore(t, col)
+	req := &domain.Request{
+		Name: "Create", Method: "POST", URL: "https://example.com", Headers: "{}",
+	}
+	tuitest.SeedRequests(t, st, col.ID, req)
+	ctx := context.Background()
+
+	m := tuitest.NewModel(t, st, &tuitest.MockExecutor{})
+	m = callUpdate(t, m, tea.WindowSizeMsg{Width: 100, Height: 30})
+	m = callUpdate(t, m, tui.CollectionsLoadedMsg([]*domain.Collection{col}))
+	m = callUpdate(t, m, tui.RequestsLoadedMsg(col.ID, []*domain.Request{req}))
+	m = m.WithActiveRequest(req).WithFocus(tui.RequestPane)
+
+	m, cmd := callUpdateWithCmd(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("t")})
+	require.NotNil(t, cmd, "toggling saves the request")
+	assert.Equal(t, `Request "Create" disabled`, m.StatusSuccess())
+	assert.True(t, m.ActiveRequest().Disabled)
+	assert.Contains(t, m.View(), "(disabled)")
+	m = callUpdate(t, m, cmd())
+
+	got, err := st.GetRequest(ctx, req.ID)
+	require.NoError(t, err)
+	assert.True(t, got.Disabled, "the disabled state is stored")
+
+	m, cmd = callUpdateWithCmd(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("t")})
+	require.NotNil(t, cmd)
+	assert.Equal(t, `Request "Create" enabled`, m.StatusSuccess())
+	assert.NotContains(t, m.View(), "(disabled)")
+	_ = callUpdate(t, m, cmd())
+
+	got, err = st.GetRequest(ctx, req.ID)
+	require.NoError(t, err)
+	assert.False(t, got.Disabled)
+}
+
+func TestRequestEditors_ToggleFromSidebarMarksListedRequest(t *testing.T) {
+	col := &domain.Collection{Name: "API"}
+	st := tuitest.SetupStore(t, col)
+	req := &domain.Request{
+		Name: "Create", Method: "POST", URL: "https://example.com", Headers: "{}",
+	}
+	tuitest.SeedRequests(t, st, col.ID, req)
+	ctx := context.Background()
+
+	m := tuitest.NewModel(t, st, &tuitest.MockExecutor{})
+	m = callUpdate(t, m, tea.WindowSizeMsg{Width: 100, Height: 30})
+	m = callUpdate(t, m, tui.CollectionsLoadedMsg([]*domain.Collection{col}))
+	m = callUpdate(t, m, tui.RequestsLoadedMsg(col.ID, []*domain.Request{req}))
+	require.True(t, m.IsExpanded(col.ID), "the first collection opens on load")
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("1")})
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
+	require.Equal(t, 0, m.ReqCursor(), "the first request is selected in the sidebar")
+
+	m, cmd := callUpdateWithCmd(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("t")})
+	require.NotNil(t, cmd)
+	m = callUpdate(t, m, cmd())
+
+	got, err := st.GetRequest(ctx, req.ID)
+	require.NoError(t, err)
+	assert.True(t, got.Disabled)
+	assert.Contains(t, m.View(), "(off)", "the disabled request is marked in the sidebar")
+}
+
+func TestRequestEditors_ToggleRequestNeedsSelectionAndStore(t *testing.T) {
+	m := newModel(defaultConfig()).WithFocus(tui.RequestPane)
+	m, cmd := callUpdateWithCmd(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("t")})
+	assert.Nil(t, cmd)
+	assert.Equal(t, "Select a saved request first", m.StatusErr())
+
+	req := &domain.Request{ID: "r1", Name: "keep", Method: "GET", URL: "https://example.com"}
+	m = newModel(defaultConfig()).WithFocus(tui.RequestPane).WithActiveRequest(req)
+	m, cmd = callUpdateWithCmd(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("t")})
+	assert.Nil(t, cmd)
+	assert.Equal(t, "Cannot save: no store is open", m.StatusErr())
+	assert.False(t, req.Disabled, "nothing changes when the request cannot be saved")
+}
+
+func TestRequestEditors_ScheduleRefusesDisabledRequest(t *testing.T) {
+	req := &domain.Request{
+		ID: "r1", Name: "off", Method: "GET", URL: "https://example.com", Disabled: true,
+	}
+	m := newModel(defaultConfig()).WithFocus(tui.RequestPane).WithActiveRequest(req)
+
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("S")})
+	assert.Equal(t, tui.NormalMode, m.Mode(), "the schedule prompt does not open")
+	assert.Contains(t, m.StatusErr(), "disabled")
 }
