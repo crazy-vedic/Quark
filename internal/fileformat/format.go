@@ -5,7 +5,8 @@
 // Layout of one exported collection:
 //
 //	<collection-slug>/
-//	  collection.yaml          name, description, order of requests and sub-collections
+//	  collection.yaml          name, description, and the files this export wrote:
+//	                           requests, sub-collections and environments, in order
 //	  <request-slug>.yaml      one file per request
 //	  environments/<env>.yaml  one file per environment of this collection
 //	  <sub-collection-slug>/   nested collections, same layout
@@ -69,6 +70,10 @@ type collectionFile struct {
 	Meta        string   `yaml:"meta,omitempty"`
 	Requests    []string `yaml:"requests,omitempty"`
 	Collections []string `yaml:"collections,omitempty"`
+	// Environments lists the file names in environments/. An export removes
+	// only the files its previous export listed, so every file it writes must
+	// be listed here.
+	Environments []string `yaml:"environments,omitempty"`
 }
 
 type requestFile struct {

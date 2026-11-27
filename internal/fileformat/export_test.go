@@ -137,6 +137,9 @@ requests:
   - list-items.yaml
 collections:
   - users
+environments:
+  - staging.yaml
+  - default.yaml
 `, files["collection.yaml"])
 	assert.Equal(t, `name: Create item
 method: POST
@@ -219,4 +222,89 @@ func TestSlug(t *testing.T) {
 	assert.Equal(t, "item", slug("!!!"))
 	assert.Equal(t, "café", slug("Café"))
 	assert.Len(t, []rune(slug(strings.Repeat("a", 100))), maxSlugRunes)
+}
+
+func writeUserFiles(t *testing.T, dir string, files map[string]string) {
+	t.Helper()
+	for rel, data := range files {
+		full := filepath.Join(dir, filepath.FromSlash(rel))
+		require.NoError(t, os.MkdirAll(filepath.Dir(full), 0o750))
+		require.NoError(t, os.WriteFile(full, []byte(data), 0o600))
+	}
+}
+
+func TestWriteRemovesOnlyFilesOfThePreviousExport(t *testing.T) {
+	out := t.TempDir()
+	first := &Collection{
+		Name: "API",
+		Requests: []*domain.Request{
+			{Name: "Old name", Method: "GET"},
+			{Name: "Kept", Method: "GET"},
+		},
+		Children: []*Collection{
+			{Name: "Users", Requests: []*domain.Request{{Name: "Get user", Method: "GET"}}},
+			{Name: "Admin", Requests: []*domain.Request{{Name: "Ping", Method: "GET"}}},
+		},
+		Environments: []Environment{{Name: "Staging", Vars: map[string]string{"a": "b"}}},
+	}
+	path, err := Write(out, first)
+	require.NoError(t, err)
+
+	// Files the user put in the export directory themselves.
+	userFiles := map[string]string{
+		"README.md":               "my notes\n",
+		".git/config":             "[core]\n\trepositoryformatversion = 0\n",
+		"users/notes.txt":         "check the admin role\n",
+		"environments/.env.local": "SECRET=1\n",
+	}
+	writeUserFiles(t, path, userFiles)
+
+	// Rename a request, drop the Admin sub-collection and the Staging environment.
+	second := &Collection{
+		Name: "API",
+		Requests: []*domain.Request{
+			{Name: "New name", Method: "GET"},
+			{Name: "Kept", Method: "GET"},
+		},
+		Children: []*Collection{
+			{Name: "Users", Requests: []*domain.Request{{Name: "Get user", Method: "GET"}}},
+		},
+	}
+	_, err = Write(out, second)
+	require.NoError(t, err)
+
+	assert.NoFileExists(t, filepath.Join(path, "old-name.yaml"), "renamed request is removed")
+	assert.FileExists(t, filepath.Join(path, "new-name.yaml"))
+	assert.FileExists(t, filepath.Join(path, "kept.yaml"))
+	assert.NoFileExists(t, filepath.Join(path, "admin", "collection.yaml"),
+		"file of a removed sub-collection is removed")
+	assert.NoFileExists(t, filepath.Join(path, "admin", "ping.yaml"))
+	assert.NoDirExists(t, filepath.Join(path, "admin"), "emptied directory is removed")
+	assert.NoFileExists(t, filepath.Join(path, "environments", "staging.yaml"),
+		"file of a removed environment is removed")
+
+	// Everything the user added survives, and so do the directories holding it.
+	for rel, data := range userFiles {
+		full := filepath.Join(path, filepath.FromSlash(rel))
+		got, err := os.ReadFile(full) //nolint:gosec // test temp dir
+		require.NoError(t, err, rel)
+		assert.Equal(t, data, string(got), rel)
+	}
+	assert.FileExists(t, filepath.Join(path, "users", "get-user.yaml"))
+}
+
+func TestWriteRefusesPreviousMetadataThatNamesFilesOutsideTheExport(t *testing.T) {
+	out := t.TempDir()
+	first := &Collection{Name: "API", Requests: []*domain.Request{{Name: "A", Method: "GET"}}}
+	path, err := Write(out, first)
+	require.NoError(t, err)
+
+	outside := filepath.Join(out, "outside.yaml")
+	require.NoError(t, os.WriteFile(outside, []byte("keep me\n"), 0o600))
+	meta := "format: 1\nname: API\nrequests:\n  - ../outside.yaml\n"
+	require.NoError(t, os.WriteFile(filepath.Join(path, "collection.yaml"), []byte(meta), 0o600))
+
+	_, err = Write(out, &Collection{Name: "API"})
+	require.Error(t, err)
+	assert.FileExists(t, outside, "files outside the export are never removed")
 }

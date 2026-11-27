@@ -16,8 +16,10 @@ func NewExportCmd(st fileformat.Source) *cobra.Command {
 		Short: "Export a collection as git-friendly YAML files",
 		Long: "Export a collection, its nested collections and its environments as a\n" +
 			"directory of YAML files inside <dir>: one file per request, a collection.yaml\n" +
-			"per collection and one file per environment. Running it again replaces the\n" +
-			"previous export of the same collection. Import it with 'quark import dir'.",
+			"per collection and one file per environment. Running it again updates the\n" +
+			"previous export of the same collection: files it wrote before that the\n" +
+			"collection no longer has are removed, and any other files are kept.\n" +
+			"Import it with 'quark import dir'.",
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			col, err := resolveCollectionReference(cmd.Context(), st, args[0])

@@ -162,7 +162,7 @@ Imports a collection directory written by `quark export`, or every such director
 quark export <collection> <dir>
 ```
 
-Writes a collection, its nested collections and its environments under `<dir>/<collection-slug>/`: one YAML file per request, a `collection.yaml` per collection and one file per environment in `environments/`. Output is deterministic (no IDs or timestamps), so re-exporting unchanged data produces identical files. Re-exporting replaces the previous export of that collection; a directory that is not a Quark export is never overwritten. Auth secrets are written as plain text, so review the directory before committing it.
+Writes a collection, its nested collections and its environments under `<dir>/<collection-slug>/`: one YAML file per request, a `collection.yaml` per collection and one file per environment in `environments/`. Output is deterministic (no IDs or timestamps), so re-exporting unchanged data produces identical files. Re-exporting updates the previous export of that collection: files are replaced, and only the files that the previous export listed in its `collection.yaml` files (requests, sub-collections and environments) are removed when the collection no longer has them. Directories are removed only once empty. Anything else in the directory, such as `README.md`, notes or `.git`, is left alone. A directory that is not a Quark export is never overwritten. Auth secrets are written as plain text, so review the directory before committing it.
 
 ## env
 

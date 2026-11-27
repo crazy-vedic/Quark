@@ -410,7 +410,10 @@ remain byte-preserving declarations.
 `quark export <collection> <dir>` writes a collection as YAML files that can be
 reviewed and versioned in git: one file per request, a `collection.yaml` per
 collection, and one file per environment. The output is deterministic, so
-exporting unchanged data again produces identical files.
+exporting unchanged data again produces identical files. Exporting again removes
+only the files the previous export wrote that the collection no longer has, such
+as renamed or deleted requests; files you add to the directory, such as a
+`README.md`, notes or `.git`, are kept.
 
 ```bash
 quark export "API" ./collections           # writes ./collections/api/
