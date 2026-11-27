@@ -246,6 +246,8 @@ func (m Model) ViewTabBarForTest(maxWidth int) string            { return m.view
 func (m Model) ValidationErr() string                            { return m.activeValidationErr() }
 func (m Model) Response() *exec.ExecuteResult                    { return m.response }
 func (m Model) Executions() []*domain.Execution                  { return m.executions }
+func (m Model) HistoryMarks() []string                           { return m.historyMarks }
+func (m Model) ViewerContent() string                            { return m.viewerContent }
 func (m Model) ExecCursor() int                                  { return m.execCursor }
 func (m Model) Width() int                                       { return m.width }
 func (m Model) Height() int                                      { return m.height }
@@ -562,7 +564,7 @@ func (m Model) ResponseTextOffset() int { return m.responseText.offset }
 // when historical execution view is active. rowIndex is an index into the current
 // visible history window (0 = first visible row).
 func (m Model) ResponseHistoryRowClickPos(rowIndex int) (x, y int, ok bool) {
-	if m.width <= 0 || m.height <= 0 || !m.viewingHistoricalExecution() {
+	if m.width <= 0 || m.height <= 0 || !m.executionHistoryPopupVisible() {
 		return 0, 0, false
 	}
 	layout := m.currentLayout()

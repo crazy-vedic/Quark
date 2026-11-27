@@ -72,7 +72,7 @@ var groups = []struct {
 		"auth_cancel", "auth_option_next", "auth_option_prev",
 	}},
 	{"Response", []string{
-		"response_down", "response_up", "response_retry",
+		"response_down", "response_up", "response_retry", "response_mark", "response_diff",
 		"tab_body", "tab_headers", "tab_raw", "tab_next", "tab_prev",
 	}},
 	{"Search", []string{

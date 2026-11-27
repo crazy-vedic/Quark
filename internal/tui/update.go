@@ -386,7 +386,14 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.executions = msg.executions
 		m.execCursor = 0
+		m.historyMarks = pruneHistoryMarks(m.historyMarks, msg.executions)
 		return m, nil
+
+	case historyDiffLoadedMsg:
+		if m.activeRequest == nil || msg.requestID != m.activeRequest.ID {
+			return m, nil
+		}
+		return m.openViewerForText(historyDiffText(msg.first, msg.second)), nil
 
 	case executionBodyLoadedMsg:
 		if m.activeRequest == nil || msg.execution == nil || msg.requestID != m.activeRequest.ID {
@@ -949,6 +956,10 @@ func (m Model) handleResponseAction(action string, parent ...*timing.Span) (tea.
 			m.execCursor--
 			return m, m.loadSelectedExecutionBodyCmd()
 		}
+	case "history_mark":
+		return m.toggleHistoryMark(), nil
+	case "history_diff":
+		return m.compareMarkedHistory()
 	case "retry_request":
 		if m.loading || m.executor == nil {
 			return m, nil

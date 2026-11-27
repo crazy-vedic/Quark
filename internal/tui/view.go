@@ -64,6 +64,8 @@ var helpActionLabels = map[string]string{
 	"response_down":                 "next history item",
 	"response_up":                   "prev history item",
 	"response_retry":                "retry request",
+	"response_mark":                 "mark history entry",
+	"response_diff":                 "compare marked entries",
 	actionTabBody:                   "show body",
 	actionTabHeaders:                "show headers",
 	actionTabRaw:                    "show raw",
@@ -1105,7 +1107,16 @@ func (m Model) viewTabBar(maxWidth int) string {
 		hintItems = append(hintItems, hintItem{
 			Label:   "history",
 			Actions: []string{"response_up", "response_down"},
+		}, hintItem{
+			Label:   "mark",
+			Actions: []string{"response_mark"},
 		})
+		if len(m.historyMarks) == historyMarkLimit {
+			hintItems = append(hintItems, hintItem{
+				Label:   "compare",
+				Actions: []string{"response_diff"},
+			})
+		}
 	}
 	hintsPlain := m.renderHints(hintItems)
 	if hintsPlain == "" {
@@ -1358,7 +1369,7 @@ func (m Model) executionHeaders(ex *domain.Execution) http.Header {
 }
 
 func (m Model) viewExecutionHistoryPopup(maxWidth, maxRows int) string {
-	if !m.viewingHistoricalExecution() {
+	if !m.executionHistoryPopupVisible() {
 		return ""
 	}
 
@@ -1448,6 +1459,11 @@ func (m Model) viewExecutionHistoryLine(idx int, ex *domain.Execution, width int
 	cursor := "  "
 	if idx == m.execCursor {
 		cursor = "▸ "
+	}
+	if letter := m.historyMarkLetter(ex.ID); letter != "" {
+		cursor += letter + " "
+	} else {
+		cursor += "  "
 	}
 
 	statusWidth := lipgloss.Width(statusText)

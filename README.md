@@ -160,7 +160,7 @@ JSON formatting preserves the existing indent style (2-space, 4-space, tabs) and
 - **Collections & requests** — Organise, sort, enable/disable
 - **Import** — cURL and Postman Collection v2.1 from the CLI or TUI
 - **Response preview** — Syntax-highlighted JSON, streaming for large bodies
-- **Execution history** — Every run of a saved request is kept; history stores the first 1 MiB of each response body and marks larger bodies as truncated
+- **Execution history** — Every run of a saved request is kept; history stores the first 1 MiB of each response body and marks larger bodies as truncated. In the response pane, `m` marks two runs (A, then B) and `D` compares their status, headers and body
 - **Themes** — Terminal-aware dark and light palettes, local custom themes, live preview and reload
 - **Fuzzy search** — `/` to search across everything
 - **Auto-backup** — Last 10 backups in `~/.quark/backup/`
