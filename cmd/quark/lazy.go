@@ -217,6 +217,16 @@ func lazyImportCmd(rt func() (*runtime, error)) *cobra.Command {
 	})
 }
 
+func lazyExportPostmanCmd(rt func() (*runtime, error)) *cobra.Command {
+	return lazyCommand(rt, func(r *runtime) *cobra.Command { return cli.NewExportPostmanCmd(r.st) })
+}
+
+func lazyExportHARCmd(rt func() (*runtime, error)) *cobra.Command {
+	return lazyCommand(rt, func(r *runtime) *cobra.Command {
+		return cli.NewExportHARCmd(r.st, Version)
+	})
+}
+
 func lazyImportPostmanCmd(rt func() (*runtime, error)) *cobra.Command {
 	return lazyCommand(rt, func(r *runtime) *cobra.Command {
 		return cli.NewImportPostmanCmd(r.st, cli.NewDebugLogger(nil))

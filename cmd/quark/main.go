@@ -181,6 +181,8 @@ func runWithArgs(args []string) error {
 	root.AddCommand(lazyScheduleCmd(runtimeOnce))
 	root.AddCommand(lazyImportCmd(runtimeOnce))
 	root.AddCommand(lazyImportPostmanCmd(runtimeOnce))
+	root.AddCommand(lazyExportPostmanCmd(runtimeOnce))
+	root.AddCommand(lazyExportHARCmd(runtimeOnce))
 	root.AddCommand(lazyEnvCmd(runtimeOnce))
 	root.AddCommand(lazyClientCertCmd())
 	root.AddCommand(lazyKeybindingsCmd())
