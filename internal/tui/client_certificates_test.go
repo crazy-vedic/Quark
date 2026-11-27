@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/crazy-vedic/quark/internal/config"
@@ -52,6 +53,20 @@ func setCertFields(m Model, host, typ, file, ca string) Model {
 	m.clientCertFile.SetValue(file)
 	m.clientCertCAFile.SetValue(ca)
 	return m
+}
+
+func TestClientCertPlaceholdersFollowOS(t *testing.T) {
+	windows := New(Deps{GOOS: "windows"})
+	assert.Equal(t, `C:\path\client.p12 or client.pem`, windows.clientCertFile.Placeholder)
+	assert.Equal(t, `C:\path\client-key.pem (PEM)`, windows.clientCertKeyFile.Placeholder)
+	assert.Equal(t, `C:\path\ca.pem (optional)`, windows.clientCertCAFile.Placeholder)
+
+	for _, goos := range []string{"darwin", "linux"} {
+		m := New(Deps{GOOS: goos}).openClientCertModal().beginClientCertEdit(-1)
+		assert.Equal(t, "/path/to/client.p12 or client.pem", m.clientCertFile.Placeholder, goos)
+		assert.Equal(t, "/path/to/client-key.pem (PEM)", m.clientCertKeyFile.Placeholder, goos)
+		assert.Equal(t, "/path/to/ca.pem (optional)", m.clientCertCAFile.Placeholder, goos)
+	}
 }
 
 func TestClientCertificateModalNavigationAndEditing(t *testing.T) {

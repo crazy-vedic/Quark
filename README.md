@@ -257,6 +257,8 @@ select_line_up = "shift+up"
 | `history_next` / `history_prev` | `shift+pgdown` / `shift+pgup` | Next/previous response history entry |
 | `viewer_find` / `viewer_copy` / `viewer_close` | `f` / `c` / `esc` | Response viewer find, copy, close |
 
+Key labels follow your platform. On macOS, hints show `⌘` and `⌥`, `find_open` also accepts `cmd+f`, and the send hint reads `⌘+Enter`. On Windows and Linux, hints show `Ctrl` and `Alt` only, and no `cmd` binding is active by default; the send alias is `Alt+Enter`.
+
 ---
 
 ## Themes

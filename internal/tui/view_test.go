@@ -209,17 +209,27 @@ func TestView_RequestHints_UseConfiguredBindingsAndAliasPolicy(t *testing.T) {
 	cfg.Keybindings.EnvPrev = "ctrl+left"
 	cfg.Keybindings.EnvNext = "ctrl+right"
 
-	m := newModel(cfg).WithFocus(tui.RequestPane)
-	// Render the request pane wide enough that responsive hint truncation does not
-	// clip the configured bindings under test (full View at 120px still truncates).
-	pane := m.ViewRequestPaneForTest(140, 20)
-	assert.Contains(t, pane, "[U] url")
-	assert.Contains(t, pane, "[n/p] cycle method")
-	assert.Contains(t, pane, "[Ctrl+S/⌘+Enter] send")
-	assert.Contains(t, pane, "[B] body")
-	assert.Contains(t, pane, "[H] headers")
-	assert.Contains(t, pane, "[E] env")
-	assert.Contains(t, pane, "[Ctrl+←/Ctrl+→] cycle env")
+	sendLabels := map[string]string{
+		"darwin":  "[Ctrl+S/⌘+Enter] send",
+		"linux":   "[Ctrl+S/Alt+Enter] send",
+		"windows": "[Ctrl+S/Alt+Enter] send",
+	}
+	for goos, sendLabel := range sendLabels {
+		m := tui.New(tui.Deps{Config: cfg, GOOS: goos}).WithFocus(tui.RequestPane)
+		// Render the request pane wide enough that responsive hint truncation does not
+		// clip the configured bindings under test (full View at 120px still truncates).
+		pane := m.ViewRequestPaneForTest(140, 20)
+		assert.Contains(t, pane, "[U] url", goos)
+		assert.Contains(t, pane, "[n/p] cycle method", goos)
+		assert.Contains(t, pane, sendLabel, goos)
+		assert.Contains(t, pane, "[B] body", goos)
+		assert.Contains(t, pane, "[H] headers", goos)
+		assert.Contains(t, pane, "[E] env", goos)
+		assert.Contains(t, pane, "[Ctrl+←/Ctrl+→] cycle env", goos)
+		if goos != "darwin" {
+			assert.NotContains(t, pane, "⌘", goos)
+		}
+	}
 }
 
 func TestView_RequestPane_HintsStayOnOneLine(t *testing.T) {

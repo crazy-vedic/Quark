@@ -56,6 +56,22 @@ func TestUpdate_ErrTimeout_SetsStatusErr(t *testing.T) {
 	assert.Nil(t, updated.Err(), "timeout is Tier 2, not fatal")
 }
 
+func TestUpdate_ErrTimeout_RetryHintFollowsOS(t *testing.T) {
+	tests := []struct{ goos, want string }{
+		{"darwin", "Press [⌘+Enter] to retry."},
+		{"windows", "Press [Alt+Enter] to retry."},
+		{"linux", "Press [Alt+Enter] to retry."},
+	}
+	for _, tt := range tests {
+		m := tui.New(tui.Deps{GOOS: tt.goos}).WithLoading(true)
+		updated := callUpdate(t, m, tui.HttpErrMsg(exec.ErrTimeout))
+		assert.Contains(t, updated.StatusErr(), tt.want, tt.goos)
+		if tt.goos != "darwin" {
+			assert.NotContains(t, updated.StatusErr(), "⌘", tt.goos)
+		}
+	}
+}
+
 func TestUpdate_ErrInvalidURL_SetsValidationErr(t *testing.T) {
 	m := newTestModel()
 	m = m.WithActiveRequest(&domain.Request{ID: "req-1", Method: "GET", URL: "://bad"})
