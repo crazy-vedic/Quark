@@ -4,7 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
+	"strconv"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -832,4 +836,125 @@ func TestErrUnresolvedVariable_ErrorIs(t *testing.T) {
 	// Verify ErrUnresolvedVariable is detectable with errors.Is
 	err := fmt.Errorf("interpolate: %w: %q", exec.ErrUnresolvedVariable, "host")
 	assert.True(t, errors.Is(err, exec.ErrUnresolvedVariable))
+}
+
+func TestInterpolateRequest_EscapedOpenerIsLiteral(t *testing.T) {
+	req := &domain.Request{
+		URL:     `https://example.com/\{{host}}`,
+		Body:    `{"note": "\{{literal}}"}`,
+		Headers: `{"X-Raw": "\\{{host}}"}`,
+	}
+
+	// The escape is honoured with no environments and with one that defines host.
+	out, err := exec.InterpolateRequest(req, nil, nil)
+	require.NoError(t, err)
+	assert.Equal(t, `https://example.com/{{host}}`, out.URL)
+	assert.Equal(t, `{"note": "{{literal}}"}`, out.Body)
+	assert.JSONEq(t, `{"X-Raw": "{{host}}"}`, out.Headers)
+
+	out, err = exec.InterpolateRequest(req, map[string]string{"host": "api"}, nil)
+	require.NoError(t, err)
+	assert.Equal(t, `https://example.com/{{host}}`, out.URL)
+}
+
+func TestInterpolateRequest_EscapeWithoutPlaceholdersIsNotCopiedVerbatim(t *testing.T) {
+	req := &domain.Request{URL: `https://example.com/a\{{b`}
+
+	out, err := exec.InterpolateRequest(req, nil, nil)
+	require.NoError(t, err)
+	assert.Equal(t, `https://example.com/a{{b`, out.URL)
+}
+
+func TestInterpolateRequest_EscapeAndPlaceholderMixed(t *testing.T) {
+	req := &domain.Request{URL: `\{{x}}/{{host}}`}
+
+	out, err := exec.InterpolateRequest(req, map[string]string{"host": "api"}, nil)
+	require.NoError(t, err)
+	assert.Equal(t, `{{x}}/api`, out.URL)
+}
+
+var (
+	uuidV4RE = regexp.MustCompile(
+		`^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
+	isoTimestampRE = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$`)
+)
+
+func interpolateURL(t *testing.T, url string) string {
+	t.Helper()
+	out, err := exec.InterpolateRequest(&domain.Request{URL: url}, nil, nil)
+	require.NoError(t, err)
+	return out.URL
+}
+
+func TestInterpolateRequest_GuidVariables(t *testing.T) {
+	for _, name := range []string{"$guid", "$randomUUID"} {
+		t.Run(name, func(t *testing.T) {
+			got := interpolateURL(t, "{{"+name+"}}")
+			assert.Regexp(t, uuidV4RE, got)
+		})
+	}
+
+	// Each use is evaluated separately.
+	out := interpolateURL(t, "{{$guid}}/{{$guid}}")
+	parts := strings.Split(out, "/")
+	require.Len(t, parts, 2)
+	assert.NotEqual(t, parts[0], parts[1])
+}
+
+func TestInterpolateRequest_TimestampVariables(t *testing.T) {
+	before := time.Now().Add(-time.Second)
+	gotUnix := interpolateURL(t, "{{$timestamp}}")
+	after := time.Now().Add(time.Second)
+
+	secs, err := strconv.ParseInt(gotUnix, 10, 64)
+	require.NoError(t, err)
+	assert.False(t, time.Unix(secs, 0).Before(before.Truncate(time.Second)))
+	assert.False(t, time.Unix(secs, 0).After(after))
+
+	gotISO := interpolateURL(t, "{{$isoTimestamp}}")
+	assert.Regexp(t, isoTimestampRE, gotISO)
+	parsed, err := time.Parse("2006-01-02T15:04:05.000Z", gotISO)
+	require.NoError(t, err)
+	assert.False(t, parsed.Before(before.Truncate(time.Millisecond)))
+	assert.False(t, parsed.After(after))
+}
+
+func TestInterpolateRequest_RandomIntVariable(t *testing.T) {
+	for range 50 {
+		got := interpolateURL(t, "{{$randomInt}}")
+		n, err := strconv.Atoi(got)
+		require.NoError(t, err)
+		assert.GreaterOrEqual(t, n, 0)
+		assert.LessOrEqual(t, n, 1000)
+	}
+}
+
+func TestInterpolateRequest_DynamicVariablesResolveWithoutEnvironments(t *testing.T) {
+	req := &domain.Request{
+		URL:        "https://{{$randomInt}}.example.com/{{$guid}}",
+		Body:       `{"id": "{{$randomUUID}}", "at": "{{$isoTimestamp}}"}`,
+		Headers:    `{"X-Request-Id": "{{$guid}}", "X-Tags": ["{{$timestamp}}"]}`,
+		AuthType:   "bearer",
+		AuthConfig: `{"token": "{{$guid}}"}`,
+	}
+
+	out, err := exec.InterpolateRequest(req, nil, nil)
+	require.NoError(t, err)
+	assert.NotContains(t, out.URL, "{{")
+	assert.NotContains(t, out.Body, "{{")
+	assert.NotContains(t, out.Headers, "{{")
+	assert.NotContains(t, out.AuthConfig, "{{")
+}
+
+func TestInterpolateRequest_DynamicVariableInFallbackChain(t *testing.T) {
+	out := interpolateURL(t, "{{merchant|$randomInt}}")
+	_, err := strconv.Atoi(out)
+	require.NoError(t, err)
+}
+
+func TestInterpolateRequest_UnknownDollarVariableStaysUnresolved(t *testing.T) {
+	_, err := exec.InterpolateRequest(&domain.Request{URL: "{{$nope}}"}, nil, nil)
+	require.ErrorIs(t, err, exec.ErrUnresolvedVariable)
+	assert.Contains(t, err.Error(), "$nope")
+	assert.Contains(t, err.Error(), "no environments active")
 }
