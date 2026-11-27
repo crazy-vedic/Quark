@@ -48,6 +48,7 @@ type Collection struct {
 	Info     Info       `json:"info"`
 	Item     []Item     `json:"item"`
 	Variable []Variable `json:"variable,omitempty"`
+	Auth     *Auth      `json:"auth,omitempty"`
 }
 
 // Info contains collection metadata.
@@ -65,6 +66,7 @@ type Item struct {
 	Item     []Item     `json:"item,omitempty"` // nested folders
 	Request  *Request   `json:"request,omitempty"`
 	Response []Response `json:"response,omitempty"`
+	Auth     *Auth      `json:"auth,omitempty"` // folders only
 }
 
 // Request represents a single HTTP request in Postman.

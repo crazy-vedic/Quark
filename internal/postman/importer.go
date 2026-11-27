@@ -34,13 +34,17 @@ func (s SecurityLevel) String() string {
 // ImportResult holds the result of parsing a Postman collection.
 type ImportResult struct {
 	CollectionName      string
-	CollectionVariables map[string]string     // root collection-scoped variables
-	Requests            []*domain.Request     // all requests, in Postman traversal order
-	Groups              []RequestGroup        // requests grouped by nested folder path
-	Environments        []*domain.Environment // retained for compatibility
-	Warnings            []string              // non-fatal issues (unsupported auth, body modes, etc.)
-	Security            SecurityLevel         // max security level across all requests
-	Skipped             int                   // number of requests skipped
+	CollectionVariables map[string]string // root collection-scoped variables
+	Requests            []*domain.Request // all requests, in Postman traversal order
+	Groups              []RequestGroup    // requests grouped by nested folder path
+	// AuthType and AuthConfig are the root collection's defaults, set when the
+	// Postman collection has collection-level auth Quark can store.
+	AuthType     string
+	AuthConfig   string
+	Environments []*domain.Environment // retained for compatibility
+	Warnings     []string              // non-fatal issues (unsupported auth, body modes, etc.)
+	Security     SecurityLevel         // max security level across all requests
+	Skipped      int                   // number of requests skipped
 }
 
 // RequestGroup is a Postman folder path and the requests directly in it.
@@ -48,6 +52,9 @@ type ImportResult struct {
 type RequestGroup struct {
 	Path     string
 	Requests []*domain.Request
+	// AuthType and AuthConfig are the folder's default auth, when it sets one.
+	AuthType   string
+	AuthConfig string
 }
 
 // Importer parses Postman Collection v2.1 JSON files.
@@ -102,6 +109,8 @@ func (im *Importer) Parse(r io.Reader) (*ImportResult, error) {
 		CollectionVariables: result.CollectionVariables,
 		Requests:            result.Requests,
 		Groups:              result.Groups,
+		AuthType:            result.AuthType,
+		AuthConfig:          result.AuthConfig,
 		Warnings:            result.Warnings,
 		Security:            maxSecurity,
 	}, nil

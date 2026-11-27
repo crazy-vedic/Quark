@@ -338,7 +338,11 @@ func importSingleFile(
 		}
 		logger.Logf("merge target found id=%s name=%s", col.ID, col.Name)
 	} else {
-		col = &domain.Collection{Name: name}
+		col = &domain.Collection{
+			Name:       name,
+			AuthType:   result.AuthType,
+			AuthConfig: result.AuthConfig,
+		}
 		if err := tx.SaveCollection(ctx, col); err != nil {
 			logger.Logf("save collection failed name=%s err=%v", name, err)
 			return importStats{
@@ -357,6 +361,10 @@ func importSingleFile(
 		groups = []postman.RequestGroup{{Requests: result.Requests}}
 	}
 	collectionsByPath := map[string]*domain.Collection{"": col}
+	folderAuth := make(map[string]postman.RequestGroup, len(groups))
+	for _, group := range groups {
+		folderAuth[group.Path] = group
+	}
 	for _, group := range groups {
 		if group.Path == "" {
 			continue
@@ -384,7 +392,13 @@ func importSingleFile(
 				}
 			}
 			if child == nil {
-				child = &domain.Collection{Name: part, ParentID: parent.ID}
+				folder := folderAuth[pathSoFar]
+				child = &domain.Collection{
+					Name:       part,
+					ParentID:   parent.ID,
+					AuthType:   folder.AuthType,
+					AuthConfig: folder.AuthConfig,
+				}
 				if err := tx.SaveCollection(ctx, child); err != nil {
 					return importStats{
 							filePath:       path,

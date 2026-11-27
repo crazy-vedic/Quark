@@ -132,3 +132,86 @@ func TestRenameCollection_ChangesOnlyTheName(t *testing.T) {
 	err = s.RenameCollection(ctx, "missing", "x")
 	require.ErrorIs(t, err, store.ErrNotFound)
 }
+
+func TestCollectionAuthAndHeaders_RoundTrip(t *testing.T) {
+	ctx := context.Background()
+	s, err := store.New(filepath.Join(t.TempDir(), "collection-defaults.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	// A collection saved without defaults inherits, with no headers.
+	plain := &domain.Collection{ID: "plain", Name: "plain"}
+	require.NoError(t, s.SaveCollection(ctx, plain))
+	got, err := s.GetCollection(ctx, plain.ID)
+	require.NoError(t, err)
+	assert.Equal(t, domain.AuthTypeInherit, got.AuthType)
+	assert.Equal(t, "{}", got.AuthConfig)
+	assert.Equal(t, "{}", got.Headers)
+
+	withDefaults := &domain.Collection{
+		ID:         "defaults",
+		Name:       "defaults",
+		AuthType:   domain.AuthTypeBearer,
+		AuthConfig: `{"token":"t"}`,
+		Headers:    `{"X-Team":["core"]}`,
+	}
+	require.NoError(t, s.SaveCollection(ctx, withDefaults))
+	child := &domain.Collection{ID: "child", Name: "child", ParentID: withDefaults.ID}
+	require.NoError(t, s.SaveCollection(ctx, child))
+
+	got, err = s.GetCollection(ctx, withDefaults.ID)
+	require.NoError(t, err)
+	assert.Equal(t, domain.AuthTypeBearer, got.AuthType)
+	assert.JSONEq(t, `{"token":"t"}`, got.AuthConfig)
+	assert.JSONEq(t, `{"X-Team":["core"]}`, got.Headers)
+
+	children, err := s.ListChildCollections(ctx, withDefaults.ID)
+	require.NoError(t, err)
+	require.Len(t, children, 1)
+	assert.Equal(t, domain.AuthTypeInherit, children[0].AuthType)
+
+	all, err := s.ListCollections(ctx)
+	require.NoError(t, err)
+	found := 0
+	for _, c := range all {
+		if c.ID == withDefaults.ID {
+			found++
+			assert.Equal(t, domain.AuthTypeBearer, c.AuthType)
+		}
+	}
+	assert.Equal(t, 1, found)
+}
+
+func TestSetCollectionDefaults_ReplacesOnlyDefaults(t *testing.T) {
+	ctx := context.Background()
+	s, err := store.New(filepath.Join(t.TempDir(), "set-defaults.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	col := &domain.Collection{ID: "col", Name: "keep-name", Description: "keep"}
+	require.NoError(t, s.SaveCollection(ctx, col))
+
+	err = s.SetCollectionDefaults(ctx, col.ID, &domain.Collection{
+		AuthType:   domain.AuthTypeBearer,
+		AuthConfig: `{"token":"t"}`,
+		Headers:    `{"X-Team":"core"}`,
+	})
+	require.NoError(t, err)
+
+	got, err := s.GetCollection(ctx, col.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "keep-name", got.Name)
+	assert.Equal(t, "keep", got.Description)
+	assert.Equal(t, domain.AuthTypeBearer, got.AuthType)
+	assert.JSONEq(t, `{"token":"t"}`, got.AuthConfig)
+	assert.JSONEq(t, `{"X-Team":"core"}`, got.Headers)
+
+	require.NoError(t, s.SetCollectionDefaults(ctx, col.ID, &domain.Collection{}))
+	got, err = s.GetCollection(ctx, col.ID)
+	require.NoError(t, err)
+	assert.Equal(t, domain.AuthTypeInherit, got.AuthType, "an empty type inherits")
+	assert.Equal(t, "{}", got.Headers)
+
+	err = s.SetCollectionDefaults(ctx, "missing", &domain.Collection{})
+	require.ErrorIs(t, err, store.ErrNotFound)
+}

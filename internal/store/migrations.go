@@ -202,6 +202,16 @@ ON collections(COALESCE(parent_id, ''), name);
 		version: 9,
 		name:    "canonical_global_environment",
 	},
+	{
+		// Existing collections inherit: none of them sets auth or headers yet.
+		version: 10,
+		name:    "collection_auth_headers",
+		upSQL: `
+ALTER TABLE collections ADD COLUMN auth_type TEXT NOT NULL DEFAULT 'inherit';
+ALTER TABLE collections ADD COLUMN auth_config TEXT NOT NULL DEFAULT '{}';
+ALTER TABLE collections ADD COLUMN headers TEXT NOT NULL DEFAULT '{}';
+`,
+	},
 }
 
 // migrate runs all pending migrations in order.

@@ -64,6 +64,9 @@ func applyRequestAuth(httpReq *http.Request, req *domain.Request) error {
 		default:
 			return fmt.Errorf("invalid auth config: unsupported api key location %q", cfg.In)
 		}
+	case domain.AuthTypeInherit:
+		// ApplyCollectionDefaults replaces inherit before a request is sent.
+		return fmt.Errorf("auth is inherited but collection defaults were not applied")
 	default:
 		return fmt.Errorf("unsupported auth type %q", authType)
 	}

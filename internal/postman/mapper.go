@@ -52,6 +52,10 @@ func importCollection(c *Collection, includeDisabledHeaders bool) *ImportResult 
 		result.CollectionName = "Imported"
 	}
 
+	var authWarnings []string
+	result.AuthType, result.AuthConfig, authWarnings = collectionAuth(c.Auth, "collection")
+	result.Warnings = append(result.Warnings, authWarnings...)
+
 	var idx int
 	groups := make(map[string]*RequestGroup)
 	var groupOrder []string
@@ -82,7 +86,13 @@ func importCollection(c *Collection, includeDisabledHeaders bool) *ImportResult 
 					newPrefix += "/"
 				}
 				newPrefix += item.Name
-				getGroup(newPrefix)
+				folder := getGroup(newPrefix)
+				var folderWarnings []string
+				folder.AuthType, folder.AuthConfig, folderWarnings = collectionAuth(
+					item.Auth,
+					"folder",
+				)
+				result.Warnings = append(result.Warnings, folderWarnings...)
 				walk(item.Item, newPrefix)
 			}
 		}
@@ -149,6 +159,12 @@ func mapRequest(
 
 	// Extract authentication as headers
 	warnings = append(warnings, mapAuth(req.Auth, headersMap)...)
+	// Postman requests without their own auth inherit from their folders and
+	// collection, so they map to Quark's inherit type.
+	authType := ""
+	if req.Auth == nil || req.Auth.Type == "inherit" {
+		authType = domain.AuthTypeInherit
+	}
 
 	// Body
 	body := ""
@@ -196,6 +212,7 @@ func mapRequest(
 		URL:       requestURL,
 		Headers:   headersJSON,
 		Body:      body,
+		AuthType:  authType,
 		SortOrder: sortOrder,
 	}, warnings
 }
@@ -416,5 +433,61 @@ func contentTypeFromLanguage(lang string) string {
 		return "application/javascript"
 	default:
 		return ""
+	}
+}
+
+// collectionAuth maps Postman collection or folder auth to the auth a
+// collection can store. Types that cannot be stored are reported as warnings
+// and left inherited. kind names the level for those warnings.
+func collectionAuth(auth *Auth, kind string) (authType, authConfig string, warnings []string) {
+	if auth == nil || auth.Type == "" || auth.Type == "inherit" {
+		return "", "", nil
+	}
+	param := func(params []AuthParam, key string) string {
+		for _, p := range params {
+			if p.Key == key {
+				return p.Value.String()
+			}
+		}
+		return ""
+	}
+	switch auth.Type {
+	case "noauth":
+		return domain.AuthTypeNone, "", nil
+	case "bearer":
+		token := param(auth.Bearer, "token")
+		if token == "" {
+			return "", "", []string{kind + " bearer auth has no token; auth not set"}
+		}
+		return domain.AuthTypeBearer, domain.MustAuthConfigJSON(
+			domain.AuthConfig{Token: token},
+		), nil
+	case "basic":
+		cfg := domain.AuthConfig{
+			Username: param(auth.Basic, "username"),
+			Password: param(auth.Basic, "password"),
+		}
+		if cfg.Username == "" && cfg.Password == "" {
+			return "", "", []string{kind + " basic auth has no username or password; auth not set"}
+		}
+		return domain.AuthTypeBasic, domain.MustAuthConfigJSON(cfg), nil
+	case "apikey":
+		in := domain.AuthAPIKeyInHeader
+		if strings.EqualFold(param(auth.APIKey, "in"), "query") {
+			in = domain.AuthAPIKeyInQuery
+		}
+		cfg := domain.AuthConfig{
+			In:    in,
+			Name:  param(auth.APIKey, "key"),
+			Value: param(auth.APIKey, "value"),
+		}
+		if cfg.Name == "" {
+			return "", "", []string{kind + " API key has no key name; auth not set"}
+		}
+		return domain.AuthTypeAPIKey, domain.MustAuthConfigJSON(cfg), nil
+	default:
+		return "", "", []string{fmt.Sprintf(
+			"%s auth type %q is not supported and is not imported",
+			kind, auth.Type)}
 	}
 }

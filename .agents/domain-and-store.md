@@ -98,7 +98,7 @@ type AuthConfig struct {
 }
 ```
 
-Auth types: `AuthTypeNone`, `AuthTypeBearer`, `AuthTypeBasic`, `AuthTypeAPIKey`.
+Auth types: `AuthTypeNone`, `AuthTypeBearer`, `AuthTypeBasic`, `AuthTypeAPIKey`, `AuthTypeInherit`.
 
 Helpers: `NormalizeAuthType`, `ParseAuthConfig`, `MustAuthConfigJSON`.
 

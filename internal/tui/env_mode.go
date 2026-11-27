@@ -801,6 +801,14 @@ func dispatchWithEnvCmd(
 ) tea.Cmd {
 	return func() tea.Msg {
 		if envReader != nil {
+			withDefaults, err := exec.ApplyCollectionDefaults(ctx, envReader, req)
+			if err != nil {
+				return httpErrMsg{
+					requestID: req.ID,
+					err:       fmt.Errorf("collection defaults: %w", err),
+				}
+			}
+			req = withDefaults
 			colEnv, globalEnv, err := resolveEnvVars(ctx, envReader, activeEnv, req.CollectionID)
 			if err != nil {
 				return httpErrMsg{

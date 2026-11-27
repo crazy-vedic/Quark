@@ -57,6 +57,12 @@ type CollectionWriter interface {
 	DeleteCollection(ctx context.Context, id string) error
 }
 
+// CollectionDefaultsWriter replaces the auth and headers that a collection's
+// requests inherit. The argument carries only AuthType, AuthConfig and Headers.
+type CollectionDefaultsWriter interface {
+	SetCollectionDefaults(ctx context.Context, id string, c *domain.Collection) error
+}
+
 // EnvironmentReader is the read interface for environment storage.
 type EnvironmentReader interface {
 	// GetEnvironment returns the environment with the given ID.

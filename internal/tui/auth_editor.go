@@ -85,6 +85,7 @@ func (e *authEditor) cycleType(delta int) {
 		domain.AuthTypeBearer,
 		domain.AuthTypeBasic,
 		domain.AuthTypeAPIKey,
+		domain.AuthTypeInherit,
 	}
 	cur := 0
 	for i, authType := range types {
@@ -170,6 +171,8 @@ func (e authEditor) summary() string {
 			return "API Key"
 		}
 		return fmt.Sprintf("API Key (%s:%s)", e.apiKeyIn, name)
+	case domain.AuthTypeInherit:
+		return "Inherit"
 	default:
 		return "None"
 	}
@@ -185,6 +188,8 @@ func (e authEditor) valueForRow(row authRowID, editing bool, muted lipgloss.Styl
 			return "Basic"
 		case domain.AuthTypeAPIKey:
 			return "API Key"
+		case domain.AuthTypeInherit:
+			return "Inherit"
 		default:
 			return "None"
 		}

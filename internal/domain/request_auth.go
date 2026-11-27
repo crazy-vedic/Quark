@@ -10,6 +10,9 @@ const (
 	AuthTypeBearer = "bearer"
 	AuthTypeBasic  = "basic"
 	AuthTypeAPIKey = "api_key"
+	// AuthTypeInherit takes the auth of the nearest ancestor collection that
+	// sets one. See exec.ApplyCollectionDefaults.
+	AuthTypeInherit = "inherit"
 
 	AuthAPIKeyInHeader = "header"
 	AuthAPIKeyInQuery  = "query"
@@ -34,6 +37,8 @@ func NormalizeAuthType(authType string) string {
 		return AuthTypeBasic
 	case AuthTypeAPIKey:
 		return AuthTypeAPIKey
+	case AuthTypeInherit:
+		return AuthTypeInherit
 	default:
 		return strings.ToLower(strings.TrimSpace(authType))
 	}

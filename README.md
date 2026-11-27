@@ -188,6 +188,14 @@ are imported as numbered copies. The same import is available with
 
 Use `quark collection rename <collection> <new-name>` and
 `quark collection delete <collection>` to manage collections from scripts.
+
+Collections can set default auth and headers. Press `c` on a collection in the
+sidebar to edit them. A request whose auth type is **Inherit** uses the auth of
+the nearest collection above it that sets one; a collection set to **None**
+stops the search with no auth. Default headers are merged from the root down,
+a child replaces its parent's value for the same name, and a request's own
+headers replace any name they set. Postman collection and folder auth
+(bearer, basic and API key) are imported as these defaults.
 `quark cert list`, `quark cert set <host> --file <path>`, and
 `quark cert delete <host>` manage host-scoped TLS client certificates. For
 PKCS#12 files, prefer `--password-env` to keep passwords out of shell history.
