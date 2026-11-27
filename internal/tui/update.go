@@ -975,6 +975,7 @@ type executionRequestSnapshot struct {
 	AuthType   string `json:"auth_type,omitempty"`
 	AuthConfig string `json:"auth_config,omitempty"`
 	Body       string `json:"body"`
+	BodyType   string `json:"body_type,omitempty"`
 }
 
 func (m Model) retryableRawRequest() (*domain.Request, error) {
@@ -992,6 +993,7 @@ func (m Model) retryableRawRequest() (*domain.Request, error) {
 			AuthType:   snapshot.AuthType,
 			AuthConfig: snapshot.AuthConfig,
 			Body:       snapshot.Body,
+			BodyType:   snapshot.BodyType,
 		}
 		if m.activeRequest != nil {
 			req.CollectionID = m.activeRequest.CollectionID
