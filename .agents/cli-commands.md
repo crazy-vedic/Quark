@@ -13,6 +13,10 @@ quark collection list
 quark collection create <name>
 quark request list [--collection <id>]
 quark request export-curl <Collection/Request>
+quark request create <Collection/Request> [--method <verb>] [--url <url>]
+quark request show <Collection/Request>
+quark request rename <Collection/Request> <new-name>
+quark request delete <Collection/Request> --yes
 quark run <Collection/Request>
 quark search <query>
 quark schedule add <Collection/Request> --at <time>
@@ -72,6 +76,19 @@ quark request export-curl <Collection/Request>
 Prints the saved request as a single curl command (the same one the TUI copies with its export-curl key). `{{variables}}` are filled in from the collection's active environment and Global, as `quark run` does; a variable with no value is an error. Headers saved as arrays emit one `-H` per value. Fails with a clear message if the headers JSON is malformed or a value is not a string or string array.
 
 Shell completion via `CompleteRequestPaths`.
+
+### `quark request create | show | rename | delete`
+
+**Source:** `internal/cli/request.go`
+
+```
+quark request create <Collection/Request> [--method <verb>] [--url <url>]
+quark request show <Collection/Request>
+quark request rename <Collection/Request> <new-name>
+quark request delete <Collection/Request> --yes
+```
+
+`Collection/Request` splits at the last slash, so nested collections work (`API/Users/List users`). The collection part accepts an ID, a name or a nested path, as `--collection` does. `create` defaults to GET with an empty URL, enabled, and sets headers to `{}`; the method must be one of the schema's verbs. Headers, body and auth are set in the TUI. `show` prints the method, URL, enabled state, auth type, headers and body, never the auth config. `rename` and `create` reject names containing `/` and clashes with an existing name in the collection. `delete` refuses without `--yes`.
 
 ## search
 
