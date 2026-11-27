@@ -436,3 +436,92 @@ func TestRunCommand_FailFlagExitsNonZeroOnHTTPError(t *testing.T) {
 		"the error must come from the HTTP status, not flag parsing",
 	)
 }
+
+func TestNewRunCmd_EnvFlagUsesNamedEnvironmentForOneRun(t *testing.T) {
+	const collectionID = "col-1"
+	defaultEnv := &domain.Environment{
+		ID: "env-default", CollectionID: collectionID, Name: "default",
+	}
+	defaultEnv.SetVars(map[string]string{"host": "default.example.test"})
+	staging := &domain.Environment{ID: "env-staging", CollectionID: collectionID, Name: "staging"}
+	staging.SetVars(map[string]string{"host": "staging.example.test"})
+	prod := &domain.Environment{ID: "env-prod", CollectionID: collectionID, Name: "prod"}
+	prod.SetVars(map[string]string{"host": "prod.example.test"})
+
+	st := &fakeRunStore{
+		collections: []*domain.Collection{{ID: collectionID, Name: "API"}},
+		requests: map[string][]*domain.Request{
+			collectionID: {{
+				ID:           "req-1",
+				CollectionID: collectionID,
+				Name:         "ping",
+				Method:       "GET",
+				URL:          "https://{{host}}/ping",
+			}},
+		},
+		globalEnv: &domain.Environment{ID: "global", Name: "Global", Data: "{}"},
+		envsByID: map[string]*domain.Environment{
+			"env-default": defaultEnv, "env-staging": staging, "env-prod": prod,
+		},
+		envsByCol: map[string][]*domain.Environment{
+			collectionID: {defaultEnv, staging, prod},
+		},
+		activeEnvID: map[string]string{collectionID: "env-prod"},
+	}
+	transport := &recordingRoundTripper{
+		response: &http.Response{
+			StatusCode: 200,
+			Status:     "200 OK",
+			Header:     http.Header{},
+			Body:       io.NopCloser(bytes.NewBufferString("pong")),
+		},
+	}
+
+	cmd := NewRunCmd(st, exec.New(transport))
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetArgs([]string{"API/ping", "--env", "staging"})
+	cmd.SetContext(context.Background())
+	require.NoError(t, cmd.Execute())
+	assert.Equal(t, "https://staging.example.test/ping", transport.lastURL)
+	assert.Equal(t, "env-prod", st.activeEnvID[collectionID],
+		"--env must not change the stored active environment")
+
+	cmd = NewRunCmd(st, exec.New(transport))
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetArgs([]string{"API/ping"})
+	cmd.SetContext(context.Background())
+	require.NoError(t, cmd.Execute())
+	assert.Equal(t, "https://prod.example.test/ping", transport.lastURL,
+		"without --env the active environment is used")
+}
+
+func TestNewRunCmd_EnvFlagRejectsUnknownName(t *testing.T) {
+	const collectionID = "col-1"
+	defaultEnv := &domain.Environment{
+		ID: "env-default", CollectionID: collectionID, Name: "default", Data: "{}",
+	}
+	st := &fakeRunStore{
+		collections: []*domain.Collection{{ID: collectionID, Name: "API"}},
+		requests: map[string][]*domain.Request{
+			collectionID: {{
+				ID: "req-1", CollectionID: collectionID, Name: "ping", Method: "GET",
+				URL: "https://example.test/ping",
+			}},
+		},
+		globalEnv: &domain.Environment{ID: "global", Name: "Global", Data: "{}"},
+		envsByID:  map[string]*domain.Environment{"env-default": defaultEnv},
+		envsByCol: map[string][]*domain.Environment{collectionID: {defaultEnv}},
+	}
+	transport := &recordingRoundTripper{}
+
+	cmd := NewRunCmd(st, exec.New(transport))
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetArgs([]string{"API/ping", "--env", "nope"})
+	cmd.SetContext(context.Background())
+	err := cmd.Execute()
+	require.ErrorContains(t, err, `environment "nope" not found`)
+	assert.Empty(t, transport.lastURL, "no request is sent when the environment is unknown")
+}
