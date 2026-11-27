@@ -91,6 +91,7 @@ const (
 	headersField
 	authField
 	extractField
+	scriptField
 )
 
 // responseTabID identifies which tab is active in the response pane.
@@ -108,6 +109,7 @@ const (
 type httpResponseMsg struct {
 	requestID string
 	result    *exec.ExecuteResult
+	logs      []string // console.log lines from the request's scripts
 }
 
 // httpErrMsg is sent when an HTTP request fails.
@@ -355,6 +357,7 @@ type Model struct {
 	headerValueInput textinput.Model
 	authEditor       authEditor
 	extract          extractEditor
+	scripts          scriptEditor
 
 	// --- Text selection state (keyboard and mouse) ---
 	urlSelection         textedit.Selection // selection in URL input
@@ -567,6 +570,7 @@ func New(deps Deps) Model {
 			varInput: extractVarInput,
 			srcInput: extractSrcInput,
 		},
+		scripts:                 scriptEditor{area: newScriptArea()},
 		requestText:             scrollableText{cache: &scrollableTextCache{}},
 		responseText:            scrollableText{cache: &scrollableTextCache{}},
 		viewerText:              scrollableText{cache: &scrollableTextCache{}},
@@ -955,11 +959,12 @@ func saveRequestCmdWithRollback(
 // Closes over immutable values only — never a *Model pointer.
 func dispatchCmd(ctx context.Context, executor RequestExecutor, req *domain.Request) tea.Cmd {
 	return func() tea.Msg {
-		result, err := executor.Execute(ctx, req)
+		logs := exec.NewScriptLog()
+		result, err := executor.Execute(exec.WithScriptLog(ctx, logs), req)
 		if err != nil {
 			return httpErrMsg{requestID: req.ID, err: err}
 		}
-		return httpResponseMsg{requestID: req.ID, result: result}
+		return httpResponseMsg{requestID: req.ID, result: result, logs: logs.Lines()}
 	}
 }
 

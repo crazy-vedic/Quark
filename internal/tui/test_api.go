@@ -121,6 +121,7 @@ const (
 	HeadersField = headersField
 	AuthField    = authField
 	ExtractField = extractField
+	ScriptField  = scriptField
 )
 
 func (m Model) WithDebugLog(f *os.File) Model { m.debugLog = f; return m }
@@ -827,5 +828,21 @@ func (m Model) WithExtractRowEdit(name, source string) Model {
 func (m Model) WithExtractSourceFocused() Model {
 	m.extract.varInput.Blur()
 	m.extract.srcInput.Focus()
+	return m
+}
+
+// ScriptText returns the text of the script textarea.
+func (m Model) ScriptText() string { return m.scripts.area.Value() }
+
+// ScriptPhase reports whether the post-response script is shown (1) or the
+// pre-request script (0).
+func (m Model) ScriptPhase() int { return m.scripts.phase }
+
+// WithScriptEdit opens the script editor on the pre-request script with text.
+func (m Model) WithScriptEdit(text string) Model {
+	m.scripts = scriptEditor{area: newScriptArea(), pre: text}
+	m.scripts.area.SetValue(text)
+	m.scripts.area.Focus()
+	m.activeField = scriptField
 	return m
 }

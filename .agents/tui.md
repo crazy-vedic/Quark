@@ -74,6 +74,7 @@ ConfigDir       string
 | Schedule | schedule key | Esc | View/manage scheduled runs |
 | Auth editor | auth key | Esc | Configure request auth |
 | Extraction editor | `X` (request pane) | Esc | Edit extraction rules |
+| Script editor | `P` (request pane) | Esc | Edit pre-request and post-response scripts (Tab switches, Ctrl+S saves) |
 
 Exact keys are configurable — see keybindings section.
 

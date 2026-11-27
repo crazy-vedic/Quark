@@ -519,3 +519,41 @@ func TestSaveRequest_DuplicateNameReturnsErrDuplicate(t *testing.T) {
 	})
 	require.ErrorIs(t, err, store.ErrDuplicate)
 }
+
+func TestStore_SaveRequest_PersistsScripts(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	c := &domain.Collection{ID: uuid.New().String(), Name: "Col"}
+	require.NoError(t, s.SaveCollection(ctx, c))
+
+	req := &domain.Request{
+		CollectionID: c.ID, Name: "scripted", Method: "GET", URL: "http://example.com",
+		PreScript: "req.headers['X-A'] = '1';", PostScript: "assert(res.status === 200, 'ok');",
+	}
+	require.NoError(t, s.SaveRequest(ctx, req))
+
+	got, err := s.GetRequest(ctx, req.ID)
+	require.NoError(t, err)
+	assert.Equal(t, req.PreScript, got.PreScript)
+	assert.Equal(t, req.PostScript, got.PostScript)
+
+	listed, err := s.ListRequests(ctx, c.ID)
+	require.NoError(t, err)
+	require.Len(t, listed, 1)
+	assert.Equal(t, req.PostScript, listed[0].PostScript)
+
+	tx, err := s.BeginTransaction(ctx)
+	require.NoError(t, err)
+	viaTx := &domain.Request{
+		CollectionID: c.ID,
+		Name:         "tx",
+		Method:       "GET",
+		URL:          "http://x",
+		PreScript:    "1;",
+	}
+	require.NoError(t, tx.SaveRequest(ctx, viaTx))
+	require.NoError(t, tx.Commit())
+	got, err = s.GetRequest(ctx, viaTx.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "1;", got.PreScript)
+}

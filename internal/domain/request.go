@@ -14,6 +14,8 @@ type Request struct {
 	AuthConfig   string // JSON object keyed by auth type needs
 	Body         string
 	Extractions  string // JSON array of Extraction; "" or "[]" means none
+	PreScript    string // JavaScript run before the request is sent; "" means none
+	PostScript   string // JavaScript run after the response; "" means none
 	SortOrder    int
 	Enabled      bool
 	CreatedAt    time.Time

@@ -72,8 +72,8 @@ func (t *Transaction) SaveRequest(ctx context.Context, req *domain.Request) erro
 	}
 	_, err := t.tx.ExecContext(
 		ctx,
-		`INSERT INTO requests (id, collection_id, name, method, url, headers, auth_type, auth_config, body, sort_order, enabled, extractions)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`INSERT INTO requests (id, collection_id, name, method, url, headers, auth_type, auth_config, body, sort_order, enabled, extractions, pre_script, post_script)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(id) DO UPDATE SET
 		   name=excluded.name,
 		   method=excluded.method,
@@ -85,6 +85,8 @@ func (t *Transaction) SaveRequest(ctx context.Context, req *domain.Request) erro
 		   sort_order=excluded.sort_order,
 		   enabled=excluded.enabled,
 		   extractions=excluded.extractions,
+		   pre_script=excluded.pre_script,
+		   post_script=excluded.post_script,
 		   updated_at=CURRENT_TIMESTAMP`,
 		req.ID,
 		req.CollectionID,
@@ -98,6 +100,8 @@ func (t *Transaction) SaveRequest(ctx context.Context, req *domain.Request) erro
 		req.SortOrder,
 		req.Enabled,
 		storedExtractions(req.Extractions),
+		req.PreScript,
+		req.PostScript,
 	)
 	if err != nil {
 		if isSQLiteUnique(err) {

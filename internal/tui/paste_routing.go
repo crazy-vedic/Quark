@@ -80,6 +80,7 @@ var textWidgets = [...]namedWidget{
 	}},
 	{"extract.varInput", func(m *Model) TextWidget { return &m.extract.varInput }},
 	{"extract.srcInput", func(m *Model) TextWidget { return &m.extract.srcInput }},
+	{"scripts.area", func(m *Model) TextWidget { return &m.scripts.area }},
 	{"envEditor.editKey", func(m *Model) TextWidget { return &m.envEditor.editKey }},
 	{"envEditor.editVal", func(m *Model) TextWidget { return &m.envEditor.editVal }},
 }

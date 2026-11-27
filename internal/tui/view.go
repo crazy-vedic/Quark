@@ -59,6 +59,7 @@ var helpActionLabels = map[string]string{
 	keybindings.ActionEditBody:      "edit body",
 	keybindings.ActionEditHeaders:   "edit headers",
 	keybindings.ActionEditExtract:   "edit extract",
+	keybindings.ActionEditScripts:   "edit scripts",
 	"edit_auth":                     "edit auth",
 	keybindings.ActionScheduleRun:   "schedule request",
 	keybindings.ActionExportCurl:    "copy as curl",
@@ -593,9 +594,6 @@ func (m Model) viewRequestPane(w, h int) string {
 		content = ""
 	case m.activeField == headersField && m.activeRequest != nil:
 		content = m.viewHeadersPreview(w)
-	case m.activeField == extractField && m.activeRequest != nil:
-		// Rendered after the chrome is measured, like the auth editor.
-		content = ""
 	case m.activeRequest != nil:
 		// The read-only preview is formatted lazily by requestText below.
 		content = ""
@@ -688,10 +686,8 @@ func (m Model) viewRequestPane(w, h int) string {
 		renderedContent = m.requestText.View(innerWidth, contentLines, timingSpan)
 	case m.activeField == authField && m.activeRequest != nil:
 		renderedContent = m.viewAuthEditor(contentLines, innerWidth)
-	case m.activeField == extractField && m.activeRequest != nil:
-		renderedContent = m.viewExtractEditor(contentLines, innerWidth)
 	default:
-		renderedContent = limitLines(content, innerWidth, contentLines)
+		renderedContent = m.requestPaneEditorOr(content, contentLines, innerWidth)
 	}
 	paddingLines := contentLines - visualRows(renderedContent, innerWidth)
 	if paddingLines < 0 {
@@ -2901,3 +2897,16 @@ const (
 	actionHelpClose   = "help_close"
 	requestTitleLabel = "Request"
 )
+
+// requestPaneEditorOr renders the open extraction or script editor when one
+// is active, and otherwise the limited content.
+func (m Model) requestPaneEditorOr(content string, maxRows, width int) string {
+	switch {
+	case m.activeRequest == nil:
+	case m.activeField == extractField:
+		return m.viewExtractEditor(maxRows, width)
+	case m.activeField == scriptField:
+		return m.viewScriptEditor(maxRows, width)
+	}
+	return limitLines(content, width, maxRows)
+}

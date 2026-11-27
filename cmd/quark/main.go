@@ -152,12 +152,15 @@ func runWithArgs(args []string) error {
 		if err != nil {
 			return nil, fmt.Errorf("configure HTTP transport: %w", err)
 		}
+		scripts := exec.NewScriptHook(st)
 		executor := exec.New(httpTransport,
 			exec.WithTimeout(cfg.Timeout()),
 			exec.WithRedirects(cfg.HTTP.FollowRedirects, cfg.HTTP.MaxRedirects),
 			exec.WithExecutionWriter(st),
+			exec.WithPreRequestHooks([]exec.PreRequestHook{scripts}),
 			exec.WithPostResponseHooks([]exec.PostResponseHook{
 				exec.NewExtractionHook(st),
+				scripts,
 			}),
 		)
 		importer := curl.NewImporter()

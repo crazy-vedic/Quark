@@ -121,6 +121,10 @@ If `*Store` stops implementing any interface, **this file fails to compile**.
 rules (`domain.Extraction`, stored as JSON in `requests.extractions`) into the active
 environment. The TUI and `quark run` share that executor, so both apply rules.
 
+`exec.NewScriptHook(st)` is both a pre-request and a post-response hook. It runs the request's
+scripts (`requests.pre_script`, `requests.post_script`) in goja, a pure-Go JavaScript engine.
+Console output goes to a `ScriptLog` carried in the context (`exec.WithScriptLog`).
+
 ## Transactions
 
 `store.BeginTransaction(ctx)` returns a `TransactionalWriter` for atomic multi-write operations (e.g. Postman bulk import). The transaction type also satisfies the same writer interfaces.

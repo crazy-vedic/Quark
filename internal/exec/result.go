@@ -34,6 +34,9 @@ type ExecuteResult struct {
 	// Extracted holds one outcome per extraction rule, filled by
 	// ExtractionHook. Empty when the request has no rules.
 	Extracted []ExtractionOutcome
+	// ScriptChecks holds the results of post-response script assertions and
+	// script errors, filled by ScriptHook. Empty when there is no such script.
+	ScriptChecks []ScriptCheck
 }
 
 // IsStreamed reports whether the response body was written to a temp file.

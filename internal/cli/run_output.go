@@ -43,6 +43,7 @@ func printRunResult(
 	fmt.Fprintf(cmd.ErrOrStderr(), "Status: %s\nSize:   %d bytes\nTime:   %v\n",
 		result.Status, result.Size, result.Duration.Round(time.Millisecond))
 	printExtractions(cmd.ErrOrStderr(), result.Extracted)
+	printScriptChecks(cmd.ErrOrStderr(), result.ScriptChecks)
 	if result.Size == 0 {
 		return nil
 	}
@@ -114,6 +115,40 @@ func printExtractions(w io.Writer, outcomes []exec.ExtractionOutcome) {
 			fmt.Fprintf(w, "Extract failed: %s: %s\n", name, safeText(w, o.Err.Error()))
 		}
 	}
+}
+
+// printScriptLogs writes console.log output from the request's scripts.
+func printScriptLogs(w io.Writer, lines []string) {
+	for _, line := range lines {
+		fmt.Fprintf(w, "Console: %s\n", safeText(w, line))
+	}
+}
+
+// printScriptChecks reports each post-response script check as PASS or FAIL.
+func printScriptChecks(w io.Writer, checks []exec.ScriptCheck) {
+	for _, c := range checks {
+		rule := safeText(w, c.Rule)
+		if c.Passed {
+			fmt.Fprintf(w, "Script PASS: %s\n", rule)
+			continue
+		}
+		fmt.Fprintf(w, "Script FAIL: %s (%s)\n", rule, safeText(w, c.Reason))
+	}
+}
+
+// scriptChecksError returns an error when a script check failed, so quark run
+// exits non-zero.
+func scriptChecksError(checks []exec.ScriptCheck) error {
+	failed := 0
+	for _, c := range checks {
+		if !c.Passed {
+			failed++
+		}
+	}
+	if failed == 0 {
+		return nil
+	}
+	return fmt.Errorf("run: %d of %d script checks failed", failed, len(checks))
 }
 
 func printRequestDetails(w io.Writer, req *domain.Request) {

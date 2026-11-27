@@ -189,3 +189,20 @@ func TestRunOutput_StdoutIsExactlyTheBody(t *testing.T) {
 		"stdout must hold the body and nothing else (a single trailing newline is allowed)")
 	assert.Contains(t, stderr.String(), "Status: 200 OK")
 }
+
+func TestPrintScriptLogsAndChecks(t *testing.T) {
+	var out bytes.Buffer
+	printScriptLogs(&out, []string{"status 200", "done"})
+	printScriptChecks(&out, []exec.ScriptCheck{
+		{Rule: "assert: ok", Passed: true},
+		{Rule: "assert: fast", Passed: false, Reason: "condition was false"},
+	})
+	assert.Equal(t, "Console: status 200\nConsole: done\n"+
+		"Script PASS: assert: ok\n"+
+		"Script FAIL: assert: fast (condition was false)\n", out.String())
+
+	require.EqualError(t, scriptChecksError([]exec.ScriptCheck{
+		{Rule: "a", Passed: true}, {Rule: "b", Passed: false},
+	}), "run: 1 of 2 script checks failed")
+	assert.NoError(t, scriptChecksError(nil))
+}
