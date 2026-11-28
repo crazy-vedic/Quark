@@ -896,7 +896,11 @@ func (m Model) handleRequestAction(action string) (tea.Model, tea.Cmd) {
 		if m.activeRequest == nil {
 			return m.status("error", "Select a request first"), nil
 		}
-		command, err := curl.ExportRequest(m.activeRequest)
+		prepared, err := exec.ApplyPathParams(m.activeRequest)
+		if err != nil {
+			return m.status("error", "Export curl: "+err.Error()), nil
+		}
+		command, err := curl.ExportRequest(prepared)
 		if err != nil {
 			return m.status("error", "Export curl: "+err.Error()), nil
 		}
@@ -915,6 +919,8 @@ func (m Model) handleRequestAction(action string) (tea.Model, tea.Cmd) {
 		return m.beginHeadersEdit(), nil
 	case keybindings.ActionEditParams:
 		return m.beginParamsEdit(), nil
+	case keybindings.ActionEditPath:
+		return m.beginPathEdit(), nil
 	}
 	return m, nil
 }
@@ -1092,6 +1098,8 @@ func (m Model) handleRequestKey(_ string, msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleHeadersFieldKey(msg)
 	case paramsField:
 		return m.handleParamsFieldKey(msg)
+	case pathField:
+		return m.handlePathFieldKey(msg)
 	}
 
 	// Alt+Enter (macOS cmd+enter) sends request.
@@ -1446,6 +1454,7 @@ var commandPaletteItems = []commandPaletteItem{
 	{Title: "Edit request body", Action: keybindings.ActionEditBody},
 	{Title: "Edit request headers", Action: keybindings.ActionEditHeaders},
 	{Title: "Edit query parameters", Action: keybindings.ActionEditParams},
+	{Title: "Edit path parameters", Action: keybindings.ActionEditPath},
 	{Title: "Edit request authorization", Action: keybindings.ActionEditAuth},
 	{Title: "Next HTTP method", Action: keybindings.ActionMethodNext},
 	{Title: "Previous HTTP method", Action: keybindings.ActionMethodPrev},
@@ -1553,6 +1562,7 @@ func (m Model) executeSelectedCommand() (tea.Model, tea.Cmd) {
 		keybindings.ActionEditBody,
 		keybindings.ActionEditHeaders,
 		keybindings.ActionEditParams,
+		keybindings.ActionEditPath,
 		keybindings.ActionMethodNext,
 		keybindings.ActionMethodPrev,
 		keybindings.ActionEditAuth:
@@ -2407,6 +2417,10 @@ func (m Model) handleHeaderFieldEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.ctrlCNoSelection(), nil
 	}
 
+	if msg.Type == tea.KeyTab && m.activeField == pathField {
+		// The placeholder name is fixed: only the value can be edited.
+		return m, nil
+	}
 	if msg.Type == tea.KeyTab && m.activeField == paramsField {
 		// Query params have no name/value suggestions: Tab only switches field.
 		if m.headerKeyInput.Focused() {

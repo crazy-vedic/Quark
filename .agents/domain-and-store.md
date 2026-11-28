@@ -15,7 +15,7 @@ type Request struct {
     AuthType                 string
     AuthConfig               string  // JSON AuthConfig
     Body                     string
-    Params                   string  // JSON RequestParams: disabled query params (see request_params.go)
+    Params                   string  // JSON RequestParams: disabled query params and path values (see request_params.go)
     SortOrder                int
     Enabled                  bool
     CreatedAt, UpdatedAt     time.Time

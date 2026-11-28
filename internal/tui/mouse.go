@@ -171,7 +171,7 @@ func (m Model) handleShiftClick(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		if m.requestPaneChromeRects(layout).urlLine.contains(msg.X, msg.Y) {
 			return m.handleURLLineClick(msg)
 		}
-	case headersField, paramsField:
+	case headersField, paramsField, pathField:
 		if m.headerEditing {
 			return m.handleHeaderEditClick(msg)
 		}
@@ -422,7 +422,7 @@ func (m Model) handleRequestClick(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	}
 
 	switch m.activeField {
-	case headersField, paramsField:
+	case headersField, paramsField, pathField:
 		if m.headerEditing {
 			return m.handleHeaderEditClick(msg)
 		}

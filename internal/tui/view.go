@@ -59,6 +59,7 @@ var helpActionLabels = map[string]string{
 	keybindings.ActionEditBody:      "edit body",
 	keybindings.ActionEditHeaders:   "edit headers",
 	keybindings.ActionEditParams:    "edit query params",
+	keybindings.ActionEditPath:      "edit path params",
 	"edit_auth":                     "edit auth",
 	keybindings.ActionScheduleRun:   "schedule request",
 	keybindings.ActionExportCurl:    "copy as curl",
@@ -596,6 +597,8 @@ func (m Model) viewRequestPane(w, h int) string {
 		content = m.viewHeadersPreview(w)
 	case m.activeField == paramsField && m.activeRequest != nil:
 		content = m.viewParamsPreview(w)
+	case m.activeField == pathField && m.activeRequest != nil:
+		content = m.viewPathPreview(w)
 	case m.activeRequest != nil:
 		// The read-only preview is formatted lazily by requestText below.
 		content = ""

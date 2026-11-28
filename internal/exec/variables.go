@@ -150,6 +150,12 @@ func InterpolateRequestWithOverrides(
 	if req == nil {
 		return nil, errors.New("interpolate: nil request")
 	}
+	// Path placeholders go first so that their values can use {{variables}}.
+	withPath, err := ApplyPathParams(req)
+	if err != nil {
+		return nil, fmt.Errorf("interpolate: %w", err)
+	}
+	req = withPath
 
 	hasOverrides := len(positionals) > 0 || len(named) > 0
 
@@ -182,7 +188,6 @@ func InterpolateRequestWithOverrides(
 	resolver := newPlaceholderResolver(positionals, named, colEnv, globalEnv)
 
 	// URL
-	var err error
 	out.URL, err = substitute(out.URL, resolver)
 	if err != nil {
 		return nil, fmt.Errorf("interpolate URL: %w", err)

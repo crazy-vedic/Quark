@@ -25,6 +25,9 @@ type QueryParam struct {
 type RequestParams struct {
 	// DisabledQuery holds query params switched off in the editor.
 	DisabledQuery []QueryParam `json:"disabled_query,omitempty"`
+	// PathValues holds the value of each URL path placeholder, keyed by its
+	// name without the ':'. Values may use {{variables}}.
+	PathValues map[string]string `json:"path_values,omitempty"`
 }
 
 // ParseRequestParams decodes Request.Params. Blank input yields the zero value.

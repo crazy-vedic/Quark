@@ -121,6 +121,7 @@ const (
 	HeadersField = headersField
 	AuthField    = authField
 	ParamsField  = paramsField
+	PathField    = pathField
 )
 
 func (m Model) WithDebugLog(f *os.File) Model { m.debugLog = f; return m }
