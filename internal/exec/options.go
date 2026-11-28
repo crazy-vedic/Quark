@@ -8,6 +8,7 @@ import (
 type options struct {
 	timeout           time.Duration
 	maxResponseSize   int
+	maxDownload       int64
 	logger            *slog.Logger
 	preRequestHooks   []PreRequestHook
 	postResponseHooks []PostResponseHook
@@ -21,6 +22,7 @@ func defaultOptions() options {
 	return options{
 		timeout:         30 * time.Second,
 		maxResponseSize: 10 << 20, // 10 MiB
+		maxDownload:     1 << 30,  // 1 GiB
 		logger:          slog.Default(),
 		followRedirects: true,
 		maxRedirects:    10,
@@ -61,6 +63,16 @@ func (o maxRespSizeOption) apply(opts *options) { opts.maxResponseSize = int(o) 
 // WithMaxResponseSize sets the in-memory threshold (bytes). Responses larger
 // than this are streamed to a temp file and ExecuteResult.TempPath is set.
 func WithMaxResponseSize(n int) maxRespSizeOption { return maxRespSizeOption(n) }
+
+type maxDownloadOption int64
+
+func (o maxDownloadOption) apply(opts *options) { opts.maxDownload = int64(o) }
+
+// WithMaxDownload caps the total response body size in bytes, including
+// bodies streamed to a temp file. A larger response fails with
+// ErrDownloadTooLarge and its partial file is removed. Zero or a negative
+// value means no limit.
+func WithMaxDownload(n int64) maxDownloadOption { return maxDownloadOption(n) }
 
 type loggerOption struct{ l *slog.Logger }
 

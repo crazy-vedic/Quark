@@ -22,6 +22,7 @@ Constructed via `exec.New(transport, opts...)`:
 |---|---|
 | `WithTimeout(d)` | Per-request context timeout (default from config: 30s) |
 | `WithMaxResponseSize(n)` | Threshold for streaming to temp file |
+| `WithMaxDownload(n)` | Hard cap on total body size (default 1 GiB, `<= 0` = unlimited); wired from `http.max_download` |
 | `WithVariableResolver(fn)` | Env var lookup for `{{VAR}}` substitution |
 | `WithExecutionWriter(w)` | Persist execution history |
 | `WithPreRequestHooks(hooks)` | Pre-request chain |
@@ -84,6 +85,10 @@ Large bodies (over `maxResponseSize`):
 - Full body still persisted to SQLite via `executionBody()` before `Execute` returns
 - Caller **must** call `ExecuteResult.Cleanup()` to remove temp file
 - TUI cleans up old temp files on new response (BUG-007); orphans after crashes are harmless
+
+Bodies larger than `maxDownload` (any path, in-memory or streamed) fail with
+`ErrDownloadTooLarge`; the copy reads at most `maxDownload+1` bytes and the
+partial temp file is removed. Any temp-file write/copy error also removes it.
 
 ## Variable Interpolation (`variables.go`)
 

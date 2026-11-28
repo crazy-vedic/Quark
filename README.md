@@ -148,7 +148,13 @@ retry_after_failure = "1h"         # Retry interval on failure (default 1h)
 
 [format]
 json_on_save = false               # Disable JSON auto-formatting (default: enabled)
+
+[http]
+max_download = "1GB"               # Largest response body to accept (bytes or KB/MB/GB; 0 = no limit)
 ```
+
+A response larger than `max_download` fails the request with an error and
+nothing is kept on disk.
 
 JSON formatting preserves the existing indent style (2-space, 4-space, tabs) and is applied when you save a request body that parses as valid JSON. Invalid JSON or non-JSON text is left unchanged.
 

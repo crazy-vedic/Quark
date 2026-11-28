@@ -1096,3 +1096,100 @@ func TestExecutor_RequestAuth_APIKeyQueryKeepsExistingQuery(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "z=1&a=2&filter=a%20b,c&api+key=s%26cret", rawQuery)
 }
+
+func quarkTempFiles(t *testing.T) []string {
+	t.Helper()
+	matches, err := filepath.Glob(filepath.Join(os.TempDir(), "quark-response-*.tmp"))
+	require.NoError(t, err)
+	return matches
+}
+
+func TestExecutor_LargeResponse_OverMaxDownloadFailsAndRemovesFile(t *testing.T) {
+	t.Setenv("TMPDIR", t.TempDir())
+	bigBody := strings.Repeat("z", 600*1024)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(200)
+		fmt.Fprint(w, bigBody)
+	}))
+	defer srv.Close()
+
+	transport := &http.Transport{}
+	defer transport.CloseIdleConnections()
+
+	writer := &recordingExecutionWriter{}
+	e := newTestExecutor(transport,
+		exec.WithMaxResponseSize(64*1024),
+		exec.WithMaxDownload(256*1024),
+		exec.WithExecutionWriter(writer),
+	)
+	result, err := e.Execute(context.Background(), newTestRequest("GET", srv.URL, ""))
+
+	require.Error(t, err)
+	assert.Nil(t, result)
+	assert.ErrorIs(t, err, exec.ErrDownloadTooLarge)
+	assert.Contains(t, err.Error(), "http.max_download")
+	assert.Empty(t, quarkTempFiles(t), "partial download must be removed")
+	require.Len(t, writer.executions, 1)
+	assert.Contains(t, writer.executions[0].Error, "max_download")
+}
+
+func TestExecutor_SmallResponse_OverMaxDownloadFails(t *testing.T) {
+	// A limit below the in-memory threshold still applies.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, strings.Repeat("a", 2048))
+	}))
+	defer srv.Close()
+
+	transport := &http.Transport{}
+	defer transport.CloseIdleConnections()
+
+	e := newTestExecutor(transport, exec.WithMaxDownload(1024))
+	_, err := e.Execute(context.Background(), newTestRequest("GET", srv.URL, ""))
+
+	require.ErrorIs(t, err, exec.ErrDownloadTooLarge)
+}
+
+func TestExecutor_ResponseAtMaxDownloadSucceeds(t *testing.T) {
+	t.Setenv("TMPDIR", t.TempDir())
+	body := strings.Repeat("b", 128*1024)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, body)
+	}))
+	defer srv.Close()
+
+	transport := &http.Transport{}
+	defer transport.CloseIdleConnections()
+
+	e := newTestExecutor(transport,
+		exec.WithMaxResponseSize(16*1024),
+		exec.WithMaxDownload(int64(len(body))),
+	)
+	result, err := e.Execute(context.Background(), newTestRequest("GET", srv.URL, ""))
+
+	require.NoError(t, err)
+	defer func() { _ = result.Cleanup() }()
+	assert.Equal(t, int64(len(body)), result.Size)
+	assert.NotEmpty(t, result.TempPath)
+}
+
+func TestExecutor_MaxDownloadZeroIsUnlimited(t *testing.T) {
+	t.Setenv("TMPDIR", t.TempDir())
+	body := strings.Repeat("c", 300*1024)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, body)
+	}))
+	defer srv.Close()
+
+	transport := &http.Transport{}
+	defer transport.CloseIdleConnections()
+
+	e := newTestExecutor(transport,
+		exec.WithMaxResponseSize(16*1024),
+		exec.WithMaxDownload(0),
+	)
+	result, err := e.Execute(context.Background(), newTestRequest("GET", srv.URL, ""))
+
+	require.NoError(t, err)
+	defer func() { _ = result.Cleanup() }()
+	assert.Equal(t, int64(len(body)), result.Size)
+}

@@ -7,9 +7,12 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"math"
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/BurntSushi/toml"
@@ -43,9 +46,11 @@ type UI struct {
 
 // HTTP configures request defaults.
 type HTTP struct {
-	Timeout            duration            `toml:"timeout"`
-	FollowRedirects    bool                `toml:"follow_redirects"`
-	MaxRedirects       int                 `toml:"max_redirects"`
+	Timeout         duration `toml:"timeout"`
+	FollowRedirects bool     `toml:"follow_redirects"`
+	MaxRedirects    int      `toml:"max_redirects"`
+	// MaxDownload caps the size of one response body. 0 means no limit.
+	MaxDownload        ByteSize            `toml:"max_download"`
 	ClientCertificates []ClientCertificate `toml:"client_certificates"`
 }
 
@@ -98,6 +103,60 @@ func (d *duration) UnmarshalText(text []byte) error {
 	return err
 }
 
+// ByteSize is a TOML-decodable size in bytes. It accepts a non-negative
+// integer (bytes) or a string such as "512", "64KB", "100MiB" or "1GB".
+// Units are case-insensitive multiples of 1024: B, KB/KiB, MB/MiB, GB/GiB.
+type ByteSize int64
+
+// UnmarshalTOML implements toml.Unmarshaler.
+func (b *ByteSize) UnmarshalTOML(value any) error {
+	switch v := value.(type) {
+	case int64:
+		if v < 0 {
+			return fmt.Errorf("size %d must not be negative", v)
+		}
+		*b = ByteSize(v)
+		return nil
+	case string:
+		n, err := parseByteSize(v)
+		if err != nil {
+			return err
+		}
+		*b = ByteSize(n)
+		return nil
+	default:
+		return fmt.Errorf("size must be an integer or a string like \"1GB\", got %T", value)
+	}
+}
+
+func parseByteSize(raw string) (int64, error) {
+	s := strings.ToUpper(strings.TrimSpace(raw))
+	units := []struct {
+		suffix string
+		mult   int64
+	}{
+		{"KIB", 1 << 10}, {"MIB", 1 << 20}, {"GIB", 1 << 30},
+		{"KB", 1 << 10}, {"MB", 1 << 20}, {"GB", 1 << 30},
+		{"B", 1},
+	}
+	mult := int64(1)
+	for _, u := range units {
+		if strings.HasSuffix(s, u.suffix) {
+			s = strings.TrimSpace(strings.TrimSuffix(s, u.suffix))
+			mult = u.mult
+			break
+		}
+	}
+	n, err := strconv.ParseInt(s, 10, 64)
+	if err != nil || n < 0 {
+		return 0, fmt.Errorf("invalid size %q (use bytes or a unit: KB, MB, GB)", raw)
+	}
+	if n > math.MaxInt64/mult {
+		return 0, fmt.Errorf("size %q is too large", raw)
+	}
+	return n * mult, nil
+}
+
 // Default returns a Config populated with safe defaults.
 // configDir is the directory where config.toml and the DB are stored.
 func Default(configDir string) Config {
@@ -115,6 +174,7 @@ func Default(configDir string) Config {
 			Timeout:         duration{30 * time.Second},
 			FollowRedirects: true,
 			MaxRedirects:    10,
+			MaxDownload:     1 << 30,
 		},
 		Logging: Logging{
 			Level:   "info",
@@ -181,6 +241,9 @@ func Load(configDir string) (Config, error) {
 	}
 	if md.IsDefined("http", "max_redirects") {
 		cfg.HTTP.MaxRedirects = override.HTTP.MaxRedirects
+	}
+	if md.IsDefined("http", "max_download") {
+		cfg.HTTP.MaxDownload = override.HTTP.MaxDownload
 	}
 	if md.IsDefined("http", "client_certificates") {
 		cfg.HTTP.ClientCertificates = override.HTTP.ClientCertificates
@@ -397,6 +460,9 @@ func SaveClientCertificates(configDir string, certs []ClientCertificate) error {
 
 // Timeout returns the configured HTTP timeout as time.Duration.
 func (c Config) Timeout() time.Duration { return c.HTTP.Timeout.Duration }
+
+// MaxDownload returns the response body size limit in bytes (0 = unlimited).
+func (c Config) MaxDownload() int64 { return int64(c.HTTP.MaxDownload) }
 
 // BackupDir returns the default backup directory path.
 func (c Config) BackupDir(dataDir string) string {

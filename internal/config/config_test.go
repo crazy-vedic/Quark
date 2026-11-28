@@ -26,6 +26,54 @@ func TestDefault_HasSensibleValues(t *testing.T) {
 	assert.True(t, cfg.Backup.AutoBackup)
 	assert.Equal(t, filepath.Join(dir, "quark.log"), cfg.Logging.File)
 	assert.True(t, cfg.Format.JSONOnSave, "json_on_save defaults to true")
+	assert.Equal(t, int64(1<<30), cfg.MaxDownload(), "max_download defaults to 1 GiB")
+}
+
+func TestLoad_MaxDownload(t *testing.T) {
+	cases := []struct {
+		name  string
+		value string
+		want  int64
+	}{
+		{"integer bytes", "4096", 4096},
+		{"zero is unlimited", "0", 0},
+		{"plain bytes string", `"512"`, 512},
+		{"bytes suffix", `"512B"`, 512},
+		{"kib", `"8KiB"`, 8 << 10},
+		{"kb", `"8KB"`, 8 << 10},
+		{"mib", `"100MiB"`, 100 << 20},
+		{"mb lower case with space", `"100 mb"`, 100 << 20},
+		{"gib", `"2GiB"`, 2 << 30},
+		{"gb", `"2GB"`, 2 << 30},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			content := "[http]\nmax_download = " + tc.value + "\n"
+			require.NoError(
+				t,
+				os.WriteFile(filepath.Join(dir, "config.toml"), []byte(content), 0o600),
+			)
+			cfg, err := config.Load(dir)
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, cfg.MaxDownload())
+		})
+	}
+}
+
+func TestLoad_MaxDownloadInvalid(t *testing.T) {
+	for _, value := range []string{`"lots"`, `"-1MB"`, "-5", `"1TB"`, `""`, "true"} {
+		t.Run(value, func(t *testing.T) {
+			dir := t.TempDir()
+			content := "[http]\nmax_download = " + value + "\n"
+			require.NoError(
+				t,
+				os.WriteFile(filepath.Join(dir, "config.toml"), []byte(content), 0o600),
+			)
+			_, err := config.Load(dir)
+			require.Error(t, err)
+		})
+	}
 }
 
 func TestLoad_MissingFile_ReturnsDefaults(t *testing.T) {
