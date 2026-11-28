@@ -38,6 +38,7 @@ type Keybindings struct {
 	ExportCurl    string `toml:"export_curl"`
 	EditAuth      string `toml:"edit_auth"`
 	EditExtract   string `toml:"edit_extract"`
+	EditScripts   string `toml:"edit_scripts"`
 	ScheduleRun   string `toml:"schedule_run"`
 	EnvOpen       string `toml:"env_open"`
 	ClientCerts   string `toml:"client_certificates"`
@@ -91,6 +92,11 @@ type Keybindings struct {
 	ExtractSave        string `toml:"extract_save"`
 	ExtractCancel      string `toml:"extract_cancel"`
 	ExtractSwitchField string `toml:"extract_switch_field"`
+
+	// Script editor
+	ScriptSave   string `toml:"script_save"`
+	ScriptCancel string `toml:"script_cancel"`
+	ScriptSwitch string `toml:"script_switch"`
 
 	// Auth editor
 	AuthDown       string `toml:"auth_down"`
@@ -188,6 +194,7 @@ type Resolver struct {
 	collection  map[string]string
 	auth        map[string]string
 	extract     map[string]string
+	script      map[string]string
 	certificate map[string]string
 }
 
@@ -251,6 +258,7 @@ func NewResolver(binds Keybindings) *Resolver {
 		binds.ExportCurl:    ActionExportCurl,
 		binds.EditAuth:      ActionEditAuth,
 		binds.EditExtract:   ActionEditExtract,
+		binds.EditScripts:   ActionEditScripts,
 		binds.ScheduleRun:   ActionScheduleRun,
 	}
 	addAlias(request, "alt+enter", ActionSendRequest)
@@ -362,6 +370,13 @@ func NewResolver(binds Keybindings) *Resolver {
 	addAlias(auth, "right", "option_next")
 	addAlias(auth, "enter", "save")
 
+	// Script editor: only save, cancel and phase switch; other keys edit text.
+	script := map[string]string{
+		binds.ScriptSave:   "save",
+		binds.ScriptCancel: ActionCancel,
+		binds.ScriptSwitch: "switch_phase",
+	}
+
 	// Extraction editor
 	extract := map[string]string{
 		binds.ExtractDown:        ActionNavigateDown,
@@ -403,18 +418,19 @@ func NewResolver(binds Keybindings) *Resolver {
 		collection:  collection,
 		auth:        auth,
 		extract:     extract,
+		script:      script,
 		certificate: certificate,
 	}
 }
 
 // Resolve returns the action name for a given key in a given mode.
-// mode: 0=normal, 1=search, 2=help, 3=import, 4=body, 5=header, 6=env, 7=collection prompt, 8=auth, 9=certificate, 10=extraction rules
+// mode: 0=normal, 1=search, 2=help, 3=import, 4=body, 5=header, 6=env, 7=collection prompt, 8=auth, 9=certificate, 10=extraction rules, 11=script editor
 // pane: 0=sidebar, 1=request, 2=response (only used in normal mode)
 func (r *Resolver) Resolve(mode, pane int, msg tea.KeyMsg) (string, bool) {
 	key := msg.String()
 
 	// Validate mode.
-	if mode < 0 || mode > 10 {
+	if mode < 0 || mode > 11 {
 		return "", false
 	}
 
@@ -497,6 +513,10 @@ func (r *Resolver) lookupOverlay(mode int, key string) (string, bool) {
 		if action, ok := r.extract[key]; ok {
 			return action, true
 		}
+	case 11:
+		if action, ok := r.script[key]; ok {
+			return action, true
+		}
 	}
 	return "", false
 }
@@ -540,7 +560,7 @@ func Validate(binds Keybindings) map[string][]string {
 			{binds.EditBody, ActionEditBody}, {binds.EditHeaders, ActionEditHeaders},
 			{binds.RequestDelete, ActionDeleteRequest},
 			{binds.EditAuth, ActionEditAuth}, {binds.ScheduleRun, ActionScheduleRun},
-			{binds.EditExtract, ActionEditExtract},
+			{binds.EditExtract, ActionEditExtract}, {binds.EditScripts, ActionEditScripts},
 			{binds.ExportCurl, ActionExportCurl}},
 		{{binds.ResponseDown, "response_down"}, {binds.ResponseUp, "response_up"},
 			{binds.ResponseRetry, "response_retry"},
@@ -575,6 +595,8 @@ func Validate(binds Keybindings) map[string][]string {
 			{binds.AuthEdit, "auth_edit"}, {binds.AuthSave, "auth_save"},
 			{binds.AuthCancel, "auth_cancel"}, {binds.AuthOptionNext, "auth_option_next"},
 			{binds.AuthOptionPrev, "auth_option_prev"}},
+		{{binds.ScriptSave, "script_save"}, {binds.ScriptCancel, "script_cancel"},
+			{binds.ScriptSwitch, "script_switch"}},
 		{{binds.ExtractDown, "extract_down"}, {binds.ExtractUp, "extract_up"},
 			{binds.ExtractAdd, "extract_add"}, {binds.ExtractDelete, "extract_delete"},
 			{binds.ExtractEdit, "extract_edit"}, {binds.ExtractSave, "extract_save"},

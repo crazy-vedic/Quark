@@ -65,11 +65,12 @@ func NewRunCmd(st RunStore, e *exec.Executor) *cobra.Command {
 					if err != nil {
 						return fmt.Errorf("run: interpolate: %w", err)
 					}
-					result, err := e.Execute(ctx, prepared)
+					logs := exec.NewScriptLog()
+					result, err := e.Execute(exec.WithScriptLog(ctx, logs), prepared)
 					if err != nil {
 						return fmt.Errorf("run: execute: %w", err)
 					}
-					return finishRun(cmd, prepared, result, verbose, fail)
+					return finishRun(cmd, prepared, result, logs.Lines(), verbose, fail)
 				}
 			}
 			parts := strings.SplitN(args[0], "/", 2)
@@ -133,12 +134,13 @@ func NewRunCmd(st RunStore, e *exec.Executor) *cobra.Command {
 				return fmt.Errorf("run: interpolate: %w", err)
 			}
 
-			result, err := e.Execute(ctx, prepared)
+			logs := exec.NewScriptLog()
+			result, err := e.Execute(exec.WithScriptLog(ctx, logs), prepared)
 			if err != nil {
 				return fmt.Errorf("run: execute: %w", err)
 			}
 
-			return finishRun(cmd, prepared, result, verbose, fail)
+			return finishRun(cmd, prepared, result, logs.Lines(), verbose, fail)
 		},
 	}
 	cmd.ValidArgsFunction = CompleteRequestPaths(st.ListCollections, st.ListRequests)
@@ -185,9 +187,14 @@ func finishRun(
 	cmd *cobra.Command,
 	req *domain.Request,
 	result *exec.ExecuteResult,
+	logs []string,
 	verbose, fail bool,
 ) error {
+	printScriptLogs(cmd.ErrOrStderr(), logs)
 	if err := printRunResult(cmd, req, result, verbose); err != nil {
+		return err
+	}
+	if err := scriptChecksError(result.ScriptChecks); err != nil {
 		return err
 	}
 	if fail && result.StatusCode >= 400 {

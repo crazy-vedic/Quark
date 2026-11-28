@@ -41,6 +41,7 @@ func DefaultKeybindings() Keybindings {
 		ExportCurl:    "x",
 		EditAuth:      "a",
 		EditExtract:   "X",
+		EditScripts:   "P",
 		ScheduleRun:   "S",
 		EnvOpen:       "e",
 		ClientCerts:   "C",
@@ -94,6 +95,11 @@ func DefaultKeybindings() Keybindings {
 		ExtractSave:        KeyEnter,
 		ExtractCancel:      "esc",
 		ExtractSwitchField: "ctrl+e",
+
+		// Script editor
+		ScriptSave:   "ctrl+s",
+		ScriptCancel: "esc",
+		ScriptSwitch: "tab",
 
 		// Auth editor
 		AuthDown:       "j",

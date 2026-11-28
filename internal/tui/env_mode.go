@@ -814,11 +814,12 @@ func dispatchWithEnvCmd(
 			}
 			req = interpolated
 		}
-		result, err := executor.Execute(ctx, req)
+		logs := exec.NewScriptLog()
+		result, err := executor.Execute(exec.WithScriptLog(ctx, logs), req)
 		if err != nil {
 			return httpErrMsg{requestID: req.ID, err: err}
 		}
-		return httpResponseMsg{requestID: req.ID, result: result}
+		return httpResponseMsg{requestID: req.ID, result: result, logs: logs.Lines()}
 	}
 }
 

@@ -422,6 +422,44 @@ quark run "API/me"      # sends the stored token in Authorization
 Non-2xx responses extract nothing. A rule that cannot be applied (missing path
 or header, or a body that is not JSON) is reported and does not stop the request.
 
+### Scripts
+
+Each request can have a pre-request script (runs before it is sent) and a
+post-response script (runs after the response arrives). Press `P` in the request
+pane to edit them. `Tab` switches between the two, `Ctrl+S` saves and `Esc`
+discards. Scripts are JavaScript (ECMAScript) run by an embedded engine with no
+file, network or module access. A script that runs longer than 5 seconds is
+stopped.
+
+Pre-request script:
+
+- `req.method`, `req.url`, `req.body` (strings) and `req.headers` (an object of
+  header name to value, names as stored) can be changed. Deleting a key removes
+  the header. An exception aborts the request.
+- `env.get(name)` returns a variable from the active environment, or `undefined`.
+- `env.set(name, value)` writes a variable to the active environment.
+
+Post-response script:
+
+- `res.status` (number), `res.time` (milliseconds), `res.body` (string) and
+  `res.json()` (the parsed body; throws when it is not JSON).
+- `res.headers` is an object keyed by lower-case header name.
+- `assert(condition, message)` records a pass or fail result. `quark run` prints
+  `Script PASS/FAIL: assert: <message>` and exits non-zero on a failure.
+- `env.get` and `env.set` as above.
+
+`console.log(...)` output is printed as `Console:` lines by `quark run` and shown
+in the TUI status line. Environment writes are saved only when the script finishes
+without an exception. An exception fails the request (pre-request) or adds a
+failed result (post-response). `quark run` exits non-zero on a failed result.
+
+```js
+// post-response script
+assert(res.status === 201, "created");
+env.set("orderId", String(res.json().id));
+console.log("order", res.json().id);
+```
+
 ### File-backed request values
 
 In the TUI Body or Headers editor, enter `@path/to/file` as the complete body
