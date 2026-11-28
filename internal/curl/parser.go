@@ -15,6 +15,8 @@ import (
 	"strings"
 
 	"mvdan.cc/sh/v3/syntax"
+
+	"github.com/crazy-vedic/quark/internal/domain"
 )
 
 type optionKind uint8
@@ -41,6 +43,7 @@ const (
 	optionGet
 	optionUserAgent
 	optionReferer
+	optionDigest
 	optionIgnore
 )
 
@@ -89,6 +92,7 @@ var supportedOptions = map[string]optionDefinition{
 	"--user-agent":     {kind: optionUserAgent, hasValue: true},
 	"-e":               {kind: optionReferer, hasValue: true},
 	"--referer":        {kind: optionReferer, hasValue: true},
+	"--digest":         {kind: optionDigest},
 
 	"-L": {
 		kind:    optionIgnore,
@@ -370,6 +374,7 @@ func parseCommand(command string) (*ImportResult, error) {
 	explicitMethod := false
 	useGet := false
 	suppressedHeaders := make(map[string]bool)
+	userValue, digest := "", false
 	cert := CertificateSpec{}
 	hasCertOptions := false
 
@@ -463,6 +468,7 @@ func parseCommand(command string) (*ImportResult, error) {
 			fields = append(fields, field)
 			upgradeSecurityTo(result)
 		case optionUser:
+			userValue = value
 			result.Headers.Set(
 				"Authorization",
 				"Basic "+base64.StdEncoding.EncodeToString([]byte(value)),
@@ -513,6 +519,8 @@ func parseCommand(command string) (*ImportResult, error) {
 			result.Headers.Set("User-Agent", value)
 		case optionReferer:
 			result.Headers.Set("Referer", value)
+		case optionDigest:
+			digest = true
 		case optionIgnore:
 			addWarning(result, definition.warning)
 		}
@@ -581,6 +589,9 @@ func parseCommand(command string) (*ImportResult, error) {
 		result.URL = appendQuery(result.URL, strings.Join(queryParts, "&"))
 	}
 
+	if digest && userValue != "" {
+		applyDigestUser(result, userValue)
+	}
 	if hasCertOptions {
 		upgradeSecurityTo(result)
 		finalizeCertificate(&cert, result)
@@ -957,4 +968,19 @@ func readBodyFile(path string) (string, error) {
 
 func markDangerous(result *ImportResult) {
 	result.Security = Dangerous
+}
+
+// applyDigestUser turns `-u user:pass --digest` into Digest request auth.
+// The Basic header -u set is removed unless a later -H replaced it.
+func applyDigestUser(result *ImportResult, userValue string) {
+	basic := "Basic " + base64.StdEncoding.EncodeToString([]byte(userValue))
+	if result.Headers.Get("Authorization") == basic {
+		result.Headers.Del("Authorization")
+	}
+	username, password, _ := strings.Cut(userValue, ":")
+	result.AuthType = domain.AuthTypeDigest
+	result.AuthConfig = domain.MustAuthConfigJSON(domain.AuthConfig{
+		Username: username,
+		Password: password,
+	})
 }

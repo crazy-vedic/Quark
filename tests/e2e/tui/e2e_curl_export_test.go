@@ -122,6 +122,17 @@ func TestE2E_CurlExportAuthAndURLVariants(t *testing.T) {
 				"'https://api.example.test/items?api_key=a+b%26c&keep=two+words&tag=one&tag=two'",
 			},
 		},
+		{
+			name:     "digest auth exports as curl --digest",
+			method:   "GET",
+			url:      "https://api.example.test/digest",
+			authType: domain.AuthTypeDigest,
+			authJSON: `{"username":"alice","password":"s3cret"}`,
+			wantParts: []string{
+				"--digest -u 'alice:s3cret'",
+				"'https://api.example.test/digest'",
+			},
+		},
 	}
 
 	for i, tc := range cases {
@@ -189,9 +200,9 @@ func TestE2E_CurlExportRejectsInvalidPersistedRequests(t *testing.T) {
 		{
 			name:    "unsupported auth type",
 			url:     "https://example.test",
-			auth:    "digest",
+			auth:    "ntlm",
 			config:  `{}`,
-			wantErr: `unsupported authorization type "digest"`,
+			wantErr: `unsupported authorization type "ntlm"`,
 		},
 		{
 			name:    "invalid URL for query API key",

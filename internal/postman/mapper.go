@@ -147,7 +147,9 @@ func mapRequest(
 		headersMap[h.Key] = h.Value.String()
 	}
 
-	// Extract authentication as headers
+	// Extract authentication: most types become headers; Digest needs a
+	// challenge round-trip, so it is stored as request auth.
+	authType, authConfig := mapRequestAuth(req.Auth)
 	warnings = append(warnings, mapAuth(req.Auth, headersMap)...)
 
 	// Body
@@ -190,13 +192,15 @@ func mapRequest(
 	}
 
 	return &domain.Request{
-		ID:        uuid.New().String(),
-		Name:      name,
-		Method:    strings.ToUpper(req.Method),
-		URL:       requestURL,
-		Headers:   headersJSON,
-		Body:      body,
-		SortOrder: sortOrder,
+		ID:         uuid.New().String(),
+		Name:       name,
+		Method:     strings.ToUpper(req.Method),
+		URL:        requestURL,
+		Headers:    headersJSON,
+		Body:       body,
+		AuthType:   authType,
+		AuthConfig: authConfig,
+		SortOrder:  sortOrder,
 	}, warnings
 }
 
@@ -330,6 +334,28 @@ func buildURL(u URL) string {
 	return scheme + "://" + path
 }
 
+// mapRequestAuth returns the Quark request auth for Postman auth types that
+// cannot be expressed as a static header. Postman's digest realm, nonce and
+// algorithm fields are ignored: Quark reads them from the server's challenge.
+func mapRequestAuth(auth *Auth) (authType, authConfig string) {
+	if auth == nil || auth.Type != "digest" {
+		return "", ""
+	}
+	var cfg domain.AuthConfig
+	for _, p := range auth.Digest {
+		switch p.Key {
+		case "username":
+			cfg.Username = p.Value.String()
+		case "password":
+			cfg.Password = p.Value.String()
+		}
+	}
+	if cfg.Username == "" && cfg.Password == "" {
+		return "", ""
+	}
+	return domain.AuthTypeDigest, domain.MustAuthConfigJSON(cfg)
+}
+
 // mapAuth converts Postman authentication to Authorization headers.
 // Returns warnings for unsupported auth types.
 func mapAuth(auth *Auth, headers map[string]string) []string {
@@ -389,6 +415,11 @@ func mapAuth(auth *Auth, headers map[string]string) []string {
 			)
 		default:
 			headers[keyName] = value
+		}
+	case "digest":
+		// Mapped to request auth by mapRequestAuth.
+		if t, _ := mapRequestAuth(auth); t == "" {
+			warnings = append(warnings, "digest auth has no username or password; auth not set")
 		}
 	case "noauth":
 		// No auth, nothing to do

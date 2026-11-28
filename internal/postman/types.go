@@ -163,6 +163,7 @@ type Auth struct {
 	Basic  []AuthParam `json:"basic,omitempty"`
 	Bearer []AuthParam `json:"bearer,omitempty"`
 	APIKey []AuthParam `json:"apikey,omitempty"`
+	Digest []AuthParam `json:"digest,omitempty"`
 }
 
 // AuthParam represents a single authentication parameter.

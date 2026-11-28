@@ -130,6 +130,12 @@ func (e *Executor) Execute(ctx context.Context, req *domain.Request) (*ExecuteRe
 	// 3. HTTP dispatch.
 	start := time.Now()
 	resp, err := e.client.Do(httpReq)
+	if err == nil && resp.StatusCode == http.StatusUnauthorized &&
+		domain.NormalizeAuthType(req.AuthType) == domain.AuthTypeDigest {
+		// applyRequestAuth already rejected an unparsable config.
+		cfg, _ := domain.ParseAuthConfig(req.AuthConfig)
+		resp, err = e.retryWithDigest(httpReq, resp, cfg.Username, cfg.Password)
+	}
 	elapsed := time.Since(start)
 
 	if err != nil {

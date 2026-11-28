@@ -92,13 +92,13 @@ Indexed by `(status, run_at ASC)` for due-run queries.
 ```go
 type AuthConfig struct {
     Token    string  // Bearer
-    Username, Password string  // Basic
+    Username, Password string  // Basic, Digest
     Key, Value string  // API key
     In       string  // "header" or "query" for API key
 }
 ```
 
-Auth types: `AuthTypeNone`, `AuthTypeBearer`, `AuthTypeBasic`, `AuthTypeAPIKey`.
+Auth types: `AuthTypeNone`, `AuthTypeBearer`, `AuthTypeBasic`, `AuthTypeAPIKey`, `AuthTypeDigest`.
 
 Helpers: `NormalizeAuthType`, `ParseAuthConfig`, `MustAuthConfigJSON`.
 

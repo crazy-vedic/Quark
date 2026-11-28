@@ -124,6 +124,7 @@ Applied after variable interpolation, before dispatch:
 | Bearer | `Authorization: Bearer <token>` |
 | Basic | `Authorization: Basic <base64(user:pass)>` |
 | APIKey | Header or query param per `AuthConfig.In` |
+| Digest | First send has no credentials. On a 401 with `WWW-Authenticate: Digest`, one retry carries the computed `Authorization` (RFC 7616; MD5, SHA-256 and their `-sess` forms; `qop=auth` or none; `userhash`). SHA-256 is preferred when several challenges are offered. A 401 without a usable challenge (e.g. `qop=auth-int` only) is returned as the response. See `digest.go`. |
 
 Auth config stored as JSON in `Request.AuthConfig`.
 

@@ -219,6 +219,32 @@ func TestImportConfirmationPersistsHeadersBodyAndCertificate(t *testing.T) {
 	require.Equal(t, "literal-password", raw.HTTP.ClientCertificates[0].Password)
 }
 
+func TestImportConfirmationPersistsDigestAuth(t *testing.T) {
+	writer := &importedRequestWriter{}
+	m := New(Deps{
+		Writer: writer, Importer: curl.NewImporter(), Config: config.Default(t.TempDir()),
+	})
+	m.importColID = "collection-1"
+	m.importPreview = &curl.ImportResult{
+		Method:     http.MethodGet,
+		URL:        "https://example.com/private",
+		Headers:    http.Header{},
+		AuthType:   "digest",
+		AuthConfig: `{"username":"alice","password":"pw"}`,
+	}
+	m.mode = importMode
+
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = requireImportModel(t, updated)
+	require.Equal(t, normalMode, m.mode)
+	require.NotNil(t, cmd)
+	cmd()
+
+	require.NotNil(t, writer.request)
+	require.Equal(t, "digest", writer.request.AuthType)
+	require.JSONEq(t, `{"username":"alice","password":"pw"}`, writer.request.AuthConfig)
+}
+
 func TestImportCancelDoesNotChangeCurrentURL(t *testing.T) {
 	m := New(Deps{Importer: curl.NewImporter()})
 	m.urlInput.SetValue("https://current.example")

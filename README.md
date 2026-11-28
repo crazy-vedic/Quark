@@ -158,6 +158,7 @@ JSON formatting preserves the existing indent style (2-space, 4-space, tabs) and
 
 - **Local SQLite** — `~/.quark/quark.db`, WAL mode, no network
 - **Collections & requests** — Organise, sort, enable/disable
+- **Request auth** — Bearer, Basic, API key (header or query), and Digest (RFC 7616: MD5 and SHA-256, `qop=auth`; Quark answers the server's 401 challenge with one retry)
 - **Import** — cURL and Postman Collection v2.1 from the CLI or TUI
 - **Response preview** — Syntax-highlighted JSON, streaming for large bodies
 - **Themes** — Terminal-aware dark and light palettes, local custom themes, live preview and reload
@@ -171,7 +172,7 @@ JSON formatting preserves the existing indent style (2-space, 4-space, tabs) and
 Press `I` to open the multiline cURL importer. `Ctrl+V` reads the complete
 clipboard, `Ctrl+S` parses it, and `Enter` confirms the preview. The importer
 preserves repeated headers, request bodies, JSON, URL-encoded data, and
-multipart text fields.
+multipart text fields. `-u user:pass --digest` becomes Digest request auth.
 
 In the request pane, press `x` to copy the selected request as a shell-quoted
 cURL command. The command includes its method, headers, authorization, URL, and
