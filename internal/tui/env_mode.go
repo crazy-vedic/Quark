@@ -814,11 +814,7 @@ func dispatchWithEnvCmd(
 			}
 			req = interpolated
 		}
-		result, err := executor.Execute(ctx, req)
-		if err != nil {
-			return httpErrMsg{requestID: req.ID, err: err}
-		}
-		return httpResponseMsg{requestID: req.ID, result: result}
+		return dispatchRequest(ctx, executor, req)
 	}
 }
 

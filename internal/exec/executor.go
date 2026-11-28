@@ -75,38 +75,13 @@ func (e *Executor) Execute(ctx context.Context, req *domain.Request) (*ExecuteRe
 		e.recordExecution(ctx, snapshot, result, execErr, startedAt, time.Now())
 	}
 
-	// 1. Pre-request hook chain.
-	for _, h := range e.preRequestHooks {
-		var err error
-		req, err = h.BeforeRequest(ctx, req)
-		if err != nil {
-			wrapped := fmt.Errorf("exec: pre-request hook: %w", err)
-			record(req, nil, wrapped)
-			return nil, wrapped
-		}
+	// 1-2. Pre-request hooks, then variable substitution.
+	prepared, err := e.prepare(ctx, req)
+	if err != nil {
+		record(prepared, nil, err)
+		return nil, err
 	}
-
-	// 2. Variable substitution (if resolver is configured).
-	if e.variableResolver != nil {
-		colEnv, globalEnv, err := e.variableResolver(req.CollectionID)
-		if err != nil {
-			wrapped := fmt.Errorf("exec: resolve variables: %w", err)
-			record(req, nil, wrapped)
-			return nil, wrapped
-		}
-		interpolated, err := InterpolateRequest(req, colEnv, globalEnv)
-		if err != nil {
-			if errors.Is(err, ErrUnresolvedVariable) {
-				wrapped := fmt.Errorf("exec: %w", err)
-				record(req, nil, wrapped)
-				return nil, wrapped
-			}
-			wrapped := fmt.Errorf("exec: variable substitution: %w", err)
-			record(req, nil, wrapped)
-			return nil, wrapped
-		}
-		req = interpolated
-	}
+	req = prepared
 
 	httpReq, err := buildHTTPRequest(ctx, req)
 	if err != nil {
@@ -157,6 +132,34 @@ func (e *Executor) Execute(ctx context.Context, req *domain.Request) (*ExecuteRe
 
 	record(req, result, nil)
 	return result, nil
+}
+
+// prepare runs the pre-request hook chain and then variable substitution, the
+// steps every dispatch shares. On error it returns the request as far as the
+// chain got, so the caller can record it.
+func (e *Executor) prepare(ctx context.Context, req *domain.Request) (*domain.Request, error) {
+	for _, h := range e.preRequestHooks {
+		next, err := h.BeforeRequest(ctx, req)
+		if err != nil {
+			return next, fmt.Errorf("exec: pre-request hook: %w", err)
+		}
+		req = next
+	}
+	if e.variableResolver == nil {
+		return req, nil
+	}
+	colEnv, globalEnv, err := e.variableResolver(req.CollectionID)
+	if err != nil {
+		return req, fmt.Errorf("exec: resolve variables: %w", err)
+	}
+	interpolated, err := InterpolateRequest(req, colEnv, globalEnv)
+	if err != nil {
+		if errors.Is(err, ErrUnresolvedVariable) {
+			return req, fmt.Errorf("exec: %w", err)
+		}
+		return req, fmt.Errorf("exec: variable substitution: %w", err)
+	}
+	return interpolated, nil
 }
 
 // buildHTTPRequest constructs a *http.Request from a domain.Request.

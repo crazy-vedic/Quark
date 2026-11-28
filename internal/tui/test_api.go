@@ -727,6 +727,19 @@ func (m Model) WithImportInputEdit(text string) Model {
 // ImportInputValue returns the import textarea's text.
 func (m Model) ImportInputValue() string { return m.importInput.Value() }
 
+// WithWSInputEdit opens the WebSocket modal with its input focused and text in
+// the input. No session is attached, so nothing is sent.
+func (m Model) WithWSInputEdit(text string) Model {
+	m.mode = wsMode
+	m.ws.input = textinput.New()
+	m.ws.input.SetValue(text)
+	m.ws.input.Focus()
+	return m
+}
+
+// WSInputValue returns the WebSocket modal's input text.
+func (m Model) WSInputValue() string { return m.ws.input.Value() }
+
 // AuthUsernameValue returns the basic auth username input's text.
 func (m Model) AuthUsernameValue() string { return m.authEditor.usernameInput.Value() }
 
@@ -781,6 +794,7 @@ func BlurredModelForTest() Model {
 	m.authEditor = newAuthEditor(&domain.Request{AuthType: "bearer"})
 	m.envEditor.editKey = textinput.New()
 	m.envEditor.editVal = textinput.New()
+	m.ws.input = textinput.New()
 	for _, w := range textWidgets {
 		acc := w.get
 		acc(&m).Blur()

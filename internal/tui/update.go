@@ -464,6 +464,8 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.handleClientCertKey(msg)
 		case postmanImportMode:
 			return m.handlePostmanImportKey(msg)
+		case wsMode:
+			return m.handleWSKey(msg)
 		default:
 			return m.handleNormalKey(msg)
 		}
@@ -473,6 +475,13 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case httpErrMsg:
 		return m.handleHTTPErr(msg)
+
+	case wsOpenedMsg:
+		return m.handleWSOpened(msg)
+	case wsEventMsg:
+		return m.handleWSEvent(msg)
+	case wsSendFailedMsg:
+		return m.handleWSSendFailed(msg)
 	case envSavedMsg:
 		m = m.status("success", "Environment saved")
 		if draft, ok := m.envEditor.drafts[msg.envID]; ok {

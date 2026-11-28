@@ -21,7 +21,10 @@ require (
 	software.sslmate.com/src/go-pkcs12 v0.7.4
 )
 
-require github.com/Masterminds/semver/v3 v3.5.0
+require (
+	github.com/Masterminds/semver/v3 v3.5.0
+	github.com/coder/websocket v1.8.15
+)
 
 require go.yaml.in/yaml/v3 v3.0.5 // indirect
 

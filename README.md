@@ -159,6 +159,7 @@ JSON formatting preserves the existing indent style (2-space, 4-space, tabs) and
 - **Local SQLite** — `~/.quark/quark.db`, WAL mode, no network
 - **Collections & requests** — Organise, sort, enable/disable
 - **Import** — cURL and Postman Collection v2.1 from the CLI or TUI
+- **WebSocket** — `ws://` and `wss://` requests open a session in the TUI: message log, send a text message, close. Headers and client certificates apply to the handshake
 - **Response preview** — Syntax-highlighted JSON, streaming for large bodies
 - **Themes** — Terminal-aware dark and light palettes, local custom themes, live preview and reload
 - **Fuzzy search** — `/` to search across everything
