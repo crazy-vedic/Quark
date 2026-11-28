@@ -1281,6 +1281,8 @@ func (m Model) activePaneRequest() *domain.Request {
 		r.AuthType = base.AuthType
 		r.AuthConfig = base.AuthConfig
 		r.Body = base.Body
+		// Without the rules the response is never extracted when sent from the TUI.
+		r.Extractions = base.Extractions
 	}
 	return r
 }
