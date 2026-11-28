@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -68,7 +69,10 @@ func sendDownloadThroughTUI(t *testing.T, cfg config.Config, body []byte, tmpDir
 	require.True(t, m.Loading())
 
 	if tmpDir != "" {
+		// Go reads TMPDIR on Unix but TMP and TEMP on Windows.
 		t.Setenv("TMPDIR", tmpDir)
+		t.Setenv("TMP", tmpDir)
+		t.Setenv("TEMP", tmpDir)
 	}
 	return executeCmdUpdate(t, m, cmd)
 }
@@ -127,10 +131,18 @@ func TestE2E_MaxDownload_StreamedBodyAtExactLimitIsKept(t *testing.T) {
 	require.NotNil(t, m.Response())
 	assert.Equal(t, int64(11<<20), m.Response().Size)
 	require.NotEmpty(t, m.Response().TempPath, "a streamed body is kept in a temp file")
-	info, err := os.Stat(m.Response().TempPath)
+	// Remove the kept file before t.TempDir is cleaned up, which Windows
+	// needs when the file is in that directory.
+	tempPath := m.Response().TempPath
+	t.Cleanup(func() { _ = os.Remove(tempPath) })
+	info, err := os.Stat(tempPath)
 	require.NoError(t, err)
 	assert.Equal(t, int64(11<<20), info.Size())
-	assert.Equal(t, os.FileMode(0o600), info.Mode().Perm(), "response bodies are private")
+	if runtime.GOOS != "windows" {
+		// Windows has no POSIX mode bits: Chmod only toggles the read-only
+		// flag, so Stat always reports 0666 there.
+		assert.Equal(t, os.FileMode(0o600), info.Mode().Perm(), "response bodies are private")
+	}
 }
 
 func TestE2E_MaxDownload_ConfigValueForms(t *testing.T) {
