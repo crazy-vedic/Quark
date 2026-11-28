@@ -133,6 +133,14 @@ func installShellCompletion(root *cobra.Command, shell string, status io.Writer)
 	} else {
 		fmt.Fprintf(status, "==> Updated %s completions at %s\n", shell, paths.completionFile)
 	}
+	if shell == shellZsh {
+		fmt.Fprintf(
+			status,
+			"    zsh completions need compinit; if %s does not run it, add: "+
+				"autoload -Uz compinit && compinit\n",
+			paths.rcFile,
+		)
+	}
 	fmt.Fprintf(
 		status,
 		"    Start a new shell or run: source %s\n",
@@ -175,27 +183,19 @@ fi
 		completionDir := filepath.Join(zdotdir, ".zsh", "completions")
 		completionFile := filepath.Join(completionDir, "_"+binary)
 		rcFile := filepath.Join(zdotdir, ".zshrc")
+		// Only extend fpath: the user's own compinit (before or after this
+		// block) picks the script up. When compinit already ran, register
+		// the function directly instead of running compinit a second time.
 		block := fmt.Sprintf(`%s
-if [ -d %q ]; then
-  fpath=(%q $fpath)
-fi
-autoload -Uz compinit
-compinit
-if [ -f %q ]; then
-  if (( ${+functions[_%s]} )); then
-    unfunction _%s
-  fi
-  compdef -d %q 2>/dev/null || true
-  . %q
-  compdef _%s %q 2>/dev/null || true
+fpath=(%q $fpath)
+if (( ${+functions[compdef]} )); then
+  autoload -Uz _%s
+  compdef _%s %s
 fi
 %s`,
 			completionMarkerStart,
-			completionDir, completionDir,
-			completionFile,
-			binary, binary,
+			completionDir,
 			binary,
-			completionFile,
 			binary, binary,
 			completionMarkerEnd,
 		)
@@ -288,19 +288,124 @@ func powershellProfilePath(home string) string {
 	return filepath.Join(home, ".config", "powershell", "Microsoft.PowerShell_profile.ps1")
 }
 
+// clearZshCompdump removes this host's zsh completion cache so the next
+// compinit rebuilds it. Only the default dump (.zcompdump) and the per-host
+// dumps that frameworks such as oh-my-zsh write (.zcompdump-<host>-<version>)
+// are removed; dumps of other hosts sharing the home directory are kept.
 func clearZshCompdump(home string) {
 	zdotdir := os.Getenv("ZDOTDIR")
 	if zdotdir == "" {
 		zdotdir = home
 	}
-	matches, err := filepath.Glob(filepath.Join(zdotdir, ".zcompdump*"))
+	targets := []string{
+		filepath.Join(zdotdir, ".zcompdump"),
+		filepath.Join(zdotdir, ".zcompdump.zwc"),
+	}
+	if host := shortHostname(); host != "" {
+		matches, err := filepath.Glob(filepath.Join(zdotdir, ".zcompdump-"+host+"-*"))
+		if err == nil {
+			targets = append(targets, matches...)
+		}
+	}
+	for _, target := range targets {
+		//nolint:gosec // G703: paths under known ZDOTDIR/home
+		_ = os.Remove(filepath.Clean(target))
+	}
+}
+
+// shortHostname returns the host name up to the first dot, like zsh's
+// ${HOST%%.*}. It returns "" when the host name is unknown or contains glob
+// metacharacters.
+func shortHostname() string {
+	host, err := os.Hostname()
 	if err != nil {
-		return
+		return ""
 	}
-	for _, match := range matches {
-		//nolint:gosec // G703: paths from Glob under known ZDOTDIR/home
-		_ = os.Remove(filepath.Clean(match))
+	host, _, _ = strings.Cut(host, ".")
+	if strings.ContainsAny(host, `*?[\/`) {
+		return ""
 	}
+	return host
+}
+
+// uninstallShellCompletion removes the marked block from the shell rc or
+// profile file and deletes the installed completion script.
+func uninstallShellCompletion(root *cobra.Command, shell string, status io.Writer) error {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("resolve home directory: %w", err)
+	}
+	paths, err := completionPaths(shell, home, root.Name())
+	if err != nil {
+		return err
+	}
+
+	removedBlock := false
+	if paths.rcFile != "" {
+		removedBlock, err = removeMarkedBlock(paths.rcFile)
+		if err != nil {
+			return err
+		}
+	}
+	removedScript := false
+	if err := os.Remove(paths.completionFile); err == nil {
+		removedScript = true
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("remove completion script: %w", err)
+	}
+	if shell == shellZsh && removedScript {
+		clearZshCompdump(home)
+	}
+
+	if !removedBlock && !removedScript {
+		fmt.Fprintf(status, "==> No %s completions installed\n", shell)
+		return nil
+	}
+	fmt.Fprintf(status, "==> Removed %s completions\n", shell)
+	if removedScript {
+		fmt.Fprintf(status, "    Deleted %s\n", paths.completionFile)
+	}
+	if removedBlock {
+		fmt.Fprintf(status, "    Removed the completion block from %s\n", paths.rcFile)
+	}
+	return nil
+}
+
+// removeMarkedBlock deletes the lines from completionMarkerStart through
+// completionMarkerEnd in targetFile. It returns false when the file or the
+// block does not exist.
+func removeMarkedBlock(targetFile string) (bool, error) {
+	existing, err := os.ReadFile(targetFile)
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("read %s: %w", targetFile, err)
+	}
+	content := string(existing)
+	if !strings.Contains(content, completionMarkerStart) {
+		return false, nil
+	}
+	var out []string
+	inBlock := false
+	for _, line := range strings.Split(content, "\n") {
+		switch {
+		case strings.Contains(line, completionMarkerStart):
+			inBlock = true
+		case inBlock:
+			if strings.Contains(line, completionMarkerEnd) {
+				inBlock = false
+			}
+		default:
+			out = append(out, line)
+		}
+	}
+	updated := strings.Join(out, "\n")
+	mode := rcFileMode(targetFile)
+	if err := atomicfile.WriteFile(targetFile, []byte(updated), mode); err != nil {
+		return false, fmt.Errorf("write %s: %w", targetFile, err)
+	}
+	return true, nil
 }
 
 // appendOrUpdateBlock appends block when marker is absent, or replaces the

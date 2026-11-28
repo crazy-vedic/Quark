@@ -190,6 +190,16 @@ Generates Warp terminal shell completion plugin JSON. No store access.
 
 ## Shell Completion
 
+**Source:** `internal/cli/completion_cmd.go`, `internal/cli/completion_install.go`
+
+`quark completion setup [--shell X]` (or `completion <shell> --setup`) writes the
+script and appends a block between `# >>> quark completion >>>` markers to the
+rc/profile file (fish needs no rc block). The zsh block only prepends the
+completion dir to `fpath` and, when `compdef` already exists, autoloads and
+registers `_quark`; it never runs `compinit`. zsh setup deletes only this host's
+dump (`.zcompdump`, `.zcompdump.zwc`, `.zcompdump-<short-host>-*`).
+`quark completion uninstall [shell]` removes the marked block and the script.
+
 Several commands register `ValidArgsFunction` for cobra completion:
 
 - `CompleteCollectionIDs` — collection list

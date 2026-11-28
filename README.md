@@ -115,6 +115,16 @@ quark request export-curl "API/Create Order"  # Print it as a curl command
 quark collection list         # List all collections
 ```
 
+### Shell completion
+
+```bash
+quark completion setup        # Install for the current shell (bash, zsh, fish, PowerShell)
+quark completion uninstall    # Remove the script and the block setup added to your rc file
+```
+
+For zsh, setup only adds the completion directory to `fpath` in `~/.zshrc`;
+it relies on your own `compinit` and does not run it.
+
 ---
 
 ## Updates
