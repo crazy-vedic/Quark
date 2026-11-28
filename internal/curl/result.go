@@ -1,7 +1,11 @@
 // Package curl parses curl commands into structured HTTP request data.
 package curl
 
-import "net/http"
+import (
+	"net/http"
+
+	"github.com/crazy-vedic/quark/internal/domain"
+)
 
 // SecurityLevel classifies the risk level of a parsed curl command.
 type SecurityLevel int
@@ -38,6 +42,9 @@ type ImportResult struct {
 	Body        string
 	Security    SecurityLevel
 	Certificate *CertificateSpec
+	// Options holds the per-request settings curl set: -k, -L, --max-redirs,
+	// -x and -m. Unset options keep Quark's defaults.
+	Options domain.RequestOptions
 	// Warnings is sorted lexicographically before return.
 	// Tests must use assert.Equal, not assert.ElementsMatch.
 	Warnings []string

@@ -11,12 +11,14 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"software.sslmate.com/src/go-pkcs12"
 
@@ -234,4 +236,70 @@ func TestNewKeepsProxyAndConnectionDefaults(t *testing.T) {
 	require.True(t, m.base.ForceAttemptHTTP2, "HTTP/2 stays enabled for ordinary hosts")
 	require.False(t, m.transports["mtls.example.com"].ForceAttemptHTTP2,
 		"client-certificate hosts stay on HTTP/1.1 (renegotiation)")
+}
+
+func TestVariant_KeepsHostCertificateAndSharesPoolPerSettings(t *testing.T) {
+	certPath, keyPath := writeTestPEM(t)
+	cfg := config.Default(t.TempDir())
+	cfg.HTTP.ClientCertificates = []config.ClientCertificate{{
+		Host: "pem.example.com", File: certPath, Type: "PEM", KeyFile: keyPath, CAFile: certPath,
+	}}
+	m, err := New(cfg)
+	require.NoError(t, err)
+
+	plain := variantRoundTripper{m: m, headerTimeout: time.Second}
+	insecure := variantRoundTripper{m: m, insecure: true, headerTimeout: time.Second}
+
+	routed := m.variantTransport("pem.example.com", plain)
+	require.Len(t, routed.TLSClientConfig.Certificates, 1,
+		"a per-request variant must keep the host's client certificate")
+	assert.False(t, routed.TLSClientConfig.InsecureSkipVerify)
+	assert.Same(t, routed, m.variantTransport("pem.example.com", plain),
+		"the same host and settings share one connection pool")
+
+	skipping := m.variantTransport("pem.example.com", insecure)
+	assert.True(t, skipping.TLSClientConfig.InsecureSkipVerify)
+	require.Len(t, skipping.TLSClientConfig.Certificates, 1,
+		"skipping verification must not drop the client certificate")
+	assert.NotSame(t, routed, skipping)
+
+	if m.base.TLSClientConfig != nil {
+		assert.False(t, m.base.TLSClientConfig.InsecureSkipVerify,
+			"building variants must not change the shared base transport")
+	}
+	assert.False(t, m.transports["pem.example.com"].TLSClientConfig.InsecureSkipVerify,
+		"building variants must not change the host route")
+}
+
+func TestVariant_ProxyAndTimeoutApplyToRequests(t *testing.T) {
+	var seen atomic.Value
+	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seen.Store(r.URL.String())
+		_, _ = w.Write([]byte("via proxy"))
+	}))
+	t.Cleanup(proxy.Close)
+	proxyURL, err := url.Parse(proxy.URL)
+	require.NoError(t, err)
+
+	m, err := New(config.Default(t.TempDir()))
+	require.NoError(t, err)
+	client := &http.Client{Transport: m.Variant(proxyURL, false, 2*time.Second)}
+
+	resp, err := client.Get("http://target.invalid/resource")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Equal(t, "http://target.invalid/resource", seen.Load(),
+		"the request must reach the proxy with its absolute target URL")
+}
+
+func TestVariant_ReloadDropsSharedVariants(t *testing.T) {
+	cfg := config.Default(t.TempDir())
+	m, err := New(cfg)
+	require.NoError(t, err)
+	m.variantTransport("", variantRoundTripper{m: m, insecure: true, headerTimeout: time.Second})
+	require.Len(t, m.variants, 1)
+
+	require.NoError(t, m.Reload(cfg))
+	assert.Empty(t, m.variants)
 }

@@ -75,6 +75,9 @@ func newImportCurlCmd(
 					"mTLS:      %s certificate %s\n",
 					result.Certificate.Type, result.Certificate.File)
 			}
+			if !result.Options.IsZero() {
+				fmt.Fprintf(cmd.OutOrStdout(), "Options:  %s\n", result.Options.Summary())
+			}
 
 			if collectionID == "" && name == "" {
 				fmt.Fprintln(cmd.OutOrStdout(), "\n(Dry run: use --collection and --name to save)")
@@ -103,6 +106,7 @@ func newImportCurlCmd(
 				URL:          result.URL,
 				Headers:      string(headersJSON),
 				Body:         result.Body,
+				Options:      result.Options,
 			}
 			if err := w.SaveRequest(cmd.Context(), req); err != nil {
 				return fmt.Errorf("import curl: save: %w", err)

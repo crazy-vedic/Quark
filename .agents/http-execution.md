@@ -127,6 +127,18 @@ Applied after variable interpolation, before dispatch:
 
 Auth config stored as JSON in `Request.AuthConfig`.
 
+## Per-request Options (`request_settings.go`)
+
+`Request.Options` (see [domain-and-store.md](domain-and-store.md)) overrides the executor's defaults for one request: timeout, follow redirects, max redirects, proxy, and skip TLS verification.
+
+- `effectiveSettings(opts)` merges the options over the defaults.
+- Requests whose redirect settings match the defaults share `e.client` and its pool. Others get a new `http.Client` with the same `Jar`, and a transport when a proxy, TLS or timeout override is set.
+- Transport: `transport.Manager` implements the unexported `variantTransport` interface (`Variant(proxy, skipTLSVerify, headerTimeout)`). It keeps each host's client certificate and caches one pool per host and setting combination, dropped on `Reload`. Any other `*http.Transport` is cloned per request and its idle connections are closed afterwards. Any other RoundTripper returns `ErrUnsupportedOption` for proxy, TLS or timeout overrides, before anything is sent.
+- `exec.ErrUnsupportedOption` and `domain.ErrInvalidRequestOptions` are the sentinel errors. An invalid proxy is refused before sending.
+- The history snapshot records `options` only when they are set. Variable substitution (`copyRequest`) copies them, so they apply to every real send.
+
+Set in the TUI with the options editor (`o` in the request pane). From `quark import curl`, the curl flags `-k`/`--insecure`, `-L`/`--location`, `--max-redirs`, `-x`/`--proxy` and `-m`/`--max-time` set them. `curl -k` and `-x` raise the import's security level to Review.
+
 ## Exec Hooks (`hooks.go`)
 
 ```go

@@ -11,19 +11,31 @@ import (
 	"github.com/crazy-vedic/quark/internal/domain"
 )
 
+// parseStoredOptions decodes a request's stored options. Invalid JSON is an
+// error rather than a silent fallback to defaults, because the request would
+// then be sent differently from how it was saved.
+func parseStoredOptions(requestID, raw string) (domain.RequestOptions, error) {
+	opts, err := domain.ParseRequestOptions(raw)
+	if err != nil {
+		return domain.RequestOptions{}, fmt.Errorf("store: request %q options: %w", requestID, err)
+	}
+	return opts, nil
+}
+
 // GetRequest returns the request with the given ID.
 // Returns nil, ErrNotFound if no request exists.
 func (s *Store) GetRequest(ctx context.Context, id string) (*domain.Request, error) {
 	row := s.db.QueryRowContext(ctx,
 		`SELECT id, collection_id, name, method, url, headers, auth_type, auth_config, body,
-		        sort_order, enabled, created_at, updated_at
+		        sort_order, enabled, created_at, updated_at, options
 		 FROM requests WHERE id = ?`, id)
 
 	r := &domain.Request{}
 	var body sql.NullString
+	var options string
 	err := row.Scan(&r.ID, &r.CollectionID, &r.Name, &r.Method, &r.URL,
 		&r.Headers, &r.AuthType, &r.AuthConfig, &body, &r.SortOrder, &r.Enabled,
-		&r.CreatedAt, &r.UpdatedAt)
+		&r.CreatedAt, &r.UpdatedAt, &options)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, fmt.Errorf("store: get request %q: %w", id, ErrNotFound)
@@ -31,6 +43,9 @@ func (s *Store) GetRequest(ctx context.Context, id string) (*domain.Request, err
 		return nil, fmt.Errorf("store: get request %q: %w", id, err)
 	}
 	r.Body = body.String
+	if r.Options, err = parseStoredOptions(r.ID, options); err != nil {
+		return nil, err
+	}
 	return r, nil
 }
 
@@ -52,7 +67,7 @@ func (s *Store) ListRequests(ctx context.Context, collectionID string) ([]*domai
 
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT id, collection_id, name, method, url, headers, auth_type, auth_config, body,
-		        sort_order, enabled, created_at, updated_at
+		        sort_order, enabled, created_at, updated_at, options
 		 FROM requests
 		 WHERE collection_id = ?
 		 ORDER BY sort_order ASC, created_at ASC, id ASC`, collectionID)
@@ -65,12 +80,16 @@ func (s *Store) ListRequests(ctx context.Context, collectionID string) ([]*domai
 	for rows.Next() {
 		r := &domain.Request{}
 		var body sql.NullString
+		var options string
 		if err := rows.Scan(&r.ID, &r.CollectionID, &r.Name, &r.Method, &r.URL,
 			&r.Headers, &r.AuthType, &r.AuthConfig, &body, &r.SortOrder, &r.Enabled,
-			&r.CreatedAt, &r.UpdatedAt); err != nil {
+			&r.CreatedAt, &r.UpdatedAt, &options); err != nil {
 			return nil, fmt.Errorf("store: list requests scan: %w", err)
 		}
 		r.Body = body.String
+		if r.Options, err = parseStoredOptions(r.ID, options); err != nil {
+			return nil, err
+		}
 		result = append(result, r)
 	}
 	if err := rows.Err(); err != nil {
@@ -116,10 +135,17 @@ func (s *Store) SaveRequest(ctx context.Context, req *domain.Request) error {
 	if authConfig == "" {
 		authConfig = "{}"
 	}
-	_, err := s.db.ExecContext(
+	if err := req.Options.Validate(); err != nil {
+		return fmt.Errorf("store: save request %q: %w", req.ID, err)
+	}
+	optionsJSON, err := req.Options.JSON()
+	if err != nil {
+		return fmt.Errorf("store: save request %q: encode options: %w", req.ID, err)
+	}
+	_, err = s.db.ExecContext(
 		ctx,
-		`INSERT INTO requests (id, collection_id, name, method, url, headers, auth_type, auth_config, body, sort_order, enabled)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`INSERT INTO requests (id, collection_id, name, method, url, headers, auth_type, auth_config, body, sort_order, enabled, options)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(id) DO UPDATE SET
 		   collection_id=excluded.collection_id,
 		   name=excluded.name,
@@ -131,6 +157,7 @@ func (s *Store) SaveRequest(ctx context.Context, req *domain.Request) error {
 		   body=excluded.body,
 		   sort_order=excluded.sort_order,
 		   enabled=excluded.enabled,
+		   options=excluded.options,
 		   updated_at=CURRENT_TIMESTAMP`,
 		req.ID,
 		req.CollectionID,
@@ -143,6 +170,7 @@ func (s *Store) SaveRequest(ctx context.Context, req *domain.Request) error {
 		req.Body,
 		req.SortOrder,
 		req.Enabled,
+		optionsJSON,
 	)
 	if err != nil {
 		if isSQLiteUnique(err) {

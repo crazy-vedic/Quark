@@ -31,9 +31,13 @@ type ImportResult struct {
     Headers  map[string]string
     Body     string
     Security SecurityLevel  // safe, caution, dangerous
+    Certificate *CertificateSpec
+    Options  domain.RequestOptions  // from -k, -L, --max-redirs, -x, -m; unset keeps defaults
     Warnings []string       // sorted
 }
 ```
+
+`-k`/`--insecure`, `-L`/`--location`, `--max-redirs`, `-x`/`--proxy` and `-m`/`--max-time` map to `Options`, not warnings. `-m` takes decimal seconds. An unsupported proxy scheme or a non-numeric time is an import error, because dropping it would send the request differently. `--max-redirs -1` warns, since Quark has no unlimited mode. Without `-L`, curl's no-redirect default is not imported: the request keeps Quark's redirect policy, as before.
 
 ### Parser Limits (`curl/parser.go`)
 

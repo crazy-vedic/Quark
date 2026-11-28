@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/crazy-vedic/quark/internal/domain"
@@ -64,11 +65,42 @@ func ExportRequest(req *domain.Request) (string, error) {
 			return "", fmt.Errorf("unsupported authorization type %q", req.AuthType)
 		}
 	}
+	args = append(args, optionArgs(req.Options)...)
 	if req.Body != "" {
 		args = append(args, "--data-raw", shellQuote(req.Body))
 	}
 	args = append(args, shellQuote(requestURL))
 	return strings.Join(args, " "), nil
+}
+
+// optionArgs writes the request's per-request options as the curl flags the
+// importer reads back (see parser.go), so a copied command keeps its settings.
+// Options left unset are omitted and keep Quark's defaults.
+func optionArgs(opts domain.RequestOptions) []string {
+	var args []string
+	if opts.FollowRedirects != nil {
+		if *opts.FollowRedirects {
+			args = append(args, "-L")
+		} else {
+			// Following nothing is the same as following with a zero limit, and
+			// that form survives import, unlike a bare "no -L".
+			args = append(args, "-L", "--max-redirs", "0")
+		}
+	}
+	if opts.MaxRedirects != nil && (opts.FollowRedirects == nil || *opts.FollowRedirects) {
+		args = append(args, "--max-redirs", strconv.Itoa(*opts.MaxRedirects))
+	}
+	if opts.SkipTLSVerify {
+		args = append(args, "-k")
+	}
+	if opts.Proxy != "" {
+		args = append(args, "-x", shellQuote(opts.Proxy))
+	}
+	if opts.TimeoutMS > 0 {
+		seconds := strconv.FormatFloat(float64(opts.TimeoutMS)/1000, 'f', -1, 64)
+		args = append(args, "--max-time", seconds)
+	}
+	return args
 }
 
 func shellQuote(value string) string {

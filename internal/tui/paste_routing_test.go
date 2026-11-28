@@ -357,6 +357,30 @@ var routingCases = []routeCase{
 		deliver: deliver,
 		value:   tui.Model.EnvKeyValue,
 	},
+	{
+		name: "optionsEditor.timeoutInput",
+		open: func(*testing.T) tui.Model {
+			return pasteFixture("").WithOptionsFieldEdit(tui.OptionRowTimeout, "")
+		},
+		deliver: deliver,
+		value:   tui.Model.OptionsTimeoutValue,
+	},
+	{
+		name: "optionsEditor.maxRedirectsInput",
+		open: func(*testing.T) tui.Model {
+			return pasteFixture("").WithOptionsFieldEdit(tui.OptionRowMaxRedirects, "")
+		},
+		deliver: deliver,
+		value:   tui.Model.OptionsMaxRedirectsValue,
+	},
+	{
+		name: "optionsEditor.proxyInput",
+		open: func(*testing.T) tui.Model {
+			return pasteFixture("").WithOptionsFieldEdit(tui.OptionRowProxy, "")
+		},
+		deliver: deliver,
+		value:   tui.Model.OptionsProxyValue,
+	},
 }
 
 // untestedWidgets lists every text widget that has no routeCase, with the reason.

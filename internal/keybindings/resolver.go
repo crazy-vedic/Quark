@@ -37,6 +37,7 @@ type Keybindings struct {
 	RequestDelete string `toml:"request_delete"`
 	ExportCurl    string `toml:"export_curl"`
 	EditAuth      string `toml:"edit_auth"`
+	EditOptions   string `toml:"edit_options"`
 	ScheduleRun   string `toml:"schedule_run"`
 	EnvOpen       string `toml:"env_open"`
 	ClientCerts   string `toml:"client_certificates"`
@@ -89,6 +90,15 @@ type Keybindings struct {
 	AuthCancel     string `toml:"auth_cancel"`
 	AuthOptionNext string `toml:"auth_option_next"`
 	AuthOptionPrev string `toml:"auth_option_prev"`
+
+	// Options editor
+	OptionsDown       string `toml:"options_down"`
+	OptionsUp         string `toml:"options_up"`
+	OptionsEdit       string `toml:"options_edit"`
+	OptionsSave       string `toml:"options_save"`
+	OptionsCancel     string `toml:"options_cancel"`
+	OptionsOptionNext string `toml:"options_option_next"`
+	OptionsOptionPrev string `toml:"options_option_prev"`
 
 	// Response pane
 	ResponseDown  string `toml:"response_down"`
@@ -177,6 +187,7 @@ type Resolver struct {
 	collection  map[string]string
 	auth        map[string]string
 	certificate map[string]string
+	options     map[string]string
 }
 
 // addAlias adds a key → action alias to a map, but only if the key is not
@@ -238,6 +249,7 @@ func NewResolver(binds Keybindings) *Resolver {
 		binds.RequestDelete: ActionDeleteRequest,
 		binds.ExportCurl:    ActionExportCurl,
 		binds.EditAuth:      ActionEditAuth,
+		binds.EditOptions:   ActionEditOptions,
 		binds.ScheduleRun:   ActionScheduleRun,
 	}
 	addAlias(request, "alt+enter", ActionSendRequest)
@@ -349,6 +361,21 @@ func NewResolver(binds Keybindings) *Resolver {
 	addAlias(auth, "right", "option_next")
 	addAlias(auth, "enter", "save")
 
+	options := map[string]string{
+		binds.OptionsDown:       ActionNavigateDown,
+		binds.OptionsUp:         ActionNavigateUp,
+		binds.OptionsEdit:       "edit",
+		binds.OptionsSave:       "save",
+		binds.OptionsCancel:     ActionCancel,
+		binds.OptionsOptionNext: "option_next",
+		binds.OptionsOptionPrev: "option_prev",
+	}
+	addAlias(options, "down", ActionNavigateDown)
+	addAlias(options, "up", ActionNavigateUp)
+	addAlias(options, "left", "option_prev")
+	addAlias(options, "right", "option_next")
+	addAlias(options, "enter", "save")
+
 	certificate := map[string]string{
 		binds.CertDown: "navigate_down", binds.CertUp: "navigate_up",
 		binds.CertAdd: "add", binds.CertEdit: "edit", binds.CertDelete: "delete",
@@ -373,17 +400,18 @@ func NewResolver(binds Keybindings) *Resolver {
 		collection:  collection,
 		auth:        auth,
 		certificate: certificate,
+		options:     options,
 	}
 }
 
 // Resolve returns the action name for a given key in a given mode.
-// mode: 0=normal, 1=search, 2=help, 3=import, 4=body, 5=header, 6=env, 7=collection prompt, 8=auth, 9=certificate
+// mode: 0=normal, 1=search, 2=help, 3=import, 4=body, 5=header, 6=env, 7=collection prompt, 8=auth, 9=certificate, 10=options
 // pane: 0=sidebar, 1=request, 2=response (only used in normal mode)
 func (r *Resolver) Resolve(mode, pane int, msg tea.KeyMsg) (string, bool) {
 	key := msg.String()
 
 	// Validate mode.
-	if mode < 0 || mode > 9 {
+	if mode < 0 || mode > 10 {
 		return "", false
 	}
 
@@ -462,6 +490,10 @@ func (r *Resolver) lookupOverlay(mode int, key string) (string, bool) {
 		if action, ok := r.certificate[key]; ok {
 			return action, true
 		}
+	case 10:
+		if action, ok := r.options[key]; ok {
+			return action, true
+		}
 	}
 	return "", false
 }
@@ -505,6 +537,7 @@ func Validate(binds Keybindings) map[string][]string {
 			{binds.EditBody, ActionEditBody}, {binds.EditHeaders, ActionEditHeaders},
 			{binds.RequestDelete, ActionDeleteRequest},
 			{binds.EditAuth, ActionEditAuth}, {binds.ScheduleRun, ActionScheduleRun},
+			{binds.EditOptions, ActionEditOptions},
 			{binds.ExportCurl, ActionExportCurl}},
 		{{binds.ResponseDown, "response_down"}, {binds.ResponseUp, "response_up"},
 			{binds.ResponseRetry, "response_retry"},
@@ -539,6 +572,11 @@ func Validate(binds Keybindings) map[string][]string {
 			{binds.AuthEdit, "auth_edit"}, {binds.AuthSave, "auth_save"},
 			{binds.AuthCancel, "auth_cancel"}, {binds.AuthOptionNext, "auth_option_next"},
 			{binds.AuthOptionPrev, "auth_option_prev"}},
+		{{binds.OptionsDown, "options_down"}, {binds.OptionsUp, "options_up"},
+			{binds.OptionsEdit, "options_edit"}, {binds.OptionsSave, "options_save"},
+			{binds.OptionsCancel, "options_cancel"},
+			{binds.OptionsOptionNext, "options_option_next"},
+			{binds.OptionsOptionPrev, "options_option_prev"}},
 		{{binds.CertDown, "cert_down"}, {binds.CertUp, "cert_up"},
 			{binds.CertAdd, "cert_add"}, {binds.CertEdit, "cert_edit"},
 			{binds.CertDelete, "cert_delete"}, {binds.CertClose, "cert_close"},

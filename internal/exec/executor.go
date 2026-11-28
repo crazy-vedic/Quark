@@ -31,6 +31,11 @@ type Executor struct {
 	postResponseHooks []PostResponseHook
 	variableResolver  VariableResolver
 	executionWriter   ExecutionWriter
+	// transport and the redirect defaults let requests with their own options
+	// build a client that differs from the default one.
+	transport       http.RoundTripper
+	followRedirects bool
+	maxRedirects    int
 }
 
 // New constructs an Executor with the given transport and options.
@@ -40,12 +45,9 @@ func New(transport http.RoundTripper, opts ...Option) *Executor {
 	for _, opt := range opts {
 		opt.apply(&o)
 	}
-	client := &http.Client{Transport: transport}
-	client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
-		if !o.followRedirects || o.maxRedirects <= 0 || len(via) > o.maxRedirects {
-			return http.ErrUseLastResponse
-		}
-		return nil
+	client := &http.Client{
+		Transport:     transport,
+		CheckRedirect: redirectPolicy(o.followRedirects, o.maxRedirects),
 	}
 	return &Executor{
 		client:            client,
@@ -56,6 +58,9 @@ func New(transport http.RoundTripper, opts ...Option) *Executor {
 		postResponseHooks: o.postResponseHooks,
 		variableResolver:  o.variableResolver,
 		executionWriter:   o.executionWriter,
+		transport:         transport,
+		followRedirects:   o.followRedirects,
+		maxRedirects:      o.maxRedirects,
 	}
 }
 
@@ -117,19 +122,35 @@ func (e *Executor) Execute(ctx context.Context, req *domain.Request) (*ExecuteRe
 		return nil, wrapped
 	}
 
+	// The request's own options (timeout, redirects, proxy, TLS) override the
+	// configured defaults for this request only.
+	settings, err := e.effectiveSettings(req.Options)
+	if err != nil {
+		wrapped := fmt.Errorf("exec: request options: %w", err)
+		record(req, nil, wrapped)
+		return nil, wrapped
+	}
+	client, releaseTransport, err := e.clientFor(settings, req.Options.TimeoutMS > 0)
+	if err != nil {
+		wrapped := fmt.Errorf("exec: request options: %w", err)
+		record(req, nil, wrapped)
+		return nil, wrapped
+	}
+	defer releaseTransport()
+
 	// Apply per-request timeout on top of any deadline already in ctx.
 	// A zero or negative timeout means "no timeout": WithTimeout(ctx, 0)
 	// would be expired before the request is sent.
 	timeoutCtx, cancel := ctx, context.CancelFunc(func() {})
-	if e.timeout > 0 {
-		timeoutCtx, cancel = context.WithTimeout(ctx, e.timeout)
+	if settings.timeout > 0 {
+		timeoutCtx, cancel = context.WithTimeout(ctx, settings.timeout)
 	}
 	defer cancel()
 	httpReq = httpReq.WithContext(timeoutCtx)
 
 	// 3. HTTP dispatch.
 	start := time.Now()
-	resp, err := e.client.Do(httpReq)
+	resp, err := client.Do(httpReq)
 	elapsed := time.Since(start)
 
 	if err != nil {

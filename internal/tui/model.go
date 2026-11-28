@@ -90,6 +90,7 @@ const (
 	bodyField
 	headersField
 	authField
+	optionsField
 )
 
 // responseTabID identifies which tab is active in the response pane.
@@ -353,6 +354,7 @@ type Model struct {
 	headerKeyInput   textinput.Model
 	headerValueInput textinput.Model
 	authEditor       authEditor
+	optionsEditor    optionsEditor
 
 	// --- Text selection state (keyboard and mouse) ---
 	urlSelection         textedit.Selection // selection in URL input
@@ -1273,6 +1275,7 @@ func (m Model) activePaneRequest() *domain.Request {
 		r.Headers = base.Headers
 		r.AuthType = base.AuthType
 		r.AuthConfig = base.AuthConfig
+		r.Options = base.Options
 		r.Body = base.Body
 	}
 	return r

@@ -11,7 +11,8 @@ type Request struct {
 	URL          string
 	Headers      string // JSON object: {"Key": "Value"}
 	AuthType     string
-	AuthConfig   string // JSON object keyed by auth type needs
+	AuthConfig   string         // JSON object keyed by auth type needs
+	Options      RequestOptions // per-request timeout, redirects, proxy, TLS verification
 	Body         string
 	SortOrder    int
 	Enabled      bool

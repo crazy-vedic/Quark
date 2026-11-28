@@ -7,11 +7,13 @@ import (
 	"encoding/pem"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
+	"time"
 
 	"software.sslmate.com/src/go-pkcs12"
 
@@ -25,6 +27,17 @@ type Manager struct {
 	mu         sync.RWMutex
 	base       *http.Transport
 	transports map[string]*http.Transport
+	// variants holds per-request transports, keyed by route and settings, so
+	// requests with the same proxy/TLS/timeout share a connection pool.
+	variants map[variantKey]*http.Transport
+}
+
+// variantKey identifies one shared per-request transport.
+type variantKey struct {
+	route         string // certificate host, or "" for the base transport
+	proxy         string
+	insecure      bool
+	headerTimeout time.Duration
 }
 
 // New creates a transport manager and loads all configured certificates.
@@ -75,7 +88,9 @@ func (m *Manager) Reload(cfg config.Config) error {
 	}
 	m.mu.Lock()
 	previous := m.transports
+	previousVariants := m.variants
 	m.transports = transports
+	m.variants = make(map[variantKey]*http.Transport)
 	m.mu.Unlock()
 	// Requests in flight on the old routes finish normally; only idle sockets close.
 	for _, rt := range previous {
@@ -83,7 +98,81 @@ func (m *Manager) Reload(cfg config.Config) error {
 			rt.CloseIdleConnections()
 		}
 	}
+	for _, rt := range previousVariants {
+		rt.CloseIdleConnections()
+	}
 	return nil
+}
+
+// Variant returns a RoundTripper for one request whose proxy, TLS verification
+// or response-header timeout differ from the defaults. Each host keeps its
+// configured client certificate, so only the overridden settings change.
+func (m *Manager) Variant(
+	proxy *url.URL,
+	skipTLSVerify bool,
+	responseHeaderTimeout time.Duration,
+) http.RoundTripper {
+	return variantRoundTripper{
+		m:             m,
+		proxy:         proxy,
+		insecure:      skipTLSVerify,
+		headerTimeout: responseHeaderTimeout,
+	}
+}
+
+type variantRoundTripper struct {
+	m             *Manager
+	proxy         *url.URL
+	insecure      bool
+	headerTimeout time.Duration
+}
+
+// RoundTrip implements http.RoundTripper.
+func (v variantRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	host := ""
+	if req.URL != nil {
+		host = strings.ToLower(req.URL.Hostname())
+	}
+	return v.m.variantTransport(host, v).RoundTrip(req)
+}
+
+// variantTransport returns the shared transport for a host and settings,
+// creating it on first use from the host's route (or the base transport).
+func (m *Manager) variantTransport(host string, v variantRoundTripper) *http.Transport {
+	key := variantKey{insecure: v.insecure, headerTimeout: v.headerTimeout}
+	if v.proxy != nil {
+		key.proxy = v.proxy.String()
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	source := m.base
+	if routed := m.transports[host]; routed != nil {
+		source = routed
+		key.route = host
+	}
+	if shared, ok := m.variants[key]; ok {
+		return shared
+	}
+	clone := source.Clone()
+	if v.proxy != nil {
+		clone.Proxy = http.ProxyURL(v.proxy)
+	}
+	if v.insecure {
+		// Explicitly requested for one request (curl -k); the client
+		// certificate and CA settings of the host route are kept.
+		cfg := &tls.Config{MinVersion: tls.VersionTLS12}
+		if clone.TLSClientConfig != nil {
+			cfg = clone.TLSClientConfig.Clone()
+		}
+		cfg.InsecureSkipVerify = true //nolint:gosec // requested per request by the user
+		clone.TLSClientConfig = cfg
+	}
+	clone.ResponseHeaderTimeout = v.headerTimeout
+	if m.variants == nil {
+		m.variants = make(map[variantKey]*http.Transport)
+	}
+	m.variants[key] = clone
+	return clone
 }
 
 // RoundTrip implements http.RoundTripper.

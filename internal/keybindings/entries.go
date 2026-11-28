@@ -58,6 +58,7 @@ var groups = []struct {
 			ActionEditHeaders,
 			ActionDeleteRequest,
 			"edit_auth",
+			ActionEditOptions,
 		},
 	},
 	{"Body Editor", []string{
@@ -70,6 +71,10 @@ var groups = []struct {
 	{"Auth Editor", []string{
 		"auth_down", "auth_up", "auth_edit", "auth_save",
 		"auth_cancel", "auth_option_next", "auth_option_prev",
+	}},
+	{"Options Editor", []string{
+		"options_down", "options_up", "options_edit", "options_save",
+		"options_cancel", "options_option_next", "options_option_prev",
 	}},
 	{"Response", []string{
 		"response_down", "response_up", "response_retry",

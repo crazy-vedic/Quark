@@ -110,6 +110,10 @@ func (m Model) cancelActiveFieldEdit() Model {
 	case authField:
 		m.activeField = noneField
 		m.authEditor = authEditor{}
+	case optionsField:
+		m.activeField = noneField
+		m.optionsEditor.endEdit()
+		m.optionsEditor = optionsEditor{}
 	case headersField:
 		m.activeField = noneField
 		m.headerPairs = nil

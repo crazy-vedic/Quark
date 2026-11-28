@@ -78,6 +78,8 @@ func (m *Model) styleInputs() {
 		&m.authEditor.tokenInput, &m.authEditor.usernameInput,
 		&m.authEditor.passwordInput, &m.authEditor.apiKeyNameInput,
 		&m.authEditor.apiKeyValueInput, &m.envEditor.editKey, &m.envEditor.editVal,
+		&m.optionsEditor.timeoutInput, &m.optionsEditor.maxRedirectsInput,
+		&m.optionsEditor.proxyInput,
 	}
 	for _, input := range inputs {
 		styleTextInput(input, m.theme)

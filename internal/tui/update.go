@@ -913,6 +913,8 @@ func (m Model) handleRequestAction(action string) (tea.Model, tea.Cmd) {
 		return m.beginAuthEdit(), nil
 	case keybindings.ActionEditHeaders:
 		return m.beginHeadersEdit(), nil
+	case keybindings.ActionEditOptions:
+		return m.beginOptionsEdit(), nil
 	}
 	return m, nil
 }
@@ -967,12 +969,13 @@ func (m Model) handleResponseAction(action string, parent ...*timing.Span) (tea.
 }
 
 type executionRequestSnapshot struct {
-	Method     string `json:"method"`
-	URL        string `json:"url"`
-	Headers    string `json:"headers"`
-	AuthType   string `json:"auth_type,omitempty"`
-	AuthConfig string `json:"auth_config,omitempty"`
-	Body       string `json:"body"`
+	Method     string                 `json:"method"`
+	URL        string                 `json:"url"`
+	Headers    string                 `json:"headers"`
+	AuthType   string                 `json:"auth_type,omitempty"`
+	AuthConfig string                 `json:"auth_config,omitempty"`
+	Body       string                 `json:"body"`
+	Options    *domain.RequestOptions `json:"options,omitempty"`
 }
 
 func (m Model) retryableRawRequest() (*domain.Request, error) {
@@ -990,6 +993,9 @@ func (m Model) retryableRawRequest() (*domain.Request, error) {
 			AuthType:   snapshot.AuthType,
 			AuthConfig: snapshot.AuthConfig,
 			Body:       snapshot.Body,
+		}
+		if snapshot.Options != nil {
+			req.Options = *snapshot.Options
 		}
 		if m.activeRequest != nil {
 			req.CollectionID = m.activeRequest.CollectionID
@@ -1086,6 +1092,8 @@ func (m Model) handleRequestKey(_ string, msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleBodyFieldKey(msg)
 	case authField:
 		return m.handleAuthFieldKey(msg)
+	case optionsField:
+		return m.handleOptionsFieldKey(msg)
 	case headersField:
 		return m.handleHeadersFieldKey(msg)
 	}
@@ -1442,6 +1450,7 @@ var commandPaletteItems = []commandPaletteItem{
 	{Title: "Edit request body", Action: keybindings.ActionEditBody},
 	{Title: "Edit request headers", Action: keybindings.ActionEditHeaders},
 	{Title: "Edit request authorization", Action: keybindings.ActionEditAuth},
+	{Title: "Edit request options", Action: keybindings.ActionEditOptions},
 	{Title: "Next HTTP method", Action: keybindings.ActionMethodNext},
 	{Title: "Previous HTTP method", Action: keybindings.ActionMethodPrev},
 	{Title: "Delete selected request", Action: keybindings.ActionDeleteRequest},
@@ -1549,7 +1558,8 @@ func (m Model) executeSelectedCommand() (tea.Model, tea.Cmd) {
 		keybindings.ActionEditHeaders,
 		keybindings.ActionMethodNext,
 		keybindings.ActionMethodPrev,
-		keybindings.ActionEditAuth:
+		keybindings.ActionEditAuth,
+		keybindings.ActionEditOptions:
 		m.focus = requestPane
 		return m.dispatchNormalAction(action)
 	case keybindings.ActionEnvOpen, keybindings.ActionEnvNext, keybindings.ActionEnvPrev:
@@ -2027,6 +2037,7 @@ func (m Model) handleImportKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					URL:          m.importPreview.URL,
 					Headers:      string(headersJSON),
 					Body:         m.importPreview.Body,
+					Options:      m.importPreview.Options,
 				}
 				m.debugCurl(
 					"confirm save name=%q method=%s url=%q header_names=%q body_len=%d",

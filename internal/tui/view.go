@@ -112,6 +112,14 @@ var helpActionLabels = map[string]string{
 	"auth_cancel":                   "cancel auth edit",
 	"auth_option_next":              "next option",
 	"auth_option_prev":              "prev option",
+	keybindings.ActionEditOptions:   "edit options",
+	"options_down":                  helpLabelMoveDown,
+	"options_up":                    helpLabelMoveUp,
+	"options_edit":                  "edit option row",
+	"options_save":                  "save options",
+	"options_cancel":                "cancel options edit",
+	"options_option_next":           "next option",
+	"options_option_prev":           "prev option",
 }
 
 const (
@@ -657,6 +665,7 @@ func (m Model) viewRequestPane(w, h int) string {
 			{Label: "body", Actions: []string{keybindings.ActionEditBody}},
 			{Label: "headers", Actions: []string{keybindings.ActionEditHeaders}},
 			{Label: "auth", Actions: []string{"edit_auth"}},
+			{Label: "options", Actions: []string{keybindings.ActionEditOptions}},
 			{Label: "env", Actions: []string{keybindings.ActionEnvOpen}},
 			{Label: "cycle env", Actions: []string{"env_prev", "env_next"}},
 		})
@@ -683,6 +692,8 @@ func (m Model) viewRequestPane(w, h int) string {
 		renderedContent = m.requestText.View(innerWidth, contentLines, timingSpan)
 	case m.activeField == authField && m.activeRequest != nil:
 		renderedContent = m.viewAuthEditor(contentLines, innerWidth)
+	case m.activeField == optionsField && m.activeRequest != nil:
+		renderedContent = m.viewOptionsEditor(contentLines, innerWidth)
 	default:
 		renderedContent = limitLines(content, innerWidth, contentLines)
 	}
@@ -709,6 +720,18 @@ func (m Model) viewRequestPane(w, h int) string {
 }
 
 func (m Model) requestBodyPreviewContent(parent ...*timing.Span) string {
+	body := m.requestBodyPreviewBody(parent...)
+	if m.activeRequest == nil || m.activeRequest.Options.IsZero() {
+		return body
+	}
+	line := "  Options: " + m.activeRequest.Options.Summary()
+	if body == "" {
+		return line
+	}
+	return body + "\n\n" + line
+}
+
+func (m Model) requestBodyPreviewBody(parent ...*timing.Span) string {
 	timingSpan := m.timing.Track("tui.request_body_preview_content", timingParent(parent))
 	defer timingSpan.Done()
 	started := time.Now()
@@ -984,7 +1007,8 @@ func (m Model) requestBodyPreviewSourceKey() string {
 	// The active request is edited in place, so identity alone is not enough to
 	// invalidate the formatted preview cache. Keep the key bounded while making
 	// body/header edits visible on the next render.
-	source := m.activeRequest.Body + "\x00" + m.activeRequest.Headers
+	options, _ := m.activeRequest.Options.JSON()
+	source := m.activeRequest.Body + "\x00" + m.activeRequest.Headers + "\x00" + options
 	digest := sha256.Sum256([]byte(source))
 	return fmt.Sprintf("request:%p:%s:%x", m.activeRequest, m.activeRequest.ID, digest[:8])
 }
