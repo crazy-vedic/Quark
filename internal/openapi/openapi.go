@@ -108,6 +108,11 @@ func Convert(data []byte) (*Result, error) {
 			if op == nil {
 				continue
 			}
+			if method == "trace" {
+				// The request store accepts no TRACE method, so skip it here.
+				c.warn("TRACE operations are not imported")
+				continue
+			}
 			operations++
 			folder := root
 			if tag := firstTag(op); tag != "" {
