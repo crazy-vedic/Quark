@@ -70,10 +70,14 @@ func (t *Transaction) SaveRequest(ctx context.Context, req *domain.Request) erro
 	if authConfig == "" {
 		authConfig = "{}"
 	}
-	_, err := t.tx.ExecContext(
+	bodyType, err := domain.NormalizeBodyType(req.BodyType)
+	if err != nil {
+		return fmt.Errorf("store: save request: %w", err)
+	}
+	_, err = t.tx.ExecContext(
 		ctx,
-		`INSERT INTO requests (id, collection_id, name, method, url, headers, auth_type, auth_config, body, sort_order, enabled)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`INSERT INTO requests (id, collection_id, name, method, url, headers, auth_type, auth_config, body, body_type, sort_order, enabled)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(id) DO UPDATE SET
 		   name=excluded.name,
 		   method=excluded.method,
@@ -82,6 +86,7 @@ func (t *Transaction) SaveRequest(ctx context.Context, req *domain.Request) erro
 		   auth_type=excluded.auth_type,
 		   auth_config=excluded.auth_config,
 		   body=excluded.body,
+		   body_type=excluded.body_type,
 		   sort_order=excluded.sort_order,
 		   enabled=excluded.enabled,
 		   updated_at=CURRENT_TIMESTAMP`,
@@ -94,6 +99,7 @@ func (t *Transaction) SaveRequest(ctx context.Context, req *domain.Request) erro
 		req.AuthType,
 		authConfig,
 		req.Body,
+		bodyType,
 		req.SortOrder,
 		req.Enabled,
 	)

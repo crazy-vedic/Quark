@@ -91,6 +91,7 @@ func (m Model) confirmCurlReplace() (Model, tea.Cmd) {
 	req.URL = result.URL
 	req.Headers = string(headersJSON)
 	req.Body = result.Body
+	req.BodyType = result.BodyType
 	// The curl result carries no auth settings (credentials arrive as headers),
 	// so the previous request's auth must not apply to the new request.
 	req.AuthType = domain.AuthTypeNone

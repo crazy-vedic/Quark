@@ -55,6 +55,7 @@ var groups = []struct {
 			ActionScheduleRun,
 			ActionExportCurl,
 			ActionEditBody,
+			ActionBodyTypeNext,
 			ActionEditHeaders,
 			ActionDeleteRequest,
 			"edit_auth",

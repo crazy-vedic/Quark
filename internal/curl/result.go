@@ -32,10 +32,13 @@ func (s SecurityLevel) String() string {
 // ImportResult holds the parsed output of a curl command.
 // error is always its own return value — never part of this struct.
 type ImportResult struct {
-	Method      string
-	URL         string
-	Headers     http.Header
-	Body        string
+	Method  string
+	URL     string
+	Headers http.Header
+	Body    string
+	// BodyType is domain.BodyTypeFormURLEncoded for a urlencoded body (Body
+	// is then already encoded) and empty otherwise.
+	BodyType    string
 	Security    SecurityLevel
 	Certificate *CertificateSpec
 	// Warnings is sorted lexicographically before return.

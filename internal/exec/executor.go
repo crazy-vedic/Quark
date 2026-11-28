@@ -196,7 +196,7 @@ func buildHTTPRequest(ctx context.Context, req *domain.Request) (*http.Request, 
 		}
 	}
 
-	body, err := requestBodyValue(req.Body)
+	body, err := requestBodyForSend(req)
 	if err != nil {
 		return nil, err
 	}
@@ -215,6 +215,15 @@ func buildHTTPRequest(ctx context.Context, req *domain.Request) (*http.Request, 
 		}
 	}
 
+	if body != "" {
+		if ct := domain.DefaultBodyContentType(
+			bodyTypeOf(req),
+		); ct != "" &&
+			httpReq.Header.Get("Content-Type") == "" {
+			httpReq.Header.Set("Content-Type", ct)
+		}
+	}
+
 	if err := applySpecialRequestHeaders(httpReq); err != nil {
 		return nil, err
 	}
@@ -227,6 +236,33 @@ func buildHTTPRequest(ctx context.Context, req *domain.Request) (*http.Request, 
 }
 
 const maxRequestFileSize = 10 << 20
+
+// bodyTypeOf returns the request's body type. A type that does not parse is
+// reported by requestBodyForSend, so it is treated as raw here.
+func bodyTypeOf(req *domain.Request) domain.BodyType {
+	bodyType, err := domain.NormalizeBodyType(req.BodyType)
+	if err != nil {
+		return domain.BodyTypeRaw
+	}
+	return bodyType
+}
+
+// requestBodyForSend returns the bytes to send for req's body type.
+func requestBodyForSend(req *domain.Request) (string, error) {
+	bodyType, err := domain.NormalizeBodyType(req.BodyType)
+	if err != nil {
+		return "", fmt.Errorf("exec: %w", err)
+	}
+	switch bodyType {
+	case domain.BodyTypeNone:
+		return "", nil
+	case domain.BodyTypeFormURLEncoded:
+		// Stored already encoded; variables were escaped on interpolation.
+		return req.Body, nil
+	default:
+		return requestBodyValue(req.Body)
+	}
+}
 
 // requestBodyReader expands the exact @path form used by the Body editor.
 // Keeping the reference in domain.Request means saved requests remain small

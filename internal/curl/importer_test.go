@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/crazy-vedic/quark/internal/curl"
+	"github.com/crazy-vedic/quark/internal/domain"
 )
 
 const (
@@ -486,4 +487,30 @@ func TestImporter_WarningSorted(t *testing.T) {
 		"proxy configuration is not imported",
 		"redirect behavior is not imported; Quark's configured redirect policy applies",
 	}, result.Warnings)
+}
+
+func TestImporter_FormBodyType(t *testing.T) {
+	t.Parallel()
+
+	parse := func(command string) *curl.ImportResult {
+		t.Helper()
+		result, err := curl.NewImporter().Parse(strings.NewReader(command))
+		require.NoError(t, err)
+		return result
+	}
+
+	form := parse(
+		`curl -X POST https://api.example.com/token -H 'Content-Type: application/x-www-form-urlencoded' --data-urlencode 'scope=offline access' -d 'grant_type=client_credentials'`,
+	)
+	assert.Equal(t, "application/x-www-form-urlencoded", form.Headers.Get("Content-Type"))
+	assert.Equal(t, domain.BodyTypeFormURLEncoded, form.BodyType)
+	assert.Equal(t, "scope=offline%20access&grant_type=client_credentials", form.Body)
+
+	jsonResult := parse(
+		`curl -X POST https://api.example.com/users -H 'Content-Type: application/json' -d '{"a":1}'`,
+	)
+	assert.Empty(t, jsonResult.BodyType, "only urlencoded bodies get the form type")
+
+	noBody := parse(`curl https://api.example.com`)
+	assert.Empty(t, noBody.BodyType)
 }

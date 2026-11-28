@@ -202,6 +202,13 @@ ON collections(COALESCE(parent_id, ''), name);
 		version: 9,
 		name:    "canonical_global_environment",
 	},
+	{
+		version: 10,
+		name:    "add_request_body_type",
+		upSQL: `
+ALTER TABLE requests ADD COLUMN body_type TEXT NOT NULL DEFAULT 'raw';
+`,
+	},
 }
 
 // migrate runs all pending migrations in order.

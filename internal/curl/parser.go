@@ -15,6 +15,8 @@ import (
 	"strings"
 
 	"mvdan.cc/sh/v3/syntax"
+
+	"github.com/crazy-vedic/quark/internal/domain"
 )
 
 type optionKind uint8
@@ -589,7 +591,15 @@ func parseCommand(command string) (*ImportResult, error) {
 	if err := validateRequest(result); err != nil {
 		return nil, err
 	}
+	if result.Body != "" && isURLEncodedContentType(result.Headers.Get("Content-Type")) {
+		result.BodyType = domain.BodyTypeFormURLEncoded
+	}
 	return result, nil
+}
+
+func isURLEncodedContentType(contentType string) bool {
+	mediaType, _, _ := strings.Cut(contentType, ";")
+	return strings.EqualFold(strings.TrimSpace(mediaType), "application/x-www-form-urlencoded")
 }
 
 func shellWords(command string) ([]string, error) {

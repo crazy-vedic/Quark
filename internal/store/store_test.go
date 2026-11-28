@@ -474,3 +474,61 @@ func TestSaveRequest_DuplicateNameReturnsErrDuplicate(t *testing.T) {
 	})
 	require.ErrorIs(t, err, store.ErrDuplicate)
 }
+
+func TestStore_RequestBodyTypeRoundTrip(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	col := &domain.Collection{ID: uuid.New().String(), Name: "Body"}
+	require.NoError(t, s.SaveCollection(ctx, col))
+
+	req := &domain.Request{
+		ID:           uuid.New().String(),
+		CollectionID: col.ID,
+		Name:         "Login",
+		Method:       "POST",
+		URL:          "https://api.test/token",
+		Body:         "grant_type=password",
+		BodyType:     domain.BodyTypeFormURLEncoded,
+	}
+	require.NoError(t, s.SaveRequest(ctx, req))
+
+	got, err := s.GetRequest(ctx, req.ID)
+	require.NoError(t, err)
+	assert.Equal(t, domain.BodyTypeFormURLEncoded, got.BodyType)
+	assert.Equal(t, "grant_type=password", got.Body)
+
+	// A blank type is stored as raw, as requests saved before body types were.
+	blank := &domain.Request{
+		ID:           uuid.New().String(),
+		CollectionID: col.ID,
+		Name:         "Plain",
+		Method:       "GET",
+		URL:          "https://api.test/",
+	}
+	require.NoError(t, s.SaveRequest(ctx, blank))
+	list, err := s.ListRequests(ctx, col.ID)
+	require.NoError(t, err)
+	types := map[string]string{}
+	for _, r := range list {
+		types[r.Name] = r.BodyType
+	}
+	assert.Equal(t, domain.BodyTypeFormURLEncoded, types["Login"])
+	assert.Equal(t, domain.BodyTypeRaw, types["Plain"])
+
+	// Changing the type on an existing request is saved.
+	got.BodyType = domain.BodyTypeNone
+	require.NoError(t, s.SaveRequest(ctx, got))
+	again, err := s.GetRequest(ctx, req.ID)
+	require.NoError(t, err)
+	assert.Equal(t, domain.BodyTypeNone, again.BodyType)
+
+	bad := &domain.Request{
+		ID:           uuid.New().String(),
+		CollectionID: col.ID,
+		Name:         "Bad",
+		Method:       "GET",
+		URL:          "https://api.test/",
+		BodyType:     "xml",
+	}
+	assert.ErrorContains(t, s.SaveRequest(ctx, bad), `unsupported body type "xml"`)
+}

@@ -90,6 +90,7 @@ const (
 	bodyField
 	headersField
 	authField
+	bodyFormField // form-urlencoded body rows; shares the header pair editor state
 )
 
 // responseTabID identifies which tab is active in the response pane.
@@ -1274,6 +1275,7 @@ func (m Model) activePaneRequest() *domain.Request {
 		r.AuthType = base.AuthType
 		r.AuthConfig = base.AuthConfig
 		r.Body = base.Body
+		r.BodyType = base.BodyType
 	}
 	return r
 }

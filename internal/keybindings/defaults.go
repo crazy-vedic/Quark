@@ -36,6 +36,7 @@ func DefaultKeybindings() Keybindings {
 		MethodPrev:    "M",
 		SendRequest:   "s",
 		EditBody:      "b",
+		BodyTypeNext:  "T",
 		EditHeaders:   "h",
 		RequestDelete: "d",
 		ExportCurl:    "x",

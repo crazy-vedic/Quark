@@ -115,11 +115,12 @@ func ForceLogVisualOverflowForTest(m Model, tallFrame string) {
 }
 
 const (
-	NoneField    = noneField
-	URLField     = urlField
-	BodyField    = bodyField
-	HeadersField = headersField
-	AuthField    = authField
+	NoneField     = noneField
+	URLField      = urlField
+	BodyField     = bodyField
+	BodyFormField = bodyFormField
+	HeadersField  = headersField
+	AuthField     = authField
 )
 
 func (m Model) WithDebugLog(f *os.File) Model { m.debugLog = f; return m }

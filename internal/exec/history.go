@@ -24,6 +24,8 @@ type requestSnapshot struct {
 	AuthType   string `json:"auth_type,omitempty"`
 	AuthConfig string `json:"auth_config,omitempty"`
 	Body       string `json:"body"`
+	// BodyType says how Body is sent; a snapshot without it replays as raw.
+	BodyType string `json:"body_type,omitempty"`
 }
 
 func (e *Executor) recordExecution(
@@ -62,6 +64,7 @@ func buildExecution(
 		AuthType:   req.AuthType,
 		AuthConfig: req.AuthConfig,
 		Body:       req.Body,
+		BodyType:   req.BodyType,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("marshal request snapshot: %w", err)

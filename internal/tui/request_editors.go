@@ -37,6 +37,9 @@ func (m Model) beginBodyEdit() Model {
 	if m.activeRequest == nil {
 		return m.status("error", "Select a request first")
 	}
+	if requestBodyType(m.activeRequest) == domain.BodyTypeFormURLEncoded {
+		return m.beginBodyFormEdit()
+	}
 	m.preEditBody = m.activeRequest.Body
 	m.bodyTextarea.SetValue(m.activeRequest.Body)
 	m.bodyTextarea.Focus()
@@ -110,7 +113,7 @@ func (m Model) cancelActiveFieldEdit() Model {
 	case authField:
 		m.activeField = noneField
 		m.authEditor = authEditor{}
-	case headersField:
+	case headersField, bodyFormField:
 		m.activeField = noneField
 		m.headerPairs = nil
 		m.headerEditing = false

@@ -14,15 +14,18 @@ import (
 // GetRequest returns the request with the given ID.
 // Returns nil, ErrNotFound if no request exists.
 func (s *Store) GetRequest(ctx context.Context, id string) (*domain.Request, error) {
-	row := s.db.QueryRowContext(ctx,
-		`SELECT id, collection_id, name, method, url, headers, auth_type, auth_config, body,
+	row := s.db.QueryRowContext(
+		ctx,
+		`SELECT id, collection_id, name, method, url, headers, auth_type, auth_config, body, body_type,
 		        sort_order, enabled, created_at, updated_at
-		 FROM requests WHERE id = ?`, id)
+		 FROM requests WHERE id = ?`,
+		id,
+	)
 
 	r := &domain.Request{}
 	var body sql.NullString
 	err := row.Scan(&r.ID, &r.CollectionID, &r.Name, &r.Method, &r.URL,
-		&r.Headers, &r.AuthType, &r.AuthConfig, &body, &r.SortOrder, &r.Enabled,
+		&r.Headers, &r.AuthType, &r.AuthConfig, &body, &r.BodyType, &r.SortOrder, &r.Enabled,
 		&r.CreatedAt, &r.UpdatedAt)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -50,12 +53,15 @@ func (s *Store) ListRequests(ctx context.Context, collectionID string) ([]*domai
 		return nil, fmt.Errorf("store: list requests: collection %q: %w", collectionID, ErrNotFound)
 	}
 
-	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, collection_id, name, method, url, headers, auth_type, auth_config, body,
+	rows, err := s.db.QueryContext(
+		ctx,
+		`SELECT id, collection_id, name, method, url, headers, auth_type, auth_config, body, body_type,
 		        sort_order, enabled, created_at, updated_at
 		 FROM requests
 		 WHERE collection_id = ?
-		 ORDER BY sort_order ASC, created_at ASC, id ASC`, collectionID)
+		 ORDER BY sort_order ASC, created_at ASC, id ASC`,
+		collectionID,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("store: list requests for collection %q: %w", collectionID, err)
 	}
@@ -66,7 +72,7 @@ func (s *Store) ListRequests(ctx context.Context, collectionID string) ([]*domai
 		r := &domain.Request{}
 		var body sql.NullString
 		if err := rows.Scan(&r.ID, &r.CollectionID, &r.Name, &r.Method, &r.URL,
-			&r.Headers, &r.AuthType, &r.AuthConfig, &body, &r.SortOrder, &r.Enabled,
+			&r.Headers, &r.AuthType, &r.AuthConfig, &body, &r.BodyType, &r.SortOrder, &r.Enabled,
 			&r.CreatedAt, &r.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("store: list requests scan: %w", err)
 		}
@@ -116,10 +122,14 @@ func (s *Store) SaveRequest(ctx context.Context, req *domain.Request) error {
 	if authConfig == "" {
 		authConfig = "{}"
 	}
-	_, err := s.db.ExecContext(
+	bodyType, err := domain.NormalizeBodyType(req.BodyType)
+	if err != nil {
+		return fmt.Errorf("store: save request: %w", err)
+	}
+	_, err = s.db.ExecContext(
 		ctx,
-		`INSERT INTO requests (id, collection_id, name, method, url, headers, auth_type, auth_config, body, sort_order, enabled)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`INSERT INTO requests (id, collection_id, name, method, url, headers, auth_type, auth_config, body, body_type, sort_order, enabled)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(id) DO UPDATE SET
 		   collection_id=excluded.collection_id,
 		   name=excluded.name,
@@ -129,6 +139,7 @@ func (s *Store) SaveRequest(ctx context.Context, req *domain.Request) error {
 		   auth_type=excluded.auth_type,
 		   auth_config=excluded.auth_config,
 		   body=excluded.body,
+		   body_type=excluded.body_type,
 		   sort_order=excluded.sort_order,
 		   enabled=excluded.enabled,
 		   updated_at=CURRENT_TIMESTAMP`,
@@ -141,6 +152,7 @@ func (s *Store) SaveRequest(ctx context.Context, req *domain.Request) error {
 		req.AuthType,
 		authConfig,
 		req.Body,
+		bodyType,
 		req.SortOrder,
 		req.Enabled,
 	)

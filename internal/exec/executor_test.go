@@ -1096,3 +1096,108 @@ func TestExecutor_RequestAuth_APIKeyQueryKeepsExistingQuery(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "z=1&a=2&filter=a%20b,c&api+key=s%26cret", rawQuery)
 }
+
+// sendBodyType sends req to a test server and returns what the server saw.
+func sendBodyType(t *testing.T, req *domain.Request) (body, contentType string) {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		data, _ := io.ReadAll(r.Body)
+		body = string(data)
+		contentType = r.Header.Get("Content-Type")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	transport := &http.Transport{}
+	defer transport.CloseIdleConnections()
+
+	req.URL = srv.URL + "/submit"
+	_, err := newTestExecutor(transport).Execute(context.Background(), req)
+	require.NoError(t, err)
+	return body, contentType
+}
+
+func TestExecutor_BodyTypeNoneSendsNoBody(t *testing.T) {
+	req := newTestRequest("POST", "", "stale text")
+	req.BodyType = domain.BodyTypeNone
+	body, contentType := sendBodyType(t, req)
+	assert.Empty(t, body)
+	assert.Empty(t, contentType)
+}
+
+func TestExecutor_BodyTypeRawSendsAsStoredWithoutContentType(t *testing.T) {
+	req := newTestRequest("POST", "", `{"a": 1}`)
+	req.BodyType = domain.BodyTypeRaw
+	body, contentType := sendBodyType(t, req)
+	assert.Equal(t, `{"a": 1}`, body)
+	assert.Empty(t, contentType)
+}
+
+func TestExecutor_BodyTypeJSONDefaultsContentType(t *testing.T) {
+	req := newTestRequest("POST", "", `{"a": 1}`)
+	req.BodyType = domain.BodyTypeJSON
+	body, contentType := sendBodyType(t, req)
+	assert.Equal(t, `{"a": 1}`, body)
+	assert.Equal(t, "application/json", contentType)
+}
+
+func TestExecutor_BodyTypeFormSendsEncodedWithContentType(t *testing.T) {
+	req := newTestRequest("POST", "", "grant_type=client+credentials&q=a%26b")
+	req.BodyType = domain.BodyTypeFormURLEncoded
+	body, contentType := sendBodyType(t, req)
+	assert.Equal(t, "grant_type=client+credentials&q=a%26b", body)
+	assert.Equal(t, "application/x-www-form-urlencoded", contentType)
+}
+
+func TestExecutor_BodyTypeKeepsExplicitContentType(t *testing.T) {
+	req := newTestRequest("POST", "", "a=1")
+	req.BodyType = domain.BodyTypeFormURLEncoded
+	req.Headers = `{"Content-Type":["application/x-custom"]}`
+	_, contentType := sendBodyType(t, req)
+	assert.Equal(t, "application/x-custom", contentType)
+}
+
+func TestExecutor_FormVariablesAreEncodedOnSend(t *testing.T) {
+	req := newTestRequest("POST", "", "q={{term}}&lang=en")
+	req.BodyType = domain.BodyTypeFormURLEncoded
+	prepared, err := exec.InterpolateRequest(req, map[string]string{"term": "a&b c=d"}, nil)
+	require.NoError(t, err)
+	body, _ := sendBodyType(t, prepared)
+	assert.Equal(t, "q=a%26b+c%3Dd&lang=en", body)
+}
+
+func TestExecutor_JSONVariablesAreNotEncoded(t *testing.T) {
+	req := newTestRequest("POST", "", `{"q":"{{term}}"}`)
+	req.BodyType = domain.BodyTypeJSON
+	prepared, err := exec.InterpolateRequest(req, map[string]string{"term": "a&b c"}, nil)
+	require.NoError(t, err)
+	body, _ := sendBodyType(t, prepared)
+	assert.Equal(t, `{"q":"a&b c"}`, body)
+}
+
+func TestExecutor_UnknownBodyTypeRefused(t *testing.T) {
+	req := newTestRequest("POST", "http://example.test/", "x")
+	req.BodyType = "xml"
+	_, err := newTestExecutor(&http.Transport{}).Execute(context.Background(), req)
+	assert.ErrorContains(t, err, `unsupported body type "xml"`)
+}
+
+func TestExecutor_PersistsBodyTypeInSnapshot(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(200)
+	}))
+	defer srv.Close()
+
+	transport := &http.Transport{}
+	defer transport.CloseIdleConnections()
+
+	writer := &recordingExecutionWriter{}
+	e := newTestExecutor(transport, exec.WithExecutionWriter(writer))
+	req := newTestRequest("POST", srv.URL, `a=1`)
+	req.BodyType = domain.BodyTypeFormURLEncoded
+	_, err := e.Execute(context.Background(), req)
+
+	require.NoError(t, err)
+	require.Len(t, writer.executions, 1)
+	assert.Contains(t, writer.executions[0].RequestSnapshot, `"body_type":"form-urlencoded"`)
+}
