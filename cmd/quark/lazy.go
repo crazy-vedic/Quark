@@ -213,8 +213,14 @@ func lazyImportCmd(rt func() (*runtime, error)) *cobra.Command {
 		saveCertificate := func(_ context.Context, spec *curl.CertificateSpec, rawURL string) error {
 			return saveRuntimeImportedCertificate(r, spec, rawURL)
 		}
-		return cli.NewImportCmd(r.st, r.importer, saveCertificate)
+		cmd := cli.NewImportCmd(r.st, r.importer, saveCertificate)
+		cmd.AddCommand(cli.NewImportDirCmd(r.st))
+		return cmd
 	})
+}
+
+func lazyExportCmd(rt func() (*runtime, error)) *cobra.Command {
+	return lazyCommand(rt, func(r *runtime) *cobra.Command { return cli.NewExportCmd(r.st) })
 }
 
 func lazyImportPostmanCmd(rt func() (*runtime, error)) *cobra.Command {

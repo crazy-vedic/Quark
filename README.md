@@ -405,6 +405,29 @@ remain byte-preserving declarations.
 
 ---
 
+## Export and Import Collection Files
+
+`quark export <collection> <dir>` writes a collection as YAML files that can be
+reviewed and versioned in git: one file per request, a `collection.yaml` per
+collection, and one file per environment. The output is deterministic, so
+exporting unchanged data again produces identical files. Exporting again removes
+only the files the previous export wrote that the collection no longer has, such
+as renamed or deleted requests; files you add to the directory, such as a
+`README.md`, notes or `.git`, are kept.
+
+```bash
+quark export "API" ./collections           # writes ./collections/api/
+quark import dir ./collections/api         # import one exported collection
+quark import dir ./collections             # import every export in the directory
+quark import dir ./collections --on-duplicate merge
+```
+
+`--on-duplicate` works as for `import-postman`: `replace`, `duplicate` (the
+default), `merge` or `skip`. Auth secrets are written as plain text, so review
+the exported directory before you commit it.
+
+---
+
 ## Development
 
 Agent documentation lives in [`.agents/INDEX.md`](.agents/INDEX.md) — start there when working with AI agents.
