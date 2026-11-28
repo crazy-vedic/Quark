@@ -293,6 +293,7 @@ type Model struct {
 	lastTextClickSource string
 	executions          []*domain.Execution
 	execCursor          int
+	historyMarks        []string // execution IDs marked for comparison, in mark order
 
 	// --- In-flight request ---
 	cancel  context.CancelFunc
@@ -1335,6 +1336,7 @@ func (m Model) selectRequest(req *domain.Request) (Model, tea.Cmd) {
 		m.response = nil
 		m.executions = nil
 		m.execCursor = 0
+		m.historyMarks = nil
 		return m, nil
 	}
 
@@ -1352,6 +1354,7 @@ func (m Model) selectRequest(req *domain.Request) (Model, tea.Cmd) {
 		m.response = nil
 		m.executions = nil
 		m.execCursor = 0
+		m.historyMarks = nil
 		m = m.clearStatus()
 	}
 

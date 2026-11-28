@@ -94,6 +94,8 @@ type Keybindings struct {
 	ResponseDown  string `toml:"response_down"`
 	ResponseUp    string `toml:"response_up"`
 	ResponseRetry string `toml:"response_retry"`
+	ResponseMark  string `toml:"response_mark"`
+	ResponseDiff  string `toml:"response_diff"`
 	TabBody       string `toml:"tab_body"`
 	TabHeaders    string `toml:"tab_headers"`
 	TabRaw        string `toml:"tab_raw"`
@@ -247,6 +249,8 @@ func NewResolver(binds Keybindings) *Resolver {
 		binds.ResponseDown:  "history_next",
 		binds.ResponseUp:    "history_prev",
 		binds.ResponseRetry: "retry_request",
+		binds.ResponseMark:  "history_mark",
+		binds.ResponseDiff:  "history_diff",
 		binds.TabBody:       "tab_body",
 		binds.TabHeaders:    "tab_headers",
 		binds.TabRaw:        "tab_raw",
@@ -508,6 +512,7 @@ func Validate(binds Keybindings) map[string][]string {
 			{binds.ExportCurl, ActionExportCurl}},
 		{{binds.ResponseDown, "response_down"}, {binds.ResponseUp, "response_up"},
 			{binds.ResponseRetry, "response_retry"},
+			{binds.ResponseMark, "response_mark"}, {binds.ResponseDiff, "response_diff"},
 			{binds.TabBody, "tab_body"}, {binds.TabHeaders, "tab_headers"},
 			{binds.TabRaw, "tab_raw"}, {binds.TabNext, "tab_next"},
 			{binds.TabPrev, "tab_prev"}},

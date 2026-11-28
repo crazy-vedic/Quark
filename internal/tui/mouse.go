@@ -357,7 +357,7 @@ func (m Model) responseTextRect(layout normalLayout) layoutRect {
 // responseHistoryHitAt returns the execution index under (x,y) when the history
 // popup is visible on the right side of the response pane.
 func (m Model) responseHistoryHitAt(x, y int, layout normalLayout) (int, bool) {
-	if !m.viewingHistoricalExecution() {
+	if !m.executionHistoryPopupVisible() {
 		return 0, false
 	}
 	content := layout.responseContentRect()

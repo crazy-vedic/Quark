@@ -97,6 +97,8 @@ func DefaultKeybindings() Keybindings {
 		ResponseDown:  "j",
 		ResponseUp:    "k",
 		ResponseRetry: "R",
+		ResponseMark:  "m",
+		ResponseDiff:  "D",
 		TabBody:       "b",
 		TabHeaders:    "h",
 		TabRaw:        "r",
