@@ -15,7 +15,7 @@ type Request struct {
     AuthType                 string
     AuthConfig               string  // JSON AuthConfig
     Body                     string
-    BodyType                 string  // none, raw, json, form-urlencoded (domain/body_type.go); "" means raw
+    BodyType                 string  // none, raw, json, form-urlencoded, multipart (domain/body_type.go); "" means raw
     SortOrder                int
     Enabled                  bool
     CreatedAt, UpdatedAt     time.Time

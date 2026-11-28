@@ -1,7 +1,6 @@
 package postman
 
 import (
-	"encoding/json"
 	"strings"
 	"testing"
 
@@ -191,6 +190,7 @@ func TestMapper_FormDataBody(t *testing.T) {
 					"formdata": [
 						{"key": "purpose", "value": "extract", "type": "text"},
 						{"key": "document", "type": "file", "src": "C:\\\\tmp\\\\doc.pdf"},
+						{"key": "empty_file", "type": "file"},
 						{"key": "skip_me", "value": "nope", "type": "text", "disabled": true}
 					]
 				}
@@ -200,16 +200,20 @@ func TestMapper_FormDataBody(t *testing.T) {
 
 	imp := NewImporter()
 	result, err := imp.Parse(strings.NewReader(jsonBody))
-	assert.NoError(t, err)
-	assert.Empty(t, result.Warnings)
-	assert.Contains(t, result.Requests[0].Body, `name="purpose"`)
-	assert.Contains(t, result.Requests[0].Body, "extract")
-	assert.Contains(t, result.Requests[0].Body, `name="document"; filename="doc.pdf"`)
-	assert.NotContains(t, result.Requests[0].Body, "skip_me")
+	require.NoError(t, err)
+	require.Len(t, result.Warnings, 1, "a file row without a source is skipped with a warning")
+	assert.Contains(t, result.Warnings[0], `"empty_file"`)
 
-	var headers map[string]string
-	assert.NoError(t, json.Unmarshal([]byte(result.Requests[0].Headers), &headers))
-	assert.Equal(t, "multipart/form-data; boundary=quark-postman-boundary", headers["Content-Type"])
+	req := result.Requests[0]
+	assert.Equal(t, domain.BodyTypeMultipart, req.BodyType)
+	parts, err := domain.ParseMultipartParts(req.Body)
+	require.NoError(t, err)
+	assert.Equal(t, []domain.MultipartPart{
+		{Name: "purpose", Value: "extract"},
+		{Name: "document", File: `C:\\tmp\\doc.pdf`, Filename: "doc.pdf"},
+	}, parts)
+	assert.NotContains(t, req.Body, "skip_me")
+	assert.NotContains(t, req.Headers, "multipart/form-data", "the send sets the boundary")
 }
 
 func TestMapper_BodyTypes(t *testing.T) {

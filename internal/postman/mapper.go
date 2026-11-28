@@ -1,11 +1,9 @@
 package postman
 
 import (
-	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"mime/multipart"
 	"net/url"
 	"path"
 	"strings"
@@ -170,11 +168,14 @@ func mapRequest(
 			headersMap["Content-Type"] = "application/x-www-form-urlencoded"
 		}
 	case "formdata":
-		var contentType string
-		body, contentType = encodeFormDataBody(req.Body.FormData)
-		if _, ok := headersMap["Content-Type"]; !ok {
-			headersMap["Content-Type"] = contentType
+		parts, partWarnings := formDataParts(req.Body.FormData, name)
+		warnings = append(warnings, partWarnings...)
+		encoded, err := domain.MarshalMultipartParts(parts)
+		if err != nil {
+			warnings = append(warnings, fmt.Sprintf("form-data body of %q: %v", name, err))
 		}
+		body = encoded
+		bodyType = domain.BodyTypeMultipart
 	case "", "none":
 		// No body.
 	default:
@@ -237,33 +238,35 @@ func escapeFormComponent(s string) string {
 	}
 }
 
-func encodeFormDataBody(params []FormDataParam) (string, string) {
-	var buf bytes.Buffer
-	writer := multipart.NewWriter(&buf)
-	_ = writer.SetBoundary("quark-postman-boundary")
-
+// formDataParts maps Postman form-data rows to multipart parts. A file row
+// keeps its source path and is read when the request is sent; Postman does
+// not store file contents, so a row without a source is skipped with a warning.
+func formDataParts(params []FormDataParam, requestName string) ([]domain.MultipartPart, []string) {
+	var parts []domain.MultipartPart
+	var warnings []string
 	for _, p := range params {
 		if p.Disabled {
 			continue
 		}
-		if p.Type == "file" {
-			for _, src := range formDataSources(p.Src) {
-				filename := path.Base(strings.ReplaceAll(src, `\`, `/`))
-				if filename == "." || filename == "/" {
-					filename = p.Key
-				}
-				part, err := writer.CreateFormFile(p.Key, filename)
-				if err == nil {
-					_, _ = part.Write(nil)
-				}
-			}
+		if p.Type != "file" {
+			parts = append(parts, domain.MultipartPart{Name: p.Key, Value: p.Value.String()})
 			continue
 		}
-		_ = writer.WriteField(p.Key, p.Value.String())
+		sources := formDataSources(p.Src)
+		if len(sources) == 0 {
+			warnings = append(warnings, fmt.Sprintf(
+				"form-data file %q of %q has no source path; skipped", p.Key, requestName))
+			continue
+		}
+		for _, src := range sources {
+			filename := path.Base(strings.ReplaceAll(src, `\`, `/`))
+			if filename == "." || filename == "/" {
+				filename = p.Key
+			}
+			parts = append(parts, domain.MultipartPart{Name: p.Key, File: src, Filename: filename})
+		}
 	}
-
-	_ = writer.Close()
-	return buf.String(), writer.FormDataContentType()
+	return parts, warnings
 }
 
 func formDataSources(raw json.RawMessage) []string {

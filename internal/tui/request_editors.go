@@ -37,7 +37,8 @@ func (m Model) beginBodyEdit() Model {
 	if m.activeRequest == nil {
 		return m.status("error", "Select a request first")
 	}
-	if requestBodyType(m.activeRequest) == domain.BodyTypeFormURLEncoded {
+	if bodyType := requestBodyType(m.activeRequest); bodyType == domain.BodyTypeFormURLEncoded ||
+		bodyType == domain.BodyTypeMultipart {
 		return m.beginBodyFormEdit()
 	}
 	m.preEditBody = m.activeRequest.Body

@@ -1,14 +1,18 @@
 package exec
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"log/slog"
+	"mime/multipart"
 	"net/http"
+	"net/textproto"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -196,14 +200,25 @@ func buildHTTPRequest(ctx context.Context, req *domain.Request) (*http.Request, 
 		}
 	}
 
-	body, err := requestBodyForSend(req)
-	if err != nil {
-		return nil, err
-	}
-
 	var bodyReader io.Reader
-	if body != "" {
-		bodyReader = newStringReader(body)
+	var multipartContentType string
+	if bodyTypeOf(req) == domain.BodyTypeMultipart {
+		payload, contentType, err := buildMultipartPayload(req.Body)
+		if err != nil {
+			return nil, err
+		}
+		if len(payload) > 0 {
+			bodyReader = bytes.NewReader(payload)
+			multipartContentType = contentType
+		}
+	} else {
+		body, err := requestBodyForSend(req)
+		if err != nil {
+			return nil, err
+		}
+		if body != "" {
+			bodyReader = newStringReader(body)
+		}
 	}
 	httpReq, err := http.NewRequestWithContext(ctx, req.Method, req.URL, bodyReader)
 	if err != nil {
@@ -215,10 +230,12 @@ func buildHTTPRequest(ctx context.Context, req *domain.Request) (*http.Request, 
 		}
 	}
 
-	if body != "" {
-		if ct := domain.DefaultBodyContentType(
-			bodyTypeOf(req),
-		); ct != "" &&
+	if multipartContentType != "" {
+		// The boundary is generated per send, so it always replaces any
+		// Content-Type the request stored.
+		httpReq.Header.Set("Content-Type", multipartContentType)
+	} else if bodyReader != nil {
+		if ct := domain.DefaultBodyContentType(bodyTypeOf(req)); ct != "" &&
 			httpReq.Header.Get("Content-Type") == "" {
 			httpReq.Header.Set("Content-Type", ct)
 		}
@@ -247,6 +264,64 @@ func bodyTypeOf(req *domain.Request) domain.BodyType {
 	return bodyType
 }
 
+// buildMultipartPayload encodes the stored parts as multipart/form-data and
+// reads every file part now, so a missing or unreadable file fails before the
+// request is sent. It returns the body and its Content-Type with a new boundary.
+func buildMultipartPayload(stored string) ([]byte, string, error) {
+	parts, err := domain.ParseMultipartParts(stored)
+	if err != nil {
+		return nil, "", fmt.Errorf("exec: %w", err)
+	}
+	var buf bytes.Buffer
+	writer := multipart.NewWriter(&buf)
+	for _, part := range parts {
+		if part.File == "" {
+			if err := writer.WriteField(part.Name, part.Value); err != nil {
+				return nil, "", fmt.Errorf("exec: multipart field %q: %w", part.Name, err)
+			}
+			continue
+		}
+		data, err := readRequestFile(part.File)
+		if err != nil {
+			return nil, "", fmt.Errorf("exec: multipart file %q: %w", part.File, err)
+		}
+		filename := part.Filename
+		if filename == "" {
+			filename = filepath.Base(part.File)
+		}
+		contentType := part.ContentType
+		if contentType == "" {
+			contentType = "application/octet-stream"
+		}
+		header := make(textproto.MIMEHeader)
+		header.Set("Content-Disposition", fmt.Sprintf(
+			`form-data; name="%s"; filename="%s"`,
+			escapeMultipartQuotes(part.Name),
+			escapeMultipartQuotes(filename),
+		))
+		header.Set("Content-Type", contentType)
+		partWriter, err := writer.CreatePart(header)
+		if err != nil {
+			return nil, "", fmt.Errorf("exec: multipart file %q: %w", part.File, err)
+		}
+		if _, err := partWriter.Write(data); err != nil {
+			return nil, "", fmt.Errorf("exec: multipart file %q: %w", part.File, err)
+		}
+	}
+	if err := writer.Close(); err != nil {
+		return nil, "", fmt.Errorf("exec: finish multipart body: %w", err)
+	}
+	if len(parts) == 0 {
+		return nil, "", nil
+	}
+	return buf.Bytes(), writer.FormDataContentType(), nil
+}
+
+// escapeMultipartQuotes escapes a value for a quoted Content-Disposition parameter.
+func escapeMultipartQuotes(s string) string {
+	return strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(s)
+}
+
 // requestBodyForSend returns the bytes to send for req's body type.
 func requestBodyForSend(req *domain.Request) (string, error) {
 	bodyType, err := domain.NormalizeBodyType(req.BodyType)
@@ -256,6 +331,8 @@ func requestBodyForSend(req *domain.Request) (string, error) {
 	switch bodyType {
 	case domain.BodyTypeNone:
 		return "", nil
+	case domain.BodyTypeMultipart:
+		return "", fmt.Errorf("exec: multipart bodies are built per send")
 	case domain.BodyTypeFormURLEncoded:
 		// Stored already encoded; variables were escaped on interpolation.
 		return req.Body, nil

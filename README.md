@@ -199,7 +199,9 @@ can include credentials from the saved request.
 
 ### Request body types
 
-Press `T` in the request pane to cycle the body type: `none` (no body is sent), `raw` (sent as written), `json` (sent as written, with `Content-Type: application/json` unless the request sets one) and `form-urlencoded`. In a form body, press `b` to edit the fields as name/value rows. Names and values are encoded when saved, and `{{variables}}` in a value are escaped when the request is sent. Curl and Postman imports of urlencoded bodies set the form type.
+Press `T` in the request pane to cycle the body type: `none` (no body is sent), `raw` (sent as written), `json` (sent as written, with `Content-Type: application/json` unless the request sets one), `form-urlencoded` and `multipart`. In a form or multipart body, press `b` to edit the rows as name/value pairs. Names and values are encoded when saved, and `{{variables}}` in a value are escaped when the request is sent. Curl and Postman imports of urlencoded bodies set the form type.
+
+For a `multipart` body, a row whose value starts with `@` is a file part: `@/path/to/file.pdf` sends that file's contents, read when the request is sent (a missing file is an error before anything is sent). Write `@@` to send a text value that starts with `@`. Relative paths are relative to the directory Quark runs in. Files are limited to 10 MiB. `curl -F` and Postman form-data imports produce these parts.
 
 ### Text Selection & Editing
 

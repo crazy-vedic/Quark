@@ -1182,6 +1182,87 @@ func TestExecutor_UnknownBodyTypeRefused(t *testing.T) {
 	assert.ErrorContains(t, err, `unsupported body type "xml"`)
 }
 
+func TestExecutor_MultipartSendsTextAndFileParts(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "doc.txt")
+	require.NoError(t, os.WriteFile(path, []byte("hello file"), 0o600))
+
+	var gotTitle, gotFileName, gotFile, gotContentType string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotContentType = r.Header.Get("Content-Type")
+		reader, err := r.MultipartReader()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		for {
+			part, err := reader.NextPart()
+			if err != nil {
+				break
+			}
+			data, _ := io.ReadAll(io.LimitReader(part, 1<<20))
+			switch part.FormName() {
+			case "title":
+				gotTitle = string(data)
+			case "upload":
+				gotFile = string(data)
+				gotFileName = part.FileName()
+			}
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	transport := &http.Transport{}
+	defer transport.CloseIdleConnections()
+
+	req := newTestRequest("POST", srv.URL+"/upload", "")
+	req.BodyType = domain.BodyTypeMultipart
+	req.Body = `[{"name":"title","value":"{{title}}"},{"name":"upload","file":"{{dir}}/doc.txt"}]`
+	req.Headers = `{"Content-Type":["multipart/form-data; boundary=stale"]}`
+	prepared, err := exec.InterpolateRequest(
+		req,
+		map[string]string{"title": "report", "dir": dir},
+		nil,
+	)
+	require.NoError(t, err)
+
+	_, err = newTestExecutor(transport).Execute(context.Background(), prepared)
+	require.NoError(t, err)
+	assert.Equal(t, "report", gotTitle)
+	assert.Equal(t, "doc.txt", gotFileName)
+	assert.Equal(t, "hello file", gotFile)
+	assert.Contains(t, gotContentType, "multipart/form-data; boundary=")
+	assert.NotContains(t, gotContentType, "stale", "the send replaces the stored boundary")
+}
+
+func TestExecutor_MultipartMissingFileFailsBeforeSend(t *testing.T) {
+	hits := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits++
+	}))
+	defer srv.Close()
+
+	transport := &http.Transport{}
+	defer transport.CloseIdleConnections()
+
+	req := newTestRequest("POST", srv.URL+"/upload", "")
+	req.BodyType = domain.BodyTypeMultipart
+	req.Body = `[{"name":"upload","file":"/nonexistent/quark-missing.bin"}]`
+	_, err := newTestExecutor(transport).Execute(context.Background(), req)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `multipart file "/nonexistent/quark-missing.bin"`)
+	assert.Zero(t, hits)
+}
+
+func TestExecutor_MultipartInvalidBodyRefused(t *testing.T) {
+	req := newTestRequest("POST", "http://example.test/", "")
+	req.BodyType = domain.BodyTypeMultipart
+	req.Body = "not json"
+	_, err := newTestExecutor(&http.Transport{}).Execute(context.Background(), req)
+	assert.ErrorContains(t, err, "multipart body is not a JSON list of parts")
+}
+
 func TestExecutor_PersistsBodyTypeInSnapshot(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(200)
