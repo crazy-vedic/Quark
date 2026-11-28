@@ -58,6 +58,8 @@ var groups = []struct {
 			ActionEditHeaders,
 			ActionDeleteRequest,
 			"edit_auth",
+			ActionEditCookies,
+			ActionClearCookies,
 		},
 	},
 	{"Body Editor", []string{

@@ -73,6 +73,7 @@ ConfigDir       string
 | Env | `e` | Esc | Manage environment variables |
 | Schedule | schedule key | Esc | View/manage scheduled runs |
 | Auth editor | auth key | Esc | Configure request auth |
+| Cookie editor | cookies key (`c`) | Esc | Edit the request's Cookie header as name/value rows (header editor in cookie mode) |
 
 Exact keys are configurable — see keybindings section.
 

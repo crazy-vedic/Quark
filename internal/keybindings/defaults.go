@@ -40,6 +40,8 @@ func DefaultKeybindings() Keybindings {
 		RequestDelete: "d",
 		ExportCurl:    "x",
 		EditAuth:      "a",
+		EditCookies:   "c",
+		ClearCookies:  "X",
 		ScheduleRun:   "S",
 		EnvOpen:       "e",
 		ClientCerts:   "C",

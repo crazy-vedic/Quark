@@ -12,6 +12,8 @@ const (
 	ActionEditBody        = "edit_body"
 	ActionEditHeaders     = "edit_headers"
 	ActionEditAuth        = "edit_auth"
+	ActionEditCookies     = "edit_cookies"
+	ActionClearCookies    = "clear_cookies"
 	ActionDeleteRequest   = "delete_request"
 	ActionScheduleRun     = "schedule_run"
 	ActionEnvOpen         = "env_open"

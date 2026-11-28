@@ -2,6 +2,7 @@ package exec
 
 import (
 	"log/slog"
+	"net/http"
 	"time"
 )
 
@@ -15,6 +16,7 @@ type options struct {
 	executionWriter   ExecutionWriter
 	followRedirects   bool
 	maxRedirects      int
+	cookieJar         http.CookieJar
 }
 
 func defaultOptions() options {
@@ -106,3 +108,12 @@ func (o executionWriterOption) apply(opts *options) { opts.executionWriter = o.w
 func WithExecutionWriter(w ExecutionWriter) executionWriterOption {
 	return executionWriterOption{w}
 }
+
+type cookieJarOption struct{ jar http.CookieJar }
+
+func (o cookieJarOption) apply(opts *options) { opts.cookieJar = o.jar }
+
+// WithCookieJar makes the executor store and send cookies through jar. A nil
+// jar (the default) disables cookie handling; Set-Cookie headers are still
+// returned in the result.
+func WithCookieJar(jar http.CookieJar) cookieJarOption { return cookieJarOption{jar} }

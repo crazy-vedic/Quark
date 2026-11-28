@@ -69,6 +69,7 @@ func (m Model) beginHeadersEdit() Model {
 	m.headerPairs = parseHeadersJSON(m.activeRequest.Headers)
 	m.headerCursor = 0
 	m.headerEditing = false
+	m.cookieEditing = false
 	m.activeField = headersField
 	return m.clearStatus()
 }
@@ -114,6 +115,7 @@ func (m Model) cancelActiveFieldEdit() Model {
 		m.activeField = noneField
 		m.headerPairs = nil
 		m.headerEditing = false
+		m.cookieEditing = false
 		m.headerKeyInput.Blur()
 		m.headerValueInput.Blur()
 		m.headerKeySelection.Collapse(0)

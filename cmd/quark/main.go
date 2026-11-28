@@ -152,11 +152,15 @@ func runWithArgs(args []string) error {
 		if err != nil {
 			return nil, fmt.Errorf("configure HTTP transport: %w", err)
 		}
-		executor := exec.New(httpTransport,
+		executorOpts := []exec.Option{
 			exec.WithTimeout(cfg.Timeout()),
 			exec.WithRedirects(cfg.HTTP.FollowRedirects, cfg.HTTP.MaxRedirects),
 			exec.WithExecutionWriter(st),
-		)
+		}
+		if cfg.HTTP.CookieJar {
+			executorOpts = append(executorOpts, exec.WithCookieJar(exec.NewSessionJar()))
+		}
+		executor := exec.New(httpTransport, executorOpts...)
 		importer := curl.NewImporter()
 		searcher := search.New(st)
 

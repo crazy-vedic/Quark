@@ -350,6 +350,7 @@ type Model struct {
 	headerPairs      []headerPair
 	headerCursor     int
 	headerEditing    bool
+	cookieEditing    bool // the header editor is editing the Cookie header's rows
 	headerKeyInput   textinput.Model
 	headerValueInput textinput.Model
 	authEditor       authEditor
