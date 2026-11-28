@@ -24,6 +24,7 @@ type Config struct {
 	HTTP        HTTP        `toml:"http"`
 	Logging     Logging     `toml:"logging"`
 	Backup      Backup      `toml:"backup"`
+	History     History     `toml:"history"`
 	Updates     Updates     `toml:"updates"`
 	Format      Format      `toml:"format"`
 	Keybindings Keybindings `toml:"keybindings"`
@@ -75,6 +76,17 @@ type Backup struct {
 	KeepLast   int  `toml:"keep_last"`
 }
 
+// DefaultHistoryKeepLast is how many executions per request history keeps
+// unless config.toml sets [history] keep_last.
+const DefaultHistoryKeepLast = 50
+
+// History configures execution history retention.
+type History struct {
+	// KeepLast is how many executions to keep per request. Older ones are
+	// deleted after each run. Zero or less keeps every execution.
+	KeepLast int `toml:"keep_last"`
+}
+
 // Updates configures version checking and self-update behavior.
 type Updates struct {
 	Check             bool     `toml:"check"`
@@ -124,6 +136,9 @@ func Default(configDir string) Config {
 		Backup: Backup{
 			AutoBackup: true,
 			KeepLast:   10,
+		},
+		History: History{
+			KeepLast: DefaultHistoryKeepLast,
 		},
 		Updates: Updates{
 			Check:             true,
@@ -196,6 +211,9 @@ func Load(configDir string) (Config, error) {
 	}
 	if md.IsDefined("backup", "keep_last") {
 		cfg.Backup.KeepLast = override.Backup.KeepLast
+	}
+	if md.IsDefined("history", "keep_last") {
+		cfg.History.KeepLast = override.History.KeepLast
 	}
 	if md.IsDefined("updates", "check") {
 		cfg.Updates.Check = override.Updates.Check

@@ -26,6 +26,31 @@ func TestDefault_HasSensibleValues(t *testing.T) {
 	assert.True(t, cfg.Backup.AutoBackup)
 	assert.Equal(t, filepath.Join(dir, "quark.log"), cfg.Logging.File)
 	assert.True(t, cfg.Format.JSONOnSave, "json_on_save defaults to true")
+	assert.Equal(t, 50, cfg.History.KeepLast, "history keeps 50 runs per request by default")
+}
+
+func TestLoad_HistoryKeepLast(t *testing.T) {
+	for name, tc := range map[string]struct {
+		content string
+		want    int
+	}{
+		"omitted":   {content: "[ui]\ntheme = \"dark\"\n", want: config.DefaultHistoryKeepLast},
+		"set":       {content: "[history]\nkeep_last = 7\n", want: 7},
+		"keep all":  {content: "[history]\nkeep_last = 0\n", want: 0},
+		"no config": {want: config.DefaultHistoryKeepLast},
+	} {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			if tc.content != "" {
+				require.NoError(t, os.WriteFile(
+					filepath.Join(dir, "config.toml"), []byte(tc.content), 0o600,
+				))
+			}
+			cfg, err := config.Load(dir)
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, cfg.History.KeepLast)
+		})
+	}
 }
 
 func TestLoad_MissingFile_ReturnsDefaults(t *testing.T) {

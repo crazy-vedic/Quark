@@ -23,7 +23,9 @@ type Store struct {
 	cacheSize  int
 	backupPath string
 	backupKeep int
-	dbPath     string
+	// historyKeep is how many executions SaveExecution keeps per request.
+	historyKeep int
+	dbPath      string
 }
 
 // Compile-time interface compliance checks.
@@ -63,12 +65,13 @@ func New(path string, opts ...Option) (*Store, error) {
 	db.SetMaxOpenConns(1)
 
 	s := &Store{
-		db:         db,
-		logger:     o.logger,
-		cacheSize:  o.cacheSize,
-		backupPath: o.backupPath,
-		backupKeep: o.backupKeep,
-		dbPath:     path,
+		db:          db,
+		logger:      o.logger,
+		cacheSize:   o.cacheSize,
+		backupPath:  o.backupPath,
+		backupKeep:  o.backupKeep,
+		historyKeep: o.historyKeep,
+		dbPath:      path,
 	}
 
 	if err := s.init(); err != nil {

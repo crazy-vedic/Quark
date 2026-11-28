@@ -8,13 +8,20 @@ import (
 	"github.com/crazy-vedic/quark/internal/domain"
 )
 
-// SaveExecution inserts an immutable execution record.
+// SaveExecution inserts an immutable execution record. When the store keeps
+// a limited history (WithHistoryKeepLast), older executions of the same
+// request are deleted in the same transaction.
 func (s *Store) SaveExecution(ctx context.Context, ex *domain.Execution) error {
 	headers := ex.ResponseHeaders
 	if headers == "" {
 		headers = "{}"
 	}
-	_, err := s.db.ExecContext(ctx,
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("store: save execution %q: begin: %w", ex.ID, err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	_, err = tx.ExecContext(ctx,
 		`INSERT INTO executions (
 			id, request_id, request_snapshot, status_code, response_headers,
 			response_body, response_time_ms, started_at, completed_at, error
@@ -32,6 +39,36 @@ func (s *Store) SaveExecution(ctx context.Context, ex *domain.Execution) error {
 	)
 	if err != nil {
 		return fmt.Errorf("store: save execution %q: %w", ex.ID, err)
+	}
+	if err := pruneExecutions(ctx, tx, ex.RequestID, s.historyKeep); err != nil {
+		return fmt.Errorf("store: save execution %q: %w", ex.ID, err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("store: save execution %q: commit: %w", ex.ID, err)
+	}
+	return nil
+}
+
+// pruneExecutions deletes all but the newest keep executions of a request,
+// using the same newest-first order as ListExecutionsByRequest. keep <= 0
+// deletes nothing.
+func pruneExecutions(ctx context.Context, tx *sql.Tx, requestID string, keep int) error {
+	if keep <= 0 {
+		return nil
+	}
+	_, err := tx.ExecContext(ctx,
+		`DELETE FROM executions
+		 WHERE request_id = ?
+		   AND id NOT IN (
+		     SELECT id FROM executions
+		     WHERE request_id = ?
+		     ORDER BY completed_at DESC, started_at DESC, id DESC
+		     LIMIT ?
+		   )`,
+		requestID, requestID, keep,
+	)
+	if err != nil {
+		return fmt.Errorf("prune history: %w", err)
 	}
 	return nil
 }

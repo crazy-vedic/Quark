@@ -139,9 +139,9 @@ func runWithArgs(args []string) error {
 		dbPath := filepath.Join(configDir, "quark.db")
 		backupDir := cfg.BackupDir(configDir)
 
-		storeOpts := []store.Option{store.WithBackup(backupDir, cfg.Backup.KeepLast)}
-		if !cfg.Backup.AutoBackup {
-			storeOpts = []store.Option{}
+		storeOpts := []store.Option{store.WithHistoryKeepLast(cfg.History.KeepLast)}
+		if cfg.Backup.AutoBackup {
+			storeOpts = append(storeOpts, store.WithBackup(backupDir, cfg.Backup.KeepLast))
 		}
 		st, err := store.New(dbPath, storeOpts...)
 		if err != nil {
