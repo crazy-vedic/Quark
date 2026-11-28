@@ -1,4 +1,8 @@
 version: "2"
+run:
+  # internal/tui/test_api.go and internal/tuitest are test-only (see Makefile TEST_TAGS).
+  build-tags:
+    - quarktest
 linters:
   default: none
   enable:

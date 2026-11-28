@@ -30,6 +30,14 @@ BUILD_TIME  := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 
 LDFLAGS     := -X main.Version=$(VERSION) -X main.Commit=$(COMMIT) -X main.BuildTime=$(BUILD_TIME)
 
+# Build tag that compiles the test-only TUI API (internal/tui/test_api.go and
+# internal/tuitest). Release builds omit it, so those helpers stay out of the
+# shipped binary. Every go test / go vet invocation must pass it.
+TEST_TAGS   := quarktest
+# Defined here because a comma inside $(call go-test,...) would split the args.
+E2E_TAGS    := e2e,$(TEST_TAGS)
+INTEGRATION_TAGS := integration,$(TEST_TAGS)
+
 # Extra args passed through to the underlying command.
 ARGS        ?=
 TIMING      ?= 1
@@ -96,11 +104,11 @@ run: ## Run the application (pass args via ARGS=...)
 # ---------------------------------------------------------------------------
 .PHONY: ut
 ut: ## Run unit tests (excludes e2e / integration tests)
-	$(call go-test,./...,-v -coverpkg=./... $(ARGS)) | tee $(TEST_LOG)
+	$(call go-test,./...,-v -tags $(TEST_TAGS) -coverpkg=./... $(ARGS)) | tee $(TEST_LOG)
 
 .PHONY: e2e-tui
 e2e-tui: ## Run TUI e2e tests (requires e2e build tag)
-	QUARK_TIMING=$(TIMING) $(call go-test,./tests/e2e/tui/...,-v -tags e2e -coverpkg=./... $(ARGS)) | tee $(TEST_LOG)
+	QUARK_TIMING=$(TIMING) $(call go-test,./tests/e2e/tui/...,-v -tags $(E2E_TAGS) -coverpkg=./... $(ARGS)) | tee $(TEST_LOG)
 
 # e2e-cli: build + run (local dev — always rebuilds the coverage binary)
 .PHONY: e2e-cli
@@ -130,7 +138,7 @@ e2e-cli-run: e2e-cli-prep ## Run CLI e2e tests using existing coverage binary
 		set +e; \
 		TEST_START=$$(now_ms); \
 		GOCOVERDIR=$(CURDIR)/$(BIN_DIR)/cover-cli \
-		$(call go-test,./tests/e2e/cli/...,-count=1 -tags e2e $(ARGS)) | tee $(TEST_LOG); \
+		$(call go-test,./tests/e2e/cli/...,-count=1 -tags $(E2E_TAGS) $(ARGS)) | tee $(TEST_LOG); \
 		TEST_EXIT=$$?; \
 		TEST_END=$$(now_ms); \
 		set -e; \
@@ -152,7 +160,7 @@ e2e: e2e-tui e2e-cli ## Run all e2e tests (TUI + CLI)
 
 .PHONY: integration
 integration: ## Run integration tests (requires integration build tag)
-	$(call go-test,./...,-v -tags integration $(ARGS)) | tee $(TEST_LOG)
+	$(call go-test,./...,-v -tags $(INTEGRATION_TAGS) $(ARGS)) | tee $(TEST_LOG)
 
 .PHONY: test
 test: ut e2e integration ## Run all tests (unit + e2e + integration)
@@ -223,7 +231,7 @@ lint-ci: ## Run golangci-lint with CI timing instrumentation
 
 .PHONY: vet
 vet: ## Run go vet
-	go vet ./...
+	go vet -tags $(TEST_TAGS) ./...
 
 # ---------------------------------------------------------------------------
 # Clean / Install

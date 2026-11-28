@@ -37,7 +37,7 @@ flowchart LR
 | `lint` | Linux | golangci-lint (`make lint-ci`) |
 | `package-validation` | Linux | Validate GoReleaser config and snapshot build |
 | `test-unit` | Linux | Unit tests with gotestsum, `-race` |
-| `test-e2e-linux` | Linux | TUI + CLI e2e tests with coverage (`-tags e2e`) |
+| `test-e2e-linux` | Linux | TUI + CLI e2e tests with coverage (`-tags e2e,quarktest`) |
 | `test-e2e-windows` | Windows | Native Windows TUI + CLI e2e tests |
 | `test-e2e-macos` | macOS | Native macOS TUI + CLI e2e tests |
 | `persist-baseline` | Linux | Gate after all test+lint jobs pass; caches coverage for PR comparison |
