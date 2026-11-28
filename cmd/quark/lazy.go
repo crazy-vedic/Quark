@@ -217,6 +217,10 @@ func lazyImportCmd(rt func() (*runtime, error)) *cobra.Command {
 	})
 }
 
+func lazyImportOpenAPICmd(rt func() (*runtime, error)) *cobra.Command {
+	return lazyCommand(rt, func(r *runtime) *cobra.Command { return cli.NewImportOpenAPICmd(r.st) })
+}
+
 func lazyImportPostmanCmd(rt func() (*runtime, error)) *cobra.Command {
 	return lazyCommand(rt, func(r *runtime) *cobra.Command {
 		return cli.NewImportPostmanCmd(r.st, cli.NewDebugLogger(nil))

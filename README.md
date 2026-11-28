@@ -405,6 +405,25 @@ remain byte-preserving declarations.
 
 ---
 
+## Import an OpenAPI Document
+
+`quark import-openapi <file>` turns an OpenAPI 3.x document (JSON or YAML) into a
+collection. Tags become folders, the first server becomes `{{baseUrl}}` in the
+default environment, and path parameters become `{{name}}` placeholders filled
+with their example values. JSON request bodies are generated from examples or
+schemas, and bearer, basic and API key security map to Quark auth.
+
+```bash
+quark import-openapi ./openapi.yaml
+quark import-openapi ./openapi.json --collection-name "Shop API" --on-duplicate replace
+```
+
+OAuth2 and OpenID Connect security, cookie parameters, callbacks and non-JSON
+request bodies are not mapped; each one is printed as a warning. Swagger 2.0 is
+not supported.
+
+---
+
 ## Development
 
 Agent documentation lives in [`.agents/INDEX.md`](.agents/INDEX.md) — start there when working with AI agents.

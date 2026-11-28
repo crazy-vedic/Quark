@@ -20,6 +20,7 @@ quark schedule list
 quark schedule run-due
 quark import curl <curl-command> [--collection <id>] [--name <name>]
 quark import-postman <file|dir> [--collection-name <name>] [--on-duplicate <action>] [--include-disabled]
+quark import-openapi <file> [--collection-name <name>] [--on-duplicate <action>]
 quark env list [<collection-id>]
 quark env create <collection-id> <name>
 quark env set <collection-id> <env-name> <key> <value>
@@ -141,6 +142,21 @@ Imports Postman Collection v2.1 JSON or a bulk export directory (collections + e
 Interactive prompts may appear for duplicate handling when run in a TTY. Uses transactions for atomic imports.
 
 See [imports.md](imports.md) for mapping limits.
+
+## import-openapi
+
+**Source:** `internal/cli/import_openapi.go`, conversion in `internal/openapi/openapi.go`
+
+```
+quark import-openapi <file.json|file.yaml>
+```
+
+Imports an OpenAPI 3.x document (JSON or YAML). Swagger 2.0 is rejected. The root collection is named after `info.title`; each tag becomes a sub-collection (untagged operations stay at the root). The first server becomes `baseUrl` in the default environment, path parameters become `{{name}}` placeholders with their example values as defaults, and required query and header parameters are added with example values. JSON request bodies are generated from `example`, `examples` or the schema. Bearer, basic and API key security are mapped to Quark auth with `{{token}}`, `{{username}}`, `{{password}}` and `{{apiKey}}` placeholders; OAuth2 and OpenID Connect are not mapped, and each unmapped construct is printed as a warning.
+
+| Flag | Default | Description |
+|---|---|---|
+| `--collection-name`, `-n` | `info.title` | Override the collection name |
+| `--on-duplicate` | `duplicate` | Action when a root collection of that name exists: `duplicate` (saved as `Name 1`), `replace`, or `skip` |
 
 ## env
 
