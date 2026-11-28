@@ -94,8 +94,15 @@ Postman-style syntax:
 | `{{VAR}}` | Named variable |
 | `{{1}}` | Positional variable (1-indexed) |
 | `{{1\|merchant_id}}` | Positional with named fallback |
+| `{{$guid}}`, `{{$randomUUID}}` | Random UUID v4, new on each use |
+| `{{$timestamp}}` | Current Unix time in seconds |
+| `{{$isoTimestamp}}` | Current UTC time, ISO 8601 with milliseconds |
+| `{{$randomInt}}` | Random integer from 0 to 1000 |
+| `\{{` | Escape: sends a literal `{{` (so `\{{x}}` sends `{{x}}`) |
 
-Applied to URL, headers, and body.
+Applied to URL, headers, body, and auth config. `$` variables are built in and
+resolve even with no environment active. A backslash directly before `{{` is
+the escape, so `C:\{{dir}}` sends `C:{{dir}}`. Only `\{{` is special.
 
 ### Resolution Precedence
 

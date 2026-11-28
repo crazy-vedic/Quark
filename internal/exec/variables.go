@@ -5,9 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/rand/v2"
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
+
+	"github.com/google/uuid"
 
 	"github.com/crazy-vedic/quark/internal/domain"
 )
@@ -124,8 +128,23 @@ func LoadEnvironmentHierarchy(
 	return scopes, nil
 }
 
-// placeholderRE matches Postman-style {{VAR}} syntax.
-var placeholderRE = regexp.MustCompile(`\{\{([^}]+)\}\}`)
+// templateRE matches a {{VAR}} placeholder or an escaped \{{. Only the two
+// characters \{{ are the escape; the text after them is left alone.
+var templateRE = regexp.MustCompile(`\\\{\{|\{\{([^}]+)\}\}`)
+
+// dynamicVariables are the Postman-compatible $ variables. Each use is
+// evaluated when it is substituted, so two {{$guid}} in one request differ.
+var dynamicVariables = map[string]func() string{
+	"$guid":         uuid.NewString,
+	"$randomUUID":   uuid.NewString,
+	"$timestamp":    func() string { return strconv.FormatInt(time.Now().Unix(), 10) },
+	"$isoTimestamp": func() string { return time.Now().UTC().Format(isoTimestampLayout) },
+	// Test data like Postman's $randomInt, not a secret.
+	"$randomInt": func() string { return strconv.Itoa(rand.IntN(1001)) }, //nolint:gosec // G404: not security-sensitive
+}
+
+// isoTimestampLayout is ISO 8601 in UTC with milliseconds, as Postman prints it.
+const isoTimestampLayout = "2006-01-02T15:04:05.000Z07:00"
 
 // InterpolateRequest replaces {{VAR}} placeholders in req using the provided
 // environment variables. Collection variables take precedence over global variables.
@@ -141,7 +160,8 @@ func InterpolateRequest(
 // InterpolateRequestWithOverrides extends interpolation with CLI-provided overrides.
 // Positional arguments are exposed as {{1}}, {{2}}, etc. Named overrides take precedence
 // over collection and global envs. Fallback syntax {{1|merchant_id}} tries candidates
-// from left to right and errors only if none resolve.
+// from left to right and errors only if none resolve. Postman dynamic variables such as
+// {{$guid}} always resolve. An escaped \{{ is sent as a literal {{.
 func InterpolateRequestWithOverrides(
 	req *domain.Request,
 	positionals []string,
@@ -150,61 +170,36 @@ func InterpolateRequestWithOverrides(
 	if req == nil {
 		return nil, errors.New("interpolate: nil request")
 	}
-
-	hasOverrides := len(positionals) > 0 || len(named) > 0
-
-	// Fast path: no vars provided at all, and no placeholders in the request.
-	if !hasOverrides && len(colEnv) == 0 && len(globalEnv) == 0 {
-		if hasPlaceholder(req.URL) || hasPlaceholder(req.Body) ||
-			hasPlaceholderInHeaders(req.Headers) ||
-			hasPlaceholderInAuthConfig(req.AuthConfig) {
-			// Find the first unresolved variable name to include in the error.
-			unresolved := firstPlaceholder(req.URL)
-			if unresolved == "" {
-				unresolved = firstPlaceholder(req.Body)
-			}
-			if unresolved == "" {
-				unresolved = firstPlaceholderInHeaders(req.Headers)
-			}
-			if unresolved == "" {
-				unresolved = firstPlaceholderInAuthConfig(req.AuthConfig)
-			}
-			return nil, fmt.Errorf(
-				"interpolate: %w: %q (no environments active)",
-				ErrUnresolvedVariable,
-				unresolved,
-			)
-		}
-		return copyRequest(req), nil
+	resolve := newPlaceholderResolver(positionals, named, colEnv, globalEnv)
+	out, err := interpolateFields(req, resolve)
+	if err != nil && errors.Is(err, ErrUnresolvedVariable) &&
+		len(positionals) == 0 && len(named) == 0 && len(colEnv) == 0 && len(globalEnv) == 0 {
+		return nil, fmt.Errorf("%w (no environments active)", err)
 	}
+	return out, err
+}
 
+// interpolateFields returns a copy of req with URL, body, headers and auth
+// config expanded. The input request is not modified.
+func interpolateFields(req *domain.Request, resolve placeholderResolver) (*domain.Request, error) {
 	out := copyRequest(req)
-	resolver := newPlaceholderResolver(positionals, named, colEnv, globalEnv)
-
-	// URL
 	var err error
-	out.URL, err = substitute(out.URL, resolver)
+	out.URL, err = expandTemplate(out.URL, resolve)
 	if err != nil {
 		return nil, fmt.Errorf("interpolate URL: %w", err)
 	}
-
-	// Body
-	out.Body, err = substitute(out.Body, resolver)
+	out.Body, err = expandTemplate(out.Body, resolve)
 	if err != nil {
 		return nil, fmt.Errorf("interpolate body: %w", err)
 	}
-
-	// Headers
-	out.Headers, err = substituteHeaders(out.Headers, resolver)
+	out.Headers, err = substituteHeaders(out.Headers, resolve)
 	if err != nil {
 		return nil, fmt.Errorf("interpolate headers: %w", err)
 	}
-
-	out.AuthConfig, err = substituteAuthConfig(out.AuthConfig, resolver)
+	out.AuthConfig, err = substituteAuthConfig(out.AuthConfig, resolve)
 	if err != nil {
 		return nil, fmt.Errorf("interpolate auth config: %w", err)
 	}
-
 	return out, nil
 }
 
@@ -229,6 +224,9 @@ func newPlaceholderResolver(
 				}
 				continue
 			}
+			if gen, ok := dynamicVariables[candidate]; ok {
+				return gen(), true
+			}
 			if val, ok := named[candidate]; ok {
 				return val, true
 			}
@@ -251,36 +249,37 @@ func parsePositionalIndex(candidate string) (int, bool) {
 	return idx, true
 }
 
-// substitute replaces all {{VAR}} in s using the provided resolver.
-func substitute(s string, resolve placeholderResolver) (string, error) {
-	if !placeholderRE.MatchString(s) {
+// expandTemplate returns s with each {{VAR}} replaced by its resolved value and
+// each \{{ replaced by a literal {{. It returns ErrUnresolvedVariable for the
+// first placeholder that resolve cannot satisfy.
+func expandTemplate(s string, resolve placeholderResolver) (string, error) {
+	if !strings.Contains(s, "{{") {
 		return s, nil
 	}
-
 	var unresolved string
-	result := placeholderRE.ReplaceAllStringFunc(s, func(match string) string {
-		expr := match[2 : len(match)-2] // strip {{ and }}
-		if val, ok := resolve(expr); ok {
-			return val
+	out := templateRE.ReplaceAllStringFunc(s, func(match string) string {
+		if match == `\{{` {
+			return "{{"
 		}
-
-		unresolved = expr
-		return match // leave unresolved placeholder as-is for now
+		expr := match[2 : len(match)-2] // strip {{ and }}
+		val, ok := resolve(expr)
+		if !ok {
+			if unresolved == "" {
+				unresolved = expr
+			}
+			return match // leave unresolved placeholder as-is; the error reports it
+		}
+		return val
 	})
-
 	if unresolved != "" {
 		return "", fmt.Errorf("%w: %q", ErrUnresolvedVariable, unresolved)
 	}
-
-	return result, nil
+	return out, nil
 }
 
 // substituteHeaders parses the JSON header map, substitutes values, and re-serializes.
 func substituteHeaders(headersJSON string, resolve placeholderResolver) (string, error) {
-	if headersJSON == "" || headersJSON == "{}" {
-		return headersJSON, nil
-	}
-	if !placeholderRE.MatchString(headersJSON) {
+	if headersJSON == "" || headersJSON == "{}" || !strings.Contains(headersJSON, "{{") {
 		return headersJSON, nil
 	}
 
@@ -292,35 +291,27 @@ func substituteHeaders(headersJSON string, resolve placeholderResolver) (string,
 		return headersJSON, nil
 	}
 
-	var unresolved string
-	substitute := func(value string) string {
-		return placeholderRE.ReplaceAllStringFunc(value, func(match string) string {
-			expr := match[2 : len(match)-2]
-			if val, ok := resolve(expr); ok {
-				return val
-			}
-			unresolved = expr
-			return match
-		})
-	}
-
 	for key, raw := range headers {
 		switch value := raw.(type) {
 		case string:
-			if placeholderRE.MatchString(value) {
-				headers[key] = substitute(value)
+			expanded, err := expandTemplate(value, resolve)
+			if err != nil {
+				return "", err
 			}
+			headers[key] = expanded
 		case []any:
 			for i, item := range value {
-				if str, ok := item.(string); ok && placeholderRE.MatchString(str) {
-					value[i] = substitute(str)
+				str, ok := item.(string)
+				if !ok {
+					continue
 				}
+				expanded, err := expandTemplate(str, resolve)
+				if err != nil {
+					return "", err
+				}
+				value[i] = expanded
 			}
 		}
-	}
-
-	if unresolved != "" {
-		return "", fmt.Errorf("%w: %q", ErrUnresolvedVariable, unresolved)
 	}
 
 	b, err := json.Marshal(headers)
@@ -331,10 +322,7 @@ func substituteHeaders(headersJSON string, resolve placeholderResolver) (string,
 }
 
 func substituteAuthConfig(authConfigJSON string, resolve placeholderResolver) (string, error) {
-	if authConfigJSON == "" || authConfigJSON == "{}" {
-		return authConfigJSON, nil
-	}
-	if !placeholderRE.MatchString(authConfigJSON) {
+	if authConfigJSON == "" || authConfigJSON == "{}" || !strings.Contains(authConfigJSON, "{{") {
 		return authConfigJSON, nil
 	}
 
@@ -343,24 +331,12 @@ func substituteAuthConfig(authConfigJSON string, resolve placeholderResolver) (s
 		return authConfigJSON, nil
 	}
 
-	var unresolved string
 	for key, value := range cfg {
-		if !placeholderRE.MatchString(value) {
-			continue
+		expanded, err := expandTemplate(value, resolve)
+		if err != nil {
+			return "", err
 		}
-		newValue := placeholderRE.ReplaceAllStringFunc(value, func(match string) string {
-			expr := match[2 : len(match)-2]
-			if val, ok := resolve(expr); ok {
-				return val
-			}
-			unresolved = expr
-			return match
-		})
-		cfg[key] = newValue
-	}
-
-	if unresolved != "" {
-		return "", fmt.Errorf("%w: %q", ErrUnresolvedVariable, unresolved)
+		cfg[key] = expanded
 	}
 
 	b, err := json.Marshal(cfg)
@@ -368,62 +344,6 @@ func substituteAuthConfig(authConfigJSON string, resolve placeholderResolver) (s
 		return "", fmt.Errorf("marshal auth config: %w", err)
 	}
 	return string(b), nil
-}
-
-// hasPlaceholder reports whether s contains any {{VAR}} syntax.
-func hasPlaceholder(s string) bool {
-	return placeholderRE.MatchString(s)
-}
-
-// hasPlaceholderInHeaders reports whether the JSON header string contains any {{VAR}} syntax.
-func hasPlaceholderInHeaders(headersJSON string) bool {
-	return placeholderRE.MatchString(headersJSON)
-}
-
-func hasPlaceholderInAuthConfig(authConfigJSON string) bool {
-	return placeholderRE.MatchString(authConfigJSON)
-}
-
-// firstPlaceholder extracts the first {{VAR}} variable name from s.
-func firstPlaceholder(s string) string {
-	match := placeholderRE.FindStringSubmatch(s)
-	if len(match) >= 2 {
-		return match[1]
-	}
-	return ""
-}
-
-// firstPlaceholderInHeaders extracts the first {{VAR}} variable name from a JSON header string.
-func firstPlaceholderInHeaders(headersJSON string) string {
-	if headersJSON == "" || headersJSON == "{}" {
-		return ""
-	}
-	var headers map[string]string
-	if err := json.Unmarshal([]byte(headersJSON), &headers); err != nil {
-		return firstPlaceholder(headersJSON)
-	}
-	for _, value := range headers {
-		if v := firstPlaceholder(value); v != "" {
-			return v
-		}
-	}
-	return ""
-}
-
-func firstPlaceholderInAuthConfig(authConfigJSON string) string {
-	if authConfigJSON == "" || authConfigJSON == "{}" {
-		return ""
-	}
-	var cfg map[string]string
-	if err := json.Unmarshal([]byte(authConfigJSON), &cfg); err != nil {
-		return firstPlaceholder(authConfigJSON)
-	}
-	for _, value := range cfg {
-		if v := firstPlaceholder(value); v != "" {
-			return v
-		}
-	}
-	return ""
 }
 
 // ResolveEnvVars resolves environment variables with each collection's own
