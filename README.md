@@ -313,6 +313,26 @@ the selected directory.
 
 ---
 
+## Export a Collection
+
+`quark export-postman <collection>` prints a collection as a Postman Collection
+v2.1 JSON file, and `quark import-postman` reads it back. The default
+environment's variables are exported as collection variables. Auth is written
+as Postman auth blocks, and secrets are written as plain text, so review the
+file before sharing it.
+
+`quark export-har <Collection/Request>` prints the execution history of one
+request as a HAR 1.2 document, which browsers and HTTP tools can open. Each
+entry shows the request as it was sent, including the auth header, and the
+response. Run the request first to have history to export.
+
+```bash
+quark export-postman "API" > api.postman_collection.json
+quark export-har "API/Create item" > create-item.har
+```
+
+---
+
 ## Migrate From Postman
 
 Quark can import both a single Postman Collection v2.1 JSON file and a full Postman bulk export directory.

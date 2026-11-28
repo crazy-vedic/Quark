@@ -20,6 +20,8 @@ quark schedule list
 quark schedule run-due
 quark import curl <curl-command> [--collection <id>] [--name <name>]
 quark import-postman <file|dir> [--collection-name <name>] [--on-duplicate <action>] [--include-disabled]
+quark export-postman <collection>
+quark export-har <Collection/Request>
 quark env list [<collection-id>]
 quark env create <collection-id> <name>
 quark env set <collection-id> <env-name> <key> <value>
@@ -141,6 +143,26 @@ Imports Postman Collection v2.1 JSON or a bulk export directory (collections + e
 Interactive prompts may appear for duplicate handling when run in a TTY. Uses transactions for atomic imports.
 
 See [imports.md](imports.md) for mapping limits.
+
+## export-postman
+
+**Source:** `internal/cli/export_postman.go`, format in `internal/postman/export.go`
+
+```
+quark export-postman <collection>
+```
+
+Prints a collection, its folders and its requests as a Postman Collection v2.1 JSON document on stdout. The default environment's variables become collection variables. Bearer, basic and API key auth become Postman auth blocks. Folders without requests are omitted. Output is deterministic. Auth types other than none, bearer, basic and api_key are an error. Secrets are written as plain text.
+
+## export-har
+
+**Source:** `internal/cli/export_har.go`, format in `internal/har/har.go`
+
+```
+quark export-har <Collection/Request>
+```
+
+Prints the execution history of one saved request as a HAR 1.2 document on stdout, oldest entry first. Each entry shows the request as sent (including the auth header or API key query parameter) and the response. Failed sends carry the error in the entry `comment`. With no history, the document has no entries and a note is printed to stderr.
 
 ## env
 

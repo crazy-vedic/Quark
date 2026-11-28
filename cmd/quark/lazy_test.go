@@ -47,6 +47,8 @@ func TestLazyCommandsExposeExactlyTheRealCommands(t *testing.T) {
 		"schedule":       {lazyScheduleCmd},
 		"import":         {lazyImportCmd},
 		"import-postman": {lazyImportPostmanCmd},
+		"export-postman": {lazyExportPostmanCmd},
+		"export-har":     {lazyExportHARCmd},
 		"env":            {lazyEnvCmd},
 	}
 	for name, tc := range tests {
