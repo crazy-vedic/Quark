@@ -111,6 +111,7 @@ quark                         # Launch TUI
 quark collection create "API" # Create collection
 quark import curl "curl -X POST https://api.example.com/orders" --collection <id> --name "Create Order"
 quark run "API/Create Order"  # Execute saved request
+quark history "API/Create Order" # List its recorded runs
 quark request export-curl "API/Create Order"  # Print it as a curl command
 quark collection list         # List all collections
 ```
@@ -197,6 +198,10 @@ PKCS#12 files, prefer `--password-env` to keep passwords out of shell history.
 summary. Valid JSON is pretty-printed and syntax-highlighted in a terminal.
 Add `--verbose` to print request details and response headers to stderr; this
 can include credentials from the saved request.
+
+`quark history <Collection/Request>` lists the runs kept for a request, newest
+first. Pass an execution ID (or a unique prefix) to print one run's status,
+headers and stored body.
 
 ### Text Selection & Editing
 

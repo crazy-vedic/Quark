@@ -14,6 +14,7 @@ quark collection create <name>
 quark request list [--collection <id>]
 quark request export-curl <Collection/Request>
 quark run <Collection/Request>
+quark history <Collection/Request> [execution-id] [--limit <n>]
 quark search <query>
 quark schedule add <Collection/Request> --at <time>
 quark schedule list
@@ -60,6 +61,16 @@ quark run <Collection/Request>
 ```
 
 Executes a saved request by path (collection name / request name). Uses `exec.Executor.Execute`. Prints status, headers, body (or temp file path for large bodies).
+
+### `quark history`
+
+**Source:** `internal/cli/history.go`
+
+```
+quark history <Collection/Request> [execution-id] [--limit <n>]
+```
+
+Without an execution ID, lists the request's recorded runs newest first (ID, completed time, status, time, size, error); `--limit` defaults to 20, `0` lists all. With an execution ID, or a unique prefix of one, prints that run's status, headers and stored body. The path is resolved as `quark run` resolves it.
 
 ### `quark request export-curl`
 

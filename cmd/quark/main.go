@@ -177,6 +177,7 @@ func runWithArgs(args []string) error {
 	root.AddCommand(lazyCollectionCmd(runtimeOnce))
 	root.AddCommand(lazyRequestCmd(runtimeOnce))
 	root.AddCommand(lazyRunCmd(runtimeOnce))
+	root.AddCommand(lazyHistoryCmd(runtimeOnce))
 	root.AddCommand(lazySearchCmd(runtimeOnce))
 	root.AddCommand(lazyScheduleCmd(runtimeOnce))
 	root.AddCommand(lazyImportCmd(runtimeOnce))

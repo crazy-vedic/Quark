@@ -194,6 +194,10 @@ func lazyRunCmd(rt func() (*runtime, error)) *cobra.Command {
 	)
 }
 
+func lazyHistoryCmd(rt func() (*runtime, error)) *cobra.Command {
+	return lazyCommand(rt, func(r *runtime) *cobra.Command { return cli.NewHistoryCmd(r.st) })
+}
+
 func lazySearchCmd(rt func() (*runtime, error)) *cobra.Command {
 	return lazyCommand(rt, func(r *runtime) *cobra.Command { return cli.NewSearchCmd(r.st) })
 }

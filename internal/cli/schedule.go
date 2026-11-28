@@ -243,7 +243,7 @@ func resolveScheduleRequest(
 	if resolver, ok := st.(requestPathResolver); ok {
 		return resolver.ResolveRequestPath(ctx, path)
 	}
-	req, _, err := findRequestByPath(ctx, st, path)
+	req, err := findRequestByPath(ctx, st, path)
 	return req, err
 }
 
@@ -254,15 +254,15 @@ func findRequestByPath(
 		store.RequestReader
 	},
 	path string,
-) (*domain.Request, string, error) {
+) (*domain.Request, error) {
 	parts := strings.SplitN(path, "/", 2)
 	if len(parts) != 2 {
-		return nil, "", fmt.Errorf("argument must be 'Collection/Request Name', got %q", path)
+		return nil, fmt.Errorf("argument must be 'Collection/Request Name', got %q", path)
 	}
 	collectionName, requestName := parts[0], parts[1]
 	cols, err := st.ListCollections(ctx)
 	if err != nil {
-		return nil, "", fmt.Errorf("list collections: %w", err)
+		return nil, fmt.Errorf("list collections: %w", err)
 	}
 	for _, col := range cols {
 		if col.Name != collectionName {
@@ -270,18 +270,18 @@ func findRequestByPath(
 		}
 		reqs, err := st.ListRequests(ctx, col.ID)
 		if err != nil {
-			return nil, "", fmt.Errorf("list requests: %w", err)
+			return nil, fmt.Errorf("list requests: %w", err)
 		}
 		for _, req := range reqs {
 			if req.Name == requestName {
-				return req, col.Name, nil
+				return req, nil
 			}
 		}
-		return nil, "", fmt.Errorf(
+		return nil, fmt.Errorf(
 			"request %q not found in collection %q",
 			requestName,
 			collectionName,
 		)
 	}
-	return nil, "", fmt.Errorf("collection %q not found", collectionName)
+	return nil, fmt.Errorf("collection %q not found", collectionName)
 }
