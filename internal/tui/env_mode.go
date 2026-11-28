@@ -798,6 +798,7 @@ func dispatchWithEnvCmd(
 	envReader EnvironmentHierarchyReader,
 	activeEnv map[string]string,
 	req *domain.Request,
+	seq int,
 ) tea.Cmd {
 	return func() tea.Msg {
 		if envReader != nil {
@@ -814,11 +815,7 @@ func dispatchWithEnvCmd(
 			}
 			req = interpolated
 		}
-		result, err := executor.Execute(ctx, req)
-		if err != nil {
-			return httpErrMsg{requestID: req.ID, err: err}
-		}
-		return httpResponseMsg{requestID: req.ID, result: result}
+		return executeRequest(ctx, executor, req, seq)
 	}
 }
 

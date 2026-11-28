@@ -291,6 +291,13 @@ type Model struct {
 	// --- In-flight request ---
 	cancel  context.CancelFunc
 	loading bool
+	// streamSeq numbers dispatches so stream items from a replaced request
+	// are dropped. streaming is set while a text/event-stream response is
+	// being shown event by event; streamBody holds the events so far.
+	streamSeq    int
+	streaming    bool
+	streamEvents int
+	streamBody   []byte
 
 	// --- Error / success state ---
 	err                   error             // unexpected / fatal error
@@ -946,13 +953,14 @@ func saveRequestCmdWithRollback(
 
 // dispatchCmd follows Go convention: context.Context is the first parameter.
 // Closes over immutable values only — never a *Model pointer.
-func dispatchCmd(ctx context.Context, executor RequestExecutor, req *domain.Request) tea.Cmd {
+func dispatchCmd(
+	ctx context.Context,
+	executor RequestExecutor,
+	req *domain.Request,
+	seq int,
+) tea.Cmd {
 	return func() tea.Msg {
-		result, err := executor.Execute(ctx, req)
-		if err != nil {
-			return httpErrMsg{requestID: req.ID, err: err}
-		}
-		return httpResponseMsg{requestID: req.ID, result: result}
+		return executeRequest(ctx, executor, req, seq)
 	}
 }
 
@@ -1212,12 +1220,14 @@ func (m Model) startRequest(req *domain.Request) (Model, tea.Cmd) {
 	ctx, cancel := context.WithCancel(m.ctx)
 	m.cancel = cancel
 	m.loading = true
+	m.streamSeq++
+	m = m.endStream()
 	m.err = nil
 	m.statusErr = ""
 	if req != nil {
 		m = m.clearRequestValidationErr(req.ID)
 	}
-	return m, dispatchWithEnvCmd(ctx, m.executor, m.envReader, m.activeEnv, req)
+	return m, dispatchWithEnvCmd(ctx, m.executor, m.envReader, m.activeEnv, req, m.streamSeq)
 }
 
 // startRawRequest dispatches a request without mutating or interpolating the
@@ -1229,12 +1239,14 @@ func (m Model) startRawRequest(req *domain.Request) (Model, tea.Cmd) {
 	ctx, cancel := context.WithCancel(m.ctx)
 	m.cancel = cancel
 	m.loading = true
+	m.streamSeq++
+	m = m.endStream()
 	m.err = nil
 	m.statusErr = ""
 	if req != nil {
 		m = m.clearRequestValidationErr(req.ID)
 	}
-	return m, dispatchCmd(ctx, m.executor, req)
+	return m, dispatchCmd(ctx, m.executor, req, m.streamSeq)
 }
 
 // dispatchSearch cancels any stale search goroutine, then dispatches a new one.

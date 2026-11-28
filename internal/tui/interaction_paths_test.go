@@ -232,8 +232,9 @@ func TestModelCommands(t *testing.T) {
 	msg = saveRequestCmdWithRollback(ctx, failingWriter, st, req, rollback)()
 	require.IsType(t, errLoadMsg{}, msg)
 	require.True(t, rolled)
-	require.IsType(t, httpResponseMsg{}, dispatchCmd(ctx, fakeExecutor{}, req)())
-	require.IsType(t, httpErrMsg{}, dispatchCmd(ctx, fakeExecutor{err: errors.New("exec")}, req)())
+	require.IsType(t, httpResponseMsg{}, dispatchCmd(ctx, fakeExecutor{}, req, 0)())
+	require.IsType(t, httpErrMsg{},
+		dispatchCmd(ctx, fakeExecutor{err: errors.New("exec")}, req, 0)())
 	require.IsType(t, scheduledRunSaveErrMsg{}, saveScheduledRunCmd(ctx, nil, req.ID, time.Now())())
 	require.IsType(t, scheduledRunSavedMsg{}, saveScheduledRunCmd(ctx, st, req.ID, time.Now())())
 	cancelled, cancel := context.WithCancel(ctx)

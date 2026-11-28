@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
@@ -435,4 +436,66 @@ func TestRunCommand_FailFlagExitsNonZeroOnHTTPError(t *testing.T) {
 		"500",
 		"the error must come from the HTTP status, not flag parsing",
 	)
+}
+
+func newStreamRunCmd(t *testing.T, status int, header http.Header, body string, args ...string) (
+	*cobra.Command, *bytes.Buffer, *bytes.Buffer,
+) {
+	t.Helper()
+	const collectionID = "col-1"
+	st := &fakeRunStore{
+		collections: []*domain.Collection{{ID: collectionID, Name: "API"}},
+		requests: map[string][]*domain.Request{collectionID: {{
+			ID: "req-1", CollectionID: collectionID, Name: "events",
+			Method: "GET", URL: "https://example.test/events",
+		}}},
+		globalEnv: &domain.Environment{ID: "global", Name: "Global", Data: "{}"},
+	}
+	transport := &recordingRoundTripper{response: &http.Response{
+		StatusCode: status,
+		Status:     http.StatusText(status),
+		Header:     header,
+		Body:       io.NopCloser(bytes.NewBufferString(body)),
+	}}
+	cmd := NewRunCmd(st, exec.New(transport))
+	var out, errOut bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&errOut)
+	cmd.SetArgs(append([]string{"API/events"}, args...))
+	cmd.SetContext(context.Background())
+	return cmd, &out, &errOut
+}
+
+func TestNewRunCmd_StreamsEventStreamLineByLine(t *testing.T) {
+	cmd, out, errOut := newStreamRunCmd(t, http.StatusOK,
+		http.Header{"Content-Type": []string{"text/event-stream"}},
+		"data: {\"n\":1}\n\nevent: tick\nid: 7\ndata: two\ndata: lines\n\n",
+		"--verbose",
+	)
+	require.NoError(t, cmd.Execute())
+	assert.Equal(t, "{\"n\":1}\ntwo\nlines\n", out.String())
+	assert.Contains(t, errOut.String(), "Status: OK (streaming events")
+	assert.Contains(t, errOut.String(), "event: tick id: 7")
+	assert.Contains(t, errOut.String(), "< Content-Type: text/event-stream")
+	assert.Contains(t, errOut.String(), "Size:")
+}
+
+func TestNewRunCmd_StreamFailFlag(t *testing.T) {
+	cmd, out, _ := newStreamRunCmd(t, http.StatusServiceUnavailable,
+		http.Header{"Content-Type": []string{"text/event-stream"}},
+		"data: x\n\n",
+		"--fail",
+	)
+	require.ErrorContains(t, cmd.Execute(), "Service Unavailable")
+	assert.True(t, strings.HasPrefix(out.String(), "x\n"), out.String())
+}
+
+func TestNewRunCmd_NonStreamResponseUnchanged(t *testing.T) {
+	cmd, out, errOut := newStreamRunCmd(t, http.StatusOK,
+		http.Header{"Content-Type": []string{"text/plain"}},
+		"data: x\n\n",
+	)
+	require.NoError(t, cmd.Execute())
+	assert.Equal(t, "data: x\n\n", out.String())
+	assert.NotContains(t, errOut.String(), "streaming")
 }

@@ -122,9 +122,9 @@ var allowed = map[string]string{
 		"writes; removed on failure",
 	"internal/store/backup.go:syncFile:os.OpenFile": "fsync of the file VACUUM INTO produced; " +
 		"writes nothing",
-	"internal/exec/executor.go:readResponse:os.CreateTemp": "scratch file for an oversized " +
+	"internal/exec/executor.go:newScratchFile:os.CreateTemp": "scratch file for an oversized " +
 		"response body, not a user file",
-	"internal/exec/executor.go:readResponse:os.Chmod": "restricts that scratch file to 0600",
+	"internal/exec/executor.go:newScratchFile:os.Chmod": "restricts that scratch file to 0600",
 	"internal/updates/selfupdate.go:Update:os.Rename": "Windows only: parks the backup as " +
 		".old; moves a file, writes no content",
 	"internal/updates/selfupdate.go:replace:os.Rename": "installs the staged binary; the " +

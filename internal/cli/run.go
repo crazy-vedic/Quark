@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -65,11 +66,7 @@ func NewRunCmd(st RunStore, e *exec.Executor) *cobra.Command {
 					if err != nil {
 						return fmt.Errorf("run: interpolate: %w", err)
 					}
-					result, err := e.Execute(ctx, prepared)
-					if err != nil {
-						return fmt.Errorf("run: execute: %w", err)
-					}
-					return finishRun(cmd, prepared, result, verbose, fail)
+					return executeRun(cmd, e, prepared, verbose, fail)
 				}
 			}
 			parts := strings.SplitN(args[0], "/", 2)
@@ -133,12 +130,7 @@ func NewRunCmd(st RunStore, e *exec.Executor) *cobra.Command {
 				return fmt.Errorf("run: interpolate: %w", err)
 			}
 
-			result, err := e.Execute(ctx, prepared)
-			if err != nil {
-				return fmt.Errorf("run: execute: %w", err)
-			}
-
-			return finishRun(cmd, prepared, result, verbose, fail)
+			return executeRun(cmd, e, prepared, verbose, fail)
 		},
 	}
 	cmd.ValidArgsFunction = CompleteRequestPaths(st.ListCollections, st.ListRequests)
@@ -177,6 +169,57 @@ func parseRunOverrides(
 		named[key] = value
 	}
 	return positionals, named, nil
+}
+
+// executeRun sends the request. A text/event-stream response is written to
+// stdout event by event as it arrives (one data payload per line); Ctrl+C
+// ends the stream and still prints the summary. Other responses are printed
+// once complete.
+func executeRun(
+	cmd *cobra.Command,
+	e *exec.Executor,
+	req *domain.Request,
+	verbose, fail bool,
+) error {
+	out, errOut := cmd.OutOrStdout(), cmd.ErrOrStderr()
+	streamed := false
+	var writeErr error
+	result, err := e.ExecuteStream(cmd.Context(), req, exec.StreamHandler{
+		OnOpen: func(opened *exec.ExecuteResult) {
+			streamed = true
+			if verbose {
+				printRequestDetails(errOut, req)
+				printResponseDetails(errOut, opened)
+			}
+			fmt.Fprintf(errOut, "Status: %s (streaming events; Ctrl+C to stop)\n", opened.Status)
+		},
+		OnEvent: func(event exec.SSEEvent) {
+			if writeErr != nil {
+				return
+			}
+			if verbose && (event.Type != "" || event.ID != "") {
+				fmt.Fprintf(errOut, "event: %s id: %s\n",
+					safeText(errOut, event.Type), safeText(errOut, event.ID))
+			}
+			_, writeErr = fmt.Fprintln(out, safeText(out, event.Data))
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("run: execute: %w", err)
+	}
+	if !streamed {
+		return finishRun(cmd, req, result, verbose, fail)
+	}
+	defer func() { _ = result.Cleanup() }()
+	if writeErr != nil {
+		return fmt.Errorf("run: write event: %w", writeErr)
+	}
+	fmt.Fprintf(errOut, "Size:   %d bytes\nTime:   %v\n",
+		result.Size, result.Duration.Round(time.Millisecond))
+	if fail && result.StatusCode >= 400 {
+		return fmt.Errorf("run: HTTP %s", result.Status)
+	}
+	return nil
 }
 
 // finishRun prints the result and, with --fail, turns an HTTP error status into

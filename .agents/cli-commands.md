@@ -59,7 +59,7 @@ Shell completion available for `--collection` via `CompleteCollectionIDs`.
 quark run <Collection/Request>
 ```
 
-Executes a saved request by path (collection name / request name). Uses `exec.Executor.Execute`. Prints status, headers, body (or temp file path for large bodies).
+Executes a saved request by path (collection name / request name). Uses `exec.Executor.ExecuteStream`. Prints status, headers, body (or temp file path for large bodies). A `text/event-stream` response prints one `data` payload per line as events arrive; Ctrl+C ends the stream and still prints the summary.
 
 ### `quark request export-curl`
 

@@ -471,6 +471,9 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case httpResponseMsg:
 		return m.handleHTTPResponse(msg)
 
+	case streamBatchMsg:
+		return m.handleStreamBatch(msg)
+
 	case httpErrMsg:
 		return m.handleHTTPErr(msg)
 	case envSavedMsg:

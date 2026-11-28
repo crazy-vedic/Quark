@@ -158,6 +158,21 @@ type ExecuteResult struct {
 
 Methods: `Cleanup()` removes temp file if set.
 
+## Event Streams (`sse.go`)
+
+`ExecuteStream(ctx, req, StreamHandler{OnOpen, OnEvent})` reads a
+`text/event-stream` response incrementally: `OnOpen` gets the status and headers,
+then `OnEvent` gets each `SSEEvent` (Type, ID, Data, Retry) as soon as its blank
+line arrives. Other content types are read exactly as `Execute` reads them and
+never reach the handler. `Execute` is `ExecuteStream` with an empty handler.
+
+- The per-request timeout does not apply once an event stream has started; the
+  stream runs until the server closes it or `ctx` is cancelled. A cancelled
+  stream ends normally and returns what was received. Timeouts before the
+  headers arrive still fail with `ErrTimeout`.
+- The raw bytes are kept as the result body (spilled to a 0600 temp file past
+  `maxResponseSize`), so history stores the stream in wire form.
+
 ## Sentinel Errors
 
 ```go
@@ -174,12 +189,12 @@ Always use `errors.Is` for checks.
 `quark run` (`internal/cli/run.go`):
 
 1. Resolve collection/request by path
-2. Call `executor.Execute(ctx, req)`
+2. Call `executor.ExecuteStream(ctx, req, handler)`; event streams print as they arrive
 3. Print status, headers, body (or temp file notice)
 4. Exit non-zero on execution error (not on 4xx/5xx)
 
 ## TUI Integration
 
-TUI calls `RequestExecutor.Execute` via the narrow interface in `internal/tui/interfaces.go`. Results rendered in response pane with syntax highlighting for JSON.
+TUI calls `RequestExecutor.Execute` via the narrow interface in `internal/tui/interfaces.go`. Results rendered in response pane with syntax highlighting for JSON. When the executor also implements `StreamingRequestExecutor` (`internal/tui/sse_stream.go`), an event stream is shown event by event; stream items from a replaced request are dropped, and Esc cancels the stream.
 
 See also: [domain-and-store.md](domain-and-store.md), [config-and-data.md](config-and-data.md), [caveats.md](caveats.md).
