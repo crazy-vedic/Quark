@@ -92,6 +92,7 @@ const (
 	PromptDeleteTiny           = promptDeleteTiny
 	PromptDeleteRequestConfirm = promptDeleteRequestConfirm
 	PromptAddRequest           = promptAddRequest
+	PromptMoveRequest          = promptMoveRequest
 	PromptAddEnv               = promptAddEnv
 
 	BodyTab    = bodyTab

@@ -304,6 +304,18 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case requestMovedMsg:
+		m.collectionRequests[msg.from] = msg.fromRequests
+		m.collectionRequests[msg.to] = msg.toRequests
+		if active := m.activeCollectionID(); active == msg.from || active == msg.to {
+			m.requests = m.collectionRequests[active]
+		}
+		m.reqCursor = -1
+		if m.activeRequest != nil && m.activeRequest.ID == msg.requestID {
+			m.activeRequest.CollectionID = msg.to
+		}
+		return m.status("success", fmt.Sprintf("Moved %q to %s", msg.name, msg.toLabel)), nil
+
 	case requestsLoadedMsg:
 		m.collectionRequests[msg.collectionID] = msg.requests
 		var historyCmd tea.Cmd
@@ -793,7 +805,7 @@ func (m Model) dispatchNormalAction(action string) (tea.Model, tea.Cmd) {
 // handleSidebarAction is the action-based version of handleSidebarKey.
 func (m Model) handleSidebarAction(action string) (tea.Model, tea.Cmd) {
 	switch action {
-	case keybindings.ActionDeleteRequest:
+	case keybindings.ActionDeleteRequest, keybindings.ActionMoveRequest:
 		return m.handleRequestAction(action)
 	case "cursor_down":
 		return m.sidebarDown()
@@ -836,6 +848,12 @@ func (m Model) handleSidebarAction(action string) (tea.Model, tea.Cmd) {
 	case "add":
 		return m.enterCollectionPrompt(promptAdd, "")
 	case "add_request":
+		if len(m.collections) > 0 && m.colCursor == len(m.collections) {
+			// The scratch section: the new request belongs to no collection.
+			// With no collections at all, 'a' keeps asking for a collection.
+			m.expanded[""] = true
+			return m.enterCollectionPrompt(promptAddRequest, "")
+		}
 		colID := m.activeCollectionID()
 		if colID == "" {
 			return m.status("error", "Select a collection first"), nil
@@ -878,6 +896,12 @@ func (m Model) handleRequestAction(action string) (tea.Model, tea.Cmd) {
 		m, cmd := m.enterCollectionPrompt(promptDeleteTiny, req.ID)
 		m.promptTargetCollectionID = req.CollectionID
 		return m, cmd
+	case keybindings.ActionMoveRequest:
+		req := m.selectedStoredRequest()
+		if req == nil || req.ID == "" {
+			return m.status("error", "Select a saved request first"), nil
+		}
+		return m.enterCollectionPrompt(promptMoveRequest, req.ID)
 	case keybindings.ActionEditURL:
 		return m.beginURLEdit()
 	case keybindings.ActionMethodNext:
@@ -1036,8 +1060,9 @@ func (m Model) selectSidebarRow(row sidebarRow) Model {
 	if row.kind == sidebarRequestRow {
 		m.reqCursor = row.reqIndex
 	}
-	if row.colIndex >= 0 && row.colIndex < len(m.collections) {
-		m.requests = m.collectionRequests[m.collections[row.colIndex].ID]
+	if row.colIndex >= 0 && row.colIndex <= len(m.collections) {
+		colID, _ := m.sidebarCollection(row.colIndex)
+		m.requests = m.collectionRequests[colID]
 	}
 	return m.ensureSidebarCollectionVisible()
 }
@@ -1445,6 +1470,8 @@ var commandPaletteItems = []commandPaletteItem{
 	{Title: "Next HTTP method", Action: keybindings.ActionMethodNext},
 	{Title: "Previous HTTP method", Action: keybindings.ActionMethodPrev},
 	{Title: "Delete selected request", Action: keybindings.ActionDeleteRequest},
+	{Title: "Move request to collection", Action: keybindings.ActionMoveRequest},
+	{Title: "New request outside any collection", Action: actionScratchAdd},
 	{Title: "Schedule request", Action: keybindings.ActionScheduleRun},
 	{Title: "Copy request as curl", Action: keybindings.ActionExportCurl},
 	{Title: "Open environment editor", Action: keybindings.ActionEnvOpen},
@@ -1557,9 +1584,15 @@ func (m Model) executeSelectedCommand() (tea.Model, tea.Cmd) {
 	case "add", "add_request", actionRename, deleteToken:
 		m.focus = sidebarPane
 		return m.dispatchNormalAction(action)
-	case keybindings.ActionDeleteRequest:
+	case keybindings.ActionDeleteRequest, keybindings.ActionMoveRequest:
 		m.focus = requestPane
 		return m.dispatchNormalAction(action)
+	case actionScratchAdd:
+		m.focus = sidebarPane
+		m.colCursor = len(m.collections)
+		m.reqCursor = -1
+		m.expanded[""] = true
+		return m.enterCollectionPrompt(promptAddRequest, "")
 	}
 	return m, nil
 }
@@ -2526,6 +2559,8 @@ func (m Model) enterCollectionPrompt(pt promptType, targetID string) (Model, tea
 		m.promptInput.Placeholder = "Collection name"
 	case promptAddRequest:
 		m.promptInput.Placeholder = "Request name"
+	case promptMoveRequest:
+		m.promptInput.Placeholder = "Collection name, blank for none"
 	case promptRename:
 		m.promptInput.Placeholder = "New name"
 	case promptDeleteConfirm:
@@ -2557,7 +2592,7 @@ func wrapPromptSuccess(cmd tea.Cmd) tea.Cmd {
 		}
 		msg := cmd()
 		switch msg.(type) {
-		case collectionSavedMsg, envCreatedMsg, requestsLoadedMsg:
+		case collectionSavedMsg, envCreatedMsg, requestsLoadedMsg, requestMovedMsg:
 			return promptCompletedMsg{inner: msg}
 		default:
 			return msg
@@ -2657,6 +2692,24 @@ func (m Model) handleCollectionPromptKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					m.promptTargetID,
 					m.promptTargetCollectionID,
 					m.reader,
+				))
+
+			case promptMoveRequest:
+				targetID, targetLabel := "", "no collection"
+				if val != "" {
+					col := m.collectionNamed(val)
+					if col == nil {
+						m = m.status("error", fmt.Sprintf("No collection named %q", val))
+						return m, nil
+					}
+					targetID, targetLabel = col.ID, fmt.Sprintf("%q", col.Name)
+				}
+				if m.writer == nil {
+					m = m.status("error", "Request writer not available")
+					return m, nil
+				}
+				return m, wrapPromptSuccess(moveRequestCmd(
+					m.ctx, m.writer, m.reader, m.promptTargetID, targetID, targetLabel,
 				))
 
 			case promptAddRequest:

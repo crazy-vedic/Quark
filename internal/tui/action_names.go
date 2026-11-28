@@ -7,4 +7,5 @@ const (
 	actionTabNext    = "tab_next"
 	actionTabPrev    = "tab_prev"
 	actionRename     = "rename"
+	actionScratchAdd = "scratch_add"
 )

@@ -40,7 +40,7 @@ func (s *Store) ResolveRequestPath(ctx context.Context, reference string) (*doma
 	}
 	rows, err := s.db.QueryContext(
 		ctx,
-		`SELECT id, collection_id, name, method, url, headers, auth_type, auth_config, body, sort_order, enabled, created_at, updated_at FROM requests`,
+		`SELECT id, COALESCE(collection_id, ''), name, method, url, headers, auth_type, auth_config, body, sort_order, enabled, created_at, updated_at FROM requests`,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("store: resolve request: %w", err)
@@ -69,6 +69,11 @@ func (s *Store) ResolveRequestPath(ctx context.Context, reference string) (*doma
 			return nil, err
 		}
 		r.Body = body.String
+		if r.CollectionID == "" {
+			// Scratch requests have no collection path, so they cannot be named
+			// on the command line.
+			continue
+		}
 		p, ok := pathCache[r.CollectionID]
 		if !ok {
 			return nil, fmt.Errorf("store: request collection %q: %w", r.CollectionID, ErrNotFound)

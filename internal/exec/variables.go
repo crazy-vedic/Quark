@@ -451,6 +451,11 @@ func ResolveEnvVars(
 		return nil, nil, fmt.Errorf("%w: decode Global: %w", ErrEnvironmentResolution, err)
 	}
 
+	if collectionID == "" {
+		// A scratch request belongs to no collection, so only Global applies.
+		return make(map[string]string), globalEnv, nil
+	}
+
 	scopes, err := LoadEnvironmentHierarchy(ctx, r, collectionID)
 	if err != nil {
 		return nil, nil, fmt.Errorf("%w: %w", ErrEnvironmentResolution, err)

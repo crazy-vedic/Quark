@@ -67,6 +67,7 @@ const (
 	promptDeleteRequestConfirm
 	promptAddRequest
 	promptAddEnv
+	promptMoveRequest
 )
 
 const deleteToken = "delete"
@@ -122,6 +123,17 @@ type collectionsLoadedMsg struct{ collections []*domain.Collection }
 type requestsLoadedMsg struct {
 	collectionID string
 	requests     []*domain.Request
+}
+
+// requestMovedMsg reports a request saved under a new collection, with the
+// refreshed request lists of both the old and the new collection.
+type requestMovedMsg struct {
+	requestID    string
+	from, to     string
+	toLabel      string
+	name         string
+	fromRequests []*domain.Request
+	toRequests   []*domain.Request
 }
 
 // lastRequestLoadedMsg carries the request remembered from the previous TUI session.
@@ -905,7 +917,7 @@ func saveRequestCmd(
 		if err := w.SaveRequest(ctx, req); err != nil {
 			return errLoadMsg{err: fmt.Errorf("save request: %w", err)}
 		}
-		if reader == nil || req.CollectionID == "" {
+		if reader == nil {
 			return requestsLoadedMsg{}
 		}
 		reqs, err := reader.ListRequests(ctx, req.CollectionID)
@@ -930,7 +942,7 @@ func saveRequestCmdWithRollback(
 			}
 			return errLoadMsg{err: fmt.Errorf("save request: %w", err)}
 		}
-		if reader == nil || req.CollectionID == "" {
+		if reader == nil {
 			return requestsLoadedMsg{}
 		}
 		reqs, err := reader.ListRequests(ctx, req.CollectionID)
@@ -1449,3 +1461,45 @@ func (m Model) HelpCursor() int { return m.helpCursor }
 
 // searchPlaceholder is the hint shown in the empty search input.
 const searchPlaceholder = "search requests (optional)..."
+
+// moveRequestCmd saves the request under targetID ("" for no collection). It
+// returns the refreshed lists of the old and the new collection, so the
+// sidebar can show the move at once.
+func moveRequestCmd(
+	ctx context.Context,
+	w store.RequestWriter,
+	reader store.RequestReader,
+	requestID, targetID, targetLabel string,
+) tea.Cmd {
+	return func() tea.Msg {
+		if reader == nil {
+			return errLoadMsg{err: fmt.Errorf("move request: reader unavailable")}
+		}
+		req, err := reader.GetRequest(ctx, requestID)
+		if err != nil {
+			return errLoadMsg{err: fmt.Errorf("move request: %w", err)}
+		}
+		from := req.CollectionID
+		req.CollectionID = targetID
+		if err := w.SaveRequest(ctx, req); err != nil {
+			return errLoadMsg{err: fmt.Errorf("move request: %w", err)}
+		}
+		fromReqs, err := reader.ListRequests(ctx, from)
+		if err != nil {
+			return errLoadMsg{err: fmt.Errorf("reload requests: %w", err)}
+		}
+		toReqs, err := reader.ListRequests(ctx, targetID)
+		if err != nil {
+			return errLoadMsg{err: fmt.Errorf("reload requests: %w", err)}
+		}
+		return requestMovedMsg{
+			requestID:    requestID,
+			from:         from,
+			to:           targetID,
+			toLabel:      targetLabel,
+			name:         req.Name,
+			fromRequests: fromReqs,
+			toRequests:   toReqs,
+		}
+	}
+}

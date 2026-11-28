@@ -527,8 +527,8 @@ func TestE2E_ResponsePane_HistoryNavigationAcrossExecutions(t *testing.T) {
 	m = callUpdate(t, m, tui.CollectionsLoadedMsg([]*domain.Collection{col}))
 	m = callUpdate(t, m, tui.RequestsLoadedMsg(col.ID, []*domain.Request{req}))
 
-	// Select the saved request from the sidebar; this also dispatches history load.
-	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	// Loading the collection selects its first request, so Enter opens it and
+	// dispatches the history load. (j would move past it onto the scratch section.)
 	var cmd tea.Cmd
 	m, cmd = callUpdateWithCmd(t, m, tea.KeyMsg{Type: tea.KeyEnter})
 	msg := runCmd(t, cmd)
@@ -666,8 +666,7 @@ func TestE2E_ResponseRetry_ReplaysOlderExecutionWithoutChangingRequestPane(t *te
 	m = callUpdate(t, m, tui.CollectionsLoadedMsg([]*domain.Collection{col}))
 	m = callUpdate(t, m, tui.RequestsLoadedMsg(col.ID, []*domain.Request{req}))
 
-	// Select the saved request from the sidebar.
-	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	// Loading the collection selects its first request. Enter opens it.
 	var cmd tea.Cmd
 	m, cmd = callUpdateWithCmd(t, m, tea.KeyMsg{Type: tea.KeyEnter})
 	msg := runCmd(t, cmd)

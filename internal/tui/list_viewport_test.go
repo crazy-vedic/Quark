@@ -61,9 +61,10 @@ func TestBuildSidebarRowsHidesChildrenWhenParentIsCollapsed(t *testing.T) {
 		reqCursor: -1,
 	}
 
+	// The trailing row is the scratch section, which sits at index 2.
 	rows, _ := m.buildSidebarRows()
-	if len(rows) != 1 || rows[0].colIndex != 0 {
-		t.Fatalf("collapsed sidebar rows = %#v, want only root collection", rows)
+	if len(rows) != 2 || rows[0].colIndex != 0 || rows[1].colIndex != 2 {
+		t.Fatalf("collapsed sidebar rows = %#v, want root collection and scratch section", rows)
 	}
 }
 
@@ -78,8 +79,8 @@ func TestBuildSidebarRowsShowsChildrenWhenParentIsExpanded(t *testing.T) {
 	}
 
 	rows, _ := m.buildSidebarRows()
-	if len(rows) != 2 || rows[1].colIndex != 1 || rows[1].depth != 1 {
-		t.Fatalf("expanded sidebar rows = %#v, want root and child", rows)
+	if len(rows) != 3 || rows[1].colIndex != 1 || rows[1].depth != 1 || rows[2].colIndex != 2 {
+		t.Fatalf("expanded sidebar rows = %#v, want root, child and scratch section", rows)
 	}
 }
 
@@ -97,10 +98,12 @@ func TestBuildSidebarRows_HidesEntireCollapsedSubtree(t *testing.T) {
 		},
 	}
 
+	// Index 4 is the scratch section, just past the last collection.
 	rows, _ := m.buildSidebarRows()
 	require.Equal(t, []sidebarRow{
 		{kind: sidebarCollectionRow, colIndex: 0, reqIndex: -1, depth: 0},
 		{kind: sidebarCollectionRow, colIndex: 3, reqIndex: -1, depth: 0},
+		{kind: sidebarCollectionRow, colIndex: 4, reqIndex: -1, depth: 0},
 	}, rows)
 
 	m.expanded["root"] = true
@@ -110,6 +113,7 @@ func TestBuildSidebarRows_HidesEntireCollapsedSubtree(t *testing.T) {
 		{kind: sidebarCollectionRow, colIndex: 0, reqIndex: -1, depth: 0},
 		{kind: sidebarCollectionRow, colIndex: 1, reqIndex: -1, depth: 1},
 		{kind: sidebarCollectionRow, colIndex: 3, reqIndex: -1, depth: 0},
+		{kind: sidebarCollectionRow, colIndex: 4, reqIndex: -1, depth: 0},
 	}, rows)
 }
 

@@ -212,7 +212,42 @@ func (m Model) buildSidebarRows() ([]sidebarRow, int) {
 			appendCollection(colIdx, 0, make(map[int]bool))
 		}
 	}
+
+	// The scratch section lists requests that belong to no collection. It sits
+	// after the tree, at the index just past the last collection, and its
+	// requests are cached under the empty collection ID.
+	scratchIdx := len(m.collections)
+	rows = append(rows, sidebarRow{kind: sidebarCollectionRow, colIndex: scratchIdx, reqIndex: -1})
+	if m.colCursor == scratchIdx && m.reqCursor == -1 {
+		selectedRow = len(rows) - 1
+	}
+	if m.expanded[""] {
+		for reqIdx := range m.collectionRequests[""] {
+			rows = append(rows, sidebarRow{
+				kind:     sidebarRequestRow,
+				colIndex: scratchIdx,
+				reqIndex: reqIdx,
+				depth:    1,
+			})
+			if m.colCursor == scratchIdx && m.reqCursor == reqIdx {
+				selectedRow = len(rows) - 1
+			}
+		}
+	}
 	return rows, selectedRow
+}
+
+// scratchSectionName labels the sidebar section of scratch requests.
+const scratchSectionName = "Scratch"
+
+// sidebarCollection returns the ID and display name behind a sidebar
+// collection row. The scratch section, at index len(m.collections), has the
+// empty ID.
+func (m Model) sidebarCollection(colIndex int) (id, name string) {
+	if colIndex >= 0 && colIndex < len(m.collections) && m.collections[colIndex] != nil {
+		return m.collections[colIndex].ID, m.collections[colIndex].Name
+	}
+	return "", scratchSectionName
 }
 
 // collapseCollectionSubtree closes a collection and all of its descendants.

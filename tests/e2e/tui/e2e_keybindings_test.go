@@ -188,7 +188,7 @@ func TestE2E_DefaultBindings_NormalModeSidebar(t *testing.T) {
 
 	// j moves cursor down
 	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
-	assert.Equal(t, 0, m.ColCursor(), "j moves down (clamped at 0 with 1 collection)")
+	assert.Equal(t, 1, m.ColCursor(), "j moves down onto the scratch section, the last row")
 
 	// k moves cursor up
 	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
@@ -363,7 +363,7 @@ func TestE2E_CustomBindings_Functional(t *testing.T) {
 	// New sidebar down (J) should move cursor (custom binding takes precedence)
 	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyEsc}) // close search
 	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'J'}})
-	assert.Equal(t, 0, m.ColCursor(), "J moves down (clamped at 0)")
+	assert.Equal(t, 1, m.ColCursor(), "J moves down onto the scratch section")
 
 	// Switch to response pane and test custom body tab
 	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'3'}})

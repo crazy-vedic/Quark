@@ -86,7 +86,7 @@ func (t *Transaction) SaveRequest(ctx context.Context, req *domain.Request) erro
 		   enabled=excluded.enabled,
 		   updated_at=CURRENT_TIMESTAMP`,
 		req.ID,
-		req.CollectionID,
+		collectionArg(req.CollectionID),
 		req.Name,
 		req.Method,
 		req.URL,

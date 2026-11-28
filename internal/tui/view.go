@@ -60,6 +60,7 @@ var helpActionLabels = map[string]string{
 	keybindings.ActionEditHeaders:   "edit headers",
 	"edit_auth":                     "edit auth",
 	keybindings.ActionScheduleRun:   "schedule request",
+	keybindings.ActionMoveRequest:   "move to collection",
 	keybindings.ActionExportCurl:    "copy as curl",
 	"response_down":                 "next history item",
 	"response_up":                   "prev history item",
@@ -320,7 +321,7 @@ func (m Model) viewSidebar(w, h int) string {
 		row := rows[i]
 		switch row.kind {
 		case sidebarCollectionRow:
-			col := m.collections[row.colIndex]
+			colID, colName := m.sidebarCollection(row.colIndex)
 			indent := strings.Repeat("  ", row.depth)
 			branch := ""
 			if row.depth > 0 {
@@ -330,13 +331,13 @@ func (m Model) viewSidebar(w, h int) string {
 			if row.colIndex == m.colCursor && m.reqCursor == -1 && m.focus == sidebarPane {
 				cursor = indent + "▸ "
 			}
-			expanded := m.expanded[col.ID]
+			expanded := m.expanded[colID]
 			icon := "▶ "
 			if expanded {
 				icon = "▼ "
 			}
 			innerW := max(1, w-2)
-			name := truncate(col.Name, innerW-4)
+			name := truncate(colName, innerW-4)
 			line := cursor + branch + icon + name
 			if row.colIndex == m.colCursor && m.reqCursor == -1 {
 				line = lipgloss.NewStyle().Foreground(m.styles.accent).Bold(true).Render(line)
@@ -346,8 +347,8 @@ func (m Model) viewSidebar(w, h int) string {
 			sb.WriteString(line)
 			sb.WriteString("\n")
 		case sidebarRequestRow:
-			col := m.collections[row.colIndex]
-			req := m.collectionRequests[col.ID][row.reqIndex]
+			colID, _ := m.sidebarCollection(row.colIndex)
+			req := m.collectionRequests[colID][row.reqIndex]
 			isSelected := row.colIndex == m.colCursor && row.reqIndex == m.reqCursor
 			cursor := strings.Repeat("  ", row.depth) + "  "
 			if isSelected {
@@ -2805,6 +2806,9 @@ func (m Model) viewCollectionPromptModal() string {
 	case promptAddRequest:
 		title = "New Request"
 		hint = "Enter name"
+	case promptMoveRequest:
+		title = "Move Request"
+		hint = "Collection name, blank for none"
 	case promptAddEnv:
 		title = "New Environment"
 		hint = "Enter name"

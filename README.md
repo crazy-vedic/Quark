@@ -158,6 +158,7 @@ JSON formatting preserves the existing indent style (2-space, 4-space, tabs) and
 
 - **Local SQLite** — `~/.quark/quark.db`, WAL mode, no network
 - **Collections & requests** — Organise, sort, enable/disable
+- **Scratch requests** — A request outside any collection. Select the Scratch section at the bottom of the sidebar (or run "New request outside any collection" from the command palette) and press `a` to add one. A scratch request sends with the Global environment only. Press `v` on a request to move it into a collection by name, or leave the name blank to take it out of one. `quark run` cannot address scratch requests, because they have no collection path
 - **Import** — cURL and Postman Collection v2.1 from the CLI or TUI
 - **Response preview** — Syntax-highlighted JSON, streaming for large bodies
 - **Themes** — Terminal-aware dark and light palettes, local custom themes, live preview and reload

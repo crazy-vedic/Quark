@@ -609,3 +609,15 @@ func TestRecordBinding_TextSelectionConflictRejected(t *testing.T) {
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "conflict")
 }
+
+func TestResolver_MoveRequestBinding(t *testing.T) {
+	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("v")}
+	r := NewResolver(DefaultKeybindings())
+	got, ok := r.Resolve(0, 1, msg)
+	assert.True(t, ok)
+	assert.Equal(t, ActionMoveRequest, got, "request pane")
+	got, ok = r.Resolve(0, 0, msg)
+	assert.True(t, ok)
+	assert.Equal(t, ActionMoveRequest, got, "sidebar")
+	assert.Empty(t, Validate(DefaultKeybindings()), "the default key must not clash")
+}

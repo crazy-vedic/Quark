@@ -494,27 +494,27 @@ func (m Model) handleSidebarClick(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) selectSidebarCollection(colIndex int) Model {
-	if colIndex < 0 || colIndex >= len(m.collections) {
+	if colIndex < 0 || colIndex > len(m.collections) {
 		return m
 	}
 	m.colCursor = colIndex
 	m.reqCursor = -1
 	m = m.ensureSidebarCollectionVisible()
-	if colID := m.collections[colIndex].ID; m.expanded[colID] {
+	if colID, _ := m.sidebarCollection(colIndex); m.expanded[colID] {
 		m.requests = m.collectionRequests[colID]
 	}
 	return m
 }
 
 func (m Model) toggleSidebarCollectionExpand(colIndex int) (Model, tea.Cmd) {
-	if colIndex < 0 || colIndex >= len(m.collections) {
+	if colIndex < 0 || colIndex > len(m.collections) {
 		return m, nil
 	}
 	m.colCursor = colIndex
 	m.reqCursor = -1
 	m = m.ensureSidebarCollectionVisible()
 
-	colID := m.collections[colIndex].ID
+	colID, _ := m.sidebarCollection(colIndex)
 	if m.expanded[colID] {
 		m.collapseCollectionSubtree(colID)
 		m, _ = m.selectRequest(nil)
@@ -529,10 +529,10 @@ func (m Model) toggleSidebarCollectionExpand(colIndex int) (Model, tea.Cmd) {
 }
 
 func (m Model) selectSidebarRequest(colIndex, reqIndex int) (Model, tea.Cmd) {
-	if colIndex < 0 || colIndex >= len(m.collections) {
+	if colIndex < 0 || colIndex > len(m.collections) {
 		return m, nil
 	}
-	colID := m.collections[colIndex].ID
+	colID, _ := m.sidebarCollection(colIndex)
 	reqs := m.collectionRequests[colID]
 	if reqIndex < 0 || reqIndex >= len(reqs) {
 		return m, nil
