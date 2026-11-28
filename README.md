@@ -388,7 +388,39 @@ quark run "Collection Name/Request Name"
 - Select the desired imported environment for the root collection with
   `quark env active <collection-id> <environment-name>` before running a request;
   descendants inherit that root selection and can also have their own active environment
-- If a request needs cleanup after import, you can edit URL, body, headers, auth, and environments directly in the TUI
+- If a request needs cleanup after import, you can edit URL, body, headers, auth, extraction rules, and environments directly in the TUI
+
+### Extract values from responses
+
+Each request can carry extraction rules that copy a value from a successful
+(2xx) response into the active environment, so a later request can use it.
+Press `X` in the request pane (or open the command palette and choose "Edit
+request extraction rules") to edit the rules. Each row is `variable = source`:
+
+```
+token = $.session.token      # JSONPath into the JSON body
+request_id = header X-Req-Id # response header
+```
+
+The JSONPath subset supports names (`$.data.token`), quoted names
+(`$['content-type']`), array indexes (`$.items[0].id`, negative indexes count
+from the end) and nothing else: no wildcards, filters or recursive descent. A
+value that is an object or array is stored as compact JSON; `null` is stored as
+the text `null`.
+
+Values are written to the request collection's active environment (its
+`default` environment when none is active). Requests outside a collection write
+to the global environment. The TUI status line and `quark run` report each
+variable written, and `quark run` prints only the variable names, never the
+values, because they are often credentials:
+
+```
+quark run "API/login"   # Extracted: token -> default
+quark run "API/me"      # sends the stored token in Authorization
+```
+
+Non-2xx responses extract nothing. A rule that cannot be applied (missing path
+or header, or a body that is not JSON) is reported and does not stop the request.
 
 ### File-backed request values
 

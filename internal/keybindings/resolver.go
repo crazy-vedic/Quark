@@ -37,6 +37,7 @@ type Keybindings struct {
 	RequestDelete string `toml:"request_delete"`
 	ExportCurl    string `toml:"export_curl"`
 	EditAuth      string `toml:"edit_auth"`
+	EditExtract   string `toml:"edit_extract"`
 	ScheduleRun   string `toml:"schedule_run"`
 	EnvOpen       string `toml:"env_open"`
 	ClientCerts   string `toml:"client_certificates"`
@@ -80,6 +81,16 @@ type Keybindings struct {
 	HeaderSave        string `toml:"header_save"`
 	HeaderCancel      string `toml:"header_cancel"`
 	HeaderSwitchField string `toml:"header_switch_field"`
+
+	// Extraction editor
+	ExtractDown        string `toml:"extract_down"`
+	ExtractUp          string `toml:"extract_up"`
+	ExtractAdd         string `toml:"extract_add"`
+	ExtractDelete      string `toml:"extract_delete"`
+	ExtractEdit        string `toml:"extract_edit"`
+	ExtractSave        string `toml:"extract_save"`
+	ExtractCancel      string `toml:"extract_cancel"`
+	ExtractSwitchField string `toml:"extract_switch_field"`
 
 	// Auth editor
 	AuthDown       string `toml:"auth_down"`
@@ -176,6 +187,7 @@ type Resolver struct {
 	env         map[string]string
 	collection  map[string]string
 	auth        map[string]string
+	extract     map[string]string
 	certificate map[string]string
 }
 
@@ -238,6 +250,7 @@ func NewResolver(binds Keybindings) *Resolver {
 		binds.RequestDelete: ActionDeleteRequest,
 		binds.ExportCurl:    ActionExportCurl,
 		binds.EditAuth:      ActionEditAuth,
+		binds.EditExtract:   ActionEditExtract,
 		binds.ScheduleRun:   ActionScheduleRun,
 	}
 	addAlias(request, "alt+enter", ActionSendRequest)
@@ -349,6 +362,23 @@ func NewResolver(binds Keybindings) *Resolver {
 	addAlias(auth, "right", "option_next")
 	addAlias(auth, "enter", "save")
 
+	// Extraction editor
+	extract := map[string]string{
+		binds.ExtractDown:        ActionNavigateDown,
+		binds.ExtractUp:          ActionNavigateUp,
+		binds.ExtractAdd:         "add_rule",
+		binds.ExtractDelete:      "delete_rule",
+		binds.ExtractEdit:        "edit_rule",
+		binds.ExtractSave:        "save",
+		binds.ExtractCancel:      ActionCancel,
+		binds.ExtractSwitchField: "switch_field",
+	}
+	addAlias(extract, "down", ActionNavigateDown)
+	addAlias(extract, "up", ActionNavigateUp)
+	addAlias(extract, "enter", "save")
+	addAlias(extract, "tab", "switch_field")
+	addAlias(extract, "ctrl+s", "save")
+
 	certificate := map[string]string{
 		binds.CertDown: "navigate_down", binds.CertUp: "navigate_up",
 		binds.CertAdd: "add", binds.CertEdit: "edit", binds.CertDelete: "delete",
@@ -372,18 +402,19 @@ func NewResolver(binds Keybindings) *Resolver {
 		env:         env,
 		collection:  collection,
 		auth:        auth,
+		extract:     extract,
 		certificate: certificate,
 	}
 }
 
 // Resolve returns the action name for a given key in a given mode.
-// mode: 0=normal, 1=search, 2=help, 3=import, 4=body, 5=header, 6=env, 7=collection prompt, 8=auth, 9=certificate
+// mode: 0=normal, 1=search, 2=help, 3=import, 4=body, 5=header, 6=env, 7=collection prompt, 8=auth, 9=certificate, 10=extraction rules
 // pane: 0=sidebar, 1=request, 2=response (only used in normal mode)
 func (r *Resolver) Resolve(mode, pane int, msg tea.KeyMsg) (string, bool) {
 	key := msg.String()
 
 	// Validate mode.
-	if mode < 0 || mode > 9 {
+	if mode < 0 || mode > 10 {
 		return "", false
 	}
 
@@ -462,6 +493,10 @@ func (r *Resolver) lookupOverlay(mode int, key string) (string, bool) {
 		if action, ok := r.certificate[key]; ok {
 			return action, true
 		}
+	case 10:
+		if action, ok := r.extract[key]; ok {
+			return action, true
+		}
 	}
 	return "", false
 }
@@ -505,6 +540,7 @@ func Validate(binds Keybindings) map[string][]string {
 			{binds.EditBody, ActionEditBody}, {binds.EditHeaders, ActionEditHeaders},
 			{binds.RequestDelete, ActionDeleteRequest},
 			{binds.EditAuth, ActionEditAuth}, {binds.ScheduleRun, ActionScheduleRun},
+			{binds.EditExtract, ActionEditExtract},
 			{binds.ExportCurl, ActionExportCurl}},
 		{{binds.ResponseDown, "response_down"}, {binds.ResponseUp, "response_up"},
 			{binds.ResponseRetry, "response_retry"},
@@ -539,6 +575,11 @@ func Validate(binds Keybindings) map[string][]string {
 			{binds.AuthEdit, "auth_edit"}, {binds.AuthSave, "auth_save"},
 			{binds.AuthCancel, "auth_cancel"}, {binds.AuthOptionNext, "auth_option_next"},
 			{binds.AuthOptionPrev, "auth_option_prev"}},
+		{{binds.ExtractDown, "extract_down"}, {binds.ExtractUp, "extract_up"},
+			{binds.ExtractAdd, "extract_add"}, {binds.ExtractDelete, "extract_delete"},
+			{binds.ExtractEdit, "extract_edit"}, {binds.ExtractSave, "extract_save"},
+			{binds.ExtractCancel, "extract_cancel"},
+			{binds.ExtractSwitchField, "extract_switch_field"}},
 		{{binds.CertDown, "cert_down"}, {binds.CertUp, "cert_up"},
 			{binds.CertAdd, "cert_add"}, {binds.CertEdit, "cert_edit"},
 			{binds.CertDelete, "cert_delete"}, {binds.CertClose, "cert_close"},

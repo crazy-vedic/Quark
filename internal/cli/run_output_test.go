@@ -2,6 +2,8 @@ package cli
 
 import (
 	"bytes"
+	"errors"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -15,6 +17,18 @@ import (
 	"github.com/crazy-vedic/quark/internal/domain"
 	"github.com/crazy-vedic/quark/internal/exec"
 )
+
+func TestPrintExtractions(t *testing.T) {
+	var out bytes.Buffer
+	printExtractions(&out, []exec.ExtractionOutcome{
+		{Variable: "token", Environment: "dev"},
+		{Variable: "skip", Err: fmt.Errorf("%w: HTTP 404", exec.ErrExtractionSkipped)},
+		{Variable: "bad", Err: errors.New("no value")},
+	})
+	assert.Equal(t, "Extracted: token -> dev\n"+
+		"Extract skipped: skip (extraction skipped: HTTP 404)\n"+
+		"Extract failed: bad: no value\n", out.String())
+}
 
 func TestWriteResponseBodyPrettyPrintsJSONAndPreservesPlainText(t *testing.T) {
 	var out bytes.Buffer

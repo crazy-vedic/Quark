@@ -139,7 +139,9 @@ type PostResponseHook interface {
 ```
 
 Optional extension point via `WithPreRequestHooks` / `WithPostResponseHooks`. Production
-`main.go` does not register hooks today.
+`main.go` registers `NewExtractionHook` (`extract.go`) as the post-response hook. It fills
+`ExecuteResult.Extracted`, which `quark run` prints and the TUI summarizes in the status line.
+JSONPath evaluation lives in `internal/jsonpath` (a documented subset, no filters or wildcards).
 
 ## ExecuteResult (`result.go`)
 

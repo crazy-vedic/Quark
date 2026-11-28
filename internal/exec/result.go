@@ -31,6 +31,9 @@ type ExecuteResult struct {
 	TempPath string // non-empty if body > streaming threshold; call Cleanup() when done
 	Duration time.Duration
 	Size     int64
+	// Extracted holds one outcome per extraction rule, filled by
+	// ExtractionHook. Empty when the request has no rules.
+	Extracted []ExtractionOutcome
 }
 
 // IsStreamed reports whether the response body was written to a temp file.
