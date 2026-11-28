@@ -421,7 +421,8 @@ func TestHelpOverlay_ResetAll_RequiresConfirmation(t *testing.T) {
 
 	assert.Contains(t, m.View(), "Reset all keybindings to defaults?")
 
-	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	m, saveCmd := callUpdateWithCmd(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	m = callUpdate(t, m, saveCmd())
 
 	assert.NotContains(t, m.View(), "Reset all keybindings to defaults?")
 	assert.Contains(t, m.View(), "quit                 q")

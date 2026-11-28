@@ -55,7 +55,10 @@ func TestE2E_TUIConfigWritesAreAtomic(t *testing.T) {
 		for _, key := range "> theme: light" {
 			m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{key}})
 		}
-		m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+		var saveCmd tea.Cmd
+		m, saveCmd = callUpdateWithCmd(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+		// The write runs in a tea.Cmd; the runtime delivers its result to Update.
+		m = callUpdate(t, m, saveCmd())
 	})
 
 	saved, err := config.Load(dir)

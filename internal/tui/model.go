@@ -242,6 +242,9 @@ type Model struct {
 	forceDim      DimMode // DimAuto = choose from size; otherwise force that tier
 	stickyDim     DimMode // last auto-selected tier (DimAuto = unset); hysteresis sticky
 
+	// configSaving is true while a config.toml write runs in a tea.Cmd.
+	configSaving bool
+
 	// --- Help overlay editor state ---
 	helpCursor       int
 	helpEditState    helpEditState
