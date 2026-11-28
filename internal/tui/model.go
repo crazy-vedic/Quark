@@ -90,6 +90,7 @@ const (
 	bodyField
 	headersField
 	authField
+	paramsField // query params; shares the header pair editor state
 )
 
 // responseTabID identifies which tab is active in the response pane.
@@ -389,10 +390,16 @@ type Model struct {
 	resolver *keybindings.Resolver
 }
 
-// headerPair is a single key-value header entry in the header editor.
+// headerPair is a single key-value entry in the pair editor, which edits
+// both headers and query params.
 type headerPair struct {
 	Key   string
 	Value string
+	// Disabled and raw are used by the query param editor only: a disabled
+	// param stays in the list but not in the URL, and raw is its encoded
+	// segment from the URL (see domain.QueryParam.Raw).
+	Disabled bool
+	raw      string
 }
 
 type authRowID int
@@ -1274,6 +1281,7 @@ func (m Model) activePaneRequest() *domain.Request {
 		r.AuthType = base.AuthType
 		r.AuthConfig = base.AuthConfig
 		r.Body = base.Body
+		r.Params = base.Params
 	}
 	return r
 }

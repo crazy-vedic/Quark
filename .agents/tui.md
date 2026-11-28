@@ -11,6 +11,7 @@ The interactive terminal UI is built with bubbletea (Elm architecture: Model / U
 | `view.go` | Rendering (lipgloss styling) |
 | `theme.go` | Model-owned semantic styles and widget styling |
 | `request_editors.go` | URL, method, headers, body editing |
+| `params_editor.go` | Query param editor (reuses the header pair editor; URL is the source of truth for enabled params) |
 | `auth_editor.go` | Auth type/config editing |
 | `env_mode.go` | Environment variable management |
 | `list_viewport.go` | Scrollable list component |

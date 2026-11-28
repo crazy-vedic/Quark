@@ -84,14 +84,20 @@ func (m Model) beginHeaderPairEdit(pair headerPair) (Model, tea.Cmd) {
 
 func (m Model) finishHeaderPairEdit() Model {
 	if m.headerCursor < len(m.headerPairs) {
+		prev := m.headerPairs[m.headerCursor]
 		m.headerPairs[m.headerCursor] = headerPair{
-			Key:   m.headerKeyInput.Value(),
-			Value: m.headerValueInput.Value(),
+			Key:      m.headerKeyInput.Value(),
+			Value:    m.headerValueInput.Value(),
+			Disabled: prev.Disabled,
+			raw:      prev.raw,
 		}
 	}
 	m.headerEditing = false
 	m.headerKeyInput.Blur()
 	m.headerValueInput.Blur()
+	if m.activeField == paramsField {
+		m = m.syncParamsURL()
+	}
 	return m
 }
 
@@ -110,7 +116,10 @@ func (m Model) cancelActiveFieldEdit() Model {
 	case authField:
 		m.activeField = noneField
 		m.authEditor = authEditor{}
-	case headersField:
+	case headersField, paramsField:
+		if m.activeField == paramsField {
+			m.urlInput.SetValue(m.preEditURL)
+		}
 		m.activeField = noneField
 		m.headerPairs = nil
 		m.headerEditing = false

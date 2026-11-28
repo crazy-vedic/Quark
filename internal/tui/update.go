@@ -602,7 +602,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, cmd
 	}
-	if m.activeField == headersField && m.headerEditing {
+	if m.pairEditorActive() && m.headerEditing {
 		var cmd tea.Cmd
 		if m.headerKeyInput.Focused() {
 			m.headerKeyInput, cmd = m.headerKeyInput.Update(msg)
@@ -913,6 +913,8 @@ func (m Model) handleRequestAction(action string) (tea.Model, tea.Cmd) {
 		return m.beginAuthEdit(), nil
 	case keybindings.ActionEditHeaders:
 		return m.beginHeadersEdit(), nil
+	case keybindings.ActionEditParams:
+		return m.beginParamsEdit(), nil
 	}
 	return m, nil
 }
@@ -1088,6 +1090,8 @@ func (m Model) handleRequestKey(_ string, msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleAuthFieldKey(msg)
 	case headersField:
 		return m.handleHeadersFieldKey(msg)
+	case paramsField:
+		return m.handleParamsFieldKey(msg)
 	}
 
 	// Alt+Enter (macOS cmd+enter) sends request.
@@ -1441,6 +1445,7 @@ var commandPaletteItems = []commandPaletteItem{
 	{Title: "Edit request URL", Action: keybindings.ActionEditURL},
 	{Title: "Edit request body", Action: keybindings.ActionEditBody},
 	{Title: "Edit request headers", Action: keybindings.ActionEditHeaders},
+	{Title: "Edit query parameters", Action: keybindings.ActionEditParams},
 	{Title: "Edit request authorization", Action: keybindings.ActionEditAuth},
 	{Title: "Next HTTP method", Action: keybindings.ActionMethodNext},
 	{Title: "Previous HTTP method", Action: keybindings.ActionMethodPrev},
@@ -1547,6 +1552,7 @@ func (m Model) executeSelectedCommand() (tea.Model, tea.Cmd) {
 	case keybindings.ActionEditURL,
 		keybindings.ActionEditBody,
 		keybindings.ActionEditHeaders,
+		keybindings.ActionEditParams,
 		keybindings.ActionMethodNext,
 		keybindings.ActionMethodPrev,
 		keybindings.ActionEditAuth:
@@ -2401,6 +2407,17 @@ func (m Model) handleHeaderFieldEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.ctrlCNoSelection(), nil
 	}
 
+	if msg.Type == tea.KeyTab && m.activeField == paramsField {
+		// Query params have no name/value suggestions: Tab only switches field.
+		if m.headerKeyInput.Focused() {
+			m.headerKeyInput.Blur()
+			m.headerValueInput.Focus()
+		} else {
+			m.headerValueInput.Blur()
+			m.headerKeyInput.Focus()
+		}
+		return m, nil
+	}
 	if msg.Type == tea.KeyTab {
 		if m.headerKeyInput.Focused() {
 			if suggestion := headerNameSuggestion(m.headerKeyInput.Value()); suggestion != "" {

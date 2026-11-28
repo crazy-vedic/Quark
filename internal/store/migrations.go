@@ -202,6 +202,13 @@ ON collections(COALESCE(parent_id, ''), name);
 		version: 9,
 		name:    "canonical_global_environment",
 	},
+	{
+		version: 10,
+		name:    "add_request_params",
+		upSQL: `
+ALTER TABLE requests ADD COLUMN params TEXT NOT NULL DEFAULT '{}';
+`,
+	},
 }
 
 // migrate runs all pending migrations in order.

@@ -197,6 +197,10 @@ summary. Valid JSON is pretty-printed and syntax-highlighted in a terminal.
 Add `--verbose` to print request details and response headers to stderr; this
 can include credentials from the saved request.
 
+### Query parameters
+
+Press `p` in the request pane (or pick "Edit query parameters" in the command palette) to edit the URL's query string as name/value rows. Adding, editing or deleting a row rewrites the URL bar at once, and the URL bar stays the source of truth for enabled params. Press `t` on a row to switch it off: it stays in the list and is saved with the request, but it is left out of the URL, so it is not sent. Press `Enter` to save or `Esc` to discard the changes.
+
 ### Text Selection & Editing
 
 Edit URLs, request headers, bodies, and auth fields with familiar keyboard shortcuts:
