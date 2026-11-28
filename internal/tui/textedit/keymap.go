@@ -43,6 +43,7 @@ type Keymap struct {
 	FindNext, FindPrev Binding
 	ViewerFind         Binding
 	ViewerCopy         Binding
+	ViewerFilter       Binding
 	ViewerClose        Binding
 	HistoryNext        Binding
 	HistoryPrev        Binding
@@ -79,14 +80,15 @@ func DefaultKeymap() Keymap {
 		DeleteToLineStart: Binding{"ctrl+u"},
 		DeleteToLineEnd:   Binding{"ctrl+k"},
 
-		FindOpen:    Binding{"ctrl+f", "cmd+f"},
-		FindNext:    Binding{"enter"},
-		FindPrev:    Binding{"shift+enter", "shift+return", "alt+enter"},
-		ViewerFind:  Binding{"f"},
-		ViewerCopy:  Binding{"c"},
-		ViewerClose: Binding{"esc", "tab", "shift+tab"},
-		HistoryNext: Binding{"shift+down", "shift+pgdown", "shift+pagedown", "alt+pgdown"},
-		HistoryPrev: Binding{"shift+up", "shift+pgup", "shift+pageup", "alt+pgup"},
+		FindOpen:     Binding{"ctrl+f", "cmd+f"},
+		FindNext:     Binding{"enter"},
+		FindPrev:     Binding{"shift+enter", "shift+return", "alt+enter"},
+		ViewerFind:   Binding{"f"},
+		ViewerCopy:   Binding{"c"},
+		ViewerFilter: Binding{"|"},
+		ViewerClose:  Binding{"esc", "tab", "shift+tab"},
+		HistoryNext:  Binding{"shift+down", "shift+pgdown", "shift+pagedown", "alt+pgdown"},
+		HistoryPrev:  Binding{"shift+up", "shift+pgup", "shift+pageup", "alt+pgup"},
 	}
 }
 
@@ -127,6 +129,7 @@ func KeymapFromConfig(cfg keybindings.Keybindings) Keymap {
 	override(&k.FindPrev, cfg.FindPrev, defs.FindPrev)
 	override(&k.ViewerFind, cfg.ViewerFind, defs.ViewerFind)
 	override(&k.ViewerCopy, cfg.ViewerCopy, defs.ViewerCopy)
+	override(&k.ViewerFilter, cfg.ViewerFilter, defs.ViewerFilter)
 	override(&k.ViewerClose, cfg.ViewerClose, defs.ViewerClose)
 	override(&k.HistoryNext, cfg.HistoryNext, defs.HistoryNext)
 	override(&k.HistoryPrev, cfg.HistoryPrev, defs.HistoryPrev)

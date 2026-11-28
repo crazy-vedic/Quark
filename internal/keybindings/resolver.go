@@ -147,14 +147,15 @@ type Keybindings struct {
 	Paste          string `toml:"paste"`
 
 	// Find and viewer keys
-	FindOpen    string `toml:"find_open"`
-	FindNext    string `toml:"find_next"`
-	FindPrev    string `toml:"find_prev"`
-	ViewerFind  string `toml:"viewer_find"`
-	ViewerCopy  string `toml:"viewer_copy"`
-	ViewerClose string `toml:"viewer_close"`
-	HistoryNext string `toml:"history_next"`
-	HistoryPrev string `toml:"history_prev"`
+	FindOpen     string `toml:"find_open"`
+	FindNext     string `toml:"find_next"`
+	FindPrev     string `toml:"find_prev"`
+	ViewerFind   string `toml:"viewer_find"`
+	ViewerCopy   string `toml:"viewer_copy"`
+	ViewerFilter string `toml:"viewer_filter"`
+	ViewerClose  string `toml:"viewer_close"`
+	HistoryNext  string `toml:"history_next"`
+	HistoryPrev  string `toml:"history_prev"`
 }
 
 // Resolver maps Bubble Tea key strings to action names per mode.

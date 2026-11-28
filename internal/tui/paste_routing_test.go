@@ -292,6 +292,12 @@ var routingCases = []routeCase{
 		value:   tui.Model.BodyValue,
 	},
 	{
+		name:    "viewerFilter.input",
+		open:    func(*testing.T) tui.Model { return pasteFixture("").WithViewerFilterEdit("") },
+		deliver: deliver,
+		value:   tui.Model.ViewerFilterValue,
+	},
+	{
 		name:    "searchInput",
 		open:    openSearchByKey,
 		deliver: deliver,

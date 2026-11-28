@@ -159,7 +159,7 @@ JSON formatting preserves the existing indent style (2-space, 4-space, tabs) and
 - **Local SQLite** — `~/.quark/quark.db`, WAL mode, no network
 - **Collections & requests** — Organise, sort, enable/disable
 - **Import** — cURL and Postman Collection v2.1 from the CLI or TUI
-- **Response preview** — Syntax-highlighted JSON, streaming for large bodies
+- **Response preview** — Syntax-highlighted JSON, streaming for large bodies; press `|` in the response viewer to filter a JSON body with a jq expression (e.g. `.items[].id`) and see the result as you type
 - **Themes** — Terminal-aware dark and light palettes, local custom themes, live preview and reload
 - **Fuzzy search** — `/` to search across everything
 - **Auto-backup** — Last 10 backups in `~/.quark/backup/`
@@ -255,7 +255,7 @@ select_line_up = "shift+up"
 | `find_open` | `ctrl+f` | Open find |
 | `find_next` / `find_prev` | `enter` / `shift+enter` | Next/previous find match |
 | `history_next` / `history_prev` | `shift+pgdown` / `shift+pgup` | Next/previous response history entry |
-| `viewer_find` / `viewer_copy` / `viewer_close` | `f` / `c` / `esc` | Response viewer find, copy, close |
+| `viewer_find` / `viewer_copy` / `viewer_filter` / `viewer_close` | `f` / `c` / `\|` / `esc` | Response viewer find, copy, jq filter, close |
 
 ---
 

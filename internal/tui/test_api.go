@@ -714,6 +714,19 @@ func (m Model) AuthPasswordValue() string { return m.authEditor.passwordInput.Va
 // AuthAPIKeyValueValue returns the API key value input's text.
 func (m Model) AuthAPIKeyValueValue() string { return m.authEditor.apiKeyValueInput.Value() }
 
+// WithViewerFilterEdit opens the response viewer with the jq filter input
+// focused and holding text, as the viewer does after the | key.
+func (m Model) WithViewerFilterEdit(text string) Model {
+	m.mode = viewerMode
+	m.viewerFilter.open = true
+	m.viewerFilter.input.SetValue(text)
+	m.viewerFilter.input.Focus()
+	return m
+}
+
+// ViewerFilterValue returns the viewer jq filter input's text.
+func (m Model) ViewerFilterValue() string { return m.viewerFilter.input.Value() }
+
 // WithImportInputEdit opens the import dialog in its input stage with text in
 // the multi-line input, as the replace and import flows do before a preview.
 func (m Model) WithImportInputEdit(text string) Model {

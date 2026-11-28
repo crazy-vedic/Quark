@@ -36,7 +36,7 @@ Enabled via `tea.WithMouseCellMotion()` in `launchTUI`. Mouse is active only in
 The TUI model holds:
 
 - **Navigation:** selected collection, request, sidebar scroll offset
-- **Panes:** sidebar (collections/requests), request editor, response viewer
+- **Panes:** sidebar (collections/requests), request editor, response viewer (find `f`, jq filter `|`; the filter runs in a tea.Cmd and stale results are dropped by sequence number)
 - **Modes:** normal, search, help, import, env, schedule, auth editing
 - **Execution state:** in-flight request, last result, temp file path
 - **UI state:** error messages, tmux warning flag, search query/results

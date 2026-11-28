@@ -365,6 +365,9 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case viewerFilterResultMsg:
+		return m.applyViewerFilterResult(msg), nil
+
 	case viewerClipboardMsg:
 		if msg.err != nil {
 			m.statusErr = "Copy failed: " + msg.err.Error()

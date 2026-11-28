@@ -36,6 +36,7 @@ func (m Model) openViewerForResponse() Model {
 	m.viewerText.SetDebugLog(m.debugLog, "viewer")
 	m.viewerText.SetTiming(m.timing)
 	_, m.viewerCopy = m.viewerResponseContent()
+	m.resetViewerFilter()
 	m.mode = viewerMode
 	m.viewerFindOpen = false
 	m.viewerFind.SetValue("")
@@ -58,6 +59,7 @@ func (m Model) openViewerForRequest() Model {
 	m.viewerText.SetDebugLog(m.debugLog, "viewer")
 	m.viewerText.SetTiming(m.timing)
 	m.viewerCopy = m.viewerRequestContent()
+	m.resetViewerFilter()
 	m.mode = viewerMode
 	m.viewerFindOpen = false
 	m.viewerFind.SetValue("")
@@ -69,6 +71,7 @@ func (m Model) openViewerForRequest() Model {
 
 func (m Model) closeViewer() Model {
 	m.mode = normalMode
+	m.resetViewerFilter()
 	m.viewerFindOpen = false
 	m.viewerFind.Blur()
 	m.viewerFind.SetValue("")
@@ -87,6 +90,9 @@ func (m Model) openViewerFind() (Model, tea.Cmd) {
 }
 
 func (m Model) handleViewerKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.viewerFilter.open {
+		return m.handleViewerFilterKey(msg)
+	}
 	key := msg.String()
 	keys := m.textKeys()
 	if m.viewerFindOpen {
@@ -131,6 +137,8 @@ func (m Model) handleViewerKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch {
 	case keys.ViewerFind.Match(key), keys.FindOpen.Match(key):
 		return m.openViewerFind()
+	case keys.ViewerFilter.Match(key):
+		return m.openViewerFilter()
 	case keys.ViewerCopy.Match(key):
 		return m, copyViewerContentCmd(m.viewerCopy)
 	}
@@ -251,14 +259,25 @@ func copyCurlCommandCmd(content string) tea.Cmd {
 
 func (m Model) viewViewer() string {
 	keys := m.textKeys()
-	help := "[" + keys.ViewerFind[0] + "] find  [" + keys.ViewerCopy[0] + "] copy body  [" +
+	help := "[" + keys.ViewerFind[0] + "] find  [" + keys.ViewerFilter[0] + "] jq filter  [" +
+		keys.ViewerCopy[0] + "] copy body  [" +
 		strings.Join(keys.ViewerClose, "/") + "] close  [shift+click] terminal select"
 	matchStatus := m.viewerMatchStatus()
-	if m.viewerFindOpen {
+	switch {
+	case m.viewerFilter.open:
+		help = "jq: " + m.viewerFilter.input.View() + m.viewerFilterStatus() +
+			"  [enter] keep  [" + strings.Join(keys.ViewerClose, "/") + "] clear"
+	case m.viewerFindOpen:
 		help = "Find: " + m.viewerFind.View() + matchStatus + "  [" + keys.FindNext[0] +
 			"] next  [" + keys.FindPrev[0] + "] previous  [" + strings.Join(keys.ViewerClose, "/") + "] close"
-	} else if matchStatus != "" {
+	default:
 		help += matchStatus
+	}
+	if !m.viewerFilter.open {
+		// The filter status leads the footer so a narrow terminal keeps it.
+		if status := m.viewerFilterStatus(); status != "" {
+			help = strings.TrimPrefix(status, "  ") + "  " + help
+		}
 	}
 	help = truncate(stripANSI(help), max(1, m.width))
 	help = m.styles.mutedStyle.Render(help)
