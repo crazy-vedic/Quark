@@ -5,8 +5,10 @@ package tui_test
 import (
 	"context"
 	"encoding/json"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -149,12 +151,25 @@ func TestE2E_PostmanImportService_InvalidFileShowsFailure(t *testing.T) {
 
 func TestE2E_PostmanImportService_MissingPathShowsFailure(t *testing.T) {
 	st := setupStore(t)
-	missing := filepath.Join(t.TempDir(), "does-not-exist.json")
+	// The modal hard-wraps long paths mid-word, so the test uses a short
+	// relative name in an empty directory. The file cannot exist there, and
+	// the error line fits on one row.
+	t.Chdir(t.TempDir())
+	const missing = "does-not-exist.json"
+	_, statErr := os.Stat(missing)
+	require.ErrorIs(t, statErr, fs.ErrNotExist)
 
 	m := openStoreBackedPostmanImport(t, st)
 	m = submitPostmanImportPath(t, m, missing)
 	assertViewContains(t, m, "Import failed: ")
-	assertViewContains(t, m, "no such file or directory")
+	assertViewContains(t, m, missing)
+	// The OS wording differs by platform. Windows wraps its message, so only
+	// its last words are checked there.
+	if runtime.GOOS == "windows" {
+		assertViewContains(t, m, "find the file specified")
+	} else {
+		assertViewContains(t, m, "no such file or directory")
+	}
 }
 
 func TestE2E_PostmanImportService_ExportDirectorySummarizesCollectionsAndEnvironments(t *testing.T) {
