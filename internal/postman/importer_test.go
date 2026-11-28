@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/crazy-vedic/quark/internal/domain"
 	"github.com/crazy-vedic/quark/internal/postman"
 )
 
@@ -189,4 +190,66 @@ func TestImporter_CollectionVariableRejectsNonScalarValue(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "expected a JSON scalar")
 	assert.NotContains(t, err.Error(), "nested")
+}
+
+func TestImporter_CollectionAndFolderAuthBecomeDefaults(t *testing.T) {
+	collection := `{
+		"info": {"name": "API", "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"},
+		"auth": {"type": "bearer", "bearer": [{"key": "token", "value": "root-token", "type": "string"}]},
+		"item": [
+			{
+				"name": "Admin",
+				"auth": {"type": "basic", "basic": [
+					{"key": "username", "value": "admin", "type": "string"},
+					{"key": "password", "value": "pw", "type": "string"}
+				]},
+				"item": [
+					{"name": "Inherits", "request": {"method": "GET", "url": {"raw": "https://api.example.com/a"}}},
+					{"name": "No auth", "request": {"method": "GET", "url": {"raw": "https://api.example.com/b"}, "auth": {"type": "noauth"}}}
+				]
+			},
+			{
+				"name": "Plain",
+				"item": [
+					{"name": "Oauth", "request": {"method": "GET", "url": {"raw": "https://api.example.com/c"}, "auth": {"type": "oauth2"}}}
+				]
+			}
+		]
+	}`
+	result, err := postman.NewImporter().Parse(strings.NewReader(collection))
+	require.NoError(t, err)
+
+	assert.Equal(t, "bearer", result.AuthType)
+	assert.JSONEq(t, `{"token":"root-token"}`, result.AuthConfig)
+
+	groups := make(map[string]postman.RequestGroup)
+	for _, g := range result.Groups {
+		groups[g.Path] = g
+	}
+	assert.Equal(t, "basic", groups["Admin"].AuthType)
+	assert.JSONEq(t, `{"username":"admin","password":"pw"}`, groups["Admin"].AuthConfig)
+	assert.Empty(t, groups["Plain"].AuthType, "a folder without auth inherits")
+
+	byName := make(map[string]*domain.Request)
+	for _, r := range result.Requests {
+		byName[r.Name] = r
+	}
+	assert.Equal(t, domain.AuthTypeInherit, byName["Inherits"].AuthType,
+		"a request without auth inherits from its folder and collection")
+	assert.Empty(t, byName["No auth"].AuthType, "noauth is an explicit none")
+	assert.Empty(t, byName["Oauth"].AuthType,
+		"an unsupported request auth type maps to headers or nothing, as before")
+}
+
+func TestImporter_UnsupportedCollectionAuthWarns(t *testing.T) {
+	collection := `{
+		"info": {"name": "API", "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"},
+		"auth": {"type": "oauth2", "oauth2": []},
+		"item": []
+	}`
+	result, err := postman.NewImporter().Parse(strings.NewReader(collection))
+	require.NoError(t, err)
+	assert.Empty(t, result.AuthType)
+	assert.Contains(t, strings.Join(result.Warnings, "\n"),
+		`collection auth type "oauth2" is not supported`)
 }

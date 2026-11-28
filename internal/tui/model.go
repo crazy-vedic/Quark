@@ -53,6 +53,7 @@ const (
 	scheduleMode
 	clientCertMode
 	postmanImportMode
+	collectionSettingsMode
 )
 
 // promptType identifies which collection prompt is active.
@@ -212,6 +213,8 @@ type Model struct {
 	reader          store.RequestReader
 	writer          store.RequestWriter
 	colWriter       store.CollectionWriter // for add/rename/delete collections
+	collDefaults    store.CollectionDefaultsWriter
+	collSettings    collectionSettings
 	executionReader store.ExecutionReader
 	executor        RequestExecutor // narrow interface; *exec.Executor satisfies this
 	searcher        RequestSearcher // narrow interface; *search.Searcher satisfies this
@@ -427,21 +430,24 @@ type authEditor struct {
 
 // Deps holds all TUI dependencies.
 type Deps struct {
-	Lister          store.CollectionLister
-	Reader          store.RequestReader
-	Writer          store.RequestWriter
-	ColWriter       store.CollectionWriter // for add/rename/delete collections
-	ExecutionReader store.ExecutionReader
-	EnvReader       EnvironmentHierarchyReader
-	EnvWriter       store.EnvironmentWriter
-	ActiveEnvStore  store.ActiveEnvironmentStore
-	Scheduler       store.ScheduledRunStore
-	Executor        RequestExecutor // accepts *exec.Executor or any fake
-	Searcher        RequestSearcher // accepts *search.Searcher or any fake
-	Importer        CurlImporter    // accepts *curl.Importer or any fake
-	PostmanImporter PostmanImporter
-	Config          config.Config
-	Resolver        *keybindings.Resolver
+	Lister    store.CollectionLister
+	Reader    store.RequestReader
+	Writer    store.RequestWriter
+	ColWriter store.CollectionWriter // for add/rename/delete collections
+	// CollectionDefaults saves a collection's inherited auth and headers from
+	// the collection settings modal.
+	CollectionDefaults store.CollectionDefaultsWriter
+	ExecutionReader    store.ExecutionReader
+	EnvReader          EnvironmentHierarchyReader
+	EnvWriter          store.EnvironmentWriter
+	ActiveEnvStore     store.ActiveEnvironmentStore
+	Scheduler          store.ScheduledRunStore
+	Executor           RequestExecutor // accepts *exec.Executor or any fake
+	Searcher           RequestSearcher // accepts *search.Searcher or any fake
+	Importer           CurlImporter    // accepts *curl.Importer or any fake
+	PostmanImporter    PostmanImporter
+	Config             config.Config
+	Resolver           *keybindings.Resolver
 	// Ctx is the root context for all background operations. If nil,
 	// context.Background() is used. Pass main.go's signal-aware context
 	// so TUI goroutines are cancelled when the process receives SIGINT/SIGTERM.
@@ -544,6 +550,7 @@ func New(deps Deps) Model {
 		reader:                  deps.Reader,
 		writer:                  deps.Writer,
 		colWriter:               deps.ColWriter,
+		collDefaults:            deps.CollectionDefaults,
 		executionReader:         deps.ExecutionReader,
 		executor:                deps.Executor,
 		searcher:                deps.Searcher,
@@ -1164,6 +1171,10 @@ func interpolateScheduledRequest(
 	}
 	_ = activeEnvStore // Resolution reads every hierarchy level directly from envReader.
 	_ = activeEnv
+	req, err := exec.ApplyCollectionDefaults(ctx, envReader, req)
+	if err != nil {
+		return nil, fmt.Errorf("collection defaults: %w", err)
+	}
 	colEnv, globalEnv, err := exec.ResolveEnvVars(ctx, envReader, req.CollectionID)
 	if err != nil {
 		return nil, fmt.Errorf("resolve environments: %w", err)

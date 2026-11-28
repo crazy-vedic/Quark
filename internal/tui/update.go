@@ -464,6 +464,8 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.handleClientCertKey(msg)
 		case postmanImportMode:
 			return m.handlePostmanImportKey(msg)
+		case collectionSettingsMode:
+			return m.handleCollectionSettingsKey(msg)
 		default:
 			return m.handleNormalKey(msg)
 		}
@@ -633,6 +635,8 @@ func (m Model) handleEsc() Model {
 		return m.closeClientCertModal()
 	case postmanImportMode:
 		return m.closePostmanImportModal()
+	case collectionSettingsMode:
+		return m.closeCollectionSettings()
 	}
 	// In normal mode: cancel in-flight request.
 	if m.loading && m.cancel != nil {
@@ -855,6 +859,8 @@ func (m Model) handleSidebarAction(action string) (tea.Model, tea.Cmd) {
 		return m.enterCollectionPrompt(promptRename, colID)
 	case keybindings.ActionImportPostman:
 		return m.openPostmanImportModal(), textinput.Blink
+	case keybindings.ActionSidebarCollectionSettings:
+		return m.openCollectionSettings(), nil
 	}
 	return m, nil
 }

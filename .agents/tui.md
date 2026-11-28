@@ -73,6 +73,7 @@ ConfigDir       string
 | Env | `e` | Esc | Manage environment variables |
 | Schedule | schedule key | Esc | View/manage scheduled runs |
 | Auth editor | auth key | Esc | Configure request auth |
+| Collection settings | `c` (sidebar) | Esc | Edit a collection's default auth and headers; `s` saves |
 
 Exact keys are configurable — see keybindings section.
 

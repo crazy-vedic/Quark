@@ -373,6 +373,7 @@ func launchTUI(
 		Reader:             st,
 		Writer:             st,
 		ColWriter:          st,
+		CollectionDefaults: st,
 		ExecutionReader:    st,
 		Executor:           executor,
 		Searcher:           searcher,

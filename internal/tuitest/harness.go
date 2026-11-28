@@ -162,19 +162,20 @@ func NewModel(t *testing.T, st *store.Store, executor tui.RequestExecutor) tui.M
 	t.Helper()
 	cfg := config.Default("")
 	return tui.New(tui.Deps{
-		Lister:          st,
-		Reader:          st,
-		Writer:          st,
-		ColWriter:       st,
-		ExecutionReader: st,
-		EnvReader:       st,
-		EnvWriter:       st,
-		Executor:        executor,
-		Searcher:        search.New(st),
-		Importer:        curl.NewImporter(),
-		Config:          cfg,
-		Ctx:             context.Background(),
-		Resolver:        keybindings.NewResolver(cfg.Keybindings),
+		Lister:             st,
+		Reader:             st,
+		Writer:             st,
+		ColWriter:          st,
+		CollectionDefaults: st,
+		ExecutionReader:    st,
+		EnvReader:          st,
+		EnvWriter:          st,
+		Executor:           executor,
+		Searcher:           search.New(st),
+		Importer:           curl.NewImporter(),
+		Config:             cfg,
+		Ctx:                context.Background(),
+		Resolver:           keybindings.NewResolver(cfg.Keybindings),
 	})
 }
 

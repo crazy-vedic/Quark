@@ -167,9 +167,17 @@ func newScheduleRunDueCmd(st ScheduleStore, e *exec.Executor, now func() time.Ti
 				}
 				var prepared *domain.Request
 				var colEnv, globalEnv map[string]string
-				colEnv, globalEnv, err = exec.ResolveEnvVars(
-					cmd.Context(), st, req.CollectionID,
-				)
+				if err == nil {
+					req, err = exec.ApplyCollectionDefaults(cmd.Context(), st, req)
+					if err != nil {
+						err = fmt.Errorf("collection defaults: %w", err)
+					}
+				}
+				if err == nil {
+					colEnv, globalEnv, err = exec.ResolveEnvVars(
+						cmd.Context(), st, req.CollectionID,
+					)
+				}
 				if err != nil {
 					err = fmt.Errorf("resolve environments: %w", err)
 				}

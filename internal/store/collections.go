@@ -85,17 +85,29 @@ func saveCollection(ctx context.Context, db environmentSQL, c *domain.Collection
 		c.Name = fmt.Sprintf("%s-%d", base, suffixNum)
 	}
 	parent := sql.NullString{String: c.ParentID, Valid: c.ParentID != ""}
-	_, err := db.ExecContext(ctx,
-		`INSERT INTO collections (id, name, description, meta, parent_id)
-		 VALUES (?, ?, ?, ?, ?)
+	authType, authConfig, headers := collectionDefaults(c)
+	_, err := db.ExecContext(
+		ctx,
+		`INSERT INTO collections (id, name, description, meta, parent_id, auth_type, auth_config, headers)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(id) DO UPDATE SET
 		   name=excluded.name,
 		   description=excluded.description,
 		   meta=excluded.meta,
 		   parent_id=excluded.parent_id,
+		   auth_type=excluded.auth_type,
+		   auth_config=excluded.auth_config,
+		   headers=excluded.headers,
 		   updated_at=CURRENT_TIMESTAMP,
 		   version=version+1`,
-		c.ID, c.Name, c.Description, c.Meta, parent,
+		c.ID,
+		c.Name,
+		c.Description,
+		c.Meta,
+		parent,
+		authType,
+		authConfig,
+		headers,
 	)
 	if err != nil {
 		if isSQLiteUnique(err) {
@@ -107,19 +119,33 @@ func saveCollection(ctx context.Context, db environmentSQL, c *domain.Collection
 	return nil
 }
 
+// collectionDefaults returns the stored form of the collection's inherited
+// auth and headers. Empty values mean "inherit" and no headers.
+func collectionDefaults(c *domain.Collection) (authType, authConfig, headers string) {
+	authType, authConfig, headers = c.AuthType, c.AuthConfig, c.Headers
+	if authType == "" {
+		authType = domain.AuthTypeInherit
+	}
+	if authConfig == "" {
+		authConfig = "{}"
+	}
+	if headers == "" {
+		headers = "{}"
+	}
+	return authType, authConfig, headers
+}
+
 // GetCollection returns the collection with the given ID.
 // Returns nil, ErrNotFound if no collection exists with that ID.
 func (s *Store) GetCollection(ctx context.Context, id string) (*domain.Collection, error) {
 	row := s.db.QueryRowContext(
 		ctx,
-		`SELECT id, name, COALESCE(parent_id, ''), description, meta, created_at, updated_at, version
-		 FROM collections WHERE id = ?`,
+		`SELECT `+collectionColumns+` FROM collections WHERE id = ?`,
 		id,
 	)
 
 	c := &domain.Collection{}
-	err := row.Scan(&c.ID, &c.Name, &c.ParentID, &c.Description, &c.Meta,
-		&c.CreatedAt, &c.UpdatedAt, &c.Version)
+	err := scanCollection(row, c)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, fmt.Errorf("store: get collection %q: %w", id, ErrNotFound)
@@ -127,6 +153,33 @@ func (s *Store) GetCollection(ctx context.Context, id string) (*domain.Collectio
 		return nil, fmt.Errorf("store: get collection %q: %w", id, err)
 	}
 	return c, nil
+}
+
+// SetCollectionDefaults replaces a collection's inherited auth and headers and
+// nothing else. Returns ErrNotFound for an unknown ID.
+func (s *Store) SetCollectionDefaults(
+	ctx context.Context,
+	id string,
+	c *domain.Collection,
+) error {
+	authType, authConfig, headers := collectionDefaults(c)
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE collections SET auth_type = ?, auth_config = ?, headers = ?,
+		   updated_at = CURRENT_TIMESTAMP, version = version + 1
+		 WHERE id = ?`,
+		authType, authConfig, headers, id,
+	)
+	if err != nil {
+		return fmt.Errorf("store: set collection defaults %q: %w", id, err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("store: set collection defaults %q: rows affected: %w", id, err)
+	}
+	if n == 0 {
+		return fmt.Errorf("store: set collection defaults %q: %w", id, ErrNotFound)
+	}
+	return nil
 }
 
 // DeleteCollection deletes a collection and cascades to its requests.
@@ -151,9 +204,7 @@ func (s *Store) DeleteCollection(ctx context.Context, id string) error {
 func (s *Store) ListCollections(ctx context.Context) ([]*domain.Collection, error) {
 	rows, err := s.db.QueryContext(
 		ctx,
-		`SELECT id, name, COALESCE(parent_id, ''), description, meta, created_at, updated_at, version
-		 FROM collections
-		 ORDER BY name ASC`,
+		`SELECT `+collectionColumns+` FROM collections ORDER BY name ASC`,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("store: list collections: %w", err)
@@ -163,8 +214,7 @@ func (s *Store) ListCollections(ctx context.Context) ([]*domain.Collection, erro
 	var result []*domain.Collection
 	for rows.Next() {
 		c := &domain.Collection{}
-		if err := rows.Scan(&c.ID, &c.Name, &c.ParentID, &c.Description, &c.Meta,
-			&c.CreatedAt, &c.UpdatedAt, &c.Version); err != nil {
+		if err := scanCollection(rows, c); err != nil {
 			return nil, fmt.Errorf("store: list collections scan: %w", err)
 		}
 		result = append(result, c)
@@ -198,7 +248,7 @@ func (s *Store) listCollectionsWhere(
 	where string,
 	args ...any,
 ) ([]*domain.Collection, error) {
-	const selectPrefix = `SELECT id, name, COALESCE(parent_id, ''), description, meta, created_at, updated_at, version FROM collections WHERE `
+	const selectPrefix = `SELECT ` + collectionColumns + ` FROM collections WHERE `
 	var query string
 	switch where {
 	case "parent_id IS NULL":
@@ -216,16 +266,7 @@ func (s *Store) listCollectionsWhere(
 	var out []*domain.Collection
 	for rows.Next() {
 		c := &domain.Collection{}
-		if err := rows.Scan(
-			&c.ID,
-			&c.Name,
-			&c.ParentID,
-			&c.Description,
-			&c.Meta,
-			&c.CreatedAt,
-			&c.UpdatedAt,
-			&c.Version,
-		); err != nil {
+		if err := scanCollection(rows, c); err != nil {
 			return nil, err
 		}
 		out = append(out, c)
@@ -383,4 +424,14 @@ func (s *Store) CountDescendants(
 // isSQLiteUnique reports whether err is a SQLite UNIQUE constraint violation.
 func isSQLiteUnique(err error) bool {
 	return err != nil && strings.Contains(err.Error(), "UNIQUE constraint failed")
+}
+
+// collectionColumns lists the columns scanCollection reads, in order.
+const collectionColumns = `id, name, COALESCE(parent_id, ''), description, meta, created_at, updated_at, version,
+		 auth_type, auth_config, headers`
+
+func scanCollection(row rowScanner, c *domain.Collection) error {
+	return row.Scan(&c.ID, &c.Name, &c.ParentID, &c.Description, &c.Meta,
+		&c.CreatedAt, &c.UpdatedAt, &c.Version,
+		&c.AuthType, &c.AuthConfig, &c.Headers)
 }

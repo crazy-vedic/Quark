@@ -32,7 +32,7 @@ var groups = []struct {
 	{"Sidebar", []string{
 		"sidebar_down", "sidebar_up", "sidebar_expand", "sidebar_collapse",
 		"sidebar_add_request", "sidebar_add", "sidebar_delete", "sidebar_rename",
-		ActionImportPostman,
+		ActionImportPostman, ActionSidebarCollectionSettings,
 	}},
 	{"Env Editor", []string{
 		"env_save", "env_cancel", "env_create",

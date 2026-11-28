@@ -20,15 +20,16 @@ func DefaultKeybindings() Keybindings {
 		ImportCurl:    "i",
 
 		// Sidebar
-		SidebarDown:          "j",
-		SidebarUp:            "k",
-		SidebarExpand:        "l",
-		SidebarCollapse:      "h",
-		SidebarAdd:           "A",
-		SidebarDelete:        "D",
-		SidebarRename:        "r",
-		SidebarAddRequest:    "a",
-		SidebarImportPostman: "I",
+		SidebarDown:               "j",
+		SidebarUp:                 "k",
+		SidebarExpand:             "l",
+		SidebarCollapse:           "h",
+		SidebarAdd:                "A",
+		SidebarDelete:             "D",
+		SidebarRename:             "r",
+		SidebarAddRequest:         "a",
+		SidebarImportPostman:      "I",
+		SidebarCollectionSettings: "c",
 
 		// Request pane
 		EditURL:       "u",

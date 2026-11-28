@@ -26,6 +26,8 @@ type Keybindings struct {
 	SidebarRename        string `toml:"sidebar_rename"`
 	SidebarAddRequest    string `toml:"sidebar_add_request"`
 	SidebarImportPostman string `toml:"sidebar_import_postman"`
+	// SidebarCollectionSettings opens the collection's auth and default headers.
+	SidebarCollectionSettings string `toml:"sidebar_collection_settings"`
 
 	// Request pane
 	EditURL       string `toml:"edit_url"`
@@ -209,16 +211,17 @@ func NewResolver(binds Keybindings) *Resolver {
 
 	// Sidebar
 	sidebar := map[string]string{
-		binds.SidebarDown:          "cursor_down",
-		binds.SidebarUp:            "cursor_up",
-		binds.SidebarExpand:        "expand",
-		binds.SidebarCollapse:      "collapse",
-		binds.SidebarAdd:           "add",
-		binds.SidebarDelete:        "delete",
-		binds.SidebarRename:        "rename",
-		binds.SidebarAddRequest:    "add_request",
-		binds.SidebarImportPostman: ActionImportPostman,
-		binds.RequestDelete:        ActionDeleteRequest,
+		binds.SidebarDown:               "cursor_down",
+		binds.SidebarUp:                 "cursor_up",
+		binds.SidebarExpand:             "expand",
+		binds.SidebarCollapse:           "collapse",
+		binds.SidebarAdd:                "add",
+		binds.SidebarDelete:             "delete",
+		binds.SidebarRename:             "rename",
+		binds.SidebarAddRequest:         "add_request",
+		binds.SidebarImportPostman:      ActionImportPostman,
+		binds.SidebarCollectionSettings: ActionSidebarCollectionSettings,
+		binds.RequestDelete:             ActionDeleteRequest,
 	}
 	// Arrow-key aliases mirror the hardcoded fallbacks in handleSidebarKey.
 	addAlias(sidebar, "down", "cursor_down")
@@ -499,6 +502,7 @@ func Validate(binds Keybindings) map[string][]string {
 			},
 			{binds.SidebarAddRequest, "sidebar_add_request"},
 			{binds.SidebarImportPostman, ActionImportPostman},
+			{binds.SidebarCollectionSettings, ActionSidebarCollectionSettings},
 		},
 		{{binds.EditURL, ActionEditURL}, {binds.MethodNext, ActionMethodNext},
 			{binds.MethodPrev, ActionMethodPrev}, {binds.SendRequest, ActionSendRequest},

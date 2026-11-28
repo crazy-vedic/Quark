@@ -124,6 +124,7 @@ Applied after variable interpolation, before dispatch:
 | Bearer | `Authorization: Bearer <token>` |
 | Basic | `Authorization: Basic <base64(user:pass)>` |
 | APIKey | Header or query param per `AuthConfig.In` |
+| Inherit | Replaced before sending by `exec.ApplyCollectionDefaults`, which runs before interpolation at every call site (TUI send, scheduled runs, CLI `run`, `request export-curl`, `schedule`). It takes the nearest collection auth (empty or inherit defers to the parent; none stops). An explicit `Authorization` request header wins over inherited auth. Sending an unreplaced Inherit is an error |
 
 Auth config stored as JSON in `Request.AuthConfig`.
 

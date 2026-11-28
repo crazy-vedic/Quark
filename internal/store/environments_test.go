@@ -241,7 +241,12 @@ func TestStore_MigrationV9NormalizesEmptyLegacyGlobalData(t *testing.T) {
 	assert.Equal(t, "global", global.ID)
 	var version int
 	require.NoError(t, s.DB().QueryRow(`SELECT MAX(version) FROM schema_versions`).Scan(&version))
-	assert.Equal(t, 9, version)
+	assert.Equal(
+		t,
+		10,
+		version,
+		"the store migrates to the latest schema, v10 adds collection defaults",
+	)
 }
 
 func TestStore_MigrationV9InvalidLegacyDataRollsBack(t *testing.T) {

@@ -47,6 +47,10 @@ func NewRunCmd(st RunStore, e *exec.Executor) *cobra.Command {
 					if err != nil {
 						return fmt.Errorf("run: %w", err)
 					}
+					found, err = exec.ApplyCollectionDefaults(ctx, st, found)
+					if err != nil {
+						return fmt.Errorf("run: collection defaults: %w", err)
+					}
 					colEnv, globalEnv, err := exec.ResolveEnvVars(
 						ctx,
 						st,
@@ -117,6 +121,10 @@ func NewRunCmd(st RunStore, e *exec.Executor) *cobra.Command {
 				return fmt.Errorf("run: %w", err)
 			}
 
+			found, err = exec.ApplyCollectionDefaults(ctx, st, found)
+			if err != nil {
+				return fmt.Errorf("run: collection defaults: %w", err)
+			}
 			colEnv, globalEnv, err := exec.ResolveEnvVars(
 				ctx, st, collectionID)
 			if err != nil {

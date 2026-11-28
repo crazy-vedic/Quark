@@ -41,6 +41,10 @@ func newRequestExportCurlCmd(r SearchStore) *cobra.Command {
 			if !ok {
 				return fmt.Errorf("request export-curl: store cannot resolve environments")
 			}
+			req, err = exec.ApplyCollectionDefaults(cmd.Context(), envs, req)
+			if err != nil {
+				return fmt.Errorf("request export-curl: collection defaults: %w", err)
+			}
 			colEnv, globalEnv, err := exec.ResolveEnvVars(cmd.Context(), envs, req.CollectionID)
 			if err != nil {
 				return fmt.Errorf("request export-curl: resolve environments: %w", err)
