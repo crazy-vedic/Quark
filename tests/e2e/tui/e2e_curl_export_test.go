@@ -122,6 +122,17 @@ func TestE2E_CurlExportAuthAndURLVariants(t *testing.T) {
 				"'https://api.example.test/items?api_key=a+b%26c&keep=two+words&tag=one&tag=two'",
 			},
 		},
+		{
+			name:     "digest auth exports as curl --digest",
+			method:   "GET",
+			url:      "https://api.example.test/digest",
+			authType: domain.AuthTypeDigest,
+			authJSON: `{"username":"alice","password":"s3cret"}`,
+			wantParts: []string{
+				"--digest -u 'alice:s3cret'",
+				"'https://api.example.test/digest'",
+			},
+		},
 	}
 
 	for i, tc := range cases {
