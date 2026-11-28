@@ -165,9 +165,12 @@ func TestE2E_ViewerFilter_EmptyExpressionRestoresBody(t *testing.T) {
 }
 
 // A result larger than the output cap is refused with the size in the footer.
+// One 9 MB string is used rather than millions of small values: it exceeds the
+// 8 MiB cap in one step, while many small values can take longer than the
+// 5 s filter limit on a slow runner and be reported as a timeout instead.
 func TestE2E_ViewerFilter_OversizedResultIsRefused(t *testing.T) {
 	m := openJSONViewerE2E(t, viewerFilterBody)
-	m = typeViewerFilter(t, m, "range(3000000)")
+	m = typeViewerFilter(t, m, `"x" * 9000000`)
 	assertViewContains(t, m, "error: result exceeds 8 MiB")
 }
 
