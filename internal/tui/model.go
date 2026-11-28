@@ -1099,6 +1099,9 @@ func executeDueScheduledRunsCmd(
 		for _, run := range runs {
 			name := scheduledRunName(ctx, reader, run)
 			req, err := reader.GetRequest(ctx, run.RequestID)
+			if err == nil {
+				err = req.CheckEnabled()
+			}
 			if err != nil {
 				if saveErr := markScheduledRunFailed(ctx, scheduler, run, err); saveErr != nil {
 					err = errors.Join(err, saveErr)
@@ -1274,6 +1277,7 @@ func (m Model) activePaneRequest() *domain.Request {
 		r.AuthType = base.AuthType
 		r.AuthConfig = base.AuthConfig
 		r.Body = base.Body
+		r.Disabled = base.Disabled
 	}
 	return r
 }

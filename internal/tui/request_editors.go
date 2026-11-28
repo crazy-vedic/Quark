@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/textinput"
@@ -175,4 +176,38 @@ func (m Model) finishAuthEdit() Model {
 	m.activeField = noneField
 	m.authEditor = authEditor{}
 	return m.status("success", "Auth updated")
+}
+
+// toggleRequestEnabled flips whether the selected request is disabled and
+// persists the change. The request is picked the same way delete picks it: the
+// sidebar selection when the sidebar has focus, otherwise the active request.
+// A disabled request stays in its collection but is dimmed and refused by
+// `quark run` and scheduled runs.
+func (m Model) toggleRequestEnabled() (Model, tea.Cmd) {
+	var req *domain.Request
+	if m.focus == sidebarPane && m.reqCursor >= 0 {
+		colID := m.activeCollectionID()
+		if requests := m.collectionRequests[colID]; m.reqCursor < len(requests) {
+			req = requests[m.reqCursor]
+		}
+	} else {
+		req = m.activeRequest
+	}
+	if req == nil || req.ID == "" {
+		return m.status("error", "Select a saved request first"), nil
+	}
+	if m.writer == nil {
+		return m.status("error", "Cannot save: no store is open"), nil
+	}
+	req.Disabled = !req.Disabled
+	state := "enabled"
+	if req.Disabled {
+		state = "disabled"
+	}
+	if m.activeRequest != nil && m.activeRequest.ID == req.ID {
+		m.activeRequest.Disabled = req.Disabled
+	}
+	snapshot := *req
+	return m.status("success", fmt.Sprintf("Request %q %s", req.Name, state)),
+		saveRequestCmd(m.ctx, m.writer, m.reader, &snapshot)
 }

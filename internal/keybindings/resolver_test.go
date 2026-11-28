@@ -609,3 +609,28 @@ func TestRecordBinding_TextSelectionConflictRejected(t *testing.T) {
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "conflict")
 }
+
+func TestResolver_ToggleRequestBinding(t *testing.T) {
+	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("t")}
+
+	r := NewResolver(DefaultKeybindings())
+	got, ok := r.Resolve(0, 1, msg)
+	assert.True(t, ok)
+	assert.Equal(t, ActionToggleRequest, got, "request pane")
+	got, ok = r.Resolve(0, 0, msg)
+	assert.True(t, ok)
+	assert.Equal(t, ActionToggleRequest, got, "sidebar")
+	_, ok = r.Resolve(0, 2, msg)
+	assert.False(t, ok, "response pane does not toggle requests")
+
+	binds := DefaultKeybindings()
+	binds.ToggleRequest = "T"
+	r = NewResolver(binds)
+	_, ok = r.Resolve(0, 1, msg)
+	assert.False(t, ok, "the old key is released after rebinding")
+	got, ok = r.Resolve(0, 1, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("T")})
+	assert.True(t, ok)
+	assert.Equal(t, ActionToggleRequest, got)
+
+	assert.Empty(t, Validate(DefaultKeybindings()), "the default key must not clash")
+}

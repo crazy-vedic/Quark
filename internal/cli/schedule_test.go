@@ -469,3 +469,51 @@ func TestRunDue_SkipsRunClaimedByAnotherProcess(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, domain.ScheduledRunRunning, got.Status, "the other process still owns the run")
 }
+
+// Disabled requests are refused when scheduled and when a due run fires.
+func TestNewScheduleCmd_RefusesDisabledRequest(t *testing.T) {
+	now := time.Date(2026, 6, 25, 15, 0, 0, 0, time.UTC)
+	st := newFakeScheduleStore()
+	st.requests["col-1"][0].Disabled = true
+
+	cmd := NewScheduleCmd(st, nil, func() time.Time { return now })
+	cmd.SetOut(new(bytes.Buffer))
+	cmd.SetArgs([]string{"add", "Payments/List", "--at", "10m"})
+	cmd.SetContext(context.Background())
+
+	err := cmd.Execute()
+	require.ErrorIs(t, err, domain.ErrRequestDisabled)
+	assert.Empty(t, st.runs, "nothing is scheduled for a disabled request")
+}
+
+func TestNewScheduleCmd_RunDueFailsDisabledRequestWithoutSending(t *testing.T) {
+	now := time.Date(2026, 6, 25, 15, 0, 0, 0, time.UTC)
+	st := newFakeScheduleStore()
+	st.requests["col-1"][0].Disabled = true
+	st.runs["run-1"] = &domain.ScheduledRun{
+		ID:        "run-1",
+		RequestID: "req-1",
+		RunAt:     now.Add(-time.Minute),
+		Status:    domain.ScheduledRunPending,
+	}
+	transport := &recordingRoundTripper{
+		response: &http.Response{
+			StatusCode: 200,
+			Status:     "200 OK",
+			Header:     http.Header{},
+			Body:       io.NopCloser(bytes.NewBufferString("ok")),
+		},
+	}
+
+	cmd := NewScheduleCmd(st, exec.New(transport), func() time.Time { return now })
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetArgs([]string{"run-due"})
+	cmd.SetContext(context.Background())
+
+	err := cmd.Execute()
+	require.Error(t, err, "run-due reports a failed run")
+	assert.Empty(t, transport.lastURL, "a disabled request must not be sent")
+	assert.Equal(t, domain.ScheduledRunFailed, st.runs["run-1"].Status)
+	assert.Contains(t, out.String(), "failed run-1")
+}

@@ -436,3 +436,40 @@ func TestRunCommand_FailFlagExitsNonZeroOnHTTPError(t *testing.T) {
 		"the error must come from the HTTP status, not flag parsing",
 	)
 }
+
+// A disabled request stays in its collection, but `quark run` must refuse it
+// before any environment is resolved or any byte is sent.
+func TestNewRunCmd_RefusesDisabledRequest(t *testing.T) {
+	const collectionID = "col-1"
+	st := &fakeRunStore{
+		collections: []*domain.Collection{{ID: collectionID, Name: "API"}},
+		requests: map[string][]*domain.Request{collectionID: {{
+			ID:           "req-1",
+			CollectionID: collectionID,
+			Name:         "create-item",
+			Method:       "GET",
+			URL:          "https://example.test/items",
+			Disabled:     true,
+		}}},
+		globalEnv: &domain.Environment{ID: "global", Name: "Global"},
+	}
+	transport := &recordingRoundTripper{
+		response: &http.Response{
+			StatusCode: 200,
+			Status:     "200 OK",
+			Header:     http.Header{},
+			Body:       io.NopCloser(bytes.NewBufferString("ok")),
+		},
+	}
+
+	cmd := NewRunCmd(st, exec.New(transport))
+	cmd.SetOut(new(bytes.Buffer))
+	cmd.SetErr(new(bytes.Buffer))
+	cmd.SetArgs([]string{"API/create-item"})
+	cmd.SetContext(context.Background())
+
+	err := cmd.Execute()
+	require.ErrorIs(t, err, domain.ErrRequestDisabled)
+	assert.Contains(t, err.Error(), "create-item")
+	assert.Empty(t, transport.lastURL, "a disabled request must not be sent")
+}

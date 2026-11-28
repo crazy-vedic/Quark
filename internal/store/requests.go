@@ -16,13 +16,13 @@ import (
 func (s *Store) GetRequest(ctx context.Context, id string) (*domain.Request, error) {
 	row := s.db.QueryRowContext(ctx,
 		`SELECT id, collection_id, name, method, url, headers, auth_type, auth_config, body,
-		        sort_order, enabled, created_at, updated_at
+		        sort_order, COALESCE(enabled, 1) = 0, created_at, updated_at
 		 FROM requests WHERE id = ?`, id)
 
 	r := &domain.Request{}
 	var body sql.NullString
 	err := row.Scan(&r.ID, &r.CollectionID, &r.Name, &r.Method, &r.URL,
-		&r.Headers, &r.AuthType, &r.AuthConfig, &body, &r.SortOrder, &r.Enabled,
+		&r.Headers, &r.AuthType, &r.AuthConfig, &body, &r.SortOrder, &r.Disabled,
 		&r.CreatedAt, &r.UpdatedAt)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -52,7 +52,7 @@ func (s *Store) ListRequests(ctx context.Context, collectionID string) ([]*domai
 
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT id, collection_id, name, method, url, headers, auth_type, auth_config, body,
-		        sort_order, enabled, created_at, updated_at
+		        sort_order, COALESCE(enabled, 1) = 0, created_at, updated_at
 		 FROM requests
 		 WHERE collection_id = ?
 		 ORDER BY sort_order ASC, created_at ASC, id ASC`, collectionID)
@@ -66,7 +66,7 @@ func (s *Store) ListRequests(ctx context.Context, collectionID string) ([]*domai
 		r := &domain.Request{}
 		var body sql.NullString
 		if err := rows.Scan(&r.ID, &r.CollectionID, &r.Name, &r.Method, &r.URL,
-			&r.Headers, &r.AuthType, &r.AuthConfig, &body, &r.SortOrder, &r.Enabled,
+			&r.Headers, &r.AuthType, &r.AuthConfig, &body, &r.SortOrder, &r.Disabled,
 			&r.CreatedAt, &r.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("store: list requests scan: %w", err)
 		}
@@ -142,7 +142,7 @@ func (s *Store) SaveRequest(ctx context.Context, req *domain.Request) error {
 		authConfig,
 		req.Body,
 		req.SortOrder,
-		req.Enabled,
+		!req.Disabled,
 	)
 	if err != nil {
 		if isSQLiteUnique(err) {

@@ -793,7 +793,7 @@ func (m Model) dispatchNormalAction(action string) (tea.Model, tea.Cmd) {
 // handleSidebarAction is the action-based version of handleSidebarKey.
 func (m Model) handleSidebarAction(action string) (tea.Model, tea.Cmd) {
 	switch action {
-	case keybindings.ActionDeleteRequest:
+	case keybindings.ActionDeleteRequest, keybindings.ActionToggleRequest:
 		return m.handleRequestAction(action)
 	case "cursor_down":
 		return m.sidebarDown()
@@ -878,6 +878,8 @@ func (m Model) handleRequestAction(action string) (tea.Model, tea.Cmd) {
 		m, cmd := m.enterCollectionPrompt(promptDeleteTiny, req.ID)
 		m.promptTargetCollectionID = req.CollectionID
 		return m, cmd
+	case keybindings.ActionToggleRequest:
+		return m.toggleRequestEnabled()
 	case keybindings.ActionEditURL:
 		return m.beginURLEdit()
 	case keybindings.ActionMethodNext:
@@ -1335,6 +1337,9 @@ func (m Model) openSchedulePrompt() (Model, tea.Cmd) {
 	if m.activePaneRequest() == nil || strings.TrimSpace(m.activePaneRequest().ID) == "" {
 		return m.status("error", "Select a saved request first"), nil
 	}
+	if err := m.activePaneRequest().CheckEnabled(); err != nil {
+		return m.status("error", err.Error()), nil
+	}
 	m.mode = scheduleMode
 	m.scheduleInput.SetValue("")
 	m.scheduleInput.Focus()
@@ -1446,6 +1451,7 @@ var commandPaletteItems = []commandPaletteItem{
 	{Title: "Previous HTTP method", Action: keybindings.ActionMethodPrev},
 	{Title: "Delete selected request", Action: keybindings.ActionDeleteRequest},
 	{Title: "Schedule request", Action: keybindings.ActionScheduleRun},
+	{Title: "Enable or disable request", Action: keybindings.ActionToggleRequest},
 	{Title: "Copy request as curl", Action: keybindings.ActionExportCurl},
 	{Title: "Open environment editor", Action: keybindings.ActionEnvOpen},
 	{Title: "Next environment", Action: keybindings.ActionEnvNext},
@@ -1529,7 +1535,7 @@ func (m Model) executeSelectedCommand() (tea.Model, tea.Cmd) {
 	case keybindings.ActionSendRequest:
 		m.focus = requestPane
 		return m.handleRequestAction(action)
-	case keybindings.ActionScheduleRun:
+	case keybindings.ActionScheduleRun, keybindings.ActionToggleRequest:
 		m.focus = requestPane
 		return m.handleRequestAction(action)
 	case keybindings.ActionExportCurl:

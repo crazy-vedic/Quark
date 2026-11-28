@@ -42,6 +42,9 @@ func NewRunCmd(st RunStore, e *exec.Executor) *cobra.Command {
 				if err != nil {
 					return fmt.Errorf("run: resolve request: %w", err)
 				}
+				if err := found.CheckEnabled(); err != nil {
+					return fmt.Errorf("run: %w", err)
+				}
 				{
 					positionals, overrides, err := parseRunOverrides(args[1:], namedVars)
 					if err != nil {
@@ -110,6 +113,9 @@ func NewRunCmd(st RunStore, e *exec.Executor) *cobra.Command {
 			if found == nil {
 				return fmt.Errorf("run: request %q not found in collection %q",
 					requestName, collectionName)
+			}
+			if err := found.CheckEnabled(); err != nil {
+				return fmt.Errorf("run: %w", err)
 			}
 
 			positionals, overrides, err := parseRunOverrides(args[1:], namedVars)
