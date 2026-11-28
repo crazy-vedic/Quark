@@ -24,6 +24,7 @@ Constructed via `exec.New(transport, opts...)`:
 | `WithMaxResponseSize(n)` | Threshold for streaming to temp file |
 | `WithVariableResolver(fn)` | Env var lookup for `{{VAR}}` substitution |
 | `WithExecutionWriter(w)` | Persist execution history |
+| `WithHistoryBodyLimit(n)` | Bytes of each body stored in history (default 1 MiB) |
 | `WithPreRequestHooks(hooks)` | Pre-request chain |
 | `WithPostResponseHooks(hooks)` | Post-response chain |
 | `WithLogger(l)` | slog logger |
@@ -61,7 +62,9 @@ Errors returned only for:
 
 `recordExecution` uses `context.WithoutCancel(ctx)` so history is written even when the request context is cancelled. Stores full request snapshot + response metadata.
 
-For saved requests (`req.ID != ""`), history is written **synchronously inside `Execute()` before it returns** — including streamed large bodies (temp file is re-read into `response_body`). Mid-download crashes produce no history row. Unsaved TUI sends (`req.ID == ""`) skip history. Temp files are display offload only, not a crash-recovery journal.
+For saved requests (`req.ID != ""`), history is written **synchronously inside `Execute()` before it returns** — including streamed large bodies (the temp file is re-read into `response_body`, up to the limit below).
+
+History stores at most `DefaultHistoryBodyLimit` (1 MiB) of each body; `WithHistoryBodyLimit(n)` changes it (`n <= 0` stores whole bodies). A longer body is cut at a UTF-8 boundary, `response_body_truncated` is set, and `response_size` keeps the full size. Mid-download crashes produce no history row. Unsaved TUI sends (`req.ID == ""`) skip history. Temp files are display offload only, not a crash-recovery journal.
 
 ## URL Validation
 

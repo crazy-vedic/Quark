@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 
@@ -37,7 +39,7 @@ func (e *Executor) recordExecution(
 		return
 	}
 
-	ex, err := buildExecution(req, result, execErr, startedAt, completedAt)
+	ex, err := buildExecution(req, result, execErr, startedAt, completedAt, e.historyBodyLimit)
 	if err != nil {
 		e.logger.Warn("exec: build execution history entry failed", "err", err)
 		return
@@ -54,6 +56,7 @@ func buildExecution(
 	result *ExecuteResult,
 	execErr error,
 	startedAt, completedAt time.Time,
+	bodyLimit int,
 ) (*domain.Execution, error) {
 	snapshotBytes, err := json.Marshal(requestSnapshot{
 		Method:     req.Method,
@@ -84,11 +87,16 @@ func buildExecution(
 		ex.StatusCode = result.StatusCode
 		ex.ResponseHeaders = string(headersBytes)
 		ex.ResponseTimeMs = result.Duration.Milliseconds()
-		body, err := executionBody(result)
+		body, truncated, err := executionBody(result, bodyLimit)
 		if err != nil {
 			return nil, err
 		}
 		ex.ResponseBody = body
+		ex.ResponseBodyTruncated = truncated
+		ex.ResponseSize = result.Size
+		if ex.ResponseSize < int64(len(body)) {
+			ex.ResponseSize = int64(len(body))
+		}
 	} else {
 		ex.ResponseTimeMs = completedAt.Sub(startedAt).Milliseconds()
 	}
@@ -100,19 +108,50 @@ func buildExecution(
 	return ex, nil
 }
 
-func executionBody(result *ExecuteResult) (string, error) {
+// executionBody returns at most limit bytes of the response body and whether
+// the body was cut. A streamed body is read from its temp file only up to the
+// limit. A limit of zero or less stores the whole body.
+func executionBody(result *ExecuteResult, limit int) (string, bool, error) {
 	if result == nil {
-		return "", nil
+		return "", false, nil
 	}
 	if result.Body != nil {
-		return string(result.Body), nil
+		if limit > 0 && len(result.Body) > limit {
+			return string(cutAtRuneBoundary(result.Body[:limit])), true, nil
+		}
+		return string(result.Body), false, nil
 	}
 	if result.TempPath == "" {
-		return "", nil
+		return "", false, nil
 	}
-	body, err := os.ReadFile(result.TempPath)
+	f, err := os.Open(result.TempPath)
 	if err != nil {
-		return "", fmt.Errorf("read streamed response body: %w", err)
+		return "", false, fmt.Errorf("read streamed response body: %w", err)
 	}
-	return string(body), nil
+	defer f.Close()
+	var r io.Reader = f
+	if limit > 0 {
+		// Read one extra byte to learn whether the file is longer than limit.
+		r = io.LimitReader(f, int64(limit)+1)
+	}
+	body, err := io.ReadAll(r)
+	if err != nil {
+		return "", false, fmt.Errorf("read streamed response body: %w", err)
+	}
+	if limit > 0 && len(body) > limit {
+		return string(cutAtRuneBoundary(body[:limit])), true, nil
+	}
+	return string(body), false, nil
+}
+
+// cutAtRuneBoundary drops a trailing partial UTF-8 sequence that a byte cut
+// left behind, so a truncated text body stays valid text.
+func cutAtRuneBoundary(b []byte) []byte {
+	for i := 0; i < utf8.UTFMax && i < len(b); i++ {
+		r, size := utf8.DecodeLastRune(b[:len(b)-i])
+		if r != utf8.RuneError || size > 1 {
+			return b[:len(b)-i]
+		}
+	}
+	return b
 }

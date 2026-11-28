@@ -399,7 +399,7 @@ func TestStore_SaveExecution_And_ListExecutionsByRequest(t *testing.T) {
 	require.NoError(t, s.SaveExecution(ctx, exOlder))
 	require.NoError(t, s.SaveExecution(ctx, exNewer))
 
-	got, err := s.ListExecutionsByRequest(ctx, "req-1")
+	got, err := s.ListExecutionsByRequest(ctx, "req-1", 0)
 	require.NoError(t, err)
 	require.Len(t, got, 2)
 	assert.Equal(t, exNewer.ID, got[0].ID)
@@ -409,7 +409,7 @@ func TestStore_SaveExecution_And_ListExecutionsByRequest(t *testing.T) {
 
 func TestStore_ListExecutionsByRequest_EmptyReturnsNil(t *testing.T) {
 	s := newTestStore(t)
-	got, err := s.ListExecutionsByRequest(context.Background(), "missing")
+	got, err := s.ListExecutionsByRequest(context.Background(), "missing", 0)
 	require.NoError(t, err)
 	assert.Nil(t, got)
 }

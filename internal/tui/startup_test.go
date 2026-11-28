@@ -19,8 +19,23 @@ type startupRequestReader struct {
 func (r startupRequestReader) ListExecutionsByRequest(
 	_ context.Context,
 	requestID string,
+	_ int,
 ) ([]*domain.Execution, error) {
 	return r.history[requestID], nil
+}
+
+func (r startupRequestReader) GetExecution(
+	_ context.Context,
+	id string,
+) (*domain.Execution, error) {
+	for _, executions := range r.history {
+		for _, ex := range executions {
+			if ex.ID == id {
+				return ex, nil
+			}
+		}
+	}
+	return nil, errors.New("execution not found")
 }
 
 func (r startupRequestReader) GetRequest(_ context.Context, id string) (*domain.Request, error) {

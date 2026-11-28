@@ -267,7 +267,7 @@ func (m Model) handleResponseClick(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 
 	if idx, ok := m.responseHistoryHitAt(msg.X, msg.Y, layout); ok {
 		m.execCursor = idx
-		return m, nil
+		return m, m.loadSelectedExecutionBodyCmd()
 	}
 	return m, nil
 }

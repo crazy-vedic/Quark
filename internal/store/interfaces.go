@@ -106,10 +106,18 @@ type ActiveEnvironmentStore interface {
 
 // ExecutionReader is the read interface for persisted request history.
 type ExecutionReader interface {
-	// ListExecutionsByRequest returns executions for a request ordered by
-	// completed_at DESC, started_at DESC, id DESC.
+	// ListExecutionsByRequest returns at most limit executions for a request
+	// ordered by completed_at DESC, started_at DESC, id DESC. A limit of zero
+	// or less means no limit. Bodies are not loaded (BodyOmitted is set).
 	// Returns nil, nil when no executions exist for the request.
-	ListExecutionsByRequest(ctx context.Context, requestID string) ([]*domain.Execution, error)
+	ListExecutionsByRequest(
+		ctx context.Context,
+		requestID string,
+		limit int,
+	) ([]*domain.Execution, error)
+	// GetExecution returns one execution with its stored response body.
+	// Returns ErrNotFound when no execution has the ID.
+	GetExecution(ctx context.Context, id string) (*domain.Execution, error)
 }
 
 // ExecutionWriter is the mutation interface for persisted request history.

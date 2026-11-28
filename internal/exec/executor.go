@@ -26,6 +26,7 @@ type Executor struct {
 	client            *http.Client // constructed once in New(); transport is shared
 	timeout           time.Duration
 	maxResponseSize   int
+	historyBodyLimit  int
 	logger            *slog.Logger
 	preRequestHooks   []PreRequestHook
 	postResponseHooks []PostResponseHook
@@ -51,6 +52,7 @@ func New(transport http.RoundTripper, opts ...Option) *Executor {
 		client:            client,
 		timeout:           o.timeout,
 		maxResponseSize:   o.maxResponseSize,
+		historyBodyLimit:  o.historyBodyLimit,
 		logger:            o.logger,
 		preRequestHooks:   o.preRequestHooks,
 		postResponseHooks: o.postResponseHooks,
