@@ -1182,6 +1182,41 @@ func TestExecutor_UnknownBodyTypeRefused(t *testing.T) {
 	assert.ErrorContains(t, err, `unsupported body type "xml"`)
 }
 
+func TestExecutor_GraphQLSendsQueryAndVariables(t *testing.T) {
+	var gotBody, gotContentType string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		data, _ := io.ReadAll(r.Body)
+		gotBody = string(data)
+		gotContentType = r.Header.Get("Content-Type")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	transport := &http.Transport{}
+	defer transport.CloseIdleConnections()
+
+	req := newTestRequest("POST", srv.URL+"/graphql", "")
+	req.BodyType = domain.BodyTypeGraphQL
+	req.Body = `{"query":"query U($id: ID!) { user(id: $id) { name } }","variables":"{\"id\": \"{{user_id}}\"}"}`
+	prepared, err := exec.InterpolateRequest(req, map[string]string{"user_id": "42"}, nil)
+	require.NoError(t, err)
+
+	_, err = newTestExecutor(transport).Execute(context.Background(), prepared)
+	require.NoError(t, err)
+	assert.Equal(t, "application/json", gotContentType)
+	assert.JSONEq(t,
+		`{"query":"query U($id: ID!) { user(id: $id) { name } }","variables":{"id":"42"}}`,
+		gotBody)
+}
+
+func TestExecutor_GraphQLVariablesMustBeObject(t *testing.T) {
+	req := newTestRequest("POST", "http://example.test/graphql", "")
+	req.BodyType = domain.BodyTypeGraphQL
+	req.Body = `{"query":"{ a }","variables":"[1]"}`
+	_, err := newTestExecutor(&http.Transport{}).Execute(context.Background(), req)
+	assert.ErrorContains(t, err, "variables must be a JSON object")
+}
+
 func TestExecutor_PersistsBodyTypeInSnapshot(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(200)

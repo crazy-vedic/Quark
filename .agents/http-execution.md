@@ -36,7 +36,7 @@ Production uses a custom `http.Transport` with `ResponseHeaderTimeout` matching 
 
 1. **Pre-request hooks** — registration order; any error aborts (recorded in history)
 2. **Variable substitution** — if `VariableResolver` configured
-3. **Build HTTP request** — validate URL scheme, apply headers + auth; the body is sent per its body type (`none` sends nothing; `json` and `form-urlencoded` set their Content-Type when the request has none)
+3. **Build HTTP request** — validate URL scheme, apply headers + auth; the body is sent per its body type (`none` sends nothing; `json`, `form-urlencoded` and `graphql` set their Content-Type when the request has none; `graphql` sends `{"query", "variables"}` built from the stored body, and non-object variables are refused)
 4. **HTTP dispatch** — `client.Do` with per-request `context.WithTimeout`
 5. **Read response** — in-memory or stream to temp file if over size text/plain threshold
 6. **Post-response hooks** — errors logged via `slog.Warn`, chain continues

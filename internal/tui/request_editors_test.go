@@ -147,3 +147,63 @@ func TestHeaderEditorRendersHeaderNotURL(t *testing.T) {
 	assert.Contains(t, out, "Zzz-Custom", "header key shows in the header editor")
 	assert.Contains(t, out, "value-here", "header value shows in the header editor")
 }
+
+func graphQLStored(t *testing.T, query, variables string) string {
+	t.Helper()
+	stored, err := domain.MarshalGraphQLBody(domain.GraphQLBody{Query: query, Variables: variables})
+	require.NoError(t, err)
+	return stored
+}
+
+func TestGraphQLBody_EditorShowsQueryAndVariablesAndSaves(t *testing.T) {
+	req := &domain.Request{
+		URL:      "https://api.test/graphql",
+		Body:     graphQLStored(t, "{ user { id } }", `{"id":"1"}`),
+		BodyType: domain.BodyTypeGraphQL,
+	}
+	m, st := bodyFormTestModel(t, req)
+
+	assert.Contains(t, m.View(), "{ user { id } }")
+	assert.Contains(t, m.View(), domain.GraphQLVariablesSeparator)
+
+	m = callUpdate(t, m, bodyFormKey('b'))
+	require.Equal(t, tui.BodyField, m.ActiveField())
+	m = bodyFormType(t, m, "Z")
+	_, cmd := callUpdateWithCmd(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	require.NotNil(t, cmd)
+	cmd()
+
+	body, err := domain.ParseGraphQLBody(savedRequest(t, st, req.ID).Body)
+	require.NoError(t, err)
+	assert.Equal(t, "{ user { id } }", body.Query)
+	assert.Equal(t, `{"id":"1"}Z`, body.Variables)
+}
+
+func TestGraphQLBody_EscDiscardsAndQueryOnlyHasNoSeparator(t *testing.T) {
+	req := &domain.Request{
+		URL:      "https://api.test/graphql",
+		Body:     graphQLStored(t, "{ me { id } }", ""),
+		BodyType: domain.BodyTypeGraphQL,
+	}
+	m, st := bodyFormTestModel(t, req)
+
+	m = callUpdate(t, m, bodyFormKey('b'))
+	assert.NotContains(t, m.View(), domain.GraphQLVariablesSeparator)
+	m = bodyFormType(t, m, "QQ")
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyEsc})
+	assert.Equal(t, tui.NoneField, m.ActiveField())
+	assert.Equal(t, graphQLStored(t, "{ me { id } }", ""), savedRequest(t, st, req.ID).Body)
+}
+
+func TestGraphQLBody_InvalidStoredBodyRefused(t *testing.T) {
+	req := &domain.Request{
+		URL:      "https://api.test/graphql",
+		Body:     "{bad",
+		BodyType: domain.BodyTypeGraphQL,
+	}
+	m, _ := bodyFormTestModel(t, req)
+
+	m = callUpdate(t, m, bodyFormKey('b'))
+	assert.Equal(t, tui.NoneField, m.ActiveField())
+	assert.Contains(t, m.StatusErr(), "GraphQL body is not valid")
+}

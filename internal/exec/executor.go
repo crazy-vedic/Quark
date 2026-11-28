@@ -259,6 +259,8 @@ func requestBodyForSend(req *domain.Request) (string, error) {
 	case domain.BodyTypeFormURLEncoded:
 		// Stored already encoded; variables were escaped on interpolation.
 		return req.Body, nil
+	case domain.BodyTypeGraphQL:
+		return domain.GraphQLRequestPayload(req.Body)
 	default:
 		return requestBodyValue(req.Body)
 	}

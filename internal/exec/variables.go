@@ -197,7 +197,12 @@ func InterpolateRequestWithOverrides(
 			return domain.EncodeFormValue(value), ok
 		}
 	}
-	out.Body, err = substitute(out.Body, bodyResolver)
+	switch out.BodyType {
+	case domain.BodyTypeGraphQL:
+		out.Body, err = substituteGraphQLBody(out.Body, resolver)
+	default:
+		out.Body, err = substitute(out.Body, bodyResolver)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("interpolate body: %w", err)
 	}
@@ -284,6 +289,23 @@ func substitute(s string, resolve placeholderResolver) (string, error) {
 }
 
 // substituteHeaders parses the JSON header map, substitutes values, and re-serializes.
+// substituteGraphQLBody substitutes {{variables}} in the query and in the
+// variables text. Both are text, so values are not escaped; a value placed in
+// the variables must keep them valid JSON.
+func substituteGraphQLBody(stored string, resolve placeholderResolver) (string, error) {
+	body, err := domain.ParseGraphQLBody(stored)
+	if err != nil {
+		return "", err
+	}
+	if body.Query, err = substitute(body.Query, resolve); err != nil {
+		return "", err
+	}
+	if body.Variables, err = substitute(body.Variables, resolve); err != nil {
+		return "", err
+	}
+	return domain.MarshalGraphQLBody(body)
+}
+
 func substituteHeaders(headersJSON string, resolve placeholderResolver) (string, error) {
 	if headersJSON == "" || headersJSON == "{}" {
 		return headersJSON, nil

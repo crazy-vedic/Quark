@@ -2251,7 +2251,8 @@ func (m Model) saveBody() (Model, tea.Cmd) {
 	// Malformed JSON and {{placeholders}} are stored exactly as typed; they are
 	// only validated (if at all) when the request is sent.
 	body := m.bodyTextarea.Value()
-	if m.cfg.Format.JSONOnSave && isJSONContentType(requestContentType(m.activeRequest)) {
+	if m.cfg.Format.JSONOnSave && requestBodyType(m.activeRequest) != domain.BodyTypeGraphQL &&
+		isJSONContentType(requestContentType(m.activeRequest)) {
 		var pretty bytes.Buffer
 		if json.Indent(&pretty, []byte(body), "", "  ") == nil {
 			body = pretty.String()
