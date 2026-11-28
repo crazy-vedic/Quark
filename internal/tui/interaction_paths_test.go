@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -152,7 +153,7 @@ func TestCommandAndEnvironmentBranches(t *testing.T) {
 	require.Equal(t, normalMode, m.mode)
 	_, _ = m.handleNormalKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'?'}})
 	_, _ = m.handleHelpKey(tea.KeyMsg{Type: tea.KeyEsc})
-	require.Empty(t, helpResetAllDiffs(keybindings.DefaultKeybindings()))
+	require.Empty(t, helpResetAllDiffs(runtime.GOOS, keybindings.DefaultKeybindings()))
 	require.Empty(t, parseHeadersJSON("not-json"))
 	require.NotEmpty(t, parseHeadersJSON(`{"X":"one","Y":"two"}`))
 	_, _ = m.handleCollectionPromptKey(tea.KeyMsg{Type: tea.KeyEsc})

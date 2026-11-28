@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"runtime"
 	"strings"
 	"time"
 
@@ -222,6 +223,7 @@ type Model struct {
 	activeEnvStore  store.ActiveEnvironmentStore
 	scheduler       store.ScheduledRunStore
 	cfg             config.Config
+	goos            string                             // platform for key labels and example paths: a runtime.GOOS value
 	lastMouseAt     time.Time                          // last mouse event; stray mouse-report pieces shortly after it are dropped
 	pasteTicket     uint64                             // last Ctrl+V request issued; 0 means none, and results with ticket 0 are ignored
 	pasteApplied    uint64                             // last ticket whose result was applied; results apply in ticket order
@@ -442,6 +444,10 @@ type Deps struct {
 	PostmanImporter PostmanImporter
 	Config          config.Config
 	Resolver        *keybindings.Resolver
+	// GOOS is the platform whose key labels, default bindings and example
+	// paths the TUI shows (a runtime.GOOS value). Empty means the host
+	// platform. Tests set it to exercise other platforms.
+	GOOS string
 	// Ctx is the root context for all background operations. If nil,
 	// context.Background() is used. Pass main.go's signal-aware context
 	// so TUI goroutines are cancelled when the process receives SIGINT/SIGTERM.
@@ -468,6 +474,12 @@ type Deps struct {
 
 // New constructs the root TUI model and detects multiplexer conflicts.
 func New(deps Deps) Model {
+	goos := deps.GOOS
+	if goos == "" {
+		goos = runtime.GOOS
+	}
+	certFileHint, certKeyHint, certCAHint := clientCertPlaceholders(goos)
+
 	urlInput := textinput.New()
 	urlInput.Placeholder = "https://..."
 	urlInput.CharLimit = 2048
@@ -503,16 +515,16 @@ func New(deps Deps) Model {
 	clientCertHost.Placeholder = "api.example.com"
 	clientCertHost.CharLimit = 253
 	clientCertFile := textinput.New()
-	clientCertFile.Placeholder = "C:\\path\\client.p12 or client.pem"
+	clientCertFile.Placeholder = certFileHint
 	clientCertFile.CharLimit = 2048
 	clientCertType := textinput.New()
 	clientCertType.Placeholder = "P12 or PEM"
 	clientCertType.CharLimit = 8
 	clientCertKeyFile := textinput.New()
-	clientCertKeyFile.Placeholder = "C:\\path\\client-key.pem (PEM)"
+	clientCertKeyFile.Placeholder = certKeyHint
 	clientCertKeyFile.CharLimit = 2048
 	clientCertCAFile := textinput.New()
-	clientCertCAFile.Placeholder = "C:\\path\\ca.pem (optional)"
+	clientCertCAFile.Placeholder = certCAHint
 	clientCertCAFile.CharLimit = 2048
 	clientCertPassword := textinput.New()
 	clientCertPassword.EchoMode = textinput.EchoPassword
@@ -550,6 +562,7 @@ func New(deps Deps) Model {
 		importer:                deps.Importer,
 		postmanImporter:         deps.PostmanImporter,
 		cfg:                     deps.Config,
+		goos:                    goos,
 		ctx:                     rootCtx,
 		method:                  deps.Config.UI.DefaultMethod,
 		urlInput:                urlInput,

@@ -46,5 +46,6 @@ const (
 	KeyRight      = "right"
 	KeyShiftTab   = "shift+tab"
 	KeyShiftEnter = "shift+enter"
+	KeyAltEnter   = "alt+enter"
 	KeyCtrlJ      = "ctrl+j"
 )

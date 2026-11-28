@@ -30,7 +30,7 @@ func (m Model) newTextEditor() textedit.Editor {
 // cacheTextKeys builds the text-editing keymap from the config once. It runs
 // at construction and whenever the config changes, so keystrokes reuse it.
 func (m *Model) cacheTextKeys() {
-	k := textedit.KeymapFromConfig(m.cfg.Keybindings)
+	k := textedit.KeymapFromConfigFor(m.goos, m.cfg.Keybindings)
 	m.editKeys = &k
 }
 
@@ -41,5 +41,5 @@ func (m Model) textKeys() textedit.Keymap {
 	if m.editKeys != nil {
 		return *m.editKeys
 	}
-	return textedit.KeymapFromConfig(m.cfg.Keybindings)
+	return textedit.KeymapFromConfigFor(m.goos, m.cfg.Keybindings)
 }

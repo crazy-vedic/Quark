@@ -464,7 +464,7 @@ func (m Model) responsePaneTabRects(layout normalLayout) responsePaneTabRects {
 		if i > 0 {
 			x += 2 // join separator
 		}
-		key := keybindings.FormatKey(keybindings.GetAction(m.cfg.Keybindings, t.action))
+		key := keybindings.FormatKey(m.goos, keybindings.GetAction(m.cfg.Keybindings, t.action))
 		plain := "[" + key + "] " + t.label
 		w := len(plain)
 		rect := layoutRect{left: x, top: y, right: x + w - 1, bottom: y}

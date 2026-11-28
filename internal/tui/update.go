@@ -1925,7 +1925,7 @@ func (m Model) handleHelpKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		case "reset_all":
-			if len(helpResetAllDiffs(m.cfg.Keybindings)) == 0 {
+			if len(helpResetAllDiffs(m.goos, m.cfg.Keybindings)) == 0 {
 				m = m.status("success", "All keybindings already match defaults")
 				return m, nil
 			}
@@ -1937,7 +1937,7 @@ func (m Model) handleHelpKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func helpResetAllDiffs(current keybindings.Keybindings) []string {
+func helpResetAllDiffs(goos string, current keybindings.Keybindings) []string {
 	defaults := keybindings.DefaultKeybindings()
 	currentEntries := keybindings.ListEntries(current)
 	diffs := make([]string, 0)
@@ -1949,11 +1949,11 @@ func helpResetAllDiffs(current keybindings.Keybindings) []string {
 
 		currentKey := "(unbound)"
 		if entry.Key != "" {
-			currentKey = keybindings.FormatKey(entry.Key)
+			currentKey = keybindings.FormatKey(goos, entry.Key)
 		}
 		defaultLabel := "(unbound)"
 		if defaultKey != "" {
-			defaultLabel = keybindings.FormatKey(defaultKey)
+			defaultLabel = keybindings.FormatKey(goos, defaultKey)
 		}
 		diffs = append(
 			diffs,
@@ -2193,7 +2193,8 @@ func (m Model) handleHTTPErr(msg httpErrMsg) (tea.Model, tea.Cmd) {
 		return m, historyCmd
 	}
 	if errors.Is(msg.err, exec.ErrTimeout) {
-		m = m.status("error", "Request timed out. Press [⌘+Enter] to retry.")
+		retryKey := keybindings.FormatKey(m.goos, keybindings.KeyAltEnter)
+		m = m.status("error", "Request timed out. Press ["+retryKey+"] to retry.")
 		return m, historyCmd
 	}
 	m.err = fmt.Errorf("request failed: %w", msg.err)

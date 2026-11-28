@@ -1,6 +1,10 @@
 package textedit
 
-import "github.com/crazy-vedic/quark/internal/keybindings"
+import (
+	"runtime"
+
+	"github.com/crazy-vedic/quark/internal/keybindings"
+)
 
 // Binding is the set of key strings (as reported by tea.KeyMsg.String()) for
 // one action.
@@ -48,10 +52,20 @@ type Keymap struct {
 	HistoryPrev        Binding
 }
 
-// DefaultKeymap returns the built-in bindings. Only strings that bubbletea
-// reports are listed: alt+shift variants are omitted because bubbletea has no
-// key for them.
+// DefaultKeymap returns the built-in bindings for the host platform.
 func DefaultKeymap() Keymap {
+	return DefaultKeymapFor(runtime.GOOS)
+}
+
+// DefaultKeymapFor returns the built-in bindings for the platform goos (a
+// runtime.GOOS value). Only strings that bubbletea reports are listed: alt+shift
+// variants are omitted because bubbletea has no key for them. cmd+f is bound
+// only on macOS; other platforms never report the Command key.
+func DefaultKeymapFor(goos string) Keymap {
+	findOpen := Binding{"ctrl+f"}
+	if goos == keybindings.GOOSDarwin {
+		findOpen = Binding{"ctrl+f", "cmd+f"}
+	}
 	return Keymap{
 		CharLeft:          Binding{"left"},
 		CharRight:         Binding{"right"},
@@ -79,7 +93,7 @@ func DefaultKeymap() Keymap {
 		DeleteToLineStart: Binding{"ctrl+u"},
 		DeleteToLineEnd:   Binding{"ctrl+k"},
 
-		FindOpen:    Binding{"ctrl+f", "cmd+f"},
+		FindOpen:    findOpen,
 		FindNext:    Binding{"enter"},
 		FindPrev:    Binding{"shift+enter", "shift+return", "alt+enter"},
 		ViewerFind:  Binding{"f"},
@@ -90,11 +104,12 @@ func DefaultKeymap() Keymap {
 	}
 }
 
-// KeymapFromConfig starts from DefaultKeymap and replaces each action whose
-// config value is set and differs from the config default. An unset action,
-// or one left at its config default, keeps the editor's own bindings.
-func KeymapFromConfig(cfg keybindings.Keybindings) Keymap {
-	k := DefaultKeymap()
+// KeymapFromConfigFor starts from DefaultKeymapFor(goos) and replaces each
+// action whose config value is set and differs from the config default. An
+// unset action, or one left at its config default, keeps the editor's own
+// bindings.
+func KeymapFromConfigFor(goos string, cfg keybindings.Keybindings) Keymap {
+	k := DefaultKeymapFor(goos)
 	defs := keybindings.DefaultKeybindings()
 	override := func(dst *Binding, value, def string) {
 		if value != "" && value != def {

@@ -7,7 +7,7 @@ import (
 )
 
 var hintAliases = map[string][]string{
-	ActionSendRequest: {"alt+enter"},
+	ActionSendRequest: {KeyAltEnter},
 	"cert_down":       {"down"},
 	"cert_up":         {"up"},
 	"cert_edit":       {KeyEnter},
@@ -23,15 +23,21 @@ func HintKeys(binds Keybindings, action string, includeAliases bool) []string {
 	return dedupeNonEmpty(keys)
 }
 
-// FormatKey renders an internal key string in the compact UI format.
-func FormatKey(key string) string {
+// GOOSDarwin is the runtime.GOOS value for macOS. Only macOS labels keys with
+// the Command (⌘) and Option (⌥) symbols.
+const GOOSDarwin = "darwin"
+
+// FormatKey renders an internal key string in the compact UI format for the
+// platform goos (a runtime.GOOS value). On macOS, cmd and alt render as ⌘ and
+// ⌥; elsewhere they render as Cmd and Alt, and ⌘ is never shown.
+func FormatKey(goos, key string) string {
 	key = strings.TrimSpace(key)
 	if key == "" {
 		return ""
 	}
 
 	switch strings.ToLower(key) {
-	case "enter":
+	case KeyEnter:
 		return "Enter"
 	case "esc":
 		return "Esc"
@@ -51,8 +57,11 @@ func FormatKey(key string) string {
 		return "Shift+←"
 	case "shift+right":
 		return "Shift+→"
-	case "alt+enter":
-		return "⌘+Enter"
+	case KeyAltEnter:
+		// Terminals on macOS send Cmd+Enter as alt+enter.
+		if goos == GOOSDarwin {
+			return "⌘+Enter"
+		}
 	}
 
 	if !strings.Contains(key, "+") && utf8.RuneCountInString(key) == 1 {
@@ -61,21 +70,28 @@ func FormatKey(key string) string {
 
 	parts := strings.Split(key, "+")
 	for i, part := range parts {
-		parts[i] = formatKeyPart(part)
+		parts[i] = formatKeyPart(goos, part)
 	}
 	return strings.Join(parts, "+")
 }
 
-func formatKeyPart(part string) string {
+func formatKeyPart(goos, part string) string {
+	darwin := goos == GOOSDarwin
 	switch strings.ToLower(part) {
 	case "ctrl":
 		return "Ctrl"
 	case "shift":
 		return "Shift"
 	case "alt":
+		if darwin {
+			return "⌥"
+		}
 		return "Alt"
 	case "cmd":
-		return "⌘"
+		if darwin {
+			return "⌘"
+		}
+		return "Cmd"
 	case "up":
 		return "↑"
 	case "down":

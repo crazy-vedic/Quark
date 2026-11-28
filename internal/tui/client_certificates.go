@@ -88,6 +88,19 @@ func (m Model) handleClientCertKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// clientCertPlaceholders returns the example paths for the certificate, key
+// and CA fields, written in the path style of goos (a runtime.GOOS value).
+func clientCertPlaceholders(goos string) (file, key, ca string) {
+	if goos == "windows" {
+		return `C:\path\client.p12 or client.pem`,
+			`C:\path\client-key.pem (PEM)`,
+			`C:\path\ca.pem (optional)`
+	}
+	return "/path/to/client.p12 or client.pem",
+		"/path/to/client-key.pem (PEM)",
+		"/path/to/ca.pem (optional)"
+}
+
 func (m Model) beginClientCertEdit(index int) Model {
 	m.clientCertEditing = true
 	m.clientCertField = clientCertHostField
@@ -98,14 +111,15 @@ func (m Model) beginClientCertEdit(index int) Model {
 	m.clientCertType = textinput.New()
 	m.clientCertType.Placeholder = "P12 or PEM"
 	m.clientCertType.CharLimit = 8
+	certFileHint, certKeyHint, certCAHint := clientCertPlaceholders(m.goos)
 	m.clientCertFile = textinput.New()
-	m.clientCertFile.Placeholder = "C:\\path\\client.p12 or client.pem"
+	m.clientCertFile.Placeholder = certFileHint
 	m.clientCertFile.CharLimit = 2048
 	m.clientCertKeyFile = textinput.New()
-	m.clientCertKeyFile.Placeholder = "C:\\path\\client-key.pem (PEM)"
+	m.clientCertKeyFile.Placeholder = certKeyHint
 	m.clientCertKeyFile.CharLimit = 2048
 	m.clientCertCAFile = textinput.New()
-	m.clientCertCAFile.Placeholder = "C:\\path\\ca.pem (optional)"
+	m.clientCertCAFile.Placeholder = certCAHint
 	m.clientCertCAFile.CharLimit = 2048
 	m.clientCertPassword = textinput.New()
 	m.clientCertPassword.EchoMode = textinput.EchoPassword

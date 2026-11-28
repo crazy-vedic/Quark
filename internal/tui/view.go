@@ -1087,7 +1087,7 @@ func (m Model) viewTabBar(maxWidth int) string {
 		}[t.id]
 		label := fmt.Sprintf(
 			"[%s] %s",
-			keybindings.FormatKey(keybindings.GetAction(m.cfg.Keybindings, action)),
+			keybindings.FormatKey(m.goos, keybindings.GetAction(m.cfg.Keybindings, action)),
 			t.label,
 		)
 		if m.responseTab == t.id {
@@ -2039,7 +2039,7 @@ func (m Model) viewHelp() string {
 	}
 
 	if m.helpEditState == helpConfirmResetAll {
-		diffs := helpResetAllDiffs(m.cfg.Keybindings)
+		diffs := helpResetAllDiffs(m.goos, m.cfg.Keybindings)
 		sb.WriteString(m.styles.warnStyle.Render("  Reset all keybindings to defaults?") + "\n\n")
 		sb.WriteString(
 			m.styles.mutedStyle.Render(
@@ -2052,8 +2052,11 @@ func (m Model) viewHelp() string {
 		sb.WriteString("\n" + m.styles.mutedStyle.Render(
 			fmt.Sprintf(
 				"  [%s] confirm  [%s] cancel",
-				keybindings.FormatKey("enter"),
-				keybindings.FormatKey(keybindings.GetAction(m.cfg.Keybindings, actionHelpClose)),
+				keybindings.FormatKey(m.goos, "enter"),
+				keybindings.FormatKey(
+					m.goos,
+					keybindings.GetAction(m.cfg.Keybindings, actionHelpClose),
+				),
 			),
 		))
 
@@ -2322,7 +2325,7 @@ func (m Model) hintKeys(actions []string, includeAliases bool) []string {
 	for i, action := range actions {
 		showAliases := includeAliases && i == 0 && len(actions) == 1
 		for _, key := range keybindings.HintKeys(m.cfg.Keybindings, action, showAliases) {
-			keys = append(keys, keybindings.FormatKey(key))
+			keys = append(keys, keybindings.FormatKey(m.goos, key))
 		}
 	}
 	return dedupeHintKeys(keys)
