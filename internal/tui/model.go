@@ -53,6 +53,7 @@ const (
 	scheduleMode
 	clientCertMode
 	postmanImportMode
+	overdueRunsMode
 )
 
 // promptType identifies which collection prompt is active.
@@ -330,6 +331,13 @@ type Model struct {
 	// --- Schedule modal ---
 	scheduleInput    textinput.Model
 	scheduleTimerSeq int
+
+	// --- Overdue scheduled runs prompt (shown once at startup) ---
+	overdueRuns   []overdueRun
+	overdueCursor int
+	// deferredRuns holds IDs of overdue runs the user chose to decide on
+	// later. They stay pending in the store but never fire this session.
+	deferredRuns map[string]bool
 
 	// --- Client certificate modal ---
 	clientCerts        []config.ClientCertificate
@@ -646,9 +654,10 @@ func (m Model) Init() tea.Cmd {
 		cmds = append(cmds, loadCollectionsCmd(m.ctx, m.lister))
 	}
 	if m.scheduler != nil {
-		cmds = append(cmds, scheduleNextWakeCmd(
+		cmds = append(cmds, startupScheduleCmd(
 			m.ctx,
 			m.scheduler,
+			m.lister,
 			m.reader,
 			m.now,
 			m.scheduleTimerSeq,
@@ -1001,12 +1010,14 @@ func scheduleNextWakeCmd(
 	reader store.RequestReader,
 	now func() time.Time,
 	seq int,
+	skip map[string]bool,
 ) tea.Cmd {
+	skip = cloneRunIDSet(skip)
 	return func() tea.Msg {
 		if scheduler == nil {
 			return nil
 		}
-		run, err := scheduler.NextPendingScheduledRun(ctx)
+		run, err := nextWakeRun(ctx, scheduler, skip)
 		if err != nil {
 			return errLoadMsg{err: fmt.Errorf("schedule next wake: %w", err)}
 		}
@@ -1078,16 +1089,21 @@ func executeDueScheduledRunsCmd(
 	activeEnvStore store.ActiveEnvironmentStore,
 	activeEnv map[string]string,
 	now func() time.Time,
+	skip map[string]bool,
 ) tea.Cmd {
-	activeEnvSnapshot := cloneActiveEnv(activeEnv)
+	runner := scheduledRunner{
+		scheduler:      scheduler,
+		lister:         lister,
+		reader:         reader,
+		executor:       executor,
+		envReader:      envReader,
+		activeEnvStore: activeEnvStore,
+		activeEnv:      cloneActiveEnv(activeEnv),
+	}
+	skip = cloneRunIDSet(skip)
 	return func() tea.Msg {
-		if scheduler == nil || reader == nil || executor == nil {
-			return scheduledRunBackgroundResultMsg{
-				failed: []scheduledRunFailure{{
-					name: "scheduled request",
-					err:  fmt.Errorf("scheduler unavailable"),
-				}},
-			}
+		if !runner.ready() {
+			return runner.unavailable()
 		}
 		runs, err := scheduler.ListDueScheduledRuns(ctx, now())
 		if err != nil {
@@ -1095,61 +1111,113 @@ func executeDueScheduledRunsCmd(
 				failed: []scheduledRunFailure{{name: "scheduled request", err: err}},
 			}
 		}
-		result := scheduledRunBackgroundResultMsg{}
+		due := runs[:0]
 		for _, run := range runs {
-			name := scheduledRunName(ctx, reader, run)
-			req, err := reader.GetRequest(ctx, run.RequestID)
-			if err != nil {
-				if saveErr := markScheduledRunFailed(ctx, scheduler, run, err); saveErr != nil {
-					err = errors.Join(err, saveErr)
-				}
-				result.failed = append(result.failed, scheduledRunFailure{name: name, err: err})
-				continue
+			if !skip[run.ID] {
+				due = append(due, run)
 			}
-			claimed, err := scheduler.ClaimScheduledRun(ctx, run.ID)
-			if err != nil {
-				result.failed = append(result.failed, scheduledRunFailure{name: name, err: err})
-				continue
-			}
-			if !claimed {
-				// Another quark process (for example cron run-due) took it.
-				continue
-			}
-			run.Status = domain.ScheduledRunRunning
-			run.LastError = ""
-			execReq, err := interpolateScheduledRequest(
-				ctx,
-				envReader,
-				activeEnvStore,
-				activeEnvSnapshot,
-				req,
-			)
-			var execResult *exec.ExecuteResult
-			if err == nil {
-				execResult, err = executor.Execute(ctx, execReq)
-			}
-			if err != nil {
-				if saveErr := markScheduledRunFailed(ctx, scheduler, run, err); saveErr != nil {
-					err = errors.Join(err, saveErr)
-				}
-				result.failed = append(result.failed, scheduledRunFailure{name: name, err: err})
-				continue
-			}
-			run.Status = domain.ScheduledRunCompleted
-			run.LastError = ""
-			if err := scheduler.SaveScheduledRun(ctx, run); err != nil {
-				result.failed = append(result.failed, scheduledRunFailure{name: name, err: err})
-				continue
-			}
-			result.sent = append(result.sent, scheduledRunSuccess{
-				requestID: req.ID,
-				label:     scheduledRunSuccessLabel(ctx, lister, req),
-				name:      name,
-				result:    execResult,
-			})
 		}
-		return result
+		return runner.execute(ctx, due)
 	}
+}
+
+// scheduledRunner sends scheduled runs. It holds immutable values only so
+// a tea.Cmd can capture it safely.
+type scheduledRunner struct {
+	scheduler      store.ScheduledRunStore
+	lister         store.CollectionLister
+	reader         store.RequestReader
+	executor       RequestExecutor
+	envReader      EnvironmentHierarchyReader
+	activeEnvStore store.ActiveEnvironmentStore
+	activeEnv      map[string]string
+}
+
+func (m Model) scheduledRunner() scheduledRunner {
+	return scheduledRunner{
+		scheduler:      m.scheduler,
+		lister:         m.lister,
+		reader:         m.reader,
+		executor:       m.executor,
+		envReader:      m.envReader,
+		activeEnvStore: m.activeEnvStore,
+		activeEnv:      cloneActiveEnv(m.activeEnv),
+	}
+}
+
+func (r scheduledRunner) ready() bool {
+	return r.scheduler != nil && r.reader != nil && r.executor != nil
+}
+
+func (r scheduledRunner) unavailable() scheduledRunBackgroundResultMsg {
+	return scheduledRunBackgroundResultMsg{
+		failed: []scheduledRunFailure{{
+			name: "scheduled request",
+			err:  fmt.Errorf("scheduler unavailable"),
+		}},
+	}
+}
+
+// execute claims and sends each run. A run another process already claimed
+// is skipped silently.
+func (r scheduledRunner) execute(
+	ctx context.Context,
+	runs []*domain.ScheduledRun,
+) scheduledRunBackgroundResultMsg {
+	result := scheduledRunBackgroundResultMsg{}
+	for _, run := range runs {
+		name := scheduledRunName(ctx, r.reader, run)
+		req, err := r.reader.GetRequest(ctx, run.RequestID)
+		if err != nil {
+			if saveErr := markScheduledRunFailed(ctx, r.scheduler, run, err); saveErr != nil {
+				err = errors.Join(err, saveErr)
+			}
+			result.failed = append(result.failed, scheduledRunFailure{name: name, err: err})
+			continue
+		}
+		claimed, err := r.scheduler.ClaimScheduledRun(ctx, run.ID)
+		if err != nil {
+			result.failed = append(result.failed, scheduledRunFailure{name: name, err: err})
+			continue
+		}
+		if !claimed {
+			// Another quark process (for example cron run-due) took it.
+			continue
+		}
+		run.Status = domain.ScheduledRunRunning
+		run.LastError = ""
+		execReq, err := interpolateScheduledRequest(
+			ctx,
+			r.envReader,
+			r.activeEnvStore,
+			r.activeEnv,
+			req,
+		)
+		var execResult *exec.ExecuteResult
+		if err == nil {
+			execResult, err = r.executor.Execute(ctx, execReq)
+		}
+		if err != nil {
+			if saveErr := markScheduledRunFailed(ctx, r.scheduler, run, err); saveErr != nil {
+				err = errors.Join(err, saveErr)
+			}
+			result.failed = append(result.failed, scheduledRunFailure{name: name, err: err})
+			continue
+		}
+		run.Status = domain.ScheduledRunCompleted
+		run.LastError = ""
+		if err := r.scheduler.SaveScheduledRun(ctx, run); err != nil {
+			result.failed = append(result.failed, scheduledRunFailure{name: name, err: err})
+			continue
+		}
+		result.sent = append(result.sent, scheduledRunSuccess{
+			requestID: req.ID,
+			label:     scheduledRunSuccessLabel(ctx, r.lister, req),
+			name:      name,
+			result:    execResult,
+		})
+	}
+	return result
 }
 
 func interpolateScheduledRequest(
@@ -1201,6 +1269,7 @@ func (m Model) armScheduleTimer() (Model, tea.Cmd) {
 		m.reader,
 		m.now,
 		m.scheduleTimerSeq,
+		m.deferredRuns,
 	)
 }
 

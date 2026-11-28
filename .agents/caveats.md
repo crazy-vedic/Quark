@@ -50,7 +50,7 @@ crashes cannot produce a history row. Unsaved TUI sends (`req.ID == ""`) skip hi
 **Not a daemon.** `quark schedule add` only writes a DB row. Nothing fires automatically unless:
 
 - `quark schedule run-due` is invoked (cron, systemd timer, CI), or
-- TUI in-app timer checks due runs
+- TUI in-app timer checks due runs (runs overdue at TUI startup need confirmation first)
 
 Design implication: do not assume background scheduling exists in CLI-only deployments.
 

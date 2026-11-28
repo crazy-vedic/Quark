@@ -158,6 +158,8 @@ func (m Model) View() string {
 			out = m.viewClientCertModal()
 		case postmanImportMode:
 			out = m.viewPostmanImportModal()
+		case overdueRunsMode:
+			out = m.viewOverdueRunsModal()
 		default:
 			out = m.viewByDim()
 		}

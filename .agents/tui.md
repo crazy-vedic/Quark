@@ -72,6 +72,7 @@ ConfigDir       string
 | Import | import key | Esc | Paste cURL command |
 | Env | `e` | Esc | Manage environment variables |
 | Schedule | schedule key | Esc | View/manage scheduled runs |
+| Overdue runs | startup, when runs are overdue | Enter / Esc | Run, skip, or defer runs that were due before launch |
 | Auth editor | auth key | Esc | Configure request auth |
 
 Exact keys are configurable — see keybindings section.
@@ -116,6 +117,15 @@ Context from `Deps.Ctx` propagates cancellation on SIGINT.
 ## Schedule in TUI
 
 TUI has an in-app timer that checks for due scheduled runs (unlike CLI which requires `schedule run-due`). Missed runs may show retry warnings.
+
+On startup, runs already due (overdue while Quark was closed) are not fired.
+`startupScheduleCmd` (`overdue_runs.go`) lists them and opens the
+`overdueRunsMode` prompt: **Run all now**, **Skip** (claim then mark
+`cancelled`), or **Decide later** (Esc; IDs go into `Model.deferredRuns`, stay
+pending in the DB, and the timer and `executeDueScheduledRunsCmd` skip them for
+the rest of the session). Keys come from the search-modal bindings
+(`search_up`/`search_down`/`search_select`/`search_cancel`). Runs that become due
+while the TUI is open still fire from the timer as before.
 
 ## External Editor
 
