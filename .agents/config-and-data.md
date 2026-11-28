@@ -36,7 +36,7 @@ Loaded with merge semantics: only explicitly-set TOML fields override defaults (
 |---|---|---|
 | `theme` | `auto` | Built-in (`auto`, `dark`, `light`, `transparent`) or a name from `themes/<name>.toml` |
 | `default_method` | `GET` | HTTP method for new requests |
-| `editor` | `$EDITOR` or `vim` | External editor for body editing |
+| `editor` | `$EDITOR` or `vim` | External editor for body editing (`Ctrl+O` in the body editor); may include arguments, e.g. `code --wait` |
 
 #### `[http]`
 

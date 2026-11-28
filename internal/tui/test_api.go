@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"os"
+	osexec "os/exec"
 	"time"
 
 	"github.com/charmbracelet/bubbles/textinput"
@@ -791,3 +792,13 @@ func BlurredModelForTest() Model {
 // PasteTargetForTest returns the value that identifies the input receiving keys.
 // Two models with equal values route keys to the same input.
 func (m Model) PasteTargetForTest() any { return m.pasteTargetOf() }
+
+// WithSyncExecProcess makes external processes (the body editor) run
+// synchronously inside the returned tea.Cmd instead of via tea.ExecProcess,
+// so tests can drive the full flow without a running program.
+func (m Model) WithSyncExecProcess() Model {
+	m.execProcess = func(cmd *osexec.Cmd, callback tea.ExecCallback) tea.Cmd {
+		return func() tea.Msg { return callback(cmd.Run()) }
+	}
+	return m
+}

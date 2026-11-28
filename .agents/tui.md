@@ -119,7 +119,15 @@ TUI has an in-app timer that checks for due scheduled runs (unlike CLI which req
 
 ## External Editor
 
-Config `ui.editor` (default `$EDITOR`, fallback `vim`) for editing request body in external editor.
+Config `ui.editor` (default `$EDITOR`, fallback `vim`) for editing the request
+body in an external editor. In the body editor, `body_external_editor`
+(default `Ctrl+O`) writes the current text to a temp file (`.json` for JSON
+content types, `.xml`/`.html`/`.yaml`/`.graphql`/`.txt` otherwise), runs the
+editor via `tea.ExecProcess` (`external_editor.go`; the command is split with
+shell-style quoting, so `code --wait` works), then loads the file back into
+the editor and deletes it. The result is **not** saved until the user saves the
+body; it is dropped if the user left the body editor or switched requests.
+Tests swap the runner with `Model.WithSyncExecProcess()`.
 
 ## Test Harness (`internal/tuitest/harness.go`)
 

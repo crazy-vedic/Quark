@@ -61,7 +61,7 @@ var groups = []struct {
 		},
 	},
 	{"Body Editor", []string{
-		"body_save", "body_newline", "body_cancel",
+		"body_save", "body_newline", "body_cancel", ActionBodyExternalEditor,
 	}},
 	{"Header Editor", []string{
 		"header_down", "header_up", "header_add", "header_delete",

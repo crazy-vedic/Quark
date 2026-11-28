@@ -197,6 +197,16 @@ summary. Valid JSON is pretty-printed and syntax-highlighted in a terminal.
 Add `--verbose` to print request details and response headers to stderr; this
 can include credentials from the saved request.
 
+### Edit a body in your own editor
+
+While editing a request body (`b`), press `Ctrl+O` to open the body in your
+external editor. Quark uses `ui.editor` from `config.toml`, falling back to
+`$EDITOR` and then `vim`. Commands with arguments work, e.g.
+`editor = "code --wait"`; quote paths that contain spaces. JSON bodies open as a
+`.json` file so the editor highlights them. When the editor exits, the text is
+loaded back into the body editor; press `Enter` to save it or `Esc` to discard
+it. Rebind the key with `body_external_editor` under `[keybindings]`.
+
 ### Text Selection & Editing
 
 Edit URLs, request headers, bodies, and auth fields with familiar keyboard shortcuts:

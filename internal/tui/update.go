@@ -199,6 +199,9 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case externalEditorDoneMsg:
+		return m.handleExternalEditorDone(msg), nil
+
 	case postmanImportResultMsg:
 		m.postmanBusy = false
 		m.postmanOutput = strings.TrimSpace(msg.output)
@@ -2217,6 +2220,8 @@ func (m Model) handleBodyFieldKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "insert_newline":
 			ed.InsertText(&m.bodySelection, b, "\n")
 			return m, nil
+		case keybindings.ActionBodyExternalEditor:
+			return m.openBodyInExternalEditor()
 		}
 	}
 

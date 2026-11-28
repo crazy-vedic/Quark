@@ -70,6 +70,8 @@ type Keybindings struct {
 	BodySave    string `toml:"body_save"`
 	BodyNewline string `toml:"body_newline"`
 	BodyCancel  string `toml:"body_cancel"`
+	// BodyExternalEditor opens the body in config ui.editor ($EDITOR).
+	BodyExternalEditor string `toml:"body_external_editor"`
 
 	// Header editor
 	HeaderDown        string `toml:"header_down"`
@@ -310,6 +312,9 @@ func NewResolver(binds Keybindings) *Resolver {
 		binds.BodyNewline: "insert_newline",
 		binds.BodyCancel:  ActionCancel,
 	}
+	if binds.BodyExternalEditor != "" {
+		body[binds.BodyExternalEditor] = ActionBodyExternalEditor
+	}
 	addAlias(body, "enter", "save")
 
 	// Header editor
@@ -521,7 +526,8 @@ func Validate(binds Keybindings) map[string][]string {
 		{{binds.ImportParse, ActionImportParse}, {binds.ImportConfirm, "import_confirm"},
 			{binds.ImportCancel, ActionImportCancel}, {binds.ImportEdit, ActionImportEdit}},
 		{{binds.BodySave, "body_save"}, {binds.BodyNewline, "body_newline"},
-			{binds.BodyCancel, "body_cancel"}},
+			{binds.BodyCancel, "body_cancel"},
+			{binds.BodyExternalEditor, ActionBodyExternalEditor}},
 		{{binds.HeaderDown, "header_down"}, {binds.HeaderUp, "header_up"},
 			{binds.HeaderAdd, "header_add"}, {binds.HeaderDelete, "header_delete"},
 			{binds.HeaderEdit, "header_edit"}, {binds.HeaderSave, "header_save"},

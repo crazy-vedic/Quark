@@ -73,6 +73,8 @@ func DefaultKeybindings() Keybindings {
 		BodySave:    KeyEnter,
 		BodyNewline: KeyCtrlJ,
 		BodyCancel:  "esc",
+		// Ctrl+O ("open"): the text editor does not use it.
+		BodyExternalEditor: "ctrl+o",
 
 		// Header editor
 		HeaderDown:        "j",

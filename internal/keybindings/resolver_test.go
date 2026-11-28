@@ -609,3 +609,25 @@ func TestRecordBinding_TextSelectionConflictRejected(t *testing.T) {
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "conflict")
 }
+
+func TestResolver_BodyExternalEditor(t *testing.T) {
+	r := NewResolver(DefaultKeybindings())
+	got, ok := r.Resolve(4, 0, tea.KeyMsg{Type: tea.KeyCtrlO})
+	assert.True(t, ok)
+	assert.Equal(t, ActionBodyExternalEditor, got)
+
+	binds := DefaultKeybindings()
+	binds.BodyExternalEditor = "ctrl+g"
+	r = NewResolver(binds)
+	got, ok = r.Resolve(4, 0, tea.KeyMsg{Type: tea.KeyCtrlG})
+	assert.True(t, ok)
+	assert.Equal(t, ActionBodyExternalEditor, got)
+	_, ok = r.Resolve(4, 0, tea.KeyMsg{Type: tea.KeyCtrlO})
+	assert.False(t, ok)
+
+	// An unset binding disables the action instead of mapping "" to it.
+	binds.BodyExternalEditor = ""
+	r = NewResolver(binds)
+	_, ok = r.Resolve(4, 0, tea.KeyMsg{Type: tea.KeyCtrlO})
+	assert.False(t, ok)
+}
