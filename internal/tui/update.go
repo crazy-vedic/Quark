@@ -599,6 +599,16 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.authEditor.apiKeyNameInput, cmd = m.authEditor.apiKeyNameInput.Update(msg)
 		case authRowAPIKeyValue:
 			m.authEditor.apiKeyValueInput, cmd = m.authEditor.apiKeyValueInput.Update(msg)
+		case authRowAuthURL:
+			m.authEditor.authURLInput, cmd = m.authEditor.authURLInput.Update(msg)
+		case authRowTokenURL:
+			m.authEditor.tokenURLInput, cmd = m.authEditor.tokenURLInput.Update(msg)
+		case authRowClientID:
+			m.authEditor.clientIDInput, cmd = m.authEditor.clientIDInput.Update(msg)
+		case authRowClientSecret:
+			m.authEditor.clientSecretInput, cmd = m.authEditor.clientSecretInput.Update(msg)
+		case authRowScope:
+			m.authEditor.scopeInput, cmd = m.authEditor.scopeInput.Update(msg)
 		}
 		return m, cmd
 	}

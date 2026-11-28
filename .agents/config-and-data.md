@@ -107,7 +107,7 @@ Debug logging is best-effort — failures silently disable logging.
 
 ### Credential Storage
 
-Bearer tokens, Basic auth passwords, and API keys are stored **plaintext** in SQLite:
+Bearer tokens, Basic auth passwords, API keys, and OAuth 2.0 client secrets are stored **plaintext** in SQLite (OAuth 2.0 access and refresh tokens are not stored; they live in memory for the process):
 
 - `requests.auth_config` JSON column
 - Request headers may contain Authorization values

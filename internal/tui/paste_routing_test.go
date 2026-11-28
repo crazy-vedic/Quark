@@ -340,6 +340,46 @@ var routingCases = []routeCase{
 		value:   tui.Model.AuthAPIKeyValueValue,
 	},
 	{
+		name: "authEditor.authURLInput",
+		open: func(*testing.T) tui.Model {
+			return pasteFixture("").WithAuthFieldEdit("oauth2_authorization_code", 1, "")
+		},
+		deliver: deliver,
+		value:   tui.Model.AuthAuthURLValue,
+	},
+	{
+		name: "authEditor.tokenURLInput",
+		open: func(*testing.T) tui.Model {
+			return pasteFixture("").WithAuthFieldEdit("oauth2_client_credentials", 1, "")
+		},
+		deliver: deliver,
+		value:   tui.Model.AuthTokenURLValue,
+	},
+	{
+		name: "authEditor.clientIDInput",
+		open: func(*testing.T) tui.Model {
+			return pasteFixture("").WithAuthFieldEdit("oauth2_client_credentials", 2, "")
+		},
+		deliver: deliver,
+		value:   tui.Model.AuthClientIDValue,
+	},
+	{
+		name: "authEditor.clientSecretInput",
+		open: func(*testing.T) tui.Model {
+			return pasteFixture("").WithAuthFieldEdit("oauth2_client_credentials", 3, "")
+		},
+		deliver: deliver,
+		value:   tui.Model.AuthClientSecretValue,
+	},
+	{
+		name: "authEditor.scopeInput",
+		open: func(*testing.T) tui.Model {
+			return pasteFixture("").WithAuthFieldEdit("oauth2_client_credentials", 4, "")
+		},
+		deliver: deliver,
+		value:   tui.Model.AuthScopeValue,
+	},
+	{
 		name:    "envEditor.editVal",
 		open:    func(*testing.T) tui.Model { return pasteFixture("").WithEnvValEdit("") },
 		deliver: deliver,

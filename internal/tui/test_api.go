@@ -693,6 +693,16 @@ func (m Model) WithAuthFieldEdit(authType string, rowIndex int, value string) Mo
 		ed.apiKeyNameInput.SetValue(value)
 	case authRowAPIKeyValue:
 		ed.apiKeyValueInput.SetValue(value)
+	case authRowAuthURL:
+		ed.authURLInput.SetValue(value)
+	case authRowTokenURL:
+		ed.tokenURLInput.SetValue(value)
+	case authRowClientID:
+		ed.clientIDInput.SetValue(value)
+	case authRowClientSecret:
+		ed.clientSecretInput.SetValue(value)
+	case authRowScope:
+		ed.scopeInput.SetValue(value)
 	}
 	m.authEditor = ed
 	m.activeField = authField
@@ -713,6 +723,21 @@ func (m Model) AuthPasswordValue() string { return m.authEditor.passwordInput.Va
 
 // AuthAPIKeyValueValue returns the API key value input's text.
 func (m Model) AuthAPIKeyValueValue() string { return m.authEditor.apiKeyValueInput.Value() }
+
+// AuthAuthURLValue returns the OAuth 2.0 authorization URL input's text.
+func (m Model) AuthAuthURLValue() string { return m.authEditor.authURLInput.Value() }
+
+// AuthTokenURLValue returns the OAuth 2.0 token URL input's text.
+func (m Model) AuthTokenURLValue() string { return m.authEditor.tokenURLInput.Value() }
+
+// AuthClientIDValue returns the OAuth 2.0 client ID input's text.
+func (m Model) AuthClientIDValue() string { return m.authEditor.clientIDInput.Value() }
+
+// AuthClientSecretValue returns the OAuth 2.0 client secret input's text.
+func (m Model) AuthClientSecretValue() string { return m.authEditor.clientSecretInput.Value() }
+
+// AuthScopeValue returns the OAuth 2.0 scope input's text.
+func (m Model) AuthScopeValue() string { return m.authEditor.scopeInput.Value() }
 
 // WithImportInputEdit opens the import dialog in its input stage with text in
 // the multi-line input, as the replace and import flows do before a preview.

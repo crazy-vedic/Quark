@@ -77,7 +77,10 @@ func (m *Model) styleInputs() {
 		&m.clientCertPassword, &m.headerKeyInput, &m.headerValueInput,
 		&m.authEditor.tokenInput, &m.authEditor.usernameInput,
 		&m.authEditor.passwordInput, &m.authEditor.apiKeyNameInput,
-		&m.authEditor.apiKeyValueInput, &m.envEditor.editKey, &m.envEditor.editVal,
+		&m.authEditor.apiKeyValueInput, &m.authEditor.authURLInput,
+		&m.authEditor.tokenURLInput, &m.authEditor.clientIDInput,
+		&m.authEditor.clientSecretInput, &m.authEditor.scopeInput,
+		&m.envEditor.editKey, &m.envEditor.editVal,
 	}
 	for _, input := range inputs {
 		styleTextInput(input, m.theme)

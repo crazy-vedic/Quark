@@ -31,6 +31,8 @@ type Executor struct {
 	postResponseHooks []PostResponseHook
 	variableResolver  VariableResolver
 	executionWriter   ExecutionWriter
+	tokens            *oauth2Cache
+	openBrowser       func(target string) error
 }
 
 // New constructs an Executor with the given transport and options.
@@ -56,6 +58,8 @@ func New(transport http.RoundTripper, opts ...Option) *Executor {
 		postResponseHooks: o.postResponseHooks,
 		variableResolver:  o.variableResolver,
 		executionWriter:   o.executionWriter,
+		tokens:            newOAuth2Cache(),
+		openBrowser:       o.openBrowser,
 	}
 }
 
@@ -113,6 +117,14 @@ func (e *Executor) Execute(ctx context.Context, req *domain.Request) (*ExecuteRe
 		// BUG-003: buildHTTPRequest already wraps ErrInvalidURL; don't double-wrap.
 		// errors.Is(err, ErrInvalidURL) still works via chain.
 		wrapped := fmt.Errorf("exec: build request: %w", err)
+		record(req, nil, wrapped)
+		return nil, wrapped
+	}
+
+	// OAuth 2.0 fetches or refreshes a token before the request timeout starts,
+	// since a browser sign-in can outlast it.
+	if err := e.applyOAuth2Auth(ctx, httpReq, req); err != nil {
+		wrapped := fmt.Errorf("exec: %w", err)
 		record(req, nil, wrapped)
 		return nil, wrapped
 	}
