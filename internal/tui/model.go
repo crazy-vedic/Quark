@@ -20,6 +20,7 @@ import (
 	"github.com/crazy-vedic/quark/internal/domain"
 	"github.com/crazy-vedic/quark/internal/exec"
 	"github.com/crazy-vedic/quark/internal/keybindings"
+	"github.com/crazy-vedic/quark/internal/postmanimport"
 	"github.com/crazy-vedic/quark/internal/search"
 	"github.com/crazy-vedic/quark/internal/store"
 	"github.com/crazy-vedic/quark/internal/theme"
@@ -142,7 +143,7 @@ type viewerClipboardMsg struct{ err error }
 type curlExportClipboardMsg struct{ err error }
 
 type postmanImportResultMsg struct {
-	output string
+	result postmanimport.Result
 	err    error
 }
 

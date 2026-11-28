@@ -102,7 +102,8 @@ If `*Store` stops implementing any interface, **this file fails to compile**.
 | `store` | SQLite CRUD, migrations, backups, transactions | `domain` |
 | `exec` | HTTP dispatch, variable interpolation, auth, hooks, history | `domain` |
 | `tui` | Bubbletea Model/Update/View, editors, modes | `domain`, `exec`, `search`, `curl`, `keybindings`, `config`, `theme` |
-| `cli` | Thin cobra command handlers (no business logic) | `domain`, `store`, `exec`, `curl`, `postman`, `config` |
+| `cli` | Thin cobra command handlers (no business logic) | `domain`, `store`, `exec`, `curl`, `postman`, `postmanimport`, `config` |
+| `postmanimport` | Postman import orchestration (duplicates, merge, folders, variables, environments); returns a structured `Result` for the CLI and TUI to format | `domain`, `postman`, `store` |
 | `curl` | Parse cURL commands → structured request | `domain` |
 | `postman` | Parse Postman Collection v2.1, map auth/env | `domain` |
 | `search` | Fuzzy search over requests | `domain`, store interface |

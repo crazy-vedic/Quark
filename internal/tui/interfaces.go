@@ -8,6 +8,7 @@ import (
 	"github.com/crazy-vedic/quark/internal/curl"
 	"github.com/crazy-vedic/quark/internal/domain"
 	"github.com/crazy-vedic/quark/internal/exec"
+	"github.com/crazy-vedic/quark/internal/postmanimport"
 	"github.com/crazy-vedic/quark/internal/search"
 )
 
@@ -36,8 +37,9 @@ type CurlImporter interface {
 }
 
 // PostmanImporter imports a Postman collection file or bulk export directory.
+// The TUI formats the structured result itself.
 type PostmanImporter interface {
-	ImportPostman(ctx context.Context, path string) (string, error)
+	ImportPostman(ctx context.Context, path string) (postmanimport.Result, error)
 }
 
 // CertificateManager reloads the HTTP client-certificate routes.

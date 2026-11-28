@@ -201,9 +201,8 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case postmanImportResultMsg:
 		m.postmanBusy = false
-		m.postmanOutput = strings.TrimSpace(msg.output)
+		m.postmanOutput = formatPostmanImportResult(msg.result, msg.err)
 		if msg.err != nil {
-			m.postmanOutput = strings.TrimSpace(m.postmanOutput + "\n" + msg.err.Error())
 			return m, nil
 		}
 		if m.lister != nil {

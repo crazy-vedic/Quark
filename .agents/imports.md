@@ -60,7 +60,7 @@ quark import-postman <collection.json|directory> \
   [--include-disabled]
 ```
 
-Implemented in `internal/cli/import_postman.go`, parsing in `internal/postman/`.
+Orchestration (duplicates, merge, folders, variables, environments) is in `internal/postmanimport/`, which returns a structured `Result`. The `import-postman` command (`internal/cli/import_postman.go`) and the TUI importer both call it. Parsing is in `internal/postman/`.
 
 ### Single File
 
