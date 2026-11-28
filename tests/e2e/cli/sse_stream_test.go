@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -58,6 +59,12 @@ func startQuarkWithHome(
 	cmd.Stderr = &stderr
 	require.NoError(t, cmd.Start())
 	return cmd, stdout, &stderr
+}
+
+// tempDirEnv points every variable that os.TempDir consults at dir. Go reads
+// TMPDIR on Unix but TMP and TEMP on Windows, so all three are set.
+func tempDirEnv(dir string) []string {
+	return []string{"TMPDIR=" + dir, "TMP=" + dir, "TEMP=" + dir}
 }
 
 // exitCodeOf maps a Wait error to an exit code (0 when err is nil).
@@ -177,7 +184,7 @@ func TestCLI_RunStreamLargeBodySpillsToTempFileAndIsRemoved(t *testing.T) {
 	})
 
 	tmp := t.TempDir()
-	cmd, stdout, stderr := startQuarkWithHome(t, home, []string{"TMPDIR=" + tmp}, "run", "API/Large")
+	cmd, stdout, stderr := startQuarkWithHome(t, home, tempDirEnv(tmp), "run", "API/Large")
 	out, readErr := io.ReadAll(stdout)
 	require.NoError(t, readErr)
 	require.Equal(t, 0, exitCodeOf(t, cmd.Wait()), "stderr: %s", stderr.String())
@@ -202,7 +209,7 @@ func TestCLI_RunStreamLargeBodyFailsWhenTempFileCannotBeCreated(t *testing.T) {
 	})
 
 	missing := filepath.Join(t.TempDir(), "does-not-exist")
-	_, errOut, code := runQuarkWithHomeEnv(t, home, []string{"TMPDIR=" + missing}, "run", "API/NoTmp")
+	_, errOut, code := runQuarkWithHomeEnv(t, home, tempDirEnv(missing), "run", "API/NoTmp")
 	assert.NotEqual(t, 0, code)
 	assert.Contains(t, errOut, "create temp file")
 }
@@ -264,6 +271,11 @@ func TestCLI_RunStreamConnectionDropFailsTheRun(t *testing.T) {
 }
 
 func TestCLI_RunStreamInterruptEndsStreamAndPrintsSummary(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		// os.Process.Signal(os.Interrupt) is not implemented on Windows, so a
+		// test cannot interrupt a child process there.
+		t.Skip("sending os.Interrupt to a child process is not supported on windows")
+	}
 	home, colID := setupHomeWithCollection(t)
 	srv := newEventStreamServer(t, http.StatusOK, func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, "data: tick\n\n")
@@ -278,6 +290,9 @@ func TestCLI_RunStreamInterruptEndsStreamAndPrintsSummary(t *testing.T) {
 	})
 
 	cmd, stdout, stderr := startQuarkWithHome(t, home, nil, "run", "API/Interrupt")
+	// If an assertion fails early, kill the child so the server handler sees
+	// the connection close. Otherwise httptest's Close waits forever.
+	t.Cleanup(func() { _ = cmd.Process.Kill() })
 	reader := bufio.NewReader(stdout)
 	first, err := reader.ReadString('\n')
 	require.NoError(t, err)
