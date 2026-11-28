@@ -18,6 +18,7 @@ func DefaultKeybindings() Keybindings {
 		PaneNext:      "tab",
 		PanePrev:      KeyShiftTab,
 		ImportCurl:    "i",
+		JumpMode:      "g",
 
 		// Sidebar
 		SidebarDown:          "j",

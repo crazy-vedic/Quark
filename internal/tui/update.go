@@ -215,6 +215,10 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		m = m.applyDimSticky()
+		if m.mode == jumpMode {
+			// The labels were placed for the old size.
+			m = m.closeJumpMode()
+		}
 		if m.activeField == bodyField {
 			m = m.resizeBodyTextarea()
 		}
@@ -231,6 +235,9 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		m = m.applyDimSticky()
+		if m.mode == jumpMode {
+			m = m.closeJumpMode()
+		}
 		if m.activeField == bodyField {
 			m = m.resizeBodyTextarea()
 		}
@@ -464,6 +471,8 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.handleClientCertKey(msg)
 		case postmanImportMode:
 			return m.handlePostmanImportKey(msg)
+		case jumpMode:
+			return m.handleJumpKey(msg)
 		default:
 			return m.handleNormalKey(msg)
 		}
@@ -756,6 +765,8 @@ func (m Model) dispatchNormalAction(action string) (tea.Model, tea.Cmd) {
 		m.focus = (m.focus + 2) % 3
 		m.activeField = noneField
 		return m, nil
+	case keybindings.ActionJumpMode:
+		return m.openJumpMode(), nil
 	case keybindings.ActionEnvOpen:
 		return m.openEnvEditor()
 	case keybindings.ActionClientCerts:

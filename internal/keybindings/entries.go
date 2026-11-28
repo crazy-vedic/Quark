@@ -23,7 +23,7 @@ var groups = []struct {
 	{"Global", []string{
 		"quit", "help", ActionSearch,
 		ActionFocusSidebar, ActionFocusRequest, ActionFocusResponse,
-		"pane_next", "pane_prev", ActionClientCerts, ActionImportCurl,
+		"pane_next", "pane_prev", ActionClientCerts, ActionImportCurl, ActionJumpMode,
 	}},
 	{"Client Certificates", []string{
 		"cert_down", "cert_up", "cert_add", "cert_edit", "cert_delete", "cert_close",

@@ -5,6 +5,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // --- Resolve: default bindings ---
@@ -608,4 +609,31 @@ func TestRecordBinding_TextSelectionConflictRejected(t *testing.T) {
 	_, err := RecordBinding(binds, "select_all", binds.Copy)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "conflict")
+}
+
+func TestResolver_JumpModeIsGlobalAndRebindable(t *testing.T) {
+	r := NewResolver(DefaultKeybindings())
+	for pane := 0; pane <= 2; pane++ {
+		action, ok := r.Resolve(0, pane, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'g'}})
+		assert.True(t, ok, "pane %d", pane)
+		assert.Equal(t, ActionJumpMode, action, "pane %d", pane)
+	}
+
+	binds := DefaultKeybindings()
+	binds.JumpMode = "ctrl+t"
+	action, ok := NewResolver(binds).Resolve(0, 0, tea.KeyMsg{Type: tea.KeyCtrlT})
+	assert.True(t, ok)
+	assert.Equal(t, ActionJumpMode, action)
+	_, ok = NewResolver(binds).Resolve(0, 0, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'g'}})
+	assert.False(t, ok, "the default key no longer jumps once rebound")
+}
+
+func TestValidate_JumpModeKeyConflicts(t *testing.T) {
+	assert.Empty(t, Validate(DefaultKeybindings()))
+
+	binds := DefaultKeybindings()
+	binds.JumpMode = binds.SidebarDown
+	conflicts := Validate(binds)
+	require.Contains(t, conflicts, "j")
+	assert.Contains(t, conflicts["j"], ActionJumpMode)
 }
