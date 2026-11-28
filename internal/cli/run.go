@@ -30,6 +30,8 @@ func NewRunCmd(st RunStore, e *exec.Executor) *cobra.Command {
 	var namedVars []string
 	var verbose bool
 	var fail bool
+	var envName string
+	var out runOutput
 
 	cmd := &cobra.Command{
 		Use:   "run <Collection/Request> [positional-args...]",
@@ -47,10 +49,11 @@ func NewRunCmd(st RunStore, e *exec.Executor) *cobra.Command {
 					if err != nil {
 						return fmt.Errorf("run: %w", err)
 					}
-					colEnv, globalEnv, err := exec.ResolveEnvVars(
+					colEnv, globalEnv, err := resolveRunEnvironments(
 						ctx,
 						st,
 						found.CollectionID,
+						envName,
 					)
 					if err != nil {
 						return fmt.Errorf("run: resolve environments: %w", err)
@@ -69,7 +72,7 @@ func NewRunCmd(st RunStore, e *exec.Executor) *cobra.Command {
 					if err != nil {
 						return fmt.Errorf("run: execute: %w", err)
 					}
-					return finishRun(cmd, prepared, result, verbose, fail)
+					return finishRun(cmd, prepared, result, verbose, fail, out)
 				}
 			}
 			parts := strings.SplitN(args[0], "/", 2)
@@ -117,8 +120,7 @@ func NewRunCmd(st RunStore, e *exec.Executor) *cobra.Command {
 				return fmt.Errorf("run: %w", err)
 			}
 
-			colEnv, globalEnv, err := exec.ResolveEnvVars(
-				ctx, st, collectionID)
+			colEnv, globalEnv, err := resolveRunEnvironments(ctx, st, collectionID, envName)
 			if err != nil {
 				return fmt.Errorf("run: resolve environments: %w", err)
 			}
@@ -138,7 +140,7 @@ func NewRunCmd(st RunStore, e *exec.Executor) *cobra.Command {
 				return fmt.Errorf("run: execute: %w", err)
 			}
 
-			return finishRun(cmd, prepared, result, verbose, fail)
+			return finishRun(cmd, prepared, result, verbose, fail, out)
 		},
 	}
 	cmd.ValidArgsFunction = CompleteRequestPaths(st.ListCollections, st.ListRequests)
@@ -157,7 +159,63 @@ func NewRunCmd(st RunStore, e *exec.Executor) *cobra.Command {
 		false,
 		"Print request and response headers and request details (may include credentials)",
 	)
+	cmd.Flags().StringVarP(&out.file, "output", "o", "",
+		"Write the response body to this file instead of stdout")
+	cmd.Flags().BoolVarP(&out.include, "include", "i", false,
+		"Print the response status and headers on stdout before the body")
+	cmd.Flags().StringVar(&envName, "env", "",
+		"Use the environment with this name for this run only, in each collection of the "+
+			"hierarchy that has one")
 	return cmd
+}
+
+// resolveRunEnvironments resolves the variables for a run. With envName set,
+// the named environment replaces the active one in every collection of the
+// hierarchy that has an environment with that name; the stored active
+// selection is not changed.
+func resolveRunEnvironments(
+	ctx context.Context,
+	st exec.EnvResolver,
+	collectionID, envName string,
+) (map[string]string, map[string]string, error) {
+	if envName == "" {
+		return exec.ResolveEnvVars(ctx, st, collectionID)
+	}
+	override := &envOverride{EnvResolver: st, name: envName}
+	colEnv, globalEnv, err := exec.ResolveEnvVars(ctx, override, collectionID)
+	if err != nil {
+		return nil, nil, err
+	}
+	if !override.matched {
+		return nil, nil, fmt.Errorf(
+			"environment %q not found in this collection or its parents", envName)
+	}
+	return colEnv, globalEnv, nil
+}
+
+// envOverride answers GetActiveEnvironment with the environment named name
+// when a collection has one, and with the stored selection otherwise.
+type envOverride struct {
+	exec.EnvResolver
+	name    string
+	matched bool
+}
+
+func (o *envOverride) GetActiveEnvironment(
+	ctx context.Context,
+	collectionID string,
+) (string, error) {
+	environments, err := o.ListCollectionEnvironments(ctx, collectionID)
+	if err != nil {
+		return "", err
+	}
+	for _, environment := range environments {
+		if environment.Name == o.name {
+			o.matched = true
+			return environment.ID, nil
+		}
+	}
+	return o.EnvResolver.GetActiveEnvironment(ctx, collectionID)
 }
 
 func parseRunOverrides(
@@ -186,8 +244,9 @@ func finishRun(
 	req *domain.Request,
 	result *exec.ExecuteResult,
 	verbose, fail bool,
+	out runOutput,
 ) error {
-	if err := printRunResult(cmd, req, result, verbose); err != nil {
+	if err := printRunOutput(cmd, req, result, verbose, out); err != nil {
 		return err
 	}
 	if fail && result.StatusCode >= 400 {

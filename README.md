@@ -197,6 +197,17 @@ summary. Valid JSON is pretty-printed and syntax-highlighted in a terminal.
 Add `--verbose` to print request details and response headers to stderr; this
 can include credentials from the saved request.
 
+Output and variable flags for `quark run`:
+
+- `-o, --output <file>` writes the body to a file exactly as received; stdout stays empty
+- `-i, --include` prints the status line and response headers on stdout before the body
+- `--env <name>` uses the environment with that name for this run only, in each collection
+  of the hierarchy that has one; the stored active environment is not changed
+- `-v, --var key=value` overrides one variable for this run
+
+The status summary always goes to stderr, so `quark run ... > out.json` captures
+only the body.
+
 ### Text Selection & Editing
 
 Edit URLs, request headers, bodies, and auth fields with familiar keyboard shortcuts:

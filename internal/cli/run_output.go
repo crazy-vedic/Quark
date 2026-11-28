@@ -15,6 +15,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/crazy-vedic/quark/internal/atomicfile"
 	"github.com/crazy-vedic/quark/internal/domain"
 	"github.com/crazy-vedic/quark/internal/exec"
 	"github.com/crazy-vedic/quark/internal/highlight"
@@ -23,11 +24,30 @@ import (
 const maxPrettyJSONBytes = 1 << 20
 const maxTerminalBodyBytes = 16 << 20
 
+// runOutput selects where the response goes for quark run.
+type runOutput struct {
+	file    string // -o: write the body to this file instead of stdout
+	include bool   // -i: print the status line and headers on stdout first
+}
+
 func printRunResult(
 	cmd *cobra.Command,
 	req *domain.Request,
 	result *exec.ExecuteResult,
 	verbose bool,
+) error {
+	return printRunOutput(cmd, req, result, verbose, runOutput{})
+}
+
+// printRunOutput writes the run's diagnostics and response. The status block
+// and --verbose details always go to stderr; stdout carries the headers (with
+// -i) and the body, unless the body goes to the -o file.
+func printRunOutput(
+	cmd *cobra.Command,
+	req *domain.Request,
+	result *exec.ExecuteResult,
+	verbose bool,
+	opts runOutput,
 ) (runErr error) {
 	defer func() {
 		if cleanupErr := result.Cleanup(); cleanupErr != nil {
@@ -39,9 +59,15 @@ func printRunResult(
 		printRequestDetails(cmd.ErrOrStderr(), req)
 		printResponseDetails(cmd.ErrOrStderr(), result)
 	}
-	// The status block goes to stderr so stdout carries only the response body.
+	// The status block goes to stderr so stdout carries only the response.
 	fmt.Fprintf(cmd.ErrOrStderr(), "Status: %s\nSize:   %d bytes\nTime:   %v\n",
 		result.Status, result.Size, result.Duration.Round(time.Millisecond))
+	if opts.include {
+		printResponseHeaderLines(cmd.OutOrStdout(), result)
+	}
+	if opts.file != "" {
+		return writeRunBodyFile(opts.file, result)
+	}
 	if result.Size == 0 {
 		return nil
 	}
@@ -96,6 +122,45 @@ func printRunResult(
 		return err
 	}
 	return writeResponseBody(out, result.Body, contentType, terminal)
+}
+
+// printResponseHeaderLines writes the status and headers for -i, followed by a
+// blank line, in the usual HTTP-dump layout.
+func printResponseHeaderLines(w io.Writer, result *exec.ExecuteResult) {
+	fmt.Fprintln(w, safeText(w, result.Status))
+	keys := make([]string, 0, len(result.Headers))
+	for key := range result.Headers {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		for _, value := range result.Headers[key] {
+			fmt.Fprintf(w, "%s: %s\n", safeText(w, key), safeText(w, value))
+		}
+	}
+	fmt.Fprintln(w)
+}
+
+// writeRunBodyFile saves the response body exactly as received, for -o. The
+// file is replaced atomically, like every other file Quark writes.
+func writeRunBodyFile(path string, result *exec.ExecuteResult) error {
+	err := atomicfile.Write(path, 0o644, func(w io.Writer) error {
+		if result.TempPath == "" {
+			_, err := w.Write(result.Body)
+			return err
+		}
+		src, err := os.Open(result.TempPath)
+		if err != nil {
+			return fmt.Errorf("read response body: %w", err)
+		}
+		defer src.Close()
+		_, err = io.Copy(w, src)
+		return err
+	})
+	if err != nil {
+		return fmt.Errorf("write output file: %w", err)
+	}
+	return nil
 }
 
 func printRequestDetails(w io.Writer, req *domain.Request) {

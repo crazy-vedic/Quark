@@ -2,6 +2,8 @@ package cli
 
 import (
 	"bytes"
+	"context"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -174,4 +176,86 @@ func TestRunOutput_StdoutIsExactlyTheBody(t *testing.T) {
 	assert.Equal(t, string(body), strings.TrimSuffix(stdout.String(), "\n"),
 		"stdout must hold the body and nothing else (a single trailing newline is allowed)")
 	assert.Contains(t, stderr.String(), "Status: 200 OK")
+}
+
+// runOutputStore is a one-request store for the -o and -i tests.
+func runOutputStore() *fakeRunStore {
+	const collectionID = "col-1"
+	defaultEnv := &domain.Environment{
+		ID: "env-default", CollectionID: collectionID, Name: "default", Data: "{}",
+	}
+	return &fakeRunStore{
+		collections: []*domain.Collection{{ID: collectionID, Name: "API"}},
+		requests: map[string][]*domain.Request{
+			collectionID: {{
+				ID: "req-1", CollectionID: collectionID, Name: "ping", Method: "GET",
+				URL: "https://example.test/ping",
+			}},
+		},
+		globalEnv: &domain.Environment{ID: "global", Name: "Global", Data: "{}"},
+		envsByID:  map[string]*domain.Environment{"env-default": defaultEnv},
+		envsByCol: map[string][]*domain.Environment{collectionID: {defaultEnv}},
+	}
+}
+
+func runOutputTransport(contentType, body string) *recordingRoundTripper {
+	header := http.Header{}
+	header.Set("Content-Type", contentType)
+	header.Set("X-Trace", "abc")
+	return &recordingRoundTripper{response: &http.Response{
+		StatusCode: 200,
+		Status:     "200 OK",
+		Header:     header,
+		Body:       io.NopCloser(bytes.NewBufferString(body)),
+	}}
+}
+
+func TestNewRunCmd_OutputFlagWritesBodyToFile(t *testing.T) {
+	transport := runOutputTransport("application/json", `{"ok":  true}`)
+	dest := filepath.Join(t.TempDir(), "body.json")
+
+	var stdout, stderr bytes.Buffer
+	cmd := NewRunCmd(runOutputStore(), exec.New(transport))
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
+	cmd.SetArgs([]string{"API/ping", "-o", dest})
+	cmd.SetContext(context.Background())
+	require.NoError(t, cmd.Execute())
+
+	data, err := os.ReadFile(dest)
+	require.NoError(t, err)
+	assert.Equal(t, `{"ok":  true}`, string(data), "the body is saved as received, not re-indented")
+	assert.Empty(t, stdout.String(), "stdout carries nothing when the body goes to a file")
+	assert.Contains(t, stderr.String(), "Status: 200 OK")
+}
+
+func TestNewRunCmd_IncludePrintsStatusAndHeadersOnStdout(t *testing.T) {
+	transport := runOutputTransport("text/plain", "pong")
+
+	var stdout, stderr bytes.Buffer
+	cmd := NewRunCmd(runOutputStore(), exec.New(transport))
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
+	cmd.SetArgs([]string{"API/ping", "--include"})
+	cmd.SetContext(context.Background())
+	require.NoError(t, cmd.Execute())
+
+	assert.Equal(t, "200 OK\nContent-Type: text/plain\nX-Trace: abc\n\npong\n", stdout.String())
+	assert.Contains(t, stderr.String(), "Status: 200 OK")
+	assert.NotContains(t, stdout.String(), "Status:", "the status block stays on stderr")
+}
+
+func TestWriteRunBodyFileCopiesStreamedBody(t *testing.T) {
+	src := filepath.Join(t.TempDir(), "streamed")
+	require.NoError(t, os.WriteFile(src, []byte("streamed body"), 0o600))
+	dest := filepath.Join(t.TempDir(), "out.txt")
+
+	require.NoError(t, writeRunBodyFile(dest, &exec.ExecuteResult{TempPath: src}))
+	data, err := os.ReadFile(dest)
+	require.NoError(t, err)
+	assert.Equal(t, "streamed body", string(data))
+
+	require.ErrorContains(t,
+		writeRunBodyFile(dest, &exec.ExecuteResult{TempPath: filepath.Join(t.TempDir(), "gone")}),
+		"read response body")
 }

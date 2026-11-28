@@ -13,7 +13,7 @@ quark collection list
 quark collection create <name>
 quark request list [--collection <id>]
 quark request export-curl <Collection/Request>
-quark run <Collection/Request>
+quark run <Collection/Request> [-o <file>] [-i] [--env <name>] [--var key=value]
 quark search <query>
 quark schedule add <Collection/Request> --at <time>
 quark schedule list
@@ -56,10 +56,10 @@ Shell completion available for `--collection` via `CompleteCollectionIDs`.
 **Source:** `internal/cli/run.go`
 
 ```
-quark run <Collection/Request>
+quark run <Collection/Request> [-o <file>] [-i] [--env <name>] [--var key=value]
 ```
 
-Executes a saved request by path (collection name / request name). Uses `exec.Executor.Execute`. Prints status, headers, body (or temp file path for large bodies).
+Executes a saved request by path (collection name / request name). Uses `exec.Executor.Execute`. Prints status (stderr), body (or temp file path for large bodies). `-o` writes the body to a file, `-i` prints status and headers on stdout before the body, `--env` picks an environment for one run without changing the active one (`resolveRunEnvironments` in `run.go`).
 
 ### `quark request export-curl`
 
