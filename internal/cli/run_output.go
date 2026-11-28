@@ -43,6 +43,7 @@ func printRunResult(
 	fmt.Fprintf(cmd.ErrOrStderr(), "Status: %s\nSize:   %d bytes\nTime:   %v\n",
 		result.Status, result.Size, result.Duration.Round(time.Millisecond))
 	printExtractions(cmd.ErrOrStderr(), result.Extracted)
+	printAssertions(cmd.ErrOrStderr(), result.Assertions)
 	if result.Size == 0 {
 		return nil
 	}
@@ -114,6 +115,33 @@ func printExtractions(w io.Writer, outcomes []exec.ExtractionOutcome) {
 			fmt.Fprintf(w, "Extract failed: %s: %s\n", name, safeText(w, o.Err.Error()))
 		}
 	}
+}
+
+// printAssertions reports each assertion as PASS or FAIL with its reason.
+func printAssertions(w io.Writer, results []exec.AssertionResult) {
+	for _, r := range results {
+		rule := safeText(w, r.Rule)
+		if r.Passed {
+			fmt.Fprintf(w, "Assert PASS: %s\n", rule)
+			continue
+		}
+		fmt.Fprintf(w, "Assert FAIL: %s (%s)\n", rule, safeText(w, r.Reason))
+	}
+}
+
+// assertionsError returns an error when any assertion failed, so quark run
+// exits non-zero.
+func assertionsError(results []exec.AssertionResult) error {
+	failed := 0
+	for _, r := range results {
+		if !r.Passed {
+			failed++
+		}
+	}
+	if failed == 0 {
+		return nil
+	}
+	return fmt.Errorf("run: %d of %d assertions failed", failed, len(results))
 }
 
 func printRequestDetails(w io.Writer, req *domain.Request) {

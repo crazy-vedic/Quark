@@ -59,6 +59,7 @@ var helpActionLabels = map[string]string{
 	keybindings.ActionEditBody:      "edit body",
 	keybindings.ActionEditHeaders:   "edit headers",
 	keybindings.ActionEditExtract:   "edit extract",
+	keybindings.ActionEditAssert:    "edit assert",
 	"edit_auth":                     "edit auth",
 	keybindings.ActionScheduleRun:   "schedule request",
 	keybindings.ActionExportCurl:    "copy as curl",
@@ -593,9 +594,6 @@ func (m Model) viewRequestPane(w, h int) string {
 		content = ""
 	case m.activeField == headersField && m.activeRequest != nil:
 		content = m.viewHeadersPreview(w)
-	case m.activeField == extractField && m.activeRequest != nil:
-		// Rendered after the chrome is measured, like the auth editor.
-		content = ""
 	case m.activeRequest != nil:
 		// The read-only preview is formatted lazily by requestText below.
 		content = ""
@@ -661,7 +659,6 @@ func (m Model) viewRequestPane(w, h int) string {
 			{Label: "body", Actions: []string{keybindings.ActionEditBody}},
 			{Label: "headers", Actions: []string{keybindings.ActionEditHeaders}},
 			{Label: "auth", Actions: []string{"edit_auth"}},
-			{Label: "extract", Actions: []string{keybindings.ActionEditExtract}},
 			{Label: "env", Actions: []string{keybindings.ActionEnvOpen}},
 			{Label: "cycle env", Actions: []string{"env_prev", "env_next"}},
 		})
@@ -688,10 +685,8 @@ func (m Model) viewRequestPane(w, h int) string {
 		renderedContent = m.requestText.View(innerWidth, contentLines, timingSpan)
 	case m.activeField == authField && m.activeRequest != nil:
 		renderedContent = m.viewAuthEditor(contentLines, innerWidth)
-	case m.activeField == extractField && m.activeRequest != nil:
-		renderedContent = m.viewExtractEditor(contentLines, innerWidth)
 	default:
-		renderedContent = limitLines(content, innerWidth, contentLines)
+		renderedContent = m.requestPaneListEditorOr(content, contentLines, innerWidth)
 	}
 	paddingLines := contentLines - visualRows(renderedContent, innerWidth)
 	if paddingLines < 0 {
@@ -2901,3 +2896,16 @@ const (
 	actionHelpClose   = "help_close"
 	requestTitleLabel = "Request"
 )
+
+// requestPaneListEditorOr renders the extraction or assertion list editor when
+// one is open, and otherwise the limited content.
+func (m Model) requestPaneListEditorOr(content string, maxRows, width int) string {
+	switch {
+	case m.activeRequest == nil:
+	case m.activeField == extractField:
+		return m.viewExtractEditor(maxRows, width)
+	case m.activeField == assertField:
+		return m.viewAssertEditor(maxRows, width)
+	}
+	return limitLines(content, width, maxRows)
+}

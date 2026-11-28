@@ -209,6 +209,13 @@ ON collections(COALESCE(parent_id, ''), name);
 ALTER TABLE requests ADD COLUMN extractions TEXT NOT NULL DEFAULT '[]';
 `,
 	},
+	{
+		version: 11,
+		name:    "add_request_assertions",
+		upSQL: `
+ALTER TABLE requests ADD COLUMN assertions TEXT NOT NULL DEFAULT '[]';
+`,
+	},
 }
 
 // migrate runs all pending migrations in order.

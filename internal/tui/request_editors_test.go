@@ -228,3 +228,59 @@ func TestExtractEditorEscInListDiscardsChanges(t *testing.T) {
 	assert.Empty(t, m.ExtractRules())
 	assert.Empty(t, m.ActiveRequest().Extractions, "nothing was saved")
 }
+
+func TestAssertEditorAddsRuleAndSaves(t *testing.T) {
+	m := extractTestModel()
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("A")})
+	require.Equal(t, tui.AssertField, m.ActiveField())
+
+	m = typeRunes(t, m, "a")
+	require.True(t, m.AssertEditing())
+	m = typeRunes(t, m, "status = 200")
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	require.False(t, m.AssertEditing())
+	require.Len(t, m.AssertRules(), 1)
+	assert.Equal(t, domain.AssertStatus, m.AssertRules()[0].Kind)
+
+	m2, cmd := callUpdateWithCmd(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	assert.NotNil(t, cmd, "saving the list persists the request")
+	assert.Equal(t, tui.NoneField, m2.ActiveField())
+	assert.Equal(t, domain.EncodeAssertions([]domain.Assertion{
+		{Kind: domain.AssertStatus, Op: "=", Value: "200"},
+	}), m2.ActiveRequest().Assertions)
+}
+
+func TestAssertEditorRejectsInvalidRowAndKeepsItOpen(t *testing.T) {
+	m := extractTestModel()
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("A")})
+	m = typeRunes(t, m, "a")
+	m = typeRunes(t, m, "status = 99")
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+
+	assert.True(t, m.AssertEditing(), "an invalid row stays open")
+	assert.NotEmpty(t, m.AssertError())
+}
+
+func TestAssertEditorEscRemovesNewRow(t *testing.T) {
+	m := extractTestModel()
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("A")})
+	m = typeRunes(t, m, "a")
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyEsc})
+
+	assert.False(t, m.AssertEditing())
+	assert.Empty(t, m.AssertRules())
+	assert.Equal(t, tui.AssertField, m.ActiveField())
+}
+
+func TestAssertEditorEscInListDiscardsChanges(t *testing.T) {
+	m := extractTestModel()
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("A")})
+	m = typeRunes(t, m, "a")
+	m = typeRunes(t, m, "time < 1s")
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	require.Len(t, m.AssertRules(), 1)
+	m = callUpdate(t, m, tea.KeyMsg{Type: tea.KeyEsc})
+
+	assert.Equal(t, tui.NoneField, m.ActiveField())
+	assert.Empty(t, m.ActiveRequest().Assertions, "nothing was saved")
+}

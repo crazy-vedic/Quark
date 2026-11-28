@@ -261,6 +261,46 @@ func TestStore_SaveRequest_PersistsExtractions(t *testing.T) {
 	assert.Equal(t, rules, got.Extractions)
 }
 
+func TestStore_SaveRequest_PersistsAssertions(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	c := &domain.Collection{ID: uuid.New().String(), Name: "Col"}
+	require.NoError(t, s.SaveCollection(ctx, c))
+
+	checks := `[{"kind":"status","op":"=","value":"200"}]`
+	req := &domain.Request{
+		CollectionID: c.ID, Name: "check", Method: "GET",
+		URL: "http://example.com/check", Assertions: checks,
+	}
+	require.NoError(t, s.SaveRequest(ctx, req))
+
+	got, err := s.GetRequest(ctx, req.ID)
+	require.NoError(t, err)
+	assert.Equal(t, checks, got.Assertions)
+
+	listed, err := s.ListRequests(ctx, c.ID)
+	require.NoError(t, err)
+	require.Len(t, listed, 1)
+	assert.Equal(t, checks, listed[0].Assertions)
+
+	plain := &domain.Request{CollectionID: c.ID, Name: "plain", Method: "GET", URL: "http://x"}
+	require.NoError(t, s.SaveRequest(ctx, plain))
+	got, err = s.GetRequest(ctx, plain.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "[]", got.Assertions)
+
+	tx, err := s.BeginTransaction(ctx)
+	require.NoError(t, err)
+	viaTx := &domain.Request{
+		CollectionID: c.ID, Name: "tx", Method: "GET", URL: "http://x", Assertions: checks,
+	}
+	require.NoError(t, tx.SaveRequest(ctx, viaTx))
+	require.NoError(t, tx.Commit())
+	got, err = s.GetRequest(ctx, viaTx.ID)
+	require.NoError(t, err)
+	assert.Equal(t, checks, got.Assertions)
+}
+
 // TestStore_SaveRequest_GeneratesIDWhenEmpty guards against the bug where two
 // new requests saved with an empty ID collided on the same primary key ("") and
 // the second overwrote the first via ON CONFLICT(id) DO UPDATE.

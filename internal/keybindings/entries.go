@@ -57,7 +57,7 @@ var groups = []struct {
 			ActionEditBody,
 			ActionEditHeaders,
 			ActionDeleteRequest,
-			"edit_auth", ActionEditExtract,
+			"edit_auth", ActionEditExtract, ActionEditAssert,
 		},
 	},
 	{"Body Editor", []string{
@@ -70,6 +70,10 @@ var groups = []struct {
 	{"Extraction Editor", []string{
 		"extract_down", "extract_up", "extract_add", "extract_delete",
 		"extract_edit", "extract_save", "extract_cancel", "extract_switch_field",
+	}},
+	{"Assertion Editor", []string{
+		"assert_down", "assert_up", "assert_add", "assert_delete",
+		"assert_edit", "assert_save", "assert_cancel",
 	}},
 	{"Auth Editor", []string{
 		"auth_down", "auth_up", "auth_edit", "auth_save",

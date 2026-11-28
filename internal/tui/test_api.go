@@ -121,6 +121,7 @@ const (
 	HeadersField = headersField
 	AuthField    = authField
 	ExtractField = extractField
+	AssertField  = assertField
 )
 
 func (m Model) WithDebugLog(f *os.File) Model { m.debugLog = f; return m }
@@ -827,5 +828,27 @@ func (m Model) WithExtractRowEdit(name, source string) Model {
 func (m Model) WithExtractSourceFocused() Model {
 	m.extract.varInput.Blur()
 	m.extract.srcInput.Focus()
+	return m
+}
+
+// AssertRules returns the assertions open in the request pane editor.
+func (m Model) AssertRules() []domain.Assertion { return m.assert.rules }
+
+// AssertEditing reports whether one assertion row is being edited.
+func (m Model) AssertEditing() bool { return m.assert.editing }
+
+// AssertError returns the validation error for the open assertion row.
+func (m Model) AssertError() string { return m.assert.err }
+
+// AssertInputValue returns the text of the open assertion row.
+func (m Model) AssertInputValue() string { return m.assert.input.Value() }
+
+// WithAssertRowEdit opens the assertion editor with one row in edit mode
+// holding text.
+func (m Model) WithAssertRowEdit(text string) Model {
+	m.assert = assertEditor{rules: []domain.Assertion{{}}, editing: true, input: newAssertInput()}
+	m.assert.input.SetValue(text)
+	m.assert.input.Focus()
+	m.activeField = assertField
 	return m
 }

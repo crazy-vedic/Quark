@@ -106,8 +106,8 @@ func (s *Store) SaveRequest(ctx context.Context, req *domain.Request) error {
 	}
 	_, err := s.db.ExecContext(
 		ctx,
-		`INSERT INTO requests (id, collection_id, name, method, url, headers, auth_type, auth_config, body, sort_order, enabled, extractions)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`INSERT INTO requests (id, collection_id, name, method, url, headers, auth_type, auth_config, body, sort_order, enabled, extractions, assertions)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(id) DO UPDATE SET
 		   collection_id=excluded.collection_id,
 		   name=excluded.name,
@@ -120,6 +120,7 @@ func (s *Store) SaveRequest(ctx context.Context, req *domain.Request) error {
 		   sort_order=excluded.sort_order,
 		   enabled=excluded.enabled,
 		   extractions=excluded.extractions,
+		   assertions=excluded.assertions,
 		   updated_at=CURRENT_TIMESTAMP`,
 		req.ID,
 		req.CollectionID,
@@ -133,6 +134,7 @@ func (s *Store) SaveRequest(ctx context.Context, req *domain.Request) error {
 		req.SortOrder,
 		req.Enabled,
 		storedExtractions(req.Extractions),
+		storedAssertions(req.Assertions),
 	)
 	if err != nil {
 		if isSQLiteUnique(err) {
@@ -170,7 +172,7 @@ func (s *Store) DeleteRequest(ctx context.Context, id string) error {
 
 // requestColumns lists the request columns in the order scanRequest reads them.
 const requestColumns = `id, collection_id, name, method, url, headers, auth_type, auth_config, body,
-		        sort_order, enabled, created_at, updated_at, extractions`
+		        sort_order, enabled, created_at, updated_at, extractions, assertions`
 
 // scanRequest reads one row selected with requestColumns.
 func scanRequest(row rowScanner) (*domain.Request, error) {
@@ -178,7 +180,7 @@ func scanRequest(row rowScanner) (*domain.Request, error) {
 	var body sql.NullString
 	if err := row.Scan(&r.ID, &r.CollectionID, &r.Name, &r.Method, &r.URL,
 		&r.Headers, &r.AuthType, &r.AuthConfig, &body, &r.SortOrder, &r.Enabled,
-		&r.CreatedAt, &r.UpdatedAt, &r.Extractions); err != nil {
+		&r.CreatedAt, &r.UpdatedAt, &r.Extractions, &r.Assertions); err != nil {
 		return nil, err
 	}
 	r.Body = body.String
@@ -187,6 +189,14 @@ func scanRequest(row rowScanner) (*domain.Request, error) {
 
 // storedExtractions normalizes an empty rule list to the column default.
 func storedExtractions(raw string) string {
+	if raw == "" {
+		return "[]"
+	}
+	return raw
+}
+
+// storedAssertions normalizes an empty assertion list to the column default.
+func storedAssertions(raw string) string {
 	if raw == "" {
 		return "[]"
 	}
