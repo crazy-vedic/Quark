@@ -73,7 +73,14 @@ func (l *wsLoop) typeText(text string) {
 // until delivers messages until the model satisfies cond.
 func (l *wsLoop) until(cond func(tui.Model) bool) {
 	l.t.Helper()
-	deadline := time.After(10 * time.Second)
+	l.untilWithin(10*time.Second, cond)
+}
+
+// untilWithin is until with a caller-chosen limit, for a test whose server
+// sends more messages than the default limit can render under -race.
+func (l *wsLoop) untilWithin(limit time.Duration, cond func(tui.Model) bool) {
+	l.t.Helper()
+	deadline := time.After(limit)
 	for !cond(l.m) {
 		select {
 		case msg := <-l.msgs:
@@ -294,7 +301,10 @@ func TestE2E_WebSocketLogKeepsOnlyTheNewestEntries(t *testing.T) {
 		}
 		<-ctx.Done()
 	})
-	loop.until(func(m tui.Model) bool { return strings.Contains(m.View(), "line-1099") })
+	// Each delivered message is one Update with a frame check plus a View for
+	// the condition, so 1100 messages take about 20 s under -race. The limit is
+	// only an upper bound; a passing run returns as soon as the line arrives.
+	loop.untilWithin(120*time.Second,func(m tui.Model) bool { return strings.Contains(m.View(), "line-1099") })
 
 	// The 1000-entry cap drops the oldest entries, including the status line.
 	loop.key(tea.KeyMsg{Type: tea.KeyEsc})
